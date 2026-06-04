@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}بیماران{% endblock %}
+{% block content %}
+<div class="topbar">
+    <h1>بیماران مزمن</h1>
+    <a class="btn" href="{{ url_for('patients.enroll') }}">➕ ثبت‌نام بیمار</a>
+</div>
+
+<div class="card">
+    <form class="row" method="get">
+        <div style="flex:1;"><input type="text" name="q" value="{{ q }}" placeholder="جستجو بر اساس نام، کدملی یا موبایل..."></div>
+        <button class="btn" type="submit">جستجو</button>
+    </form>
+</div>
+
+<div class="card">
+    {% if patients %}
+    <table>
+        <thead><tr><th>نام</th><th>کدملی</th><th>موبایل</th><th>وضعیت لینک</th><th></th></tr></thead>
+        <tbody>
+        {% for p in patients %}
+            <tr>
+                <td>{{ p.full_name }}</td>
+                <td>{{ p.national_id or '—' }}</td>
+                <td>{{ p.phone_number or '—' }}</td>
+                <td>{% if p.accounting_patient_id %}<span class="badge badge-ok">متصل به حسابداری</span>{% else %}<span class="badge badge-muted">مستقل</span>{% endif %}</td>
+                <td><a class="btn btn-sm" href="{{ url_for('patients.detail', pid=p.id) }}">پرونده</a></td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <div class="empty">بیماری یافت نشد. برای شروع، یک بیمار ثبت‌نام کنید.</div>
+    {% endif %}
+</div>
+{% endblock %}

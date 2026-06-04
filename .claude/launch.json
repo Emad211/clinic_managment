@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "specialist",
+      "runtimeExecutable": "specialist_clinic\\.venv\\Scripts\\python.exe",
+      "runtimeArgs": ["specialist_clinic\\start.py"],
+      "port": 8090
+    }
+  ]
+}

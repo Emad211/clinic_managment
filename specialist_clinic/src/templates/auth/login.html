@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ورود — کلینیک تخصصی</title>
+    <style>
+        body { margin:0; font-family:Tahoma, sans-serif; background:#0f172a; color:#e2e8f0;
+               display:flex; align-items:center; justify-content:center; min-height:100vh; }
+        .box { background:#1e293b; border:1px solid #334155; border-radius:14px; padding:34px; width:340px; }
+        .brand { text-align:center; font-size:22px; font-weight:bold; color:#0ea5e9; margin-bottom:6px; }
+        .sub { text-align:center; color:#94a3b8; font-size:13px; margin-bottom:24px; }
+        label { display:block; color:#94a3b8; font-size:13px; margin:12px 0 5px; }
+        input { width:100%; background:#0f172a; border:1px solid #334155; color:#e2e8f0;
+                padding:11px; border-radius:8px; font-family:inherit; box-sizing:border-box; }
+        .btn { width:100%; margin-top:20px; background:#0ea5e9; color:#fff; border:none; padding:12px;
+               border-radius:8px; cursor:pointer; font-family:inherit; font-size:15px; }
+        .btn:hover { background:#0284c7; }
+        .flash { background:rgba(239,68,68,.15); color:#fca5a5; padding:11px; border-radius:8px;
+                 margin-bottom:14px; font-size:13px; text-align:center; }
+    </style>
+</head>
+<body>
+    <form class="box" method="post">
+        <div class="brand">🩺 کلینیک تخصصی</div>
+        <div class="sub">مدیریت بیماری‌های مزمن</div>
+        {% with messages = get_flashed_messages() %}
+            {% for msg in messages %}<div class="flash">{{ msg }}</div>{% endfor %}
+        {% endwith %}
+        <label>نام کاربری</label>
+        <input type="text" name="username" autofocus required>
+        <label>رمز عبور</label>
+        <input type="password" name="password" required>
+        <button class="btn" type="submit">ورود</button>
+    </form>
+</body>
+</html>

@@ -1,0 +1,267 @@
+from flask import Blueprint, render_template, request, redirect, url_for, flash, g
+from src.api.auth import login_required, manager_required
+from src.adapters.sqlite.core import get_db
+from src.adapters.sqlite.sms_repo import SmsRepository
+from src.services.auth_service import AuthService
+from src.services.protocol_service import ProtocolService
+from src.services.followup_service import FollowupService
+from src.services.activity_logger import log_activity
+
+bp = Blueprint("manager", __name__, url_prefix="/manager")
+
+
+@bp.route("/")
+@manager_required
+def index():
+    """Management analytics dashboard."""
+    db = get_db()
+
+    total = db.execute("SELECT COUNT(*) c FROM patient_links WHERE is_active=1").fetchone()['c']
+
+    by_condition = db.execute(
+        """SELECT c.name, COUNT(DISTINCT pc.patient_link_id) c
+           FROM patient_conditions pc JOIN conditions c ON c.id=pc.condition_id
+           JOIN patient_links p ON p.id=pc.patient_link_id AND p.is_active=1
+           WHERE pc.is_active=1 GROUP BY c.id ORDER BY c DESC""").fetchall()
+
+    # Control rate: patients whose latest hba1c<=7 and latest systolic<140 among those with readings
+    measured = db.execute(
+        """SELECT COUNT(DISTINCT patient_link_id) c FROM vital_readings""").fetchone()['c']
+    uncontrolled = db.execute(
+        """SELECT COUNT(*) c FROM patient_links p WHERE p.is_active=1 AND (
+             (SELECT v.value FROM vital_readings v WHERE v.patient_link_id=p.id AND v.type='hba1c'
+                ORDER BY v.measured_at DESC LIMIT 1) > 8
+             OR (SELECT v.value FROM vital_readings v WHERE v.patient_link_id=p.id AND v.type='bp_systolic'
+                ORDER BY v.measured_at DESC LIMIT 1) >= 140)""").fetchone()['c']
+    controlled = max(measured - uncontrolled, 0)
+    control_rate = round(controlled / measured * 100) if measured else 0
+
+    # Campaign effectiveness
+    campaign_stats = db.execute(
+        """SELECT COUNT(*) total, COALESCE(SUM(sent_count),0) sent, COALESCE(SUM(failed_count),0) failed
+           FROM sms_campaigns""").fetchone()
+
+    followups = FollowupService().repo.counts_by_reason()
+
+    return render_template(
+        "manager/index.html", active_page='manager',
+        total=total, by_condition=[dict(r) for r in by_condition],
+        measured=measured, controlled=controlled, uncontrolled=uncontrolled, control_rate=control_rate,
+        campaign_stats=dict(campaign_stats), followups=followups,
+    )
+
+
+@bp.route("/settings", methods=["GET", "POST"])
+@manager_required
+def settings():
+    repo = SmsRepository()
+    if request.method == "POST":
+        repo.set_setting('mediana_api_key', request.form.get('mediana_api_key', '').strip())
+        repo.set_setting('mediana_sending_number', request.form.get('mediana_sending_number', '').strip())
+        repo.set_setting('mediana_message_type', request.form.get('mediana_message_type', 'PromotionalToCustomers').strip())
+        repo.set_setting('reminder_template', request.form.get('reminder_template', '').strip())
+        flash("تنظیمات ذخیره شد", "success")
+        return redirect(url_for("manager.settings"))
+    data = {
+        'mediana_api_key': repo.get_setting('mediana_api_key', ''),
+        'mediana_sending_number': repo.get_setting('mediana_sending_number', ''),
+        'mediana_message_type': repo.get_setting('mediana_message_type', 'PromotionalToCustomers'),
+        'reminder_template': repo.get_setting('reminder_template',
+            'سلام {name} عزیز، یادآوری نوبت شما در کلینیک تخصصی. لطفاً در زمان مقرر مراجعه فرمایید.'),
+    }
+    return render_template("manager/settings.html", data=data, active_page='manager')
+
+
+@bp.route("/users", methods=["GET", "POST"])
+@manager_required
+def users():
+    service = AuthService()
+    if request.method == "POST":
+        username = request.form.get("username", "").strip()
+        password = request.form.get("password", "").strip()
+        role = request.form.get("role", "staff")
+        full_name = request.form.get("full_name", "").strip() or None
+        if not username or not password:
+            flash("نام کاربری و رمز عبور الزامی است")
+        elif service.register_user(username, password, role, full_name):
+            flash("کاربر ساخته شد", "success")
+            log_activity("user_create", f"ساخت کاربر {username}")
+        else:
+            flash("کاربر تکراری است یا خطا رخ داد")
+        return redirect(url_for("manager.users"))
+    all_users = service.repo.get_all_users()
+    return render_template("manager/users.html", users=all_users, active_page='manager')
+
+
+@bp.route("/protocols")
+@manager_required
+def protocols():
+    summary = ProtocolService().summary()
+    return render_template("manager/protocols.html", summary=summary, active_page='manager')
+
+
+@bp.route("/rules")
+@manager_required
+def rules():
+    """View & edit the clinical decision rules that drive the analytics engine."""
+    from src.adapters.sqlite.clinical_rules_repo import ClinicalRulesRepository, CATEGORY_LABELS
+    repo = ClinicalRulesRepository()
+    indicators = repo.all_indicators(active_only=False)
+    # group by category for display
+    groups = {}
+    for ind in indicators:
+        groups.setdefault(ind['category'], []).append(ind)
+    ordered = [(c, CATEGORY_LABELS.get(c, c), groups[c])
+               for c in ['glycemic', 'bp', 'lipid', 'kidney', 'anthro', 'other'] if c in groups]
+    conditions = get_db().execute("SELECT code, name FROM conditions WHERE is_active=1").fetchall()
+    return render_template("manager/rules.html", active_page='manager',
+                           groups=ordered, category_labels=CATEGORY_LABELS,
+                           conditions=[dict(c) for c in conditions])
+
+
+@bp.route("/rules/update", methods=["POST"])
+@manager_required
+def rules_update():
+    """Update one clinical indicator's editable fields."""
+    from src.adapters.sqlite.clinical_rules_repo import ClinicalRulesRepository
+    indicator_id = request.form.get("indicator_id", type=int)
+    if not indicator_id:
+        flash("شناسه نامعتبر")
+        return redirect(url_for("manager.rules"))
+
+    def num(field):
+        v = request.form.get(field, "").strip()
+        if v == "":
+            return None
+        try:
+            return float(v)
+        except ValueError:
+            return None
+
+    fields = {
+        'label': request.form.get("label", "").strip(),
+        'unit': request.form.get("unit", "").strip(),
+        'direction': request.form.get("direction", "high"),
+        'warn': num("warn"), 'danger': num("danger"), 'target': num("target"),
+        'goal_low': num("goal_low"), 'goal_high': num("goal_high"),
+        'conditions': request.form.get("conditions", "all").strip() or "all",
+        'risk_weight': int(num("risk_weight") or 0),
+        'display_order': int(num("display_order") or 100),
+        'is_active': 1 if request.form.get("is_active") == "on" else 0,
+    }
+    ClinicalRulesRepository().update(indicator_id, fields)
+    log_activity("rules_update", f"ویرایش قاعده‌ی بالینی #{indicator_id}")
+    flash("قاعده به‌روزرسانی شد", "success")
+    return redirect(url_for("manager.rules"))
+
+
+_RULE_CAT_LABELS = {
+    'diagnosis': 'تشخیص و طبقه‌بندی', 'target': 'اهداف درمانی', 'medication': 'انتخاب دارو',
+    'drug_safety': 'ایمنی و منع دارو', 'insulin': 'انسولین', 'monitoring': 'پایش',
+    'screening': 'غربالگری عوارض', 'redflag': 'هشدارهای فوری', 'hypo': 'هیپوگلیسمی',
+    'lifestyle': 'سبک زندگی و آموزش', 'vaccination': 'واکسیناسیون',
+    'bp_rx': 'درمان فشار خون', 'lipid_rx': 'درمان چربی خون',
+}
+_RULE_CAT_ORDER = ['redflag', 'diagnosis', 'target', 'medication', 'bp_rx', 'lipid_rx',
+                   'insulin', 'drug_safety', 'monitoring', 'screening', 'hypo',
+                   'lifestyle', 'vaccination']
+
+
+@bp.route("/decision-rules")
+@manager_required
+def decision_rules():
+    """View & edit the full ADA decision-rule catalog (all categories)."""
+    rows = [dict(r) for r in get_db().execute(
+        "SELECT * FROM clinical_rules ORDER BY priority, id").fetchall()]
+    groups = {}
+    for r in rows:
+        groups.setdefault(r['category'], []).append(r)
+    ordered = [(c, _RULE_CAT_LABELS.get(c, c), groups[c])
+               for c in _RULE_CAT_ORDER if c in groups]
+    # any categories not in the predefined order
+    ordered += [(c, _RULE_CAT_LABELS.get(c, c), g) for c, g in groups.items()
+                if c not in _RULE_CAT_ORDER]
+    total = len(rows)
+    active = sum(1 for r in rows if r['is_active'])
+    return render_template("manager/decision_rules.html", active_page='manager',
+                           groups=ordered, total=total, active=active)
+
+
+@bp.route("/decision-rules/update", methods=["POST"])
+@manager_required
+def decision_rules_update():
+    rule_id = request.form.get("rule_id", type=int)
+    if not rule_id:
+        flash("شناسه نامعتبر")
+        return redirect(url_for("manager.decision_rules"))
+    fields = {
+        'recommendation': request.form.get("recommendation", "").strip(),
+        'dosage_titration': request.form.get("dosage_titration", "").strip() or None,
+        'monitoring': request.form.get("monitoring", "").strip() or None,
+        'contraindications': request.form.get("contraindications", "").strip() or None,
+        'evidence_level': request.form.get("evidence_level", "").strip() or None,
+        'severity': request.form.get("severity", "info"),
+        'priority': request.form.get("priority", type=int) or 100,
+        'is_active': 1 if request.form.get("is_active") == "on" else 0,
+    }
+    sets = ', '.join(f"{k}=?" for k in fields)
+    get_db().execute(f"UPDATE clinical_rules SET {sets} WHERE id=?",
+                     (*fields.values(), rule_id))
+    get_db().commit()
+    log_activity("decision_rule_update", f"ویرایش قاعدهٔ تصمیم #{rule_id}")
+    flash("قاعده به‌روزرسانی شد", "success")
+    return redirect(url_for("manager.decision_rules") + f"#rule-{rule_id}")
+
+
+@bp.route("/rules/add", methods=["POST"])
+@manager_required
+def rules_add():
+    """Add a brand-new clinical indicator (manager has a free hand)."""
+    from src.adapters.sqlite.clinical_rules_repo import ClinicalRulesRepository
+
+    def num(field):
+        v = request.form.get(field, "").strip()
+        try:
+            return float(v) if v != "" else None
+        except ValueError:
+            return None
+
+    key = request.form.get("key", "").strip().lower().replace(" ", "_")
+    label = request.form.get("label", "").strip()
+    if not key or not label:
+        flash("کلید و عنوان الزامی است")
+        return redirect(url_for("manager.rules"))
+    ClinicalRulesRepository().create({
+        'key': key, 'label': label, 'unit': request.form.get("unit", "").strip(),
+        'category': request.form.get("category", "other"),
+        'direction': request.form.get("direction", "high"),
+        'warn': num("warn"), 'danger': num("danger"), 'target': num("target"),
+        'conditions': request.form.get("conditions", "all").strip() or "all",
+        'risk_weight': int(num("risk_weight") or 1),
+        'display_order': int(num("display_order") or 100),
+    })
+    log_activity("rules_add", f"افزودن شاخص بالینی: {label}")
+    flash("شاخص جدید اضافه شد", "success")
+    return redirect(url_for("manager.rules"))
+
+
+@bp.route("/protocols/followup", methods=["POST"])
+@manager_required
+def protocol_followup():
+    """Create follow-up tasks for all patients due for a given protocol."""
+    from src.adapters.sqlite.followups_repo import FollowupRepository
+    protocol_id = request.form.get("protocol_id", type=int)
+    summary = ProtocolService().summary()
+    target = next((p for p in summary if p['id'] == protocol_id), None)
+    if not target:
+        flash("پروتکل یافت نشد")
+        return redirect(url_for("manager.protocols"))
+    repo = FollowupRepository()
+    created = 0
+    for pat in target['due_patients']:
+        if not repo.exists_open(pat['id'], 'visit_due'):
+            repo.create(pat['id'], reason='visit_due',
+                        detail=f"موعد: {target['name']}")
+            created += 1
+    flash(f"{created} پیگیری برای «{target['name']}» ساخته شد", "success")
+    return redirect(url_for("manager.protocols"))

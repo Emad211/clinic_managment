@@ -1,0 +1,135 @@
+{% extends "base.html" %}
+{% block title %}کمپین پیامکی{% endblock %}
+{% block content %}
+<div class="topbar"><h1>📣 کمپین‌های پیامکی</h1></div>
+
+{% if not provider_ready %}
+<div class="flash">⚠️ پنل پیامک تنظیم نشده — پیام‌ها در حالت شبیه‌سازی ثبت می‌شوند. از «مدیریت ← تنظیمات» کلید API مدیانا را وارد کنید.</div>
+{% endif %}
+
+<div class="grid grid-2">
+    <div class="card">
+        <div class="section-title">➕ ساخت کمپین جدید</div>
+        <form method="post" action="{{ url_for('sms.new_campaign') }}" id="campaign-form">
+            <label>نام کمپین *</label><input type="text" name="name" required>
+
+            <label>نوع کمپین *</label>
+            <select name="campaign_type" id="campaign_type">
+                {% for k, v in campaign_types.items() %}<option value="{{ k }}">{{ v }}</option>{% endfor %}
+            </select>
+
+            <div id="credit-box" style="display:none;background:var(--bg2);padding:12px;border-radius:10px;margin-top:10px;border:1px solid var(--line);">
+                <div class="row">
+                    <div class="field"><label>مبلغ اعتبار هر بیمار (تومان)</label><input type="number" id="credit_amount" name="credit_amount" value="0"></div>
+                    <div class="field"><label>اعتبار تا چند روز معتبر است؟</label><input type="number" name="credit_expires_days" placeholder="مثلاً 30"></div>
+                </div>
+                <div class="muted" style="font-size:12px;margin-top:6px;">💡 اعتبار به کیف پول بیمار اضافه می‌شود. در متن از <code>{credit}</code> و <code>{balance}</code> استفاده کنید — جایگزین قانونیِ «تخفیف/رایگان».</div>
+            </div>
+
+            <label>گروه هدف *</label>
+            <select name="segment" id="segment" required>
+                {% for key, label in segments.items() %}<option value="{{ key }}">{{ label }} ({{ seg_sizes[key]|fa_num }} نفر)</option>{% endfor %}
+            </select>
+
+            <label>متن پیام * <span class="muted">— متغیرها: {name}، {credit}، {balance}</span></label>
+            <textarea name="body" id="body" rows="3" required placeholder="سلام {name} عزیز، ..."></textarea>
+
+            <div id="compliance" style="margin-top:8px;"></div>
+
+            <div class="card" style="margin-top:10px;background:var(--bg2);">
+                <div class="muted" style="font-size:12px;margin-bottom:6px;">پیش‌نمایش زنده</div>
+                <div id="preview" style="font-size:14px;min-height:20px;">—</div>
+                <div class="muted" style="font-size:11px;margin-top:8px;" id="meta"></div>
+            </div>
+
+            <div class="row" style="margin-top:10px;">
+                <div class="field"><label>زمان‌بندی - تاریخ (خالی = فوری)</label><input type="text" class="jdate" name="scheduled_date"></div>
+                <div class="field"><label>ساعت</label><input type="text" name="scheduled_time" value="09:00"></div>
+            </div>
+            <button class="btn" type="submit" style="margin-top:14px;">ساخت کمپین</button>
+        </form>
+    </div>
+
+    <div class="card">
+        <div class="section-title">📋 قالب‌های آماده</div>
+        {% for t in templates %}
+            <div style="padding:9px 0;border-bottom:1px solid var(--line);">
+                <strong>{{ t.name }}</strong>
+                <div class="muted" style="font-size:13px;">{{ t.body }}</div>
+                <button class="btn btn-sm btn-ghost" style="margin-top:6px;" onclick="useTemplate(this)" data-body="{{ t.body }}" type="button">استفاده</button>
+            </div>
+        {% endfor %}
+        <form method="post" action="{{ url_for('sms.add_template') }}" style="margin-top:12px;">
+            <label>قالب جدید</label>
+            <input type="text" name="name" placeholder="نام قالب" required>
+            <textarea name="body" rows="2" placeholder="متن با {name}" style="margin-top:8px;" required></textarea>
+            <button class="btn btn-sm" type="submit" style="margin-top:8px;">ذخیره قالب</button>
+        </form>
+        <div class="muted" style="font-size:12px;margin-top:14px;line-height:1.9;">
+            <strong>⚖️ نکته قانونی:</strong> کلمات «رایگان» و «تخفیف» توسط اپراتور مسدود می‌شوند.
+            این سیستم به‌صورت خودکار آن‌ها را با معادل مجاز («اعتبار هدیه»، «اعتبار ویژه») جایگزین می‌کند
+            و پیشنهاد می‌شود پروموشن را به‌صورت «اعتبار کیف پول» اجرا کنید.
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="section-title">کمپین‌ها</div>
+    {% if campaigns %}
+    <table>
+        <thead><tr><th>نام</th><th>نوع</th><th>گروه هدف</th><th>وضعیت</th><th>ارسال</th><th></th></tr></thead>
+        <tbody>
+        {% for c in campaigns %}
+            <tr>
+                <td>{{ c.name }}</td>
+                <td>{% if c.campaign_type=='wallet_credit' %}<span class="badge badge-violet">اعتبار</span>{% elif c.campaign_type=='reminder' %}<span class="badge badge-info">یادآوری</span>{% else %}<span class="badge badge-muted">اطلاع‌رسانی</span>{% endif %}</td>
+                <td>{{ segments.get(c.segment, c.segment) }}</td>
+                <td>
+                    {% if c.status=='done' %}<span class="badge badge-ok">ارسال شد</span>
+                    {% elif c.status=='scheduled' %}<span class="badge badge-warn">زمان‌بندی‌شده</span>
+                    {% elif c.status=='sending' %}<span class="badge badge-warn">در حال ارسال</span>
+                    {% else %}<span class="badge badge-muted">پیش‌نویس</span>{% endif %}
+                </td>
+                <td>{{ c.sent_count|fa_num }} / {{ c.total_recipients|fa_num }}</td>
+                <td><a class="btn btn-sm" href="{{ url_for('sms.campaign_detail', cid=c.id) }}">جزئیات</a></td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    {% else %}<div class="empty">هنوز کمپینی ساخته نشده</div>{% endif %}
+</div>
+
+<script>
+const $type = document.getElementById('campaign_type');
+const $creditBox = document.getElementById('credit-box');
+const $body = document.getElementById('body');
+const $segment = document.getElementById('segment');
+const $credit = document.getElementById('credit_amount');
+const $compliance = document.getElementById('compliance');
+const $preview = document.getElementById('preview');
+const $meta = document.getElementById('meta');
+
+function toggleCredit(){ $creditBox.style.display = ($type.value==='wallet_credit') ? 'block':'none'; refresh(); }
+$type.addEventListener('change', toggleCredit);
+
+function useTemplate(btn){ $body.value = btn.dataset.body; refresh(); }
+
+let timer=null;
+function refresh(){ clearTimeout(timer); timer=setTimeout(doCheck, 250); }
+['input','change'].forEach(ev=>{ $body.addEventListener(ev,refresh); $segment.addEventListener(ev,refresh); if($credit)$credit.addEventListener(ev,refresh); });
+
+async function doCheck(){
+    const payload={ body:$body.value, segment:$segment.value, credit_amount:($credit?$credit.value:0) };
+    try{
+        const res=await fetch("{{ url_for('sms.api_check') }}",{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+        const d=await res.json();
+        if(d.banned && d.banned.length){
+            $compliance.innerHTML = `<div class="alert-banner">🚫 کلمات مسدود: ${d.banned.join('، ')} — هنگام ذخیره به‌صورت خودکار اصلاح می‌شوند.</div>`;
+        } else { $compliance.innerHTML=''; }
+        $preview.textContent = d.preview || '—';
+        $meta.textContent = `گیرندگان: ${d.recipients.toLocaleString('fa')} · ${d.char_count.toLocaleString('fa')} کاراکتر · ${d.sms_parts.toLocaleString('fa')} پیامک`;
+    }catch(e){ $meta.textContent='خطا در بررسی'; }
+}
+toggleCredit(); doCheck();
+</script>
+{% endblock %}

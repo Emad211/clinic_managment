@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}{{ campaign.name }}{% endblock %}
+{% block content %}
+<div class="crumb"><a href="{{ url_for('sms.campaigns') }}">کمپین‌ها</a> / {{ campaign.name }}</div>
+<div class="topbar">
+    <h1>{{ campaign.name }}
+        {% if campaign.campaign_type=='wallet_credit' %}<span class="badge badge-violet">اعتبار کیف پول</span>
+        {% elif campaign.campaign_type=='reminder' %}<span class="badge badge-info">یادآوری</span>
+        {% else %}<span class="badge badge-muted">اطلاع‌رسانی</span>{% endif %}
+    </h1>
+    <a class="btn btn-ghost" href="{{ url_for('sms.campaigns') }}">بازگشت</a>
+</div>
+
+<div class="card">
+    <div class="grid grid-4">
+        <div class="kpi card" style="margin:0;"><div class="num">{{ recipients_count|fa_num }}</div><div class="label">گیرندگان ({{ segments.get(campaign.segment, campaign.segment) }})</div></div>
+        <div class="kpi card" style="margin:0;"><div class="num" style="color:#4ade80;">{{ campaign.sent_count|fa_num }}</div><div class="label">ارسال موفق</div></div>
+        <div class="kpi card" style="margin:0;"><div class="num" style="color:#f87171;">{{ campaign.failed_count|fa_num }}</div><div class="label">ناموفق</div></div>
+        {% if campaign.campaign_type=='wallet_credit' %}
+        <div class="kpi card" style="margin:0;"><div class="num" style="color:#a78bfa;">{{ total_credit|fa_num }}</div><div class="label">کل اعتبار توزیعی (تومان)</div></div>
+        {% else %}
+        <div class="kpi card" style="margin:0;"><div class="num">{{ campaign.status }}</div><div class="label">وضعیت</div></div>
+        {% endif %}
+    </div>
+
+    {% if campaign.campaign_type=='wallet_credit' %}
+    <div class="muted" style="font-size:13px;margin-top:14px;">💳 اعتبار هر بیمار: <strong>{{ campaign.credit_amount|fa_num }}</strong> تومان{% if campaign.credit_expires_days %} · اعتبار {{ campaign.credit_expires_days|fa_num }} روز معتبر{% endif %}</div>
+    {% endif %}
+
+    <div style="margin-top:14px;padding:13px;background:var(--bg2);border-radius:10px;line-height:2;">{{ campaign.body }}</div>
+
+    {% if not provider_ready %}<div class="flash" style="margin-top:12px;">⚠️ پنل تنظیم نشده — ارسال در حالت شبیه‌سازی انجام می‌شود.</div>{% endif %}
+
+    {% if campaign.status in ['draft','scheduled'] %}
+    {% set confirm_msg = 'ارسال کمپین به ' ~ recipients_count ~ ' گیرنده؟' %}
+    {% if campaign.campaign_type == 'wallet_credit' %}{% set confirm_msg = confirm_msg ~ ' مجموع ' ~ total_credit ~ ' تومان اعتبار توزیع می‌شود.' %}{% endif %}
+    <form method="post" action="{{ url_for('sms.send_campaign', cid=campaign.id) }}" style="margin-top:14px;"
+          onsubmit="return confirm('{{ confirm_msg }}');">
+        <button class="btn" type="submit">📤 ارسال فوری</button>
+    </form>
+    {% endif %}
+</div>
+
+<div class="card">
+    <div class="section-title">لاگ ارسال</div>
+    {% if messages %}
+    <table>
+        <thead><tr><th>گیرنده</th><th>متن</th><th>وضعیت</th><th>شناسه/خطا</th><th>زمان</th></tr></thead>
+        <tbody>
+        {% for m in messages %}
+            <tr>
+                <td>{{ m.recipient }}</td>
+                <td class="muted" style="font-size:12px;">{{ m.body[:60] }}…</td>
+                <td>{% if m.status=='sent' %}<span class="badge badge-ok">ارسال شد</span>{% elif m.status=='failed' %}<span class="badge badge-danger">ناموفق</span>{% else %}<span class="badge badge-muted">در صف</span>{% endif %}</td>
+                <td class="muted" style="font-size:12px;">{{ m.provider_msgid or m.error or '—' }}</td>
+                <td class="muted">{{ m.sent_at|jalali if m.sent_at else '—' }}</td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    {% else %}<div class="empty">هنوز پیامی ارسال نشده</div>{% endif %}
+</div>
+{% endblock %}

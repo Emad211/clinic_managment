@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block title %}ثبت‌نام بیمار{% endblock %}
+{% block content %}
+<div class="topbar"><h1>ثبت‌نام بیمار جدید</h1></div>
+
+<div class="grid grid-2">
+    <div class="card">
+        <h3 style="margin-top:0;">۱) از سامانه حسابداری</h3>
+        <p class="muted" style="font-size:13px;">بیمار را از پایگاه داده‌ی حسابداری (فقط-خواندنی) جستجو و انتخاب کنید.</p>
+        <input type="text" id="acc-search" placeholder="نام، کدملی یا موبایل...">
+        <div id="acc-results" style="margin-top:12px;"></div>
+    </div>
+
+    <div class="card">
+        <h3 style="margin-top:0;">۲) ثبت دستی</h3>
+        <p class="muted" style="font-size:13px;">اگر بیمار در سامانه حسابداری نیست.</p>
+        <form method="post" action="{{ url_for('patients.enroll_manual') }}">
+            <label>نام و نام خانوادگی *</label>
+            <input type="text" name="full_name" required>
+            <div class="row">
+                <div style="flex:1;"><label>کدملی</label><input type="text" name="national_id"></div>
+                <div style="flex:1;"><label>موبایل</label><input type="text" name="phone_number" placeholder="09..."></div>
+            </div>
+            <div class="row">
+                <div style="flex:1;"><label>جنسیت</label>
+                    <select name="gender"><option value="">—</option><option value="male">مرد</option><option value="female">زن</option></select>
+                </div>
+                <div style="flex:1;"><label>تاریخ تولد</label><input type="text" class="jdate" name="birthdate" placeholder="انتخاب تاریخ"></div>
+            </div>
+            <label>آدرس</label>
+            <textarea name="address" rows="2"></textarea>
+            <button class="btn" type="submit" style="margin-top:14px;">ثبت بیمار</button>
+        </form>
+    </div>
+</div>
+
+<script>
+const searchInput = document.getElementById('acc-search');
+const resultsBox = document.getElementById('acc-results');
+let timer = null;
+searchInput.addEventListener('input', () => {
+    clearTimeout(timer);
+    timer = setTimeout(doSearch, 350);
+});
+async function doSearch() {
+    const q = searchInput.value.trim();
+    resultsBox.innerHTML = '<div class="muted">در حال جستجو...</div>';
+    try {
+        const res = await fetch(`{{ url_for('patients.search_accounting') }}?q=${encodeURIComponent(q)}`);
+        const data = await res.json();
+        if (!data.results.length) { resultsBox.innerHTML = '<div class="empty">نتیجه‌ای نیست</div>'; return; }
+        let html = '<table><tbody>';
+        for (const p of data.results) {
+            const enrolled = p.already_enrolled;
+            html += `<tr>
+                <td>${p.full_name}</td>
+                <td class="muted">${p.national_id || '—'}</td>
+                <td class="muted">${p.phone_number || '—'}</td>
+                <td>${enrolled
+                    ? '<span class="badge badge-ok">ثبت‌نام شده</span>'
+                    : `<form method="post" action="{{ url_for('patients.enroll_accounting') }}" style="margin:0;">
+                         <input type="hidden" name="accounting_patient_id" value="${p.id}">
+                         <button class="btn btn-sm" type="submit">ثبت‌نام</button></form>`}
+                </td></tr>`;
+        }
+        html += '</tbody></table>';
+        resultsBox.innerHTML = html;
+    } catch(e) { resultsBox.innerHTML = '<div class="flash">خطا در اتصال به سامانه حسابداری</div>'; }
+}
+doSearch();
+</script>
+{% endblock %}

@@ -1,0 +1,328 @@
+{% extends "base.html" %}
+{% block title %}{{ patient.full_name }}{% endblock %}
+{% block content %}
+<div class="crumb"><a href="{{ url_for('patients.list_patients') }}">بیماران</a> / پرونده</div>
+<div class="topbar">
+    <div>
+        <h1 style="display:flex;align-items:center;gap:10px;">{{ patient.full_name }}
+            {% if control.status=='controlled' %}<span class="badge badge-ok">کنترل‌شده</span>
+            {% elif control.status=='borderline' %}<span class="badge badge-warn">مرزی</span>
+            {% elif control.status=='uncontrolled' %}<span class="badge badge-danger">کنترل‌نشده</span>
+            {% else %}<span class="badge badge-muted">بدون داده</span>{% endif %}
+        </h1>
+        <div class="muted" style="font-size:13px;margin-top:4px;">
+            {{ patient.national_id or 'بدون کدملی' }} · {{ patient.phone_number or 'بدون موبایل' }}
+            {% if patient.accounting_patient_id %} · <span class="badge badge-info">متصل به حسابداری</span>{% endif %}
+        </div>
+    </div>
+    <div class="row">
+        <a class="btn btn-violet" href="{{ url_for('patients.analytics', pid=patient.id) }}">📊 داشبورد تحلیلی</a>
+        <a class="btn btn-ghost" href="{{ url_for('appointments.new_appointment', patient_link_id=patient.id) }}">🗓️ نوبت</a>
+    </div>
+</div>
+
+{% if allergies %}
+<div class="alert-banner">⚠️ آلرژی‌ها: {% for a in allergies %}{{ a.substance }}{% if a.severity %} ({{ a.severity }}){% endif %}{% if not loop.last %} · {% endif %}{% endfor %}</div>
+{% endif %}
+
+{% set lvlcolor = {'danger':'#f87171','warn':'#fbbf24','ok':'#4ade80','none':'#92a2c0'} %}
+<!-- AT-A-GLANCE SNAPSHOT -->
+{% if snapshot %}
+<div class="card" style="padding:14px 18px;">
+    <div class="legend">
+        <span class="muted" style="font-size:12px;">آخرین شاخص‌ها:</span>
+        {% for s in snapshot %}
+        <span class="chip" style="border-color:{{ lvlcolor.get(s.level) }}33;">
+            <span class="dot" style="background:{{ lvlcolor.get(s.level) }};"></span>
+            {{ s.label }} <b style="color:{{ lvlcolor.get(s.level) }};">{{ s.value|fa_num }}</b> <span class="muted" style="font-size:10.5px;">{{ s.unit }}</span>
+        </span>
+        {% endfor %}
+        <a class="btn btn-sm btn-violet" style="margin-inline-start:auto;" href="{{ url_for('patients.analytics', pid=patient.id) }}">📊 داشبورد تحلیلی کامل</a>
+    </div>
+</div>
+{% endif %}
+
+<!-- QUICK VITALS ENTRY (per-disease, driven by the editable rules) -->
+<div class="card">
+    <div class="section-title">⚡ ثبت سریع شاخص‌ها</div>
+    <form method="post" action="{{ url_for('vitals.add_reading', pid=patient.id) }}">
+        <div class="grid grid-4">
+            {% for i in entry_indicators %}
+            <div class="fld">
+                <label>{{ i.label }}
+                    {% if i.target is not none %}<span class="muted">(هدف {% if i.direction=='low' %}&gt;{% else %}&lt;{% endif %}{{ i.target|fa_num }})</span>{% endif %}
+                </label>
+                <input type="number" step="any" name="{{ i.key }}" placeholder="{{ i.unit or '' }}">
+            </div>
+            {% else %}
+            <div class="empty-mini" style="grid-column:1/-1;">برای نمایش شاخص‌های تخصصی، ابتدا بیماری بیمار را در بخش «بیماری‌ها» ثبت کنید.</div>
+            {% endfor %}
+        </div>
+        <div class="row" style="margin-top:12px;align-items:flex-end;">
+            <div class="fld" style="max-width:200px;"><label>تاریخ اندازه‌گیری</label><input type="text" class="jdate" name="measured_date" placeholder="امروز"></div>
+            <button class="btn" type="submit">ثبت شاخص‌ها</button>
+        </div>
+    </form>
+</div>
+
+<!-- CLINICAL DECISION INPUTS (ADA flags) -->
+<div class="card" id="flags">
+    <div class="section-title">🧬 وضعیت بالینی <span class="section-sub">ورودی‌های موتور تصمیم (ریسک/درمان/پیگیری) — طبق استانداردهای ADA</span></div>
+    <form method="post" action="{{ url_for('patients.save_flags', pid=patient.id) }}">
+        {% for grp in flag_groups %}
+        <div style="margin-bottom:14px;">
+            <div class="muted" style="font-size:12px;font-weight:700;margin-bottom:8px;border-bottom:1px solid var(--line);padding-bottom:5px;">{{ grp.label }}</div>
+            <div class="grid grid-3">
+                {% for f in grp.flags %}
+                    {% if f.flag_type == 'bool' %}
+                    <label class="switch-row" style="cursor:pointer;">
+                        <span class="switch"><input type="checkbox" name="{{ f.flag_key }}" {% if patient_flags.get(f.flag_key) %}checked{% endif %}><span class="sl"></span></span>
+                        <span style="color:var(--text);font-size:12.5px;">{{ f.label }}</span>
+                    </label>
+                    {% elif f.flag_type == 'enum' %}
+                    <div class="fld">
+                        <label>{{ f.label }}</label>
+                        <select name="{{ f.flag_key }}">
+                            <option value="">—</option>
+                            {% for o in f.option_list %}<option value="{{ o.value }}" {% if patient_flags.get(f.flag_key)==o.value %}selected{% endif %}>{{ o.label }}</option>{% endfor %}
+                        </select>
+                    </div>
+                    {% elif f.flag_type == 'date' %}
+                    <div class="fld">
+                        <label>{{ f.label }}</label>
+                        <input type="text" class="jdate" name="{{ f.flag_key }}"
+                               placeholder="{% if patient_flags.get(f.flag_key) %}ثبت‌شده: {{ patient_flags.get(f.flag_key)|jalali_date }}{% else %}انتخاب تاریخ{% endif %}">
+                    </div>
+                    {% else %}
+                    <div class="fld">
+                        <label>{{ f.label }}</label>
+                        <input type="text" name="{{ f.flag_key }}" value="{{ patient_flags.get(f.flag_key) or '' }}">
+                    </div>
+                    {% endif %}
+                {% endfor %}
+            </div>
+        </div>
+        {% endfor %}
+        <button class="btn" type="submit">💾 ذخیره وضعیت بالینی</button>
+    </form>
+</div>
+
+<div class="grid grid-3">
+    <!-- conditions -->
+    <div class="card">
+        <div class="section-title">🩺 بیماری‌ها</div>
+        {% for c in conditions %}
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid var(--line);">
+                <span>{{ c.condition_name }}{% if c.stage %} <span class="muted">({{ c.stage }})</span>{% endif %}</span>
+                <form method="post" action="{{ url_for('patients.remove_condition', pid=patient.id, pc_id=c.id) }}" style="margin:0;"><button class="btn btn-sm btn-danger" type="submit">×</button></form>
+            </div>
+        {% else %}<div class="muted" style="font-size:13px;">ثبت نشده</div>{% endfor %}
+        <form method="post" action="{{ url_for('patients.add_condition', pid=patient.id) }}" style="margin-top:12px;">
+            <select name="condition_id" required>
+                <option value="">+ افزودن بیماری</option>
+                {% for c in condition_catalog %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}
+            </select>
+            <div class="row" style="margin-top:8px;">
+                <input type="text" name="stage" placeholder="مرحله">
+                <input type="text" class="jdate" name="onset_date" placeholder="تاریخ شروع">
+                <button class="btn btn-sm" type="submit">افزودن</button>
+            </div>
+        </form>
+    </div>
+
+    <!-- allergies + contact -->
+    <div class="card">
+        <div class="section-title">🚨 آلرژی‌ها</div>
+        {% for a in allergies %}
+            <div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--line);">
+                <span>{{ a.substance }} {% if a.severity %}<span class="badge badge-warn">{{ a.severity }}</span>{% endif %}</span>
+                <form method="post" action="{{ url_for('patients.delete_allergy', pid=patient.id, allergy_id=a.id) }}" style="margin:0;"><button class="btn btn-sm btn-danger" type="submit">×</button></form>
+            </div>
+        {% else %}<div class="muted" style="font-size:13px;">ثبت نشده</div>{% endfor %}
+        <form method="post" action="{{ url_for('patients.add_allergy', pid=patient.id) }}" style="margin-top:12px;">
+            <input type="text" name="substance" placeholder="ماده حساسیت‌زا" required>
+            <div class="row" style="margin-top:8px;">
+                <input type="text" name="severity" placeholder="شدت">
+                <button class="btn btn-sm" type="submit">افزودن</button>
+            </div>
+        </form>
+    </div>
+
+    <!-- WALLET -->
+    <div class="card" id="wallet">
+        <div class="section-title">💳 کیف پول</div>
+        <div style="text-align:center;padding:8px 0 14px;">
+            <div style="font-size:30px;font-weight:800;color:#4ade80;">{{ wallet_balance|fa_num }}</div>
+            <div class="muted" style="font-size:12px;">تومان اعتبار</div>
+        </div>
+        <form class="row" method="post" action="{{ url_for('patients.wallet_adjust', pid=patient.id) }}">
+            <div class="field"><input type="number" name="amount" placeholder="مبلغ" required></div>
+            <select name="direction" style="width:auto;"><option value="credit">افزایش</option><option value="debit">کسر</option></select>
+            <button class="btn btn-sm" type="submit">اعمال</button>
+        </form>
+        {% if wallet_tx %}
+        <div style="margin-top:12px;max-height:140px;overflow:auto;">
+            {% for t in wallet_tx %}
+            <div style="display:flex;justify-content:space-between;font-size:12.5px;padding:5px 0;border-bottom:1px solid var(--line);">
+                <span class="{{ 'badge-ok' if t.amount>0 else 'badge-danger' }}" style="color:{{ '#4ade80' if t.amount>0 else '#f87171' }};">{{ t.amount|fa_num }}</span>
+                <span class="muted">{{ t.note or t.reason }}</span>
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- CHARTS -->
+<div class="card">
+    <div class="section-title">📈 روند شاخص‌ها (خط‌چین = هدف)</div>
+    <div class="grid grid-2">
+        {% for vt, chart in charts.items() %}
+        <div>
+            <div class="muted" style="font-size:13px;margin-bottom:6px;">{{ chart.label }} {% if chart.unit %}({{ chart.unit }}){% endif %}</div>
+            <canvas id="chart-{{ vt }}" height="120"></canvas>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+<!-- VITALS TABLE -->
+<div class="card" id="vitals">
+    <div class="section-title">🧾 آخرین شاخص‌ها</div>
+    {% if recent_vitals %}
+    <table>
+        <thead><tr><th>شاخص</th><th>مقدار</th><th>تاریخ</th><th>وضعیت</th><th></th></tr></thead>
+        <tbody>
+        {% for r in recent_vitals %}
+            <tr>
+                <td>{{ r.type_label }}</td>
+                <td><strong>{{ r.value|fa_num }}</strong> {{ r.unit or '' }}</td>
+                <td class="muted">{{ r.measured_at|jalali }}</td>
+                <td>{% if r.level=='danger' %}<span class="badge badge-danger">خطر</span>{% elif r.level=='warn' %}<span class="badge badge-warn">هشدار</span>{% else %}<span class="badge badge-ok">نرمال</span>{% endif %}</td>
+                <td><form method="post" action="{{ url_for('vitals.delete_reading', pid=patient.id, reading_id=r.id) }}" style="margin:0;"><button class="btn btn-sm btn-danger" type="submit">×</button></form></td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    {% else %}<div class="empty">شاخصی ثبت نشده</div>{% endif %}
+</div>
+
+<!-- MEDICATIONS -->
+<div class="card">
+    <div class="section-title">💊 داروها <span class="section-sub">شروع، تغییر دوز و قطع هر دارو با تاریخ ثبت می‌شود و روی نمودارها نمایش داده می‌شود</span></div>
+    {% for m in medications %}
+    <div style="border:1px solid var(--line);border-radius:12px;padding:13px 15px;margin-bottom:10px;background:var(--bg2);{% if not m.is_active %}opacity:.6;{% endif %}">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+            <div>
+                <strong style="font-size:15px;">{{ m.drug_name }}</strong>
+                {% if m.dose %}<span class="badge badge-info" style="margin-inline-start:6px;">{{ m.dose }}</span>{% endif %}
+                {% if m.drug_class %}<span class="badge badge-violet" style="margin-inline-start:6px;">{{ drug_class_map.get(m.drug_class, m.drug_class) }}</span>{% endif %}
+                {% if m.schedule %}<span class="muted" style="font-size:12px;">· {{ m.schedule }}</span>{% endif %}
+                {% if m.is_active %}<span class="badge badge-ok" style="margin-inline-start:6px;">فعال</span>
+                {% else %}<span class="badge badge-muted" style="margin-inline-start:6px;">قطع {{ m.end_date|jalali_date if m.end_date else '' }}</span>{% endif %}
+                <div class="muted" style="font-size:11.5px;margin-top:4px;">
+                    شروع: {{ m.start_date|jalali_date if m.start_date else '—' }}
+                    {% if m.refill_due_date %} · تجدید نسخه: {{ m.refill_due_date|jalali_date }}{% endif %}
+                </div>
+            </div>
+        </div>
+        {% if m.is_active %}
+        <div style="display:flex;gap:18px;flex-wrap:wrap;margin-top:11px;padding-top:11px;border-top:1px solid var(--line);">
+            <form method="post" action="{{ url_for('patients.change_dose', pid=patient.id, med_id=m.id) }}" style="margin:0;display:flex;gap:6px;align-items:flex-end;flex-wrap:wrap;">
+                <div class="fld" style="width:120px;"><label>تغییر دوز به</label><input type="text" name="dose" placeholder="مثلاً ۱۰۰۰" required></div>
+                <div class="fld" style="width:120px;"><label>تاریخ</label><input type="text" class="jdate" name="change_date"></div>
+                <button class="btn btn-sm" type="submit">ثبت تغییر</button>
+            </form>
+            <form method="post" action="{{ url_for('patients.stop_medication', pid=patient.id, med_id=m.id) }}" style="margin:0;display:flex;gap:6px;align-items:flex-end;flex-wrap:wrap;">
+                <div class="fld" style="width:120px;"><label>تاریخ قطع</label><input type="text" class="jdate" name="end_date"></div>
+                <button class="btn btn-sm btn-danger" type="submit">قطع دارو</button>
+            </form>
+        </div>
+        {% endif %}
+    </div>
+    {% else %}<div class="empty-mini">دارویی ثبت نشده</div>{% endfor %}
+
+    <div style="border-top:1px dashed var(--line);margin-top:6px;padding-top:14px;">
+        <div class="muted" style="font-size:12.5px;margin-bottom:8px;font-weight:600;">افزودن داروی جدید</div>
+        <form method="post" action="{{ url_for('patients.add_medication', pid=patient.id) }}">
+            <div class="grid grid-4">
+                <div class="fld"><label>نام دارو</label><input type="text" name="drug_name" required></div>
+                <div class="fld"><label>کلاس دارویی</label>
+                    <select name="drug_class">
+                        <option value="">— انتخاب کلاس —</option>
+                        {% for dc in drug_class_options %}<option value="{{ dc.class_key }}">{{ dc.label }}</option>{% endfor %}
+                    </select>
+                </div>
+                <div class="fld"><label>دوز</label><input type="text" name="dose"></div>
+                <div class="fld"><label>برنامه</label><input type="text" name="schedule" placeholder="روزی ۲ بار"></div>
+            </div>
+            <div class="row" style="margin-top:11px;align-items:flex-end;">
+                <div class="fld" style="max-width:180px;"><label>تاریخ شروع</label><input type="text" class="jdate" name="start_date"></div>
+                <div class="fld" style="max-width:180px;"><label>تجدید نسخه</label><input type="text" class="jdate" name="refill_due_date"></div>
+                <button class="btn" type="submit">افزودن دارو</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- LABS -->
+<div class="card" id="labs">
+    <div class="section-title">🧪 آزمایش‌ها</div>
+    <table>
+        <thead><tr><th>آزمایش</th><th>مقدار</th><th>محدوده مرجع</th><th>تاریخ</th><th></th></tr></thead>
+        <tbody>
+        {% for l in labs %}
+            <tr>
+                <td>{{ l.test_name }}</td>
+                <td><strong>{{ l.value|fa_num }}</strong> {{ l.unit or '' }}</td>
+                <td class="muted">{{ l.ref_low|fa_num if l.ref_low is not none else '' }} - {{ l.ref_high|fa_num if l.ref_high is not none else '' }}</td>
+                <td class="muted">{{ l.taken_at|jalali_date }}</td>
+                <td><form method="post" action="{{ url_for('vitals.delete_lab', pid=patient.id, lab_id=l.id) }}" style="margin:0;"><button class="btn btn-sm btn-danger" type="submit">×</button></form></td>
+            </tr>
+        {% else %}<tr><td colspan="5" class="muted">آزمایشی ثبت نشده</td></tr>{% endfor %}
+        </tbody>
+    </table>
+    <form class="row" method="post" action="{{ url_for('vitals.add_lab', pid=patient.id) }}" style="margin-top:12px;">
+        <div class="field"><label>نام آزمایش</label><input type="text" name="test_name" required></div>
+        <div class="field"><label>مقدار</label><input type="number" step="any" name="value"></div>
+        <div class="field"><label>واحد</label><input type="text" name="unit"></div>
+        <div class="field"><label>حد پایین</label><input type="number" step="any" name="ref_low"></div>
+        <div class="field"><label>حد بالا</label><input type="number" step="any" name="ref_high"></div>
+        <div class="field"><label>تاریخ</label><input type="text" class="jdate" name="taken_date"></div>
+        <button class="btn" type="submit">افزودن</button>
+    </form>
+</div>
+
+<div class="grid grid-2">
+    <div class="card">
+        <div class="section-title">🗓️ نوبت‌ها</div>
+        {% for a in appointments %}
+            <div style="padding:7px 0;border-bottom:1px solid var(--line);">{{ a.scheduled_at|jalali }} — <span class="badge badge-muted">{{ a.status }}</span></div>
+        {% else %}<div class="muted" style="font-size:13px;">نوبتی ثبت نشده</div>{% endfor %}
+    </div>
+    <div class="card">
+        <div class="section-title">🏥 سابقه ویزیت (حسابداری - زنده)</div>
+        {% for v in visit_history %}
+            <div style="padding:7px 0;border-bottom:1px solid var(--line);">{{ v.visit_date|jalali }} — {{ v.doctor_name or '—' }} <span class="muted">({{ v.price|fa_num }})</span></div>
+        {% else %}<div class="muted" style="font-size:13px;">{% if patient.accounting_patient_id %}سابقه‌ای نیست{% else %}به حسابداری متصل نیست{% endif %}</div>{% endfor %}
+    </div>
+</div>
+
+<script>
+const chartData = {{ charts|tojson }};
+const targets = {{ targets|tojson }};
+const palette = { hba1c:'#ef4444', fbs:'#f59e0b', bp_systolic:'#3b82f6', bp_diastolic:'#22c55e' };
+for (const [vt, d] of Object.entries(chartData)){
+    const el = document.getElementById('chart-'+vt);
+    if (!el || !d.values.length) continue;
+    const datasets = [{ label:d.label, data:d.values, borderColor:palette[vt]||'#3b82f6',
+        backgroundColor:'transparent', tension:0.3, pointRadius:3 }];
+    if (targets[vt]){
+        datasets.push({ label:'هدف', data:d.labels.map(()=>targets[vt]), borderColor:'#64748b',
+            borderDash:[6,4], pointRadius:0, borderWidth:1 });
+    }
+    new Chart(el,{ type:'line', data:{labels:d.labels, datasets},
+        options:{plugins:{legend:{display:false}}, scales:{x:{ticks:{color:'#92a2c0'}}, y:{ticks:{color:'#92a2c0'}}}}});
+}
+</script>
+{% endblock %}

@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block title %}قواعد تصمیم بالینی (ADA){% endblock %}
+{% set sevlabel = {'urgent':'فوری','warn':'هشدار','info':'اطلاعاتی'} %}
+{% block content %}
+<div class="crumb"><a href="{{ url_for('manager.index') }}">مدیریت</a> / قواعد تصمیم (ADA)</div>
+<div class="topbar">
+    <h1>🧠 قواعد تصمیم بالینی — ADA دیابت نوع ۲</h1>
+    <a class="btn btn-ghost" href="{{ url_for('manager.rules') }}">شاخص‌ها و اهداف</a>
+</div>
+<p class="page-intro">
+    کلِ قواعدِ استخراج‌شده از سند ADA (تشخیص، اهداف، انتخاب دارو، ایمنی، انسولین، پایش، غربالگری، هشدارهای فوری، سبک‌زندگی و واکسیناسیون).
+    موتورِ پشتیبان بالینی همین قواعد را روی هر بیمار اجرا می‌کند. متن پیشنهاد، سطح شواهد، شدت و فعال‌بودنِ هر قاعده را می‌توانید ویرایش کنید.
+    <b>{{ active|fa_num }}</b> از <b>{{ total|fa_num }}</b> قاعده فعال است. خروجی سیستم پیشنهادی است؛ تجویز با پزشک.
+</p>
+
+{% for cat, cat_label, rules in groups %}
+<div class="card">
+    <div class="section-title">{{ cat_label }} <span class="section-sub">{{ rules|length|fa_num }} قاعده</span></div>
+    {% for r in rules %}
+    <div id="rule-{{ r.id }}" class="rule-card" style="margin-bottom:12px;{% if not r.is_active %}opacity:.55;{% endif %}
+         border-right:3px solid {% if r.severity=='urgent' %}#ef4444{% elif r.severity=='warn' %}#f59e0b{% else %}#3b82f6{% endif %};">
+        <form method="post" action="{{ url_for('manager.decision_rules_update') }}">
+            <input type="hidden" name="rule_id" value="{{ r.id }}">
+            <div class="rule-head">
+                <div style="flex:1;">
+                    <strong>{{ r.title }}</strong>
+                    <span class="badge badge-muted" style="font-size:10px;">{{ r.rule_code }}</span>
+                    {% if r.evidence_level %}<span class="badge badge-violet" style="font-size:10px;">شواهد {{ r.evidence_level }}</span>{% endif %}
+                    <div class="key" style="margin-top:5px;">
+                        <b>اگر:</b> {{ r.human_if or '—' }}
+                        {% if r.source_ref %}<span class="muted">· منبع: {{ r.source_ref }}</span>{% endif %}
+                    </div>
+                </div>
+            </div>
+
+            <div class="fld"><label>توصیه (Then)</label>
+                <textarea name="recommendation" rows="2">{{ r.recommendation or '' }}</textarea>
+            </div>
+
+            {% if r.dosage_titration is not none %}
+            <div class="fld"><label>دوز/تیتراسیون</label><textarea name="dosage_titration" rows="2">{{ r.dosage_titration or '' }}</textarea></div>
+            {% else %}<input type="hidden" name="dosage_titration" value="">{% endif %}
+
+            <div class="fgrid c2">
+                <div class="fld"><label>پایش</label><input type="text" name="monitoring" value="{{ r.monitoring or '' }}"></div>
+                <div class="fld"><label>منع/هشدار</label><input type="text" name="contraindications" value="{{ r.contraindications or '' }}"></div>
+            </div>
+
+            <div class="fgrid c3">
+                <div class="fld"><label>سطح شواهد</label>
+                    <select name="evidence_level">
+                        {% for ev in ['','A','B','C','E'] %}<option value="{{ ev }}" {% if r.evidence_level==ev %}selected{% endif %}>{{ ev or '—' }}</option>{% endfor %}
+                    </select>
+                </div>
+                <div class="fld"><label>شدت</label>
+                    <select name="severity">
+                        {% for sv in ['info','warn','urgent'] %}<option value="{{ sv }}" {% if r.severity==sv %}selected{% endif %}>{{ sevlabel[sv] }}</option>{% endfor %}
+                    </select>
+                </div>
+                <div class="fld"><label>اولویت</label><input type="number" name="priority" value="{{ r.priority }}"></div>
+            </div>
+
+            <div class="rule-foot">
+                <label class="switch-row" style="margin:0;cursor:pointer;">
+                    <span class="switch"><input type="checkbox" name="is_active" {% if r.is_active %}checked{% endif %}><span class="sl"></span></span>
+                    فعال
+                </label>
+                <button class="btn btn-sm" type="submit">💾 ذخیره</button>
+            </div>
+        </form>
+    </div>
+    {% endfor %}
+</div>
+{% endfor %}
+{% endblock %}

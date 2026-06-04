@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}نوبت جدید{% endblock %}
+{% block content %}
+<div class="topbar"><h1>ثبت نوبت جدید</h1></div>
+<div class="card" style="max-width:560px;">
+    <form method="post">
+        <label>بیمار *</label>
+        <select name="patient_link_id" required>
+            <option value="">انتخاب بیمار...</option>
+            {% for p in patients %}<option value="{{ p.id }}" {% if pre_pid==p.id %}selected{% endif %}>{{ p.full_name }} {% if p.national_id %}({{ p.national_id }}){% endif %}</option>{% endfor %}
+        </select>
+        <div class="row">
+            <div style="flex:1;"><label>تاریخ *</label><input type="text" class="jdate" name="date" placeholder="انتخاب تاریخ" required></div>
+            <div style="flex:1;"><label>ساعت</label><input type="text" name="time" placeholder="12:00" value="12:00"></div>
+        </div>
+        <div class="row">
+            <div style="flex:1;"><label>نوع نوبت</label>
+                <select name="appt_type">{% for k,v in appt_types.items() %}<option value="{{ k }}">{{ v }}</option>{% endfor %}</select>
+            </div>
+            <div style="flex:1;"><label>تکرار دوره‌ای (ماه)</label>
+                <select name="recurrence_months">
+                    <option value="">بدون تکرار</option>
+                    <option value="1">هر ۱ ماه</option><option value="3">هر ۳ ماه</option>
+                    <option value="6">هر ۶ ماه</option><option value="12">هر ۱۲ ماه</option>
+                </select>
+            </div>
+        </div>
+        <label>یادداشت</label>
+        <textarea name="notes" rows="2"></textarea>
+        <button class="btn" type="submit" style="margin-top:14px;">ثبت نوبت</button>
+    </form>
+    <p class="muted" style="font-size:12px; margin-top:14px;">یادآوری پیامکی به‌صورت خودکار تا ۲۴ ساعت قبل از نوبت ارسال می‌شود (در صورت تنظیم پنل پیامک).</p>
+</div>
+{% endblock %}

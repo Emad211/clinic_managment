@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}نوبت‌ها{% endblock %}
+{% block content %}
+<div class="topbar">
+    <h1>نوبت‌دهی</h1>
+    <a class="btn" href="{{ url_for('appointments.new_appointment') }}">➕ نوبت جدید</a>
+</div>
+
+<div class="card">
+    <form class="row" method="get">
+        <div><label>از تاریخ</label><input type="text" class="jdate" name="from" value="{{ request.args.get('from','') }}" placeholder="انتخاب تاریخ"></div>
+        <div><label>تا تاریخ</label><input type="text" class="jdate" name="to" value="{{ request.args.get('to','') }}" placeholder="انتخاب تاریخ"></div>
+        <div><label>وضعیت</label>
+            <select name="status">
+                <option value="">همه</option>
+                {% for k, v in status_fa.items() %}<option value="{{ k }}" {% if request.args.get('status')==k %}selected{% endif %}>{{ v }}</option>{% endfor %}
+            </select>
+        </div>
+        <button class="btn" type="submit">فیلتر</button>
+    </form>
+</div>
+
+<div class="card">
+    {% if appointments %}
+    <table>
+        <thead><tr><th>بیمار</th><th>زمان</th><th>نوع</th><th>وضعیت</th><th>اقدام</th></tr></thead>
+        <tbody>
+        {% for a in appointments %}
+            <tr>
+                <td>{{ a.patient_name }}</td>
+                <td>{{ a.scheduled_fa }}{% if a.recurrence_months %} <span class="badge badge-muted">هر {{ a.recurrence_months|fa_num }} ماه</span>{% endif %}</td>
+                <td>{{ a.type_fa }}</td>
+                <td>
+                    {% if a.status=='scheduled' %}<span class="badge badge-warn">{{ a.status_fa }}</span>
+                    {% elif a.status=='done' %}<span class="badge badge-ok">{{ a.status_fa }}</span>
+                    {% else %}<span class="badge badge-danger">{{ a.status_fa }}</span>{% endif %}
+                </td>
+                <td>
+                    {% if a.status=='scheduled' %}
+                    <form method="post" action="{{ url_for('appointments.set_status', appt_id=a.id) }}" style="display:inline; margin:0;">
+                        <input type="hidden" name="status" value="done"><button class="btn btn-sm btn-ok" type="submit">انجام شد</button></form>
+                    <form method="post" action="{{ url_for('appointments.set_status', appt_id=a.id) }}" style="display:inline; margin:0;">
+                        <input type="hidden" name="status" value="no_show"><button class="btn btn-sm btn-ghost" type="submit">غیبت</button></form>
+                    <form method="post" action="{{ url_for('appointments.set_status', appt_id=a.id) }}" style="display:inline; margin:0;">
+                        <input type="hidden" name="status" value="cancelled"><button class="btn btn-sm btn-danger" type="submit">لغو</button></form>
+                    {% else %}—{% endif %}
+                </td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    {% else %}<div class="empty">نوبتی در این بازه نیست</div>{% endif %}
+</div>
+{% endblock %}

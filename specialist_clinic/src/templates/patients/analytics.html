@@ -1,0 +1,497 @@
+{% extends "base.html" %}
+{% block title %}تحلیل {{ patient.full_name }}{% endblock %}
+{% set lvlcolor = {'danger':'#f87171','warn':'#fbbf24','ok':'#4ade80','none':'#92a2c0'} %}
+{% set riskpos = {'ok':12,'low':38,'medium':66,'high':90} %}
+{% block content %}
+<div class="crumb"><a href="{{ url_for('patients.list_patients') }}">بیماران</a> /
+    <a href="{{ url_for('patients.detail', pid=patient.id) }}">{{ patient.full_name }}</a> / داشبورد تحلیلی</div>
+<div class="topbar">
+    <h1>📊 داشبورد تحلیلی — {{ patient.full_name }}</h1>
+    <a class="btn btn-ghost" href="{{ url_for('patients.detail', pid=patient.id) }}">بازگشت به پرونده</a>
+</div>
+
+{% if allergies %}
+<div class="alert-banner">⚠️ آلرژی‌ها: {% for a in allergies %}{{ a.substance }}{% if not loop.last %} · {% endif %}{% endfor %}</div>
+{% endif %}
+
+{% if clinical_support and clinical_support.has_redflag %}
+<div class="alert-banner" style="font-size:14.5px;">
+    🚨 هشدار فوری:
+    {% for sec in clinical_support.sections if sec.key=='redflags' %}{% for r in sec.rules %}{{ r.recommendation }}{% if not loop.last %} · {% endif %}{% endfor %}{% endfor %}
+</div>
+{% endif %}
+
+<!-- RISK HERO + KPIs -->
+<div class="grid" style="grid-template-columns:1.5fr 1fr;align-items:stretch;">
+    <div class="card" style="margin:0;">
+        <div class="section-title">
+            {% if risk.level=='high' %}🔴{% elif risk.level=='medium' %}🟠{% elif risk.level=='low' %}🟡{% else %}🟢{% endif %}
+            سطح ریسک بیمار: <span style="color:{% if risk.level=='high' %}#f87171{% elif risk.level=='medium' %}#fbbf24{% elif risk.level=='low' %}#fcd34d{% else %}#4ade80{% endif %};">{{ risk.label }}</span>
+        </div>
+        <div class="risk-meter"><span class="mk" style="left:{{ riskpos.get(risk.level,12) }}%;"></span></div>
+        <div class="legend" style="justify-content:space-between;font-size:11px;" class="muted">
+            <span class="muted">پایدار</span><span class="muted">کم</span><span class="muted">متوسط</span><span class="muted">پرخطر</span>
+        </div>
+        <div style="margin-top:14px;display:flex;gap:18px;flex-wrap:wrap;">
+            <div class="mini" style="flex:1;min-width:130px;"><div class="m-num">{{ risk.points|fa_num }}</div><div class="m-lbl">امتیاز خطر کل</div></div>
+            <div class="mini" style="flex:1;min-width:130px;"><div class="m-num">{{ risk.dominant or '—' }}</div><div class="m-lbl">عامل غالب خطر</div></div>
+            <div class="mini" style="flex:1;min-width:130px;"><div class="m-num" style="color:#f87171;">{{ risk.danger_count|fa_num }}</div><div class="m-lbl">شاخص در وضعیت خطر</div></div>
+        </div>
+        {% if risk.breakdown %}
+        <div style="margin-top:12px;">
+            <div class="muted" style="font-size:12px;margin-bottom:6px;">سهم هر دامنه از خطر:</div>
+            <div class="legend">
+            {% for b in risk.breakdown %}<span class="chip">{{ b.label }} <b style="color:#fbbf24;">{{ b.points|fa_num }}</b></span>{% endfor %}
+            </div>
+        </div>
+        {% endif %}
+        {% if risk.behavior_notes %}
+        <div style="margin-top:10px;" class="legend">
+            {% for n in risk.behavior_notes %}<span class="chip" style="border-color:rgba(245,158,11,.4);"><span class="dot dot-warn"></span> {{ n }}</span>{% endfor %}
+        </div>
+        {% endif %}
+    </div>
+
+    <div class="card" style="margin:0;display:flex;flex-direction:column;gap:11px;">
+        <div class="section-title" style="margin-bottom:4px;">وضعیت کلی</div>
+        <div class="mini"><div class="m-num">
+            {% if control.status=='controlled' %}<span style="color:#4ade80;">کنترل‌شده</span>
+            {% elif control.status=='borderline' %}<span style="color:#fbbf24;">مرزی</span>
+            {% elif control.status=='uncontrolled' %}<span style="color:#f87171;">کنترل‌نشده</span>
+            {% else %}—{% endif %}</div><div class="m-lbl">وضعیت کنترل بیماری</div></div>
+        <div style="display:flex;gap:11px;">
+            <div class="mini" style="flex:1;"><div class="m-num">🏥 {{ visits_count|fa_num }}</div><div class="m-lbl">ویزیت {% if last_visit %}· {{ last_visit }}{% endif %}</div></div>
+            <div class="mini" style="flex:1;"><div class="m-num">🔔 {{ followups|length|fa_num }}</div><div class="m-lbl">پیگیری باز</div></div>
+        </div>
+        <div class="mini"><div class="m-num" style="color:#4ade80;">{{ wallet_balance|fa_num }}</div><div class="m-lbl">اعتبار کیف پول (تومان)</div></div>
+    </div>
+</div>
+
+<!-- ADA CLINICAL SUPPORT (rule engine, suggestion-only) -->
+{% if clinical_support and clinical_support.count %}
+<div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+        <div class="section-title" style="margin:0;">🧠 پشتیبان بالینی ADA <span class="section-sub">{{ clinical_support.count|fa_num }} توصیه بر پایهٔ استانداردهای دیابت آمریکا</span></div>
+        <form method="post" action="{{ url_for('patients.generate_followups', pid=patient.id) }}" style="margin:0;">
+            <button class="btn btn-sm" type="submit">🔄 تولید پیگیری‌های سررسیده</button>
+        </form>
+    </div>
+    <div class="alert-banner" style="background:rgba(59,130,246,.1);border-color:rgba(59,130,246,.3);color:#93c5fd;margin-top:12px;">
+        ⚕️ این موارد <b>پیشنهادِ سیستم</b> هستند و جایگزین قضاوت و تجویزِ پزشک نیستند.
+    </div>
+    {% for sec in clinical_support.sections %}
+    <div style="margin-top:14px;">
+        <div style="font-weight:700;font-size:13.5px;margin-bottom:8px;">{{ sec.label }}</div>
+        {% for r in sec.rules %}
+        <div style="border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-bottom:8px;background:var(--bg2);
+             border-right:3px solid {{ '#ef4444' if r.severity=='urgent' else '#f59e0b' if r.severity=='warn' else '#3b82f6' }};">
+            <div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;align-items:flex-start;">
+                <strong>{{ r.title }}</strong>
+                <span style="white-space:nowrap;">
+                    {% if r.evidence_level %}<span class="badge badge-violet" style="font-size:10px;">شواهد {{ r.evidence_level }}</span>{% endif %}
+                    <span class="badge badge-muted" style="font-size:10px;">{{ r.rule_code }}</span>
+                </span>
+            </div>
+            <div style="font-size:13px;margin-top:6px;">{{ r.recommendation }}</div>
+            {% if r.params and r.params.classes %}
+            <div class="legend" style="margin-top:8px;">
+                {% for c in r.params.classes %}<span class="chip"><span class="dot dot-ok"></span> {{ drug_class_map.get(c, c) }}</span>{% endfor %}
+            </div>
+            {% endif %}
+            {% if r.dosage_titration %}<div class="muted" style="font-size:11.5px;margin-top:6px;">💉 {{ r.dosage_titration }}</div>{% endif %}
+            {% if r.monitoring %}<div class="muted" style="font-size:11.5px;margin-top:4px;">📊 پایش: {{ r.monitoring }}</div>{% endif %}
+            {% if r.contraindications %}<div style="font-size:11.5px;margin-top:4px;color:#f87171;">⛔ {{ r.contraindications }}</div>{% endif %}
+            {% if r.action_type in ['suggest_med','safety_alert'] %}
+                {% set st = (suggestion_status or {}).get(r.rule_code) %}
+                <div style="margin-top:9px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                    {% if st and st.status=='accepted' %}<span class="badge badge-ok">✓ اعمال‌شده · {{ st.acted_by }}</span>
+                    {% elif st and st.status=='dismissed' %}<span class="badge badge-muted">✗ رد‌شده · {{ st.acted_by }}</span>{% endif %}
+                    <form method="post" action="{{ url_for('patients.suggestion_action', pid=patient.id) }}" style="margin:0;">
+                        <input type="hidden" name="rule_code" value="{{ r.rule_code }}">
+                        <input type="hidden" name="suggestion_text" value="{{ r.recommendation }}">
+                        <input type="hidden" name="evidence_level" value="{{ r.evidence_level }}">
+                        <input type="hidden" name="status" value="accepted">
+                        <button class="btn btn-sm btn-ok" type="submit">✓ اعمال شد</button>
+                    </form>
+                    <form method="post" action="{{ url_for('patients.suggestion_action', pid=patient.id) }}" style="margin:0;">
+                        <input type="hidden" name="rule_code" value="{{ r.rule_code }}">
+                        <input type="hidden" name="status" value="dismissed">
+                        <button class="btn btn-sm btn-ghost" type="submit">✗ رد</button>
+                    </form>
+                </div>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
+
+<!-- OPEN FOLLOWUPS -->
+{% if followups %}
+<div class="card">
+    <div class="section-title">🔔 پیگیری‌های باز <span class="section-sub">کارهای پیگیریِ خودکارِ ساخته‌شده برای این بیمار</span></div>
+    {% for f in followups %}
+    <div class="list-row">
+        <span><span class="badge badge-danger">{{ f.reason }}</span> {{ f.detail or '' }}</span>
+        <span class="muted" style="font-size:11px;">{{ f.due_date|jalali_date if f.due_date else '' }}</span>
+    </div>
+    {% endfor %}
+    <a class="btn btn-sm btn-ghost" href="{{ url_for('followups.worklist') }}" style="margin-top:12px;">لیست کامل پیگیری</a>
+</div>
+{% endif %}
+
+<!-- PER-DISEASE INDICATOR PANELS -->
+{% for group in by_category %}
+<div class="card">
+    <div class="section-title">{{ group.label }} <span class="section-sub">{{ group.indicators|length|fa_num }} شاخص</span></div>
+    <div class="tiles">
+        {% for i in group.indicators %}
+        <div class="tile lvl-{{ i.level }}">
+            <div class="t-label">{{ i.label }}</div>
+            {% if i.latest is not none %}
+            <div class="t-val" style="color:{{ lvlcolor.get(i.level,'#e6edf7') }};">{{ i.latest|fa_num }} <small>{{ i.unit }}</small></div>
+            {% if i.delta is not none and i.delta != 0 %}
+                {% set improved = (i.delta > 0) if i.direction=='low' else (i.delta < 0) %}
+                <div class="t-delta" style="color:{{ '#4ade80' if improved else '#f87171' }};">
+                    {% if i.delta > 0 %}▲{% else %}▼{% endif %} {{ (i.delta if i.delta>0 else 0-i.delta)|fa_num }}
+                    <span class="muted" style="font-weight:400;">نسبت به قبل</span>
+                </div>
+            {% endif %}
+            <div class="t-meta">
+                {% if i.target is not none %}هدف {% if i.direction=='low' %}&gt;{% else %}&lt;{% endif %}{{ i.target|fa_num }}{% endif %}
+                {% if i.goal_low is not none and i.goal_high is not none %} · مطلوب {{ i.goal_low|fa_num }}–{{ i.goal_high|fa_num }}{% endif %}
+                · {{ i.count|fa_num }} ثبت
+            </div>
+            {% if i.bar_pct %}<div class="t-bar"><span style="width:{{ i.bar_pct }}%;background:{{ lvlcolor.get(i.level,'#3b82f6') }};"></span></div>{% endif %}
+            {% else %}
+            <div class="t-val muted" style="font-size:15px;font-weight:600;margin-top:10px;">بدون داده</div>
+            <div class="t-meta">{% if i.target is not none %}هدف {% if i.direction=='low' %}&gt;{% else %}&lt;{% endif %}{{ i.target|fa_num }} {{ i.unit }}{% else %}در پرونده ثبت کنید{% endif %}</div>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% else %}
+<div class="card"><div class="empty-mini">برای این بیمار بیماری مزمنی ثبت نشده — ابتدا در پرونده، تشخیص بیماری را اضافه کنید تا شاخص‌های تخصصیِ همان بیماری اینجا نمایش داده شوند.</div></div>
+{% endfor %}
+
+<!-- CLINICAL CHART STUDIO -->
+{% if charts %}
+<div class="card">
+    <div class="section-title">🔬 استودیوی نمودار بالینی <span class="section-sub">نمودار را خودتان بسازید — شاخص‌ها، نوع، و همبستگیِ دلخواه؛ روی هر نقطه نگه دارید تا داده ظاهر شود</span></div>
+    <div style="display:flex;flex-wrap:wrap;gap:18px;align-items:flex-end;margin-bottom:14px;">
+        <div>
+            <div class="muted" style="font-size:11px;margin-bottom:5px;">نوع نمودار</div>
+            <div class="seg" id="stType">
+                <button type="button" data-t="line" class="active">خطی</button>
+                <button type="button" data-t="area">ناحیه‌ای</button>
+                <button type="button" data-t="bar">میله‌ای</button>
+                <button type="button" data-t="scatter">همبستگی X/Y</button>
+            </div>
+        </div>
+        <div>
+            <div class="muted" style="font-size:11px;margin-bottom:5px;">بازهٔ زمانی</div>
+            <div class="seg" id="stRange">
+                <button type="button" data-r="all" class="active">همه</button>
+                <button type="button" data-r="24">۲ سال</button>
+                <button type="button" data-r="12">۱ سال</button>
+                <button type="button" data-r="6">۶ ماه</button>
+            </div>
+        </div>
+        <label class="switch-row" style="cursor:pointer;" id="stMedsWrap">
+            <span class="switch"><input type="checkbox" id="stMeds" checked><span class="sl"></span></span>
+            نمایش رویداد دارو
+        </label>
+    </div>
+
+    <!-- indicator selector (time modes) -->
+    <div id="stIndicators" class="legend" style="margin-bottom:14px;"></div>
+    <!-- correlation axis pickers (scatter mode) -->
+    <div id="stCorr" class="grid grid-3" style="display:none;margin-bottom:14px;align-items:flex-end;">
+        <div class="fld"><label>محور افقی (X)</label><select id="stCorrX"></select></div>
+        <div class="fld"><label>محور عمودی (Y)</label><select id="stCorrY"></select></div>
+        <div class="muted" style="font-size:11.5px;">نقاطِ هم‌زمان دو شاخص به‌هم وصل می‌شوند تا مسیر تغییر در طول زمان دیده شود.</div>
+    </div>
+
+    <div style="position:relative;height:340px;"><canvas id="studioChart"></canvas></div>
+</div>
+
+<!-- MEDICATION TIMELINE (lanes) -->
+{% if medications %}
+<div class="card">
+    <div class="section-title">💊 نوار زمانی داروها <span class="section-sub">دورهٔ مصرف هر دارو؛ نقطه = تغییر دوز · روی نوار نگه دارید برای جزئیات</span></div>
+    <div style="position:relative;height:{{ (medications|length * 38 + 50) }}px;max-height:420px;"><canvas id="medLanes"></canvas></div>
+</div>
+{% endif %}
+{% endif %}
+
+<!-- INSULIN TITRATION CALCULATOR (ADA §6.4) -->
+{% set wt = (indicators | selectattr('key','equalto','weight') | first) %}
+<div class="card">
+    <div class="section-title">🧮 ماشین‌حساب انسولین (ADA) <span class="section-sub">مرجع شروع و تیتراسیون — تأیید و تجویز با پزشک</span></div>
+    <div class="grid grid-4" style="align-items:flex-end;">
+        <div class="fld"><label>وزن (kg)</label><input type="number" id="insWeight" value="{{ wt.latest if wt and wt.latest is not none else '' }}"></div>
+        <div class="fld"><label>دوز فعلی basal (واحد)</label><input type="number" id="insBasal"></div>
+        <div class="fld"><label>FPG فعلی (mg/dL)</label><input type="number" id="insFpg"></div>
+        <div class="fld"><label>FPG هدف</label><input type="number" id="insTarget" value="120"></div>
+    </div>
+    <button class="btn btn-sm" id="insBtn" style="margin-top:12px;">محاسبه</button>
+    <div id="insResult" style="margin-top:12px;"></div>
+</div>
+
+<!-- MEDICATION EFFECT TOOL -->
+<div class="card">
+    <div class="section-title">💊 سنجش اثر دارو روی شاخص <span class="section-sub">میانگین شاخص پیش و پس از شروع دارو</span></div>
+    <div class="grid grid-4" style="align-items:flex-end;">
+        <div class="fld"><label>دارو</label>
+            <select id="meMed">
+                <option value="">— انتخاب دارو —</option>
+                {% for m in medications %}<option value="{{ m.id }}">{{ m.drug_name }}{% if m.dose %} ({{ m.dose }}){% endif %}{% if not m.is_active %} — قطع‌شده{% endif %}</option>{% endfor %}
+            </select>
+        </div>
+        <div class="fld"><label>شاخص هدف</label>
+            <select id="meInd">
+                <option value="">— انتخاب شاخص —</option>
+                {% for i in indicators %}<option value="{{ i.key }}">{{ i.label }}</option>{% endfor %}
+            </select>
+        </div>
+        <div class="fld"><label>پنجره‌ی مقایسه (روز)</label><input type="number" id="meWin" value="90" min="7" max="730"></div>
+        <button class="btn" id="meBtn">محاسبه‌ی اثر</button>
+    </div>
+    <div id="meResult" style="margin-top:14px;"></div>
+</div>
+
+<!-- MEDICATIONS / EVENTS / CONDITIONS -->
+<div class="grid grid-3">
+    <div class="card">
+        <div class="section-title">💊 داروها</div>
+        <div class="muted" style="font-size:13px;">فعال: <strong style="color:var(--text);">{{ medications|selectattr('is_active')|list|length|fa_num }}</strong></div>
+        {% if refill_due %}<div class="badge badge-warn" style="margin-top:8px;">{{ refill_due|fa_num }} دارو نیازمند تجدید</div>{% endif %}
+        <div style="margin-top:10px;">
+        {% for m in medications %}<div class="list-row" style="{% if not m.is_active %}opacity:.55;{% endif %}"><span>{{ m.drug_name }} <span class="muted">{{ m.dose or '' }}</span></span>{% if not m.is_active %}<span class="badge badge-muted">قطع</span>{% endif %}</div>{% else %}<div class="empty-mini">دارویی ثبت نشده</div>{% endfor %}
+        </div>
+    </div>
+    <div class="card">
+        <div class="section-title">⏱️ رویدادهای دارویی</div>
+        {% if med_events %}
+        <div class="scroll-y">
+        {% for e in med_events|reverse %}
+            <div class="list-row">
+                <span>
+                {% if e.event_type=='start' %}<span class="badge badge-ok">شروع</span>
+                {% elif e.event_type=='stop' %}<span class="badge badge-danger">قطع</span>
+                {% else %}<span class="badge badge-warn">تغییر دوز</span>{% endif %}
+                {{ e.drug_name }} {% if e.dose %}<span class="muted">{{ e.dose }}</span>{% endif %}</span>
+                <span class="muted" style="font-size:11px;">{{ e.date_fa or '—' }}</span>
+            </div>
+        {% endfor %}
+        </div>
+        {% else %}<div class="empty-mini">رویدادی ثبت نشده.</div>{% endif %}
+    </div>
+    <div class="card">
+        <div class="section-title">🩺 بیماری‌ها و نوبت‌ها</div>
+        <div class="tag-list">
+        {% for c in conditions %}<span class="badge badge-info">{{ c.condition_name }}{% if c.stage %} ({{ c.stage }}){% endif %}</span>{% else %}<span class="muted">ثبت نشده</span>{% endfor %}
+        </div>
+        <div style="display:flex;gap:9px;margin-top:12px;">
+            <div class="mini" style="flex:1;"><div class="m-num">{{ appointments.done|fa_num }}</div><div class="m-lbl">انجام‌شده</div></div>
+            <div class="mini" style="flex:1;"><div class="m-num" style="color:#f87171;">{{ appointments.no_show|fa_num }}</div><div class="m-lbl">غیبت</div></div>
+            <div class="mini" style="flex:1;"><div class="m-num">{{ appointments.upcoming|length|fa_num }}</div><div class="m-lbl">پیش‌رو</div></div>
+        </div>
+    </div>
+</div>
+
+<script>
+const chartData = {{ charts|tojson }};
+const medEvents = {{ med_events|tojson }};
+const medsData = {{ medications|tojson }};
+const classMap = {{ drug_class_map|tojson }};
+const meUrl = "{{ url_for('patients.medication_effect', pid=patient.id) }}";
+const evColor = { start:'#4ade80', stop:'#f87171', dose_change:'#fbbf24' };
+
+/* ============ Clinical Chart Studio ============ */
+(function(){
+    const series = chartData;
+    const keys = Object.keys(series).filter(k=>series[k].values && series[k].values.length);
+    if(!keys.length) return;
+    const PAL=['#ef4444','#3b82f6','#f59e0b','#8b5cf6','#22c55e','#06b6d4','#ec4899','#eab308','#14b8a6','#fb923c'];
+    const color={}; keys.forEach((k,i)=>color[k]=PAL[i%PAL.length]);
+    const fa=s=>String(s==null?'':s).replace(/[0-9]/g,d=>'۰۱۲۳۴۵۶۷۸۹'[d]);
+    function faDate(t){ try{ return fa(new persianDate(t).format('YYYY/MM/DD')); }catch(e){ return new Date(t).toISOString().slice(0,10); } }
+    function hexA(h,a){ const n=parseInt(h.slice(1),16); return `rgba(${(n>>16)&255},${(n>>8)&255},${n&255},${a})`; }
+    function pts(k){ const s=series[k]; return s.dates.map((d,i)=>({t:Date.parse(d),y:s.values[i]})).filter(p=>!isNaN(p.t)); }
+
+    const state={ type:'line', range:'all', meds:true, sel:new Set(keys.slice(0,3)), corrX:keys[0], corrY:keys[1]||keys[0] };
+    let chart=null;
+
+    const medPlugin={ id:'studioMeds', afterDatasetsDraw(c){
+        const ms=c.$studioMeds; if(!ms||!ms.length||!c.scales.x) return;
+        const {ctx,chartArea:{top,bottom,left,right},scales:{x}}=c;
+        ms.forEach(m=>{ const px=x.getPixelForValue(m.t); if(px<left-1||px>right+1) return;
+            ctx.save(); ctx.beginPath(); ctx.moveTo(px,top); ctx.lineTo(px,bottom);
+            ctx.lineWidth=1.2; ctx.setLineDash([4,3]); ctx.strokeStyle=m.color; ctx.stroke(); ctx.setLineDash([]);
+            ctx.beginPath(); ctx.arc(px,top,3,0,7); ctx.fillStyle=m.color; ctx.fill();
+            ctx.translate(px,top+6); ctx.rotate(-Math.PI/2);
+            ctx.font='10px Vazirmatn,Tahoma'; ctx.fillStyle=m.color; ctx.textAlign='right';
+            ctx.fillText(m.label, 0, 3); ctx.restore();
+        });
+    }};
+    function rangeMin(){ if(state.range==='all') return null; return Date.now()-(+state.range)*30.4*864e5; }
+
+    function buildTime(){
+        const sel=[...state.sel].filter(k=>keys.includes(k));
+        const units=[...new Set(sel.map(k=>series[k].unit||''))];
+        const min=rangeMin();
+        const datasets=sel.map(k=>{
+            let d=pts(k); if(min) d=d.filter(p=>p.t>=min);
+            const u=series[k].unit||''; const yax=(units.indexOf(u)===0)?'y':'y1';
+            const ds={ label:series[k].label+(u?` (${u})`:''), data:d.map(p=>({x:p.t,y:p.y})),
+                borderColor:color[k], backgroundColor:state.type==='area'?hexA(color[k],.16):color[k],
+                yAxisID:yax, tension:.3, pointRadius:3, pointHoverRadius:7, borderWidth:2, fill:state.type==='area' };
+            if(state.type==='bar'){ ds.type='bar'; ds.backgroundColor=color[k]; }
+            return ds;
+        });
+        if(sel.length===1 && series[sel[0]].target!=null){
+            let d=pts(sel[0]); if(min) d=d.filter(p=>p.t>=min);
+            if(d.length){ const tg=series[sel[0]].target;
+                datasets.push({label:'هدف',type:'line',data:[{x:d[0].t,y:tg},{x:d[d.length-1].t,y:tg}],
+                    borderColor:'#94a3b8',borderDash:[6,4],pointRadius:0,borderWidth:1,yAxisID:'y'}); } }
+        const ax=u=>({ticks:{color:'#92a2c0',font:{size:10}},grid:{color:'rgba(255,255,255,.05)'},title:{display:!!u,text:u,color:'#92a2c0',font:{size:10}}});
+        const scales={ x:{type:'linear',ticks:{color:'#92a2c0',font:{size:10},maxRotation:0,callback:v=>faDate(v)},grid:{color:'rgba(255,255,255,.05)'}},
+            y:Object.assign(ax(units[0]||''),{position:'right'}) };
+        if(units.length>1) scales.y1=Object.assign(ax(units[1]),{position:'left',grid:{drawOnChartArea:false}});
+        chart=new Chart(document.getElementById('studioChart'),{
+            type:state.type==='bar'?'bar':'line', data:{datasets},
+            options:{ responsive:true,maintainAspectRatio:false, interaction:{mode:'nearest',intersect:false,axis:'x'},
+                plugins:{ legend:{labels:{color:'#cbd5e1',usePointStyle:true,boxWidth:8}},
+                    tooltip:{ backgroundColor:'#0f172a',borderColor:'#334155',borderWidth:1,padding:10,
+                        callbacks:{ title:it=>it.length?faDate(it[0].parsed.x):'', label:it=>` ${it.dataset.label}: ${fa(Math.round(it.parsed.y*10)/10)}` } } },
+                scales },
+            plugins:[medPlugin] });
+        chart.$studioMeds = state.meds ? medEvents.filter(e=>e.date).map(e=>({t:Date.parse(e.date),color:evColor[e.event_type]||'#94a3b8',
+            label:e.drug_name+(e.dose?(' '+e.dose):'')})) : [];
+        chart.update();
+    }
+
+    function buildScatter(){
+        const xk=state.corrX, yk=state.corrY;
+        const xs=pts(xk), ys=pts(yk); const pairs=[];
+        xs.forEach(px=>{ let best=null,bd=Infinity; ys.forEach(py=>{const dd=Math.abs(py.t-px.t); if(dd<bd){bd=dd;best=py;}});
+            if(best && bd<60*864e5) pairs.push({x:px.y,y:best.y,t:px.t}); });
+        pairs.sort((a,b)=>a.t-b.t);
+        chart=new Chart(document.getElementById('studioChart'),{ type:'scatter',
+            data:{datasets:[{label:`${series[yk].label} نسبت به ${series[xk].label}`, data:pairs,
+                backgroundColor:color[yk], borderColor:hexA(color[yk],.35), pointRadius:5, pointHoverRadius:8, showLine:true, tension:.2 }]},
+            options:{ responsive:true,maintainAspectRatio:false,
+                plugins:{ legend:{labels:{color:'#cbd5e1'}},
+                    tooltip:{ backgroundColor:'#0f172a',borderColor:'#334155',borderWidth:1,padding:10,
+                        callbacks:{ title:it=>it.length?faDate(it[0].raw.t):'',
+                            label:it=>[`${series[xk].label}: ${fa(it.raw.x)} ${series[xk].unit||''}`,`${series[yk].label}: ${fa(it.raw.y)} ${series[yk].unit||''}`] } } },
+                scales:{ x:{title:{display:true,text:series[xk].label+(series[xk].unit?` (${series[xk].unit})`:''),color:'#92a2c0'},ticks:{color:'#92a2c0'},grid:{color:'rgba(255,255,255,.05)'}},
+                    y:{title:{display:true,text:series[yk].label+(series[yk].unit?` (${series[yk].unit})`:''),color:'#92a2c0'},ticks:{color:'#92a2c0'},grid:{color:'rgba(255,255,255,.05)'}} } } });
+    }
+
+    function render(){ if(chart){chart.destroy();chart=null;}
+        document.getElementById('stIndicators').style.display = state.type==='scatter'?'none':'flex';
+        document.getElementById('stCorr').style.display = state.type==='scatter'?'grid':'none';
+        document.getElementById('stMedsWrap').style.display = state.type==='scatter'?'none':'flex';
+        if(state.type==='scatter') buildScatter(); else buildTime();
+    }
+
+    const wrap=document.getElementById('stIndicators');
+    keys.forEach(k=>{ const c=document.createElement('span'); c.className='chip ind-chip'+(state.sel.has(k)?'':' off');
+        c.innerHTML=`<span class="dot" style="background:${color[k]}"></span> ${series[k].label}`;
+        c.onclick=()=>{ if(state.sel.has(k)) state.sel.delete(k); else state.sel.add(k);
+            if(!state.sel.size) state.sel.add(k); c.classList.toggle('off',!state.sel.has(k)); render(); };
+        wrap.appendChild(c); });
+    ['stCorrX','stCorrY'].forEach((id,idx)=>{ const sel=document.getElementById(id);
+        keys.forEach(k=>{ const o=document.createElement('option'); o.value=k; o.textContent=series[k].label; sel.appendChild(o); });
+        sel.value = idx===0?state.corrX:state.corrY;
+        sel.onchange=()=>{ if(id==='stCorrX')state.corrX=sel.value; else state.corrY=sel.value; render(); }; });
+    document.querySelectorAll('#stType button').forEach(b=>b.onclick=()=>{ state.type=b.dataset.t;
+        document.querySelectorAll('#stType button').forEach(x=>x.classList.toggle('active',x===b)); render(); });
+    document.querySelectorAll('#stRange button').forEach(b=>b.onclick=()=>{ state.range=b.dataset.r;
+        document.querySelectorAll('#stRange button').forEach(x=>x.classList.toggle('active',x===b)); render(); });
+    document.getElementById('stMeds').onchange=e=>{ state.meds=e.target.checked; render(); };
+    render();
+
+    /* ===== Medication timeline lanes ===== */
+    (function(){
+        const el=document.getElementById('medLanes'); if(!el) return;
+        const now=Date.now();
+        const lm=(medsData||[]).filter(m=>m.start_date).map(m=>({...m, s:Date.parse(m.start_date), e:m.end_date?Date.parse(m.end_date):now})).filter(m=>!isNaN(m.s));
+        if(!lm.length) return;
+        const CLR=['#3b82f6','#22c55e','#f59e0b','#8b5cf6','#ef4444','#06b6d4','#ec4899','#14b8a6'];
+        const pad=15*864e5, xMin=Math.min(...lm.map(m=>m.s))-pad, xMax=Math.max(...lm.map(m=>m.e))+pad;
+        const doseEvents=(medEvents||[]).filter(e=>e.event_type==='dose_change'&&e.date);
+        const dosePlugin={ id:'doseMarks', afterDatasetsDraw(c){ const {ctx,scales:{x,y}}=c; if(!x||!y) return;
+            lm.forEach(m=>{ doseEvents.filter(d=>d.drug_name===m.drug_name).forEach(d=>{
+                const px=x.getPixelForValue(Date.parse(d.date)); const py=y.getPixelForValue(m.drug_name);
+                if(px==null||py==null) return; ctx.save(); ctx.beginPath(); ctx.arc(px,py,4,0,7); ctx.fillStyle='#fde047'; ctx.strokeStyle='#0b1220'; ctx.lineWidth=1.5; ctx.fill(); ctx.stroke(); ctx.restore(); }); }); } };
+        new Chart(el,{ type:'bar',
+            data:{ labels:lm.map(m=>m.drug_name), datasets:[{ data:lm.map(m=>({x:[m.s,m.e],y:m.drug_name})),
+                backgroundColor:lm.map((m,i)=>hexA(CLR[i%CLR.length],.55)), borderColor:lm.map((m,i)=>CLR[i%CLR.length]), borderWidth:1, borderRadius:5, barPercentage:.62 }] },
+            options:{ indexAxis:'y', responsive:true, maintainAspectRatio:false,
+                plugins:{ legend:{display:false},
+                    tooltip:{ backgroundColor:'#0f172a',borderColor:'#334155',borderWidth:1,padding:10, displayColors:false,
+                        callbacks:{ title:it=>lm[it[0].dataIndex].drug_name,
+                            label:it=>{ const m=lm[it.dataIndex]; return [ `${m.dose||''} ${classMap[m.drug_class]||''}`.trim(),
+                                `از ${faDate(m.s)} ${m.end_date?('تا '+faDate(m.e)):'(ادامه دارد)'}` ]; } } } },
+                scales:{ x:{type:'linear',min:xMin,max:xMax,ticks:{color:'#92a2c0',font:{size:10},maxRotation:0,callback:v=>faDate(v)},grid:{color:'rgba(255,255,255,.05)'}},
+                    y:{ticks:{color:'#cbd5e1',font:{size:11}},grid:{display:false}} } },
+            plugins:[dosePlugin] });
+    })();
+})();
+
+const faDigit = s => String(s).replace(/[0-9]/g,d=>'۰۱۲۳۴۵۶۷۸۹'[d]);
+document.getElementById('meBtn').addEventListener('click', async ()=>{
+    const med=document.getElementById('meMed').value, ind=document.getElementById('meInd').value, win=document.getElementById('meWin').value||90;
+    const box=document.getElementById('meResult');
+    if(!med||!ind){ box.innerHTML='<div class="empty-mini">ابتدا دارو و شاخص را انتخاب کنید.</div>'; return; }
+    box.innerHTML='<div class="empty-mini">در حال محاسبه…</div>';
+    try{
+        const r=await fetch(`${meUrl}?med_id=${med}&indicator=${ind}&window=${win}`);
+        const j=await r.json();
+        if(!j.ok){ box.innerHTML='<div class="empty-mini">داده‌ی کافی نیست (تاریخ شروع دارو ثبت نشده).</div>'; return; }
+        if(j.pre==null||j.post==null){
+            box.innerHTML=`<div class="chip"><span class="dot dot-warn"></span> داده‌ی کافی برای مقایسه نیست — ${faDigit(j.n_pre)} ثبت قبل، ${faDigit(j.n_post)} ثبت بعد.</div>`; return;
+        }
+        const good = j.improved===true, bad = j.improved===false;
+        const col = good?'#4ade80':(bad?'#f87171':'#92a2c0');
+        const arrow = j.delta>0?'▲':(j.delta<0?'▼':'•');
+        box.innerHTML=`
+          <div style="display:flex;gap:14px;flex-wrap:wrap;">
+            <div class="mini" style="flex:1;min-width:120px;"><div class="m-num">${faDigit(j.pre)} <span class="muted" style="font-size:11px;">${j.unit}</span></div><div class="m-lbl">قبل از ${j.drug_name}</div></div>
+            <div class="mini" style="flex:1;min-width:120px;"><div class="m-num">${faDigit(j.post)} <span class="muted" style="font-size:11px;">${j.unit}</span></div><div class="m-lbl">بعد</div></div>
+            <div class="mini" style="flex:1;min-width:120px;"><div class="m-num" style="color:${col};">${arrow} ${faDigit(Math.abs(j.delta))}</div><div class="m-lbl">${good?'بهبود':(bad?'بدتر شدن':'تغییر')}</div></div>
+          </div>
+          <div class="muted" style="font-size:11.5px;margin-top:8px;">شروع دارو: ${j.start_fa} · پنجره ±${faDigit(j.window_days)} روز · ${faDigit(j.n_pre)} نمونه قبل / ${faDigit(j.n_post)} نمونه بعد</div>`;
+    }catch(e){ box.innerHTML='<div class="empty-mini">خطا در محاسبه.</div>'; }
+});
+
+// Insulin titration calculator (ADA §6.4) — reference only
+(function(){
+    const btn=document.getElementById('insBtn'); if(!btn) return;
+    const fa=s=>String(s).replace(/[0-9]/g,d=>'۰۱۲۳۴۵۶۷۸۹'[d]);
+    btn.addEventListener('click', ()=>{
+        const w=+document.getElementById('insWeight').value||0;
+        const basal=+document.getElementById('insBasal').value||0;
+        const fpg=+document.getElementById('insFpg').value||0;
+        const tgt=+document.getElementById('insTarget').value||120;
+        let h='';
+        const lo=Math.round(0.1*w), hi=Math.round(0.2*w);
+        h+=`<div class="mini" style="margin-bottom:8px;">🟢 شروع انسولین پایه: <b>۱۰ واحد/روز</b>${w?` یا <b>${fa(lo)}–${fa(hi)}</b> واحد (۰.۱–۰.۲ U/kg)`:''}</div>`;
+        h+=`<div class="mini" style="margin-bottom:8px;">📈 تیتر: <b>+۲ واحد هر ۳ روز</b> (یا ۱۰–۱۵٪ دوبار در هفته) تا FPG به هدف ${fa(tgt)} برسد بدون هیپوگلیسمی</div>`;
+        if(fpg && basal){
+            if(fpg>tgt) h+=`<div class="mini" style="margin-bottom:8px;">FPG فعلی (${fa(fpg)}) بالاتر از هدف → گام بعدی پیشنهادی: <b>${fa(basal+2)}</b> واحد</div>`;
+            else h+=`<div class="mini" style="margin-bottom:8px;">FPG در محدودهٔ هدف؛ دوز فعلی (${fa(basal)} واحد) حفظ شود</div>`;
+        }
+        const bolus = basal? Math.round(0.1*basal):4;
+        h+=`<div class="mini" style="margin-bottom:8px;">🍽️ بولوس پراندیال: شروع <b>${fa(bolus)}</b> واحد (۴ واحد یا ۱۰٪ basal)؛ اگر A1c<۸٪، basal را ۱۰٪ کم کنید</div>`;
+        if(basal) h+=`<div class="mini">⚠️ در هیپوگلیسمیِ بدون‌علت: کاهش ۱۰–۲۰٪ → <b>${fa(Math.round(0.8*basal))}–${fa(Math.round(0.9*basal))}</b> واحد</div>`;
+        document.getElementById('insResult').innerHTML=h;
+    });
+})();
+</script>
+{% endblock %}

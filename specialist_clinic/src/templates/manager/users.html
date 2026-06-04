@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}کاربران{% endblock %}
+{% block content %}
+<div class="topbar"><h1>مدیریت کاربران</h1></div>
+
+<div class="grid grid-2">
+    <div class="card">
+        <h3 style="margin-top:0;">کاربران</h3>
+        <table>
+            <thead><tr><th>نام کاربری</th><th>نام</th><th>نقش</th><th>وضعیت</th></tr></thead>
+            <tbody>
+            {% for u in users %}
+                <tr>
+                    <td>{{ u.username }}</td>
+                    <td>{{ u.full_name or '—' }}</td>
+                    <td>{{ {'manager':'مدیر','staff':'کارمند'}.get(u.role, u.role) }}</td>
+                    <td>{% if u.is_active %}<span class="badge badge-ok">فعال</span>{% else %}<span class="badge badge-muted">غیرفعال</span>{% endif %}</td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <div class="card">
+        <h3 style="margin-top:0;">افزودن کاربر</h3>
+        <form method="post">
+            <label>نام کاربری *</label><input type="text" name="username" required>
+            <label>رمز عبور *</label><input type="text" name="password" required>
+            <label>نام کامل</label><input type="text" name="full_name">
+            <label>نقش</label>
+            <select name="role"><option value="staff">کارمند</option><option value="manager">مدیر</option></select>
+            <button class="btn" type="submit" style="margin-top:14px;">ساخت کاربر</button>
+        </form>
+    </div>
+</div>
+{% endblock %}

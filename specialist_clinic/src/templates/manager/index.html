@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}مدیریت{% endblock %}
+{% block content %}
+<div class="topbar">
+    <h1>داشبورد مدیریتی</h1>
+    <div class="row">
+        <a class="btn btn-ghost" href="{{ url_for('manager.decision_rules') }}">🧠 قواعد تصمیم (ADA)</a>
+        <a class="btn btn-ghost" href="{{ url_for('manager.rules') }}">شاخص‌ها و اهداف</a>
+        <a class="btn btn-ghost" href="{{ url_for('manager.protocols') }}">پروتکل‌های بالینی</a>
+        <a class="btn btn-ghost" href="{{ url_for('manager.users') }}">کاربران</a>
+        <a class="btn btn-ghost" href="{{ url_for('manager.settings') }}">تنظیمات</a>
+    </div>
+</div>
+
+<div class="grid grid-4">
+    <div class="card stat"><div class="num">{{ total|fa_num }}</div><div class="label">کل بیماران مزمن</div></div>
+    <div class="card stat"><div class="num">{{ control_rate|fa_num }}٪</div><div class="label">نرخ کنترل بیماری</div></div>
+    <div class="card stat"><div class="num" style="color:var(--danger);">{{ uncontrolled|fa_num }}</div><div class="label">بیماران کنترل‌نشده</div></div>
+    <div class="card stat"><div class="num">{{ campaign_stats.sent|fa_num }}</div><div class="label">کل پیامک‌های موفق</div></div>
+</div>
+
+<div class="grid grid-2">
+    <div class="card">
+        <h3 style="margin-top:0;">بیماران به تفکیک بیماری</h3>
+        <table>
+            <tbody>
+            {% for r in by_condition %}
+                <tr><td>{{ r.name }}</td><td style="text-align:left;"><strong>{{ r.c|fa_num }}</strong></td></tr>
+            {% else %}<tr><td class="muted">داده‌ای نیست</td></tr>{% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <div class="card">
+        <h3 style="margin-top:0;">پیگیری‌های باز</h3>
+        <table>
+            <tbody>
+                <tr><td>تجدید دارو</td><td style="text-align:left;"><strong>{{ (followups.get('refill') or 0)|fa_num }}</strong></td></tr>
+                <tr><td>کنترل‌نشده</td><td style="text-align:left;"><strong>{{ (followups.get('uncontrolled') or 0)|fa_num }}</strong></td></tr>
+                <tr><td>بدون مراجعه اخیر</td><td style="text-align:left;"><strong>{{ (followups.get('lapsed') or 0)|fa_num }}</strong></td></tr>
+                <tr><td>موعد ویزیت</td><td style="text-align:left;"><strong>{{ (followups.get('visit_due') or 0)|fa_num }}</strong></td></tr>
+            </tbody>
+        </table>
+        <a class="btn btn-sm" href="{{ url_for('followups.worklist') }}" style="margin-top:10px;">مشاهده لیست پیگیری</a>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}پیگیری‌ها{% endblock %}
+{% block content %}
+<div class="topbar">
+    <h1>لیست پیگیری</h1>
+    <form method="post" action="{{ url_for('followups.generate') }}" style="margin:0;">
+        <button class="btn" type="submit">🔄 تولید خودکار پیگیری‌ها</button>
+    </form>
+</div>
+
+<div class="card">
+    <div class="row">
+        <a class="btn btn-sm {% if not active_reason %}btn{% else %}btn-ghost{% endif %}" href="{{ url_for('followups.worklist') }}">همه</a>
+        {% for key, label in reason_labels.items() %}
+            <a class="btn btn-sm btn-ghost" href="{{ url_for('followups.worklist', reason=key) }}">
+                {{ label }} {% if counts.get(key) %}<span class="badge badge-warn">{{ counts[key]|fa_num }}</span>{% endif %}
+            </a>
+        {% endfor %}
+    </div>
+</div>
+
+<div class="card">
+    {% if tasks %}
+    <table>
+        <thead><tr><th>بیمار</th><th>موبایل</th><th>دلیل</th><th>توضیح</th><th>سررسید</th><th>اقدام</th></tr></thead>
+        <tbody>
+        {% for t in tasks %}
+            <tr>
+                <td><a href="{{ url_for('patients.detail', pid=t.patient_link_id) }}">{{ t.patient_name }}</a></td>
+                <td class="muted">{{ t.phone_number or '—' }}</td>
+                <td><span class="badge badge-warn">{{ t.reason_fa }}</span></td>
+                <td class="muted">{{ t.detail or '—' }}</td>
+                <td>{{ t.due_date|jalali_date if t.due_date else '—' }}</td>
+                <td>
+                    <form method="post" action="{{ url_for('followups.resolve', task_id=t.id) }}" style="display:inline; margin:0;">
+                        <input type="hidden" name="status" value="done"><button class="btn btn-sm btn-ok" type="submit">انجام شد</button></form>
+                    <form method="post" action="{{ url_for('followups.resolve', task_id=t.id) }}" style="display:inline; margin:0;">
+                        <input type="hidden" name="status" value="dismissed"><button class="btn btn-sm btn-ghost" type="submit">رد</button></form>
+                </td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    {% else %}<div class="empty">پیگیری بازی وجود ندارد. روی «تولید خودکار» بزنید.</div>{% endif %}
+</div>
+{% endblock %}

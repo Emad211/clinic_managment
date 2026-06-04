@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}پروتکل‌های بالینی{% endblock %}
+{% block content %}
+<div class="topbar"><h1>پشتیبان تصمیم بالینی</h1></div>
+<p class="muted" style="margin-top:-10px;">چکاپ‌های دوره‌ای استاندارد و بیمارانی که موعدشان رسیده است.</p>
+
+{% for p in summary %}
+<div class="card">
+    <div style="display:flex; justify-content:space-between; align-items:center;">
+        <div>
+            <strong>{{ p.name }}</strong>
+            <span class="muted">— {{ p.condition_name or 'عمومی' }} — هر {{ p.interval_months|fa_num }} ماه</span>
+        </div>
+        <div>
+            {% if p.due_count %}<span class="badge badge-danger">{{ p.due_count|fa_num }} بیمار نیازمند</span>
+            {% else %}<span class="badge badge-ok">همه به‌روز</span>{% endif %}
+        </div>
+    </div>
+    {% if p.due_patients %}
+    <table style="margin-top:12px;">
+        <thead><tr><th>بیمار</th><th>موبایل</th><th>آخرین چکاپ</th></tr></thead>
+        <tbody>
+        {% for d in p.due_patients[:20] %}
+            <tr>
+                <td><a href="{{ url_for('patients.detail', pid=d.id) }}">{{ d.full_name }}</a></td>
+                <td class="muted">{{ d.phone_number or '—' }}</td>
+                <td class="muted">{{ d.last_checkup|jalali if d.last_checkup else 'هرگز' }}</td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    <form method="post" action="{{ url_for('manager.protocol_followup') }}" style="margin-top:12px;">
+        <input type="hidden" name="protocol_id" value="{{ p.id }}">
+        <button class="btn btn-sm" type="submit">ساخت پیگیری برای این بیماران</button>
+    </form>
+    {% endif %}
+</div>
+{% endfor %}
+{% endblock %}
