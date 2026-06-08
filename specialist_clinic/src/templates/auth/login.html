@@ -3,35 +3,40 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="color-scheme" content="dark">
     <title>ورود — کلینیک تخصصی</title>
-    <style>
-        body { margin:0; font-family:Tahoma, sans-serif; background:#0f172a; color:#e2e8f0;
-               display:flex; align-items:center; justify-content:center; min-height:100vh; }
-        .box { background:#1e293b; border:1px solid #334155; border-radius:14px; padding:34px; width:340px; }
-        .brand { text-align:center; font-size:22px; font-weight:bold; color:#0ea5e9; margin-bottom:6px; }
-        .sub { text-align:center; color:#94a3b8; font-size:13px; margin-bottom:24px; }
-        label { display:block; color:#94a3b8; font-size:13px; margin:12px 0 5px; }
-        input { width:100%; background:#0f172a; border:1px solid #334155; color:#e2e8f0;
-                padding:11px; border-radius:8px; font-family:inherit; box-sizing:border-box; }
-        .btn { width:100%; margin-top:20px; background:#0ea5e9; color:#fff; border:none; padding:12px;
-               border-radius:8px; cursor:pointer; font-family:inherit; font-size:15px; }
-        .btn:hover { background:#0284c7; }
-        .flash { background:rgba(239,68,68,.15); color:#fca5a5; padding:11px; border-radius:8px;
-                 margin-bottom:14px; font-size:13px; text-align:center; }
-    </style>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
 </head>
 <body>
-    <form class="box" method="post">
-        <div class="brand">🩺 کلینیک تخصصی</div>
-        <div class="sub">مدیریت بیماری‌های مزمن</div>
-        {% with messages = get_flashed_messages() %}
-            {% for msg in messages %}<div class="flash">{{ msg }}</div>{% endfor %}
-        {% endwith %}
-        <label>نام کاربری</label>
-        <input type="text" name="username" autofocus required>
-        <label>رمز عبور</label>
-        <input type="password" name="password" required>
-        <button class="btn" type="submit">ورود</button>
-    </form>
+    <div class="auth-wrap">
+        <form class="auth-card" method="post" autocomplete="on">
+            <div class="auth-brand">
+                <span class="brand-mark">
+                    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"/>
+                    </svg>
+                </span>
+                <b>کلینیک تخصصی</b>
+                <small>مدیریت بیماری‌های مزمن</small>
+            </div>
+
+            {% with messages = get_flashed_messages() %}
+                {% for msg in messages %}
+                <div class="flash" role="alert" style="justify-content:center;">
+                    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
+                    <span>{{ msg }}</span>
+                </div>
+                {% endfor %}
+            {% endwith %}
+
+            <label for="username">نام کاربری</label>
+            <input id="username" type="text" name="username" autocomplete="username" autofocus required>
+
+            <label for="password">رمز عبور</label>
+            <input id="password" type="password" name="password" autocomplete="current-password" required>
+
+            <button class="btn btn-block btn-lg" type="submit" style="margin-top:22px;">ورود</button>
+        </form>
+    </div>
 </body>
 </html>

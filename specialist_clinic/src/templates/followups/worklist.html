@@ -2,17 +2,19 @@
 {% block title %}پیگیری‌ها{% endblock %}
 {% block content %}
 <div class="topbar">
-    <h1>لیست پیگیری</h1>
+    <h1><svg class="icon"><use href="#i-list-checks"></use></svg> لیست پیگیری</h1>
     <form method="post" action="{{ url_for('followups.generate') }}" style="margin:0;">
-        <button class="btn" type="submit">🔄 تولید خودکار پیگیری‌ها</button>
+        <button class="btn" type="submit"><svg class="icon"><use href="#i-zap"></use></svg> تولید خودکار پیگیری‌ها</button>
     </form>
 </div>
 
-<div class="card">
-    <div class="row">
-        <a class="btn btn-sm {% if not active_reason %}btn{% else %}btn-ghost{% endif %}" href="{{ url_for('followups.worklist') }}">همه</a>
+<div class="card card-soft">
+    <div class="flex items-center gap-2 wrap">
+        <a class="btn btn-sm {% if not active_reason %}btn{% else %}btn-ghost{% endif %}" href="{{ url_for('followups.worklist') }}">
+            <svg class="icon icon-sm"><use href="#i-filter"></use></svg> همه
+        </a>
         {% for key, label in reason_labels.items() %}
-            <a class="btn btn-sm btn-ghost" href="{{ url_for('followups.worklist', reason=key) }}">
+            <a class="btn btn-sm {% if active_reason == key %}btn{% else %}btn-ghost{% endif %}" href="{{ url_for('followups.worklist', reason=key) }}">
                 {{ label }} {% if counts.get(key) %}<span class="badge badge-warn">{{ counts[key]|fa_num }}</span>{% endif %}
             </a>
         {% endfor %}
@@ -20,27 +22,49 @@
 </div>
 
 <div class="card">
+    <div class="section-title">
+        <svg class="icon"><use href="#i-list-checks"></use></svg>
+        <div>
+            <div>پیگیری‌های باز</div>
+            <div class="section-sub">بیماران نیازمند تماس یا اقدام بعدی</div>
+        </div>
+    </div>
     {% if tasks %}
-    <table>
-        <thead><tr><th>بیمار</th><th>موبایل</th><th>دلیل</th><th>توضیح</th><th>سررسید</th><th>اقدام</th></tr></thead>
-        <tbody>
-        {% for t in tasks %}
-            <tr>
-                <td><a href="{{ url_for('patients.detail', pid=t.patient_link_id) }}">{{ t.patient_name }}</a></td>
-                <td class="muted">{{ t.phone_number or '—' }}</td>
-                <td><span class="badge badge-warn">{{ t.reason_fa }}</span></td>
-                <td class="muted">{{ t.detail or '—' }}</td>
-                <td>{{ t.due_date|jalali_date if t.due_date else '—' }}</td>
-                <td>
-                    <form method="post" action="{{ url_for('followups.resolve', task_id=t.id) }}" style="display:inline; margin:0;">
-                        <input type="hidden" name="status" value="done"><button class="btn btn-sm btn-ok" type="submit">انجام شد</button></form>
-                    <form method="post" action="{{ url_for('followups.resolve', task_id=t.id) }}" style="display:inline; margin:0;">
-                        <input type="hidden" name="status" value="dismissed"><button class="btn btn-sm btn-ghost" type="submit">رد</button></form>
-                </td>
-            </tr>
-        {% endfor %}
-        </tbody>
-    </table>
-    {% else %}<div class="empty">پیگیری بازی وجود ندارد. روی «تولید خودکار» بزنید.</div>{% endif %}
+    <div class="table-wrap">
+        <table>
+            <thead><tr><th>بیمار</th><th>موبایل</th><th>دلیل</th><th>توضیح</th><th>سررسید</th><th>اقدام</th></tr></thead>
+            <tbody>
+            {% for t in tasks %}
+                <tr>
+                    <td>
+                        <a class="flex items-center gap-2" href="{{ url_for('patients.detail', pid=t.patient_link_id) }}">
+                            <svg class="icon icon-sm"><use href="#i-user"></use></svg> {{ t.patient_name }}
+                        </a>
+                    </td>
+                    <td class="muted nums">{{ t.phone_number or '—' }}</td>
+                    <td><span class="badge badge-warn">{{ t.reason_fa }}</span></td>
+                    <td class="muted">{{ t.detail or '—' }}</td>
+                    <td class="nums">{{ t.due_date|jalali_date if t.due_date else '—' }}</td>
+                    <td>
+                        <div class="flex items-center gap-2">
+                            <form method="post" action="{{ url_for('followups.resolve', task_id=t.id) }}" style="margin:0;">
+                                <input type="hidden" name="status" value="done"><button class="btn btn-sm btn-ok" type="submit"><svg class="icon icon-sm"><use href="#i-check"></use></svg> انجام شد</button>
+                            </form>
+                            <form method="post" action="{{ url_for('followups.resolve', task_id=t.id) }}" style="margin:0;">
+                                <input type="hidden" name="status" value="dismissed"><button class="btn btn-sm btn-ghost" type="submit"><svg class="icon icon-sm"><use href="#i-x"></use></svg> رد</button>
+                            </form>
+                        </div>
+                    </td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="empty">
+        <svg class="icon"><use href="#i-list-checks"></use></svg>
+        <div>پیگیری بازی وجود ندارد. روی «تولید خودکار» بزنید.</div>
+    </div>
+    {% endif %}
 </div>
 {% endblock %}

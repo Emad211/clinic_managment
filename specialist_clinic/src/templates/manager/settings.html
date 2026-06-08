@@ -1,32 +1,57 @@
 {% extends "base.html" %}
 {% block title %}تنظیمات{% endblock %}
 {% block content %}
-<div class="topbar"><h1>تنظیمات</h1></div>
-<div class="card" style="max-width:640px;">
-    <h3 style="margin-top:0;">پنل پیامک مدیانا (Mediana)</h3>
+<div class="topbar">
+    <h1><svg class="icon icon-lg"><use href="#i-settings"></use></svg> تنظیمات</h1>
+</div>
+<div class="page-intro">پیکربندی پنل پیامک مدیانا و قالب پیام یادآوری نوبت.</div>
+
+<div class="card" style="max-width:680px;">
+    <div class="section-title">
+        <svg class="icon"><use href="#i-megaphone"></use></svg>
+        <span>پنل پیامک مدیانا (Mediana)</span>
+        <span class="section-sub">کلیدها و تنظیمات ارسال پیامک</span>
+    </div>
+
     <form method="post">
-        <label>API Key مدیانا</label>
-        <input type="text" name="mediana_api_key" value="{{ data.mediana_api_key }}" placeholder="کلید API پنل مدیانا (هدر X-API-KEY)">
+        <div class="fld">
+            <label><svg class="icon icon-sm"><use href="#i-key"></use></svg> API Key مدیانا</label>
+            <input type="text" name="mediana_api_key" value="{{ data.mediana_api_key }}" placeholder="کلید API پنل مدیانا (هدر X-API-KEY)">
+            <div class="help">کلید دسترسی پنل مدیانا که در هدر <span class="nums">X-API-KEY</span> ارسال می‌شود.</div>
+        </div>
 
-        <label>شماره ارسال اختصاصی — اختیاری</label>
-        <input type="text" name="mediana_sending_number" value="{{ data.mediana_sending_number }}" placeholder="مثلاً 100090000 (در صورت داشتن خط اختصاصی)">
-        <div class="muted" style="font-size:11.5px;margin-top:4px;">اگر خط اختصاصی وارد شود، همه پیام‌ها از همان خط ارسال می‌شوند و «نوع پیام» نادیده گرفته می‌شود.</div>
+        <div class="fld">
+            <label><svg class="icon icon-sm"><use href="#i-phone"></use></svg> شماره ارسال اختصاصی <span class="muted">— اختیاری</span></label>
+            <input type="text" name="mediana_sending_number" value="{{ data.mediana_sending_number }}" placeholder="مثلاً 100090000 (در صورت داشتن خط اختصاصی)">
+            <div class="help">اگر خط اختصاصی وارد شود، همه پیام‌ها از همان خط ارسال می‌شوند و «نوع پیام» نادیده گرفته می‌شود.</div>
+        </div>
 
-        <label>نوع پیام پیش‌فرض (وقتی خط اختصاصی ندارید)</label>
-        <select name="mediana_message_type">
-            <option value="PromotionalToCustomers" {% if data.mediana_message_type=='PromotionalToCustomers' %}selected{% endif %}>تبلیغاتی به مشتریان</option>
-            <option value="PromotionalAll" {% if data.mediana_message_type=='PromotionalAll' %}selected{% endif %}>تبلیغاتی به همه</option>
-            <option value="Informational" {% if data.mediana_message_type=='Informational' %}selected{% endif %}>اطلاع‌رسانی (خدماتی)</option>
-        </select>
+        <div class="fld">
+            <label><svg class="icon icon-sm"><use href="#i-list-checks"></use></svg> نوع پیام پیش‌فرض <span class="muted">(وقتی خط اختصاصی ندارید)</span></label>
+            <select name="mediana_message_type">
+                <option value="PromotionalToCustomers" {% if data.mediana_message_type=='PromotionalToCustomers' %}selected{% endif %}>تبلیغاتی به مشتریان</option>
+                <option value="PromotionalAll" {% if data.mediana_message_type=='PromotionalAll' %}selected{% endif %}>تبلیغاتی به همه</option>
+                <option value="Informational" {% if data.mediana_message_type=='Informational' %}selected{% endif %}>اطلاع‌رسانی (خدماتی)</option>
+            </select>
+        </div>
 
-        <label>متن یادآوری نوبت <span class="muted">({name} = نام بیمار)</span></label>
-        <textarea name="reminder_template" rows="3">{{ data.reminder_template }}</textarea>
+        <div class="fld">
+            <label><svg class="icon icon-sm"><use href="#i-bell"></use></svg> متن یادآوری نوبت <span class="muted">({name} = نام بیمار)</span></label>
+            <textarea name="reminder_template" rows="3">{{ data.reminder_template }}</textarea>
+            <div class="help">از <span class="nums">{name}</span> برای درج خودکار نام بیمار در متن پیام استفاده کنید.</div>
+        </div>
 
-        <button class="btn" type="submit" style="margin-top:14px;">ذخیره تنظیمات</button>
+        <button class="btn" type="submit" style="margin-top:var(--s4);">
+            <svg class="icon"><use href="#i-save"></use></svg> ذخیره تنظیمات
+        </button>
     </form>
-    <p class="muted" style="font-size:12px; margin-top:14px;">
-        تا زمانی که API Key وارد نشود، پیامک‌ها در حالت شبیه‌سازی ثبت می‌شوند (ارسال واقعی انجام نمی‌شود).
-        یادآوری نوبت به‌صورت «اطلاع‌رسانی» و کمپین‌های پیشنهادی به‌صورت «تبلیغاتی به مشتریان» ارسال می‌شوند.
-    </p>
+
+    <div class="alert-banner alert-warn" style="margin-top:var(--s5);">
+        <svg class="icon"><use href="#i-info"></use></svg>
+        <div>
+            تا زمانی که API Key وارد نشود، پیامک‌ها در حالت شبیه‌سازی ثبت می‌شوند (ارسال واقعی انجام نمی‌شود).
+            یادآوری نوبت به‌صورت «اطلاع‌رسانی» و کمپین‌های پیشنهادی به‌صورت «تبلیغاتی به مشتریان» ارسال می‌شوند.
+        </div>
+    </div>
 </div>
 {% endblock %}

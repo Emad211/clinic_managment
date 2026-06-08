@@ -3,21 +3,30 @@
 {% block content %}
 <div class="topbar"><h1>ثبت نوبت جدید</h1></div>
 <div class="card" style="max-width:560px;">
+    <div class="section-title">
+        <svg class="icon"><use href="#i-calendar"></use></svg>
+        <div>
+            مشخصات نوبت
+            <div class="section-sub">انتخاب بیمار، تاریخ و تنظیمات تکرار دوره‌ای</div>
+        </div>
+    </div>
     <form method="post">
-        <label>بیمار *</label>
-        <select name="patient_link_id" required>
-            <option value="">انتخاب بیمار...</option>
-            {% for p in patients %}<option value="{{ p.id }}" {% if pre_pid==p.id %}selected{% endif %}>{{ p.full_name }} {% if p.national_id %}({{ p.national_id }}){% endif %}</option>{% endfor %}
-        </select>
-        <div class="row">
-            <div style="flex:1;"><label>تاریخ *</label><input type="text" class="jdate" name="date" placeholder="انتخاب تاریخ" required></div>
-            <div style="flex:1;"><label>ساعت</label><input type="text" name="time" placeholder="12:00" value="12:00"></div>
+        <div class="fld">
+            <label>بیمار <span class="req">*</span></label>
+            <select name="patient_link_id" required>
+                <option value="">انتخاب بیمار...</option>
+                {% for p in patients %}<option value="{{ p.id }}" {% if pre_pid==p.id %}selected{% endif %}>{{ p.full_name }} {% if p.national_id %}({{ p.national_id }}){% endif %}</option>{% endfor %}
+            </select>
         </div>
         <div class="row">
-            <div style="flex:1;"><label>نوع نوبت</label>
+            <div class="fld" style="flex:1;"><label>تاریخ <span class="req">*</span></label><input type="text" class="jdate" name="date" placeholder="انتخاب تاریخ" required></div>
+            <div class="fld" style="flex:1;"><label>ساعت</label><input type="text" name="time" placeholder="12:00" value="12:00"></div>
+        </div>
+        <div class="row">
+            <div class="fld" style="flex:1;"><label>نوع نوبت</label>
                 <select name="appt_type">{% for k,v in appt_types.items() %}<option value="{{ k }}">{{ v }}</option>{% endfor %}</select>
             </div>
-            <div style="flex:1;"><label>تکرار دوره‌ای (ماه)</label>
+            <div class="fld" style="flex:1;"><label>تکرار دوره‌ای (ماه)</label>
                 <select name="recurrence_months">
                     <option value="">بدون تکرار</option>
                     <option value="1">هر ۱ ماه</option><option value="3">هر ۳ ماه</option>
@@ -25,10 +34,15 @@
                 </select>
             </div>
         </div>
-        <label>یادداشت</label>
-        <textarea name="notes" rows="2"></textarea>
-        <button class="btn" type="submit" style="margin-top:14px;">ثبت نوبت</button>
+        <div class="fld">
+            <label>یادداشت</label>
+            <textarea name="notes" rows="2"></textarea>
+        </div>
+        <button class="btn" type="submit" style="margin-top:var(--s4);"><svg class="icon"><use href="#i-calendar"></use></svg> ثبت نوبت</button>
     </form>
-    <p class="muted" style="font-size:12px; margin-top:14px;">یادآوری پیامکی به‌صورت خودکار تا ۲۴ ساعت قبل از نوبت ارسال می‌شود (در صورت تنظیم پنل پیامک).</p>
+    <p class="help flex items-center gap-2" style="margin-top:var(--s4);">
+        <svg class="icon icon-sm c-info"><use href="#i-info"></use></svg>
+        <span>یادآوری پیامکی به‌صورت خودکار تا ۲۴ ساعت قبل از نوبت ارسال می‌شود (در صورت تنظیم پنل پیامک).</span>
+    </p>
 </div>
 {% endblock %}

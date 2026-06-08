@@ -1,35 +1,67 @@
 {% extends "base.html" %}
 {% block title %}ثبت‌نام بیمار{% endblock %}
 {% block content %}
-<div class="topbar"><h1>ثبت‌نام بیمار جدید</h1></div>
+<div class="crumb">
+    <a href="{{ url_for('patients.list_patients') }}"><svg class="icon icon-sm"><use href="#i-users"></use></svg> بیماران</a>
+    <svg class="icon icon-sm"><use href="#i-chevron-left"></use></svg>
+    <span>ثبت‌نام بیمار</span>
+</div>
+<div class="topbar">
+    <h1><svg class="icon"><use href="#i-user"></use></svg> ثبت‌نام بیمار جدید</h1>
+</div>
+<p class="page-intro">بیمار را از سامانه حسابداری (فقط-خواندنی) جستجو و انتخاب کنید، یا در صورت نبودن، اطلاعات را به‌صورت دستی وارد نمایید.</p>
 
 <div class="grid grid-2">
     <div class="card">
-        <h3 style="margin-top:0;">۱) از سامانه حسابداری</h3>
-        <p class="muted" style="font-size:13px;">بیمار را از پایگاه داده‌ی حسابداری (فقط-خواندنی) جستجو و انتخاب کنید.</p>
-        <input type="text" id="acc-search" placeholder="نام، کدملی یا موبایل...">
-        <div id="acc-results" style="margin-top:12px;"></div>
+        <div class="section-title">
+            <svg class="icon"><use href="#i-search"></use></svg>
+            <span>۱) از سامانه حسابداری</span>
+            <span class="section-sub">جستجوی فقط-خواندنی در پایگاه حسابداری</span>
+        </div>
+        <div class="fld">
+            <label>جستجوی بیمار</label>
+            <input type="text" id="acc-search" placeholder="نام، کدملی یا موبایل...">
+            <span class="help">با تایپ، نتایج به‌صورت زنده نمایش داده می‌شوند.</span>
+        </div>
+        <div id="acc-results" style="margin-top:var(--s4);"></div>
     </div>
 
     <div class="card">
-        <h3 style="margin-top:0;">۲) ثبت دستی</h3>
-        <p class="muted" style="font-size:13px;">اگر بیمار در سامانه حسابداری نیست.</p>
+        <div class="section-title">
+            <svg class="icon"><use href="#i-edit"></use></svg>
+            <span>۲) ثبت دستی</span>
+            <span class="section-sub">اگر بیمار در سامانه حسابداری نیست</span>
+        </div>
         <form method="post" action="{{ url_for('patients.enroll_manual') }}">
-            <label>نام و نام خانوادگی *</label>
-            <input type="text" name="full_name" required>
-            <div class="row">
-                <div style="flex:1;"><label>کدملی</label><input type="text" name="national_id"></div>
-                <div style="flex:1;"><label>موبایل</label><input type="text" name="phone_number" placeholder="09..."></div>
+            <div class="fld">
+                <label>نام و نام خانوادگی <span class="req">*</span></label>
+                <input type="text" name="full_name" required>
             </div>
             <div class="row">
-                <div style="flex:1;"><label>جنسیت</label>
+                <div class="fld" style="flex:1;">
+                    <label>کدملی</label>
+                    <input type="text" name="national_id">
+                </div>
+                <div class="fld" style="flex:1;">
+                    <label>موبایل</label>
+                    <input type="text" name="phone_number" placeholder="09...">
+                </div>
+            </div>
+            <div class="row">
+                <div class="fld" style="flex:1;">
+                    <label>جنسیت</label>
                     <select name="gender"><option value="">—</option><option value="male">مرد</option><option value="female">زن</option></select>
                 </div>
-                <div style="flex:1;"><label>تاریخ تولد</label><input type="text" class="jdate" name="birthdate" placeholder="انتخاب تاریخ"></div>
+                <div class="fld" style="flex:1;">
+                    <label>تاریخ تولد</label>
+                    <input type="text" class="jdate" name="birthdate" placeholder="انتخاب تاریخ">
+                </div>
             </div>
-            <label>آدرس</label>
-            <textarea name="address" rows="2"></textarea>
-            <button class="btn" type="submit" style="margin-top:14px;">ثبت بیمار</button>
+            <div class="fld">
+                <label>آدرس</label>
+                <textarea name="address" rows="2"></textarea>
+            </div>
+            <button class="btn" type="submit" style="margin-top:var(--s4);"><svg class="icon"><use href="#i-plus"></use></svg> ثبت بیمار</button>
         </form>
     </div>
 </div>
@@ -42,30 +74,31 @@ searchInput.addEventListener('input', () => {
     clearTimeout(timer);
     timer = setTimeout(doSearch, 350);
 });
+function escapeHtml(s){ return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 async function doSearch() {
     const q = searchInput.value.trim();
-    resultsBox.innerHTML = '<div class="muted">در حال جستجو...</div>';
+    resultsBox.innerHTML = '<div class="empty-mini"><span class="spinner"></span> در حال جستجو...</div>';
     try {
         const res = await fetch(`{{ url_for('patients.search_accounting') }}?q=${encodeURIComponent(q)}`);
         const data = await res.json();
-        if (!data.results.length) { resultsBox.innerHTML = '<div class="empty">نتیجه‌ای نیست</div>'; return; }
-        let html = '<table><tbody>';
+        if (!data.results.length) { resultsBox.innerHTML = '<div class="empty"><svg class="icon"><use href="#i-search"></use></svg><div>نتیجه‌ای نیست</div></div>'; return; }
+        let html = '<div class="table-wrap"><table><tbody>';
         for (const p of data.results) {
             const enrolled = p.already_enrolled;
             html += `<tr>
-                <td>${p.full_name}</td>
-                <td class="muted">${p.national_id || '—'}</td>
-                <td class="muted">${p.phone_number || '—'}</td>
+                <td>${escapeHtml(p.full_name)}</td>
+                <td class="muted nums">${p.national_id ? escapeHtml(p.national_id) : '—'}</td>
+                <td class="muted nums">${p.phone_number ? escapeHtml(p.phone_number) : '—'}</td>
                 <td>${enrolled
-                    ? '<span class="badge badge-ok">ثبت‌نام شده</span>'
+                    ? '<span class="badge badge-ok"><svg class="icon icon-sm"><use href="#i-check"></use></svg> ثبت‌نام شده</span>'
                     : `<form method="post" action="{{ url_for('patients.enroll_accounting') }}" style="margin:0;">
                          <input type="hidden" name="accounting_patient_id" value="${p.id}">
-                         <button class="btn btn-sm" type="submit">ثبت‌نام</button></form>`}
+                         <button class="btn btn-sm" type="submit"><svg class="icon icon-sm"><use href="#i-plus"></use></svg> ثبت‌نام</button></form>`}
                 </td></tr>`;
         }
-        html += '</tbody></table>';
+        html += '</tbody></table></div>';
         resultsBox.innerHTML = html;
-    } catch(e) { resultsBox.innerHTML = '<div class="flash">خطا در اتصال به سامانه حسابداری</div>'; }
+    } catch(e) { resultsBox.innerHTML = '<div class="alert-banner alert-warn"><svg class="icon"><use href="#i-alert"></use></svg> خطا در اتصال به سامانه حسابداری</div>'; }
 }
 doSearch();
 </script>

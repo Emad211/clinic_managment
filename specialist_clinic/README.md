@@ -43,6 +43,7 @@ $env:ACCOUNTING_DB_PATH = "C:\path\to\clinic_new.db"
 .\.venv\Scripts\python.exe -m pip install pyinstaller
 .\.venv\Scripts\pyinstaller --noconfirm --onefile --noconsole `
   --add-data "src/templates;src/templates" `
+  --add-data "src/static;src/static" `
   --add-data "src/adapters/sqlite/schema.sql;src/adapters/sqlite" `
   --name SpecialistClinic start.py
 ```

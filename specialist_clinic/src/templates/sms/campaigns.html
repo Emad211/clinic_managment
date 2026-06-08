@@ -1,81 +1,113 @@
 {% extends "base.html" %}
 {% block title %}کمپین پیامکی{% endblock %}
 {% block content %}
-<div class="topbar"><h1>📣 کمپین‌های پیامکی</h1></div>
+<div class="topbar">
+    <h1><svg class="icon icon-lg"><use href="#i-megaphone"></use></svg> کمپین‌های پیامکی</h1>
+</div>
 
 {% if not provider_ready %}
-<div class="flash">⚠️ پنل پیامک تنظیم نشده — پیام‌ها در حالت شبیه‌سازی ثبت می‌شوند. از «مدیریت ← تنظیمات» کلید API مدیانا را وارد کنید.</div>
+<div class="alert-banner alert-warn">
+    <svg class="icon"><use href="#i-alert"></use></svg>
+    <span>پنل پیامک تنظیم نشده — پیام‌ها در حالت شبیه‌سازی ثبت می‌شوند. از «مدیریت ← تنظیمات» کلید API مدیانا را وارد کنید.</span>
+</div>
 {% endif %}
 
 <div class="grid grid-2">
     <div class="card">
-        <div class="section-title">➕ ساخت کمپین جدید</div>
+        <div class="section-title"><svg class="icon"><use href="#i-plus"></use></svg> ساخت کمپین جدید</div>
         <form method="post" action="{{ url_for('sms.new_campaign') }}" id="campaign-form">
-            <label>نام کمپین *</label><input type="text" name="name" required>
+            <div class="fld">
+                <label>نام کمپین <span class="req">*</span></label>
+                <input type="text" name="name" required>
+            </div>
 
-            <label>نوع کمپین *</label>
-            <select name="campaign_type" id="campaign_type">
-                {% for k, v in campaign_types.items() %}<option value="{{ k }}">{{ v }}</option>{% endfor %}
-            </select>
+            <div class="fld">
+                <label>نوع کمپین <span class="req">*</span></label>
+                <select name="campaign_type" id="campaign_type">
+                    {% for k, v in campaign_types.items() %}<option value="{{ k }}">{{ v }}</option>{% endfor %}
+                </select>
+            </div>
 
-            <div id="credit-box" style="display:none;background:var(--bg2);padding:12px;border-radius:10px;margin-top:10px;border:1px solid var(--line);">
+            <div id="credit-box" class="card-soft" style="display:none;margin-top:var(--s3);">
+                <div class="flex items-center gap-2 c-violet text-sm" style="margin-bottom:var(--s2);">
+                    <svg class="icon icon-sm"><use href="#i-gift"></use></svg>
+                    <strong>اعتبار کیف پول</strong>
+                </div>
                 <div class="row">
                     <div class="field"><label>مبلغ اعتبار هر بیمار (تومان)</label><input type="number" id="credit_amount" name="credit_amount" value="0"></div>
                     <div class="field"><label>اعتبار تا چند روز معتبر است؟</label><input type="number" name="credit_expires_days" placeholder="مثلاً 30"></div>
                 </div>
-                <div class="muted" style="font-size:12px;margin-top:6px;">💡 اعتبار به کیف پول بیمار اضافه می‌شود. در متن از <code>{credit}</code> و <code>{balance}</code> استفاده کنید — جایگزین قانونیِ «تخفیف/رایگان».</div>
+                <div class="help" style="margin-top:var(--s2);">
+                    <svg class="icon icon-sm"><use href="#i-info"></use></svg>
+                    اعتبار به کیف پول بیمار اضافه می‌شود. در متن از <code>{credit}</code> و <code>{balance}</code> استفاده کنید — جایگزین قانونیِ «تخفیف/رایگان».
+                </div>
             </div>
 
-            <label>گروه هدف *</label>
-            <select name="segment" id="segment" required>
-                {% for key, label in segments.items() %}<option value="{{ key }}">{{ label }} ({{ seg_sizes[key]|fa_num }} نفر)</option>{% endfor %}
-            </select>
+            <div class="fld">
+                <label>گروه هدف <span class="req">*</span></label>
+                <select name="segment" id="segment" required>
+                    {% for key, label in segments.items() %}<option value="{{ key }}">{{ label }} ({{ seg_sizes[key]|fa_num }} نفر)</option>{% endfor %}
+                </select>
+            </div>
 
-            <label>متن پیام * <span class="muted">— متغیرها: {name}، {credit}، {balance}</span></label>
-            <textarea name="body" id="body" rows="3" required placeholder="سلام {name} عزیز، ..."></textarea>
+            <div class="fld">
+                <label>متن پیام <span class="req">*</span> <span class="muted text-xs">— متغیرها: {name}، {credit}، {balance}</span></label>
+                <textarea name="body" id="body" rows="3" required placeholder="سلام {name} عزیز، ..."></textarea>
+            </div>
 
-            <div id="compliance" style="margin-top:8px;"></div>
+            <div id="compliance" style="margin-top:var(--s2);"></div>
 
-            <div class="card" style="margin-top:10px;background:var(--bg2);">
-                <div class="muted" style="font-size:12px;margin-bottom:6px;">پیش‌نمایش زنده</div>
+            <div class="card-soft" style="margin-top:var(--s3);">
+                <div class="muted text-xs" style="margin-bottom:var(--s2);">پیش‌نمایش زنده</div>
                 <div id="preview" style="font-size:14px;min-height:20px;">—</div>
-                <div class="muted" style="font-size:11px;margin-top:8px;" id="meta"></div>
+                <div class="muted text-xs nums" style="margin-top:var(--s2);" id="meta"></div>
             </div>
 
-            <div class="row" style="margin-top:10px;">
+            <div class="row" style="margin-top:var(--s3);">
                 <div class="field"><label>زمان‌بندی - تاریخ (خالی = فوری)</label><input type="text" class="jdate" name="scheduled_date"></div>
                 <div class="field"><label>ساعت</label><input type="text" name="scheduled_time" value="09:00"></div>
             </div>
-            <button class="btn" type="submit" style="margin-top:14px;">ساخت کمپین</button>
+            <button class="btn btn-block" type="submit" style="margin-top:var(--s4);"><svg class="icon"><use href="#i-megaphone"></use></svg> ساخت کمپین</button>
         </form>
     </div>
 
     <div class="card">
-        <div class="section-title">📋 قالب‌های آماده</div>
+        <div class="section-title"><svg class="icon"><use href="#i-clipboard"></use></svg> قالب‌های آماده</div>
         {% for t in templates %}
-            <div style="padding:9px 0;border-bottom:1px solid var(--line);">
+            <div class="list-row" style="flex-direction:column;align-items:stretch;gap:var(--s2);">
                 <strong>{{ t.name }}</strong>
-                <div class="muted" style="font-size:13px;">{{ t.body }}</div>
-                <button class="btn btn-sm btn-ghost" style="margin-top:6px;" onclick="useTemplate(this)" data-body="{{ t.body }}" type="button">استفاده</button>
+                <div class="muted text-sm">{{ t.body }}</div>
+                <button class="btn btn-sm btn-ghost ms-auto" onclick="useTemplate(this)" data-body="{{ t.body }}" type="button"><svg class="icon icon-sm"><use href="#i-check"></use></svg> استفاده</button>
             </div>
         {% endfor %}
-        <form method="post" action="{{ url_for('sms.add_template') }}" style="margin-top:12px;">
-            <label>قالب جدید</label>
-            <input type="text" name="name" placeholder="نام قالب" required>
-            <textarea name="body" rows="2" placeholder="متن با {name}" style="margin-top:8px;" required></textarea>
-            <button class="btn btn-sm" type="submit" style="margin-top:8px;">ذخیره قالب</button>
+        <form method="post" action="{{ url_for('sms.add_template') }}" style="margin-top:var(--s3);">
+            <div class="fld">
+                <label>قالب جدید</label>
+                <input type="text" name="name" placeholder="نام قالب" required>
+            </div>
+            <div class="fld">
+                <textarea name="body" rows="2" placeholder="متن با {name}" required></textarea>
+            </div>
+            <button class="btn btn-sm" type="submit" style="margin-top:var(--s2);"><svg class="icon icon-sm"><use href="#i-save"></use></svg> ذخیره قالب</button>
         </form>
-        <div class="muted" style="font-size:12px;margin-top:14px;line-height:1.9;">
-            <strong>⚖️ نکته قانونی:</strong> کلمات «رایگان» و «تخفیف» توسط اپراتور مسدود می‌شوند.
-            این سیستم به‌صورت خودکار آن‌ها را با معادل مجاز («اعتبار هدیه»، «اعتبار ویژه») جایگزین می‌کند
-            و پیشنهاد می‌شود پروموشن را به‌صورت «اعتبار کیف پول» اجرا کنید.
+        <div class="card-soft" style="margin-top:var(--s4);">
+            <div class="flex items-center gap-2 c-info text-sm" style="margin-bottom:var(--s2);">
+                <svg class="icon icon-sm"><use href="#i-shield"></use></svg>
+                <strong>نکته قانونی</strong>
+            </div>
+            <div class="muted text-sm" style="line-height:1.9;">
+                کلمات «رایگان» و «تخفیف» توسط اپراتور مسدود می‌شوند.
+                این سیستم به‌صورت خودکار آن‌ها را با معادل مجاز («اعتبار هدیه»، «اعتبار ویژه») جایگزین می‌کند
+                و پیشنهاد می‌شود پروموشن را به‌صورت «اعتبار کیف پول» اجرا کنید.
+            </div>
         </div>
     </div>
 </div>
 
 <div class="card">
-    <div class="section-title">کمپین‌ها</div>
+    <div class="section-title"><svg class="icon"><use href="#i-list-checks"></use></svg> کمپین‌ها</div>
     {% if campaigns %}
+    <div class="table-wrap">
     <table>
         <thead><tr><th>نام</th><th>نوع</th><th>گروه هدف</th><th>وضعیت</th><th>ارسال</th><th></th></tr></thead>
         <tbody>
@@ -90,13 +122,14 @@
                     {% elif c.status=='sending' %}<span class="badge badge-warn">در حال ارسال</span>
                     {% else %}<span class="badge badge-muted">پیش‌نویس</span>{% endif %}
                 </td>
-                <td>{{ c.sent_count|fa_num }} / {{ c.total_recipients|fa_num }}</td>
-                <td><a class="btn btn-sm" href="{{ url_for('sms.campaign_detail', cid=c.id) }}">جزئیات</a></td>
+                <td class="nums">{{ c.sent_count|fa_num }} / {{ c.total_recipients|fa_num }}</td>
+                <td><a class="btn btn-sm btn-ghost" href="{{ url_for('sms.campaign_detail', cid=c.id) }}"><svg class="icon icon-sm"><use href="#i-chevron-left"></use></svg> جزئیات</a></td>
             </tr>
         {% endfor %}
         </tbody>
     </table>
-    {% else %}<div class="empty">هنوز کمپینی ساخته نشده</div>{% endif %}
+    </div>
+    {% else %}<div class="empty"><svg class="icon"><use href="#i-megaphone"></use></svg><div>هنوز کمپینی ساخته نشده</div></div>{% endif %}
 </div>
 
 <script>
@@ -124,7 +157,7 @@ async function doCheck(){
         const res=await fetch("{{ url_for('sms.api_check') }}",{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
         const d=await res.json();
         if(d.banned && d.banned.length){
-            $compliance.innerHTML = `<div class="alert-banner">🚫 کلمات مسدود: ${d.banned.join('، ')} — هنگام ذخیره به‌صورت خودکار اصلاح می‌شوند.</div>`;
+            $compliance.innerHTML = `<div class="alert-banner alert-warn"><svg class="icon"><use href="#i-alert"></use></svg><span>کلمات مسدود: ${d.banned.join('، ')} — هنگام ذخیره به‌صورت خودکار اصلاح می‌شوند.</span></div>`;
         } else { $compliance.innerHTML=''; }
         $preview.textContent = d.preview || '—';
         $meta.textContent = `گیرندگان: ${d.recipients.toLocaleString('fa')} · ${d.char_count.toLocaleString('fa')} کاراکتر · ${d.sms_parts.toLocaleString('fa')} پیامک`;

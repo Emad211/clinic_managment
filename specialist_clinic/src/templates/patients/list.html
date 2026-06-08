@@ -2,35 +2,44 @@
 {% block title %}بیماران{% endblock %}
 {% block content %}
 <div class="topbar">
-    <h1>بیماران مزمن</h1>
-    <a class="btn" href="{{ url_for('patients.enroll') }}">➕ ثبت‌نام بیمار</a>
+    <h1><svg class="icon"><use href="#i-users"></use></svg> بیماران مزمن</h1>
+    <a class="btn" href="{{ url_for('patients.enroll') }}"><svg class="icon"><use href="#i-plus"></use></svg> ثبت‌نام بیمار</a>
 </div>
 
 <div class="card">
+    <div class="section-title"><svg class="icon"><use href="#i-search"></use></svg> جستجوی بیمار</div>
     <form class="row" method="get">
-        <div style="flex:1;"><input type="text" name="q" value="{{ q }}" placeholder="جستجو بر اساس نام، کدملی یا موبایل..."></div>
-        <button class="btn" type="submit">جستجو</button>
+        <div class="field" style="flex:1;">
+            <input type="text" name="q" value="{{ q }}" placeholder="جستجو بر اساس نام، کدملی یا موبایل...">
+        </div>
+        <button class="btn" type="submit"><svg class="icon"><use href="#i-search"></use></svg> جستجو</button>
     </form>
 </div>
 
 <div class="card">
+    <div class="section-title"><svg class="icon"><use href="#i-list-checks"></use></svg> فهرست بیماران</div>
     {% if patients %}
+    <div class="table-wrap">
     <table>
         <thead><tr><th>نام</th><th>کدملی</th><th>موبایل</th><th>وضعیت لینک</th><th></th></tr></thead>
         <tbody>
         {% for p in patients %}
             <tr>
                 <td>{{ p.full_name }}</td>
-                <td>{{ p.national_id or '—' }}</td>
-                <td>{{ p.phone_number or '—' }}</td>
+                <td class="nums">{{ p.national_id or '—' }}</td>
+                <td class="nums">{{ p.phone_number or '—' }}</td>
                 <td>{% if p.accounting_patient_id %}<span class="badge badge-ok">متصل به حسابداری</span>{% else %}<span class="badge badge-muted">مستقل</span>{% endif %}</td>
-                <td><a class="btn btn-sm" href="{{ url_for('patients.detail', pid=p.id) }}">پرونده</a></td>
+                <td><a class="btn btn-sm btn-ghost" href="{{ url_for('patients.detail', pid=p.id) }}"><svg class="icon icon-sm"><use href="#i-user"></use></svg> پرونده</a></td>
             </tr>
         {% endfor %}
         </tbody>
     </table>
+    </div>
     {% else %}
-    <div class="empty">بیماری یافت نشد. برای شروع، یک بیمار ثبت‌نام کنید.</div>
+    <div class="empty">
+        <svg class="icon"><use href="#i-users"></use></svg>
+        <div>بیماری یافت نشد. برای شروع، یک بیمار ثبت‌نام کنید.</div>
+    </div>
     {% endif %}
 </div>
 {% endblock %}

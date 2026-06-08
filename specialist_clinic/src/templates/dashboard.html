@@ -3,49 +3,76 @@
 {% block title %}داشبورد{% endblock %}
 {% block content %}
 <div class="topbar">
-    <h1>داشبورد</h1>
+    <h1><svg class="icon icon-lg"><use href="#i-dashboard"></use></svg> داشبورد</h1>
     <div class="row">
-        <a class="btn" href="{{ url_for('patients.enroll') }}">➕ ثبت‌نام بیمار</a>
-        <a class="btn btn-ghost" href="{{ url_for('sms.campaigns') }}">📣 کمپین</a>
+        <a class="btn" href="{{ url_for('patients.enroll') }}"><svg class="icon"><use href="#i-plus"></use></svg> ثبت‌نام بیمار</a>
+        <a class="btn btn-ghost" href="{{ url_for('sms.campaigns') }}"><svg class="icon"><use href="#i-megaphone"></use></svg> کمپین</a>
     </div>
 </div>
 
 {% if not bridge_ok %}
-<div class="flash">⚠️ اتصال به دیتابیس حسابداری برقرار نیست — ارقام درآمد نمایش داده نمی‌شوند (ثبت دستی همچنان کار می‌کند).</div>
+<div class="alert-banner alert-warn">
+    <svg class="icon"><use href="#i-alert"></use></svg>
+    اتصال به دیتابیس حسابداری برقرار نیست — ارقام درآمد نمایش داده نمی‌شوند (ثبت دستی همچنان کار می‌کند).
+</div>
 {% endif %}
 
 <!-- OPERATIONAL KPIs -->
 <div class="grid grid-4">
-    <div class="card kpi"><div class="ic">👥</div><div class="num">{{ stats.patients|fa_num }}</div><div class="label">بیماران مزمن</div></div>
-    <div class="card kpi"><div class="ic">🗓️</div><div class="num">{{ stats.appointments_open|fa_num }}</div><div class="label">نوبت‌های پیش‌رو</div></div>
-    <div class="card kpi"><div class="ic">🔔</div><div class="num">{{ stats.followups_open|fa_num }}</div><div class="label">پیگیری‌های باز</div></div>
-    <div class="card kpi"><div class="ic">💳</div><div class="num">{{ wallet_outstanding|fa_num }}</div><div class="label">اعتبار کیف پول در گردش (تومان)</div></div>
+    <div class="card kpi">
+        <div class="ic"><svg class="icon"><use href="#i-users"></use></svg></div>
+        <div class="num">{{ stats.patients|fa_num }}</div>
+        <div class="label">بیماران مزمن</div>
+    </div>
+    <div class="card kpi kpi-info">
+        <div class="ic"><svg class="icon"><use href="#i-calendar"></use></svg></div>
+        <div class="num">{{ stats.appointments_open|fa_num }}</div>
+        <div class="label">نوبت‌های پیش‌رو</div>
+    </div>
+    <div class="card kpi kpi-warn">
+        <div class="ic"><svg class="icon"><use href="#i-bell"></use></svg></div>
+        <div class="num">{{ stats.followups_open|fa_num }}</div>
+        <div class="label">پیگیری‌های باز</div>
+    </div>
+    <div class="card kpi kpi-violet">
+        <div class="ic"><svg class="icon"><use href="#i-wallet"></use></svg></div>
+        <div class="num">{{ wallet_outstanding|fa_num }}</div>
+        <div class="label">اعتبار کیف پول در گردش (تومان)</div>
+    </div>
 </div>
 
 {% if revenue.available %}
 <!-- REVENUE -->
 <div class="card">
-    <div class="section-title">💰 درآمد بیماران مطب تخصصی <span class="muted" style="font-weight:400;font-size:12px;">— از سامانه حسابداری (فاکتورهای بسته: ویزیت + تزریق + کار عملی)</span></div>
+    <div class="section-title">
+        <svg class="icon"><use href="#i-banknote"></use></svg>
+        درآمد بیماران مطب تخصصی
+        <span class="section-sub">— از سامانه حسابداری (فاکتورهای بسته: ویزیت + تزریق + کار عملی)</span>
+    </div>
     <div class="grid grid-4">
-        <div class="card kpi" style="margin:0;background:linear-gradient(160deg,#13371f,#0f2418);">
-            <div class="ic">📈</div><div class="num" style="color:#4ade80;">{{ revenue.month.total|fa_num }}</div>
+        <div class="card kpi kpi-ok" style="margin:0;">
+            <div class="ic"><svg class="icon"><use href="#i-trending-up"></use></svg></div>
+            <div class="num c-ok">{{ revenue.month.total|fa_num }}</div>
             <div class="label">درآمد این ماه (تومان)</div>
         </div>
         <div class="card kpi" style="margin:0;">
-            <div class="ic">Σ</div><div class="num">{{ revenue.total.total|fa_num }}</div>
+            <div class="ic"><svg class="icon"><use href="#i-sigma"></use></svg></div>
+            <div class="num">{{ revenue.total.total|fa_num }}</div>
             <div class="label">درآمد کل (تومان)</div>
         </div>
-        <div class="card kpi" style="margin:0;background:linear-gradient(160deg,#2a1f4a,#1a1530);">
-            <div class="ic">📣</div><div class="num" style="color:#a78bfa;">{{ revenue.campaigns.attributed_total|fa_num }}</div>
+        <div class="card kpi kpi-violet" style="margin:0;">
+            <div class="ic"><svg class="icon"><use href="#i-megaphone"></use></svg></div>
+            <div class="num c-violet">{{ revenue.campaigns.attributed_total|fa_num }}</div>
             <div class="label">درآمد منتسب به کمپین‌ها (تومان)</div>
         </div>
-        <div class="card kpi" style="margin:0;">
-            <div class="ic">🎁</div><div class="num" style="color:#fbbf24;">{{ revenue.campaigns.credit_distributed|fa_num }}</div>
+        <div class="card kpi kpi-warn" style="margin:0;">
+            <div class="ic"><svg class="icon"><use href="#i-gift"></use></svg></div>
+            <div class="num c-warn">{{ revenue.campaigns.credit_distributed|fa_num }}</div>
             <div class="label">اعتبار توزیع‌شده در کمپین‌ها</div>
         </div>
     </div>
 
-    <div class="row" style="margin-top:14px;font-size:13px;" >
+    <div class="row wrap" style="margin-top:var(--s4);font-size:13px;">
         <span class="muted">ترکیب درآمد کل:</span>
         <span class="badge badge-info">ویزیت: {{ revenue.total.visits|fa_num }}</span>
         <span class="badge badge-info">تزریق: {{ revenue.total.injections|fa_num }}</span>
@@ -53,16 +80,20 @@
         <span class="badge badge-muted">{{ revenue.total.invoices|fa_num }} فاکتور بسته · {{ revenue.enrolled|fa_num }} بیمار متصل</span>
     </div>
 
-    <div style="margin-top:18px;">
-        <div class="muted" style="font-size:13px;margin-bottom:6px;">روند درآمد ۳۰ روز اخیر (تومان)</div>
+    <div style="margin-top:var(--s5);">
+        <div class="muted flex items-center gap-2" style="font-size:13px;margin-bottom:var(--s2);">
+            <svg class="icon icon-sm"><use href="#i-bar-chart"></use></svg>
+            روند درآمد ۳۰ روز اخیر (تومان)
+        </div>
         <canvas id="revChart" height="80"></canvas>
     </div>
 </div>
 
 <!-- CAMPAIGN PERFORMANCE -->
 <div class="card">
-    <div class="section-title">📣 عملکرد کمپین‌ها</div>
+    <div class="section-title"><svg class="icon"><use href="#i-megaphone"></use></svg> عملکرد کمپین‌ها</div>
     {% if revenue.campaigns.rows %}
+    <div class="table-wrap">
     <table>
         <thead><tr><th>کمپین</th><th>نوع</th><th>گیرنده (متصل)</th><th>اعتبار توزیعی</th><th>درآمد منتسب</th><th>فاکتور</th></tr></thead>
         <tbody>
@@ -70,24 +101,26 @@
             <tr>
                 <td><a href="{{ url_for('sms.campaign_detail', cid=c.id) }}">{{ c.name }}</a></td>
                 <td>{% if c.type=='wallet_credit' %}<span class="badge badge-violet">اعتبار</span>{% elif c.type=='reminder' %}<span class="badge badge-info">یادآوری</span>{% else %}<span class="badge badge-muted">اطلاع‌رسانی</span>{% endif %}</td>
-                <td>{{ c.recipients|fa_num }}</td>
-                <td>{{ c.credit|fa_num }}</td>
-                <td><strong style="color:#4ade80;">{{ c.revenue|fa_num }}</strong></td>
-                <td class="muted">{{ c.invoices|fa_num }}</td>
+                <td class="nums">{{ c.recipients|fa_num }}</td>
+                <td class="nums">{{ c.credit|fa_num }}</td>
+                <td class="nums"><strong class="c-ok">{{ c.revenue|fa_num }}</strong></td>
+                <td class="muted nums">{{ c.invoices|fa_num }}</td>
             </tr>
         {% endfor %}
         </tbody>
     </table>
-    <div class="muted" style="font-size:11.5px;margin-top:10px;">«درآمد منتسب» = درآمد ثبت‌شده‌ی گیرندگانِ متصل به حسابداری، از تاریخ ارسال کمپین به بعد.</div>
-    {% else %}<div class="empty">هنوز کمپینی ارسال نشده</div>{% endif %}
+    </div>
+    <div class="muted help" style="margin-top:var(--s3);">«درآمد منتسب» = درآمد ثبت‌شده‌ی گیرندگانِ متصل به حسابداری، از تاریخ ارسال کمپین به بعد.</div>
+    {% else %}<div class="empty"><svg class="icon"><use href="#i-megaphone"></use></svg><div>هنوز کمپینی ارسال نشده</div></div>{% endif %}
 </div>
 {% endif %}
 
 <!-- UPCOMING + RECENT -->
 <div class="grid grid-2">
     <div class="card">
-        <div class="section-title">🗓️ نوبت‌های پیش‌رو</div>
+        <div class="section-title"><svg class="icon"><use href="#i-calendar"></use></svg> نوبت‌های پیش‌رو</div>
         {% if upcoming %}
+        <div class="table-wrap">
         <table>
             <tbody>
             {% for a in upcoming %}
@@ -99,11 +132,13 @@
             {% endfor %}
             </tbody>
         </table>
-        {% else %}<div class="empty">نوبت پیش‌رویی نیست</div>{% endif %}
+        </div>
+        {% else %}<div class="empty"><svg class="icon"><use href="#i-calendar"></use></svg><div>نوبت پیش‌رویی نیست</div></div>{% endif %}
     </div>
     <div class="card">
-        <div class="section-title">🆕 بیماران اخیر</div>
+        <div class="section-title"><svg class="icon"><use href="#i-user"></use></svg> بیماران اخیر</div>
         {% if recent_patients %}
+        <div class="table-wrap">
         <table>
             <tbody>
             {% for p in recent_patients %}
@@ -115,7 +150,8 @@
             {% endfor %}
             </tbody>
         </table>
-        {% else %}<div class="empty">بیماری ثبت نشده</div>{% endif %}
+        </div>
+        {% else %}<div class="empty"><svg class="icon"><use href="#i-users"></use></svg><div>بیماری ثبت نشده</div></div>{% endif %}
     </div>
 </div>
 
@@ -124,12 +160,13 @@
 const rev = {{ revenue.trend|tojson }};
 const el = document.getElementById('revChart');
 if (el){
+    const T = window.CLINIC_THEME || {};
     new Chart(el, {
         type:'bar',
         data:{ labels:rev.labels, datasets:[{ label:'درآمد', data:rev.values,
-            backgroundColor:'rgba(34,197,94,.5)', borderColor:'#22c55e', borderWidth:1 }] },
+            backgroundColor:'rgba(34,197,94,.5)', borderColor:(T.ok||'#22c55e'), borderWidth:1 }] },
         options:{ plugins:{legend:{display:false}},
-            scales:{ x:{ticks:{color:'#92a2c0',maxTicksLimit:10}}, y:{ticks:{color:'#92a2c0'}} } }
+            scales:{ x:{ticks:{color:(T.tick||'#92a2c0'),maxTicksLimit:10}}, y:{ticks:{color:(T.tick||'#92a2c0')}} } }
     });
 }
 </script>
