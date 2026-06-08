@@ -1,0 +1,96 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Repository layout: two independent apps
+
+This repo holds **two separate Flask + SQLite desktop apps** for an Iranian clinic. They share the same architecture and conventions but run as different processes on different ports with different databases. They are linked only by patient `national_id` through a strictly read-only bridge.
+
+| App | Path | Purpose | Port | Database |
+|-----|------|---------|------|----------|
+| **Hesabdari (Accounting)** | `webapp/` | Reception, invoicing, visits, injections, procedures, consumables, payroll, reports | 8080 | `webapp/clinic_new.db` |
+| **Specialist Clinic** | `specialist_clinic/` | Chronic-disease management (diabetes, hypertension): vitals tracking, appointments, follow-up worklist, SMS campaigns, ADA clinical decision support | 8090 | `specialist_clinic/specialist.db` |
+
+`specialist_clinic` reads patient demographics and revenue **live and read-only** from the accounting DB via `specialist_clinic/src/adapters/accounting_bridge.py` (opens `clinic_new.db` with `sqlite3` URI `mode=ro`). **Never write to the accounting DB from the specialist app** — the bridge is intentionally read-only and any write must stay impossible. The path defaults to `../webapp/clinic_new.db` and is overridable with the `ACCOUNTING_DB_PATH` env var.
+
+Most domain comments and UI strings are in Persian. The product is RTL/Jalali throughout.
+
+## Running
+
+**Specialist Clinic** (working venv with Python 3.13):
+```powershell
+cd specialist_clinic
+.\.venv\Scripts\python.exe start.py        # http://127.0.0.1:8090 — login admin/admin
+```
+
+**Accounting** (`webapp`):
+```powershell
+cd webapp
+python start.py                            # http://127.0.0.1:8080  (or run.bat)
+```
+Both `start.py` scripts open a browser tab after ~1.5s and run with `debug=False`, `use_reloader=False`.
+
+**Important venv caveat:** `webapp/.venv` is broken (built against a since-deleted miniconda) — do not rely on it; use a system Python or a fresh venv for `webapp`. `specialist_clinic/.venv` (Python 3.13) is the known-good interpreter and is what `.claude/launch.json` points at.
+
+### Dependencies
+- `specialist_clinic/requirements.txt` is complete: `Flask`, `bcrypt`, `jdatetime` (SMS uses only stdlib `urllib`).
+- `webapp/requirements.txt` lists `flask`, `jdatetime`, `pytest` but is **incomplete** — `webapp` also imports `bcrypt` and `werkzeug` at runtime (`src/services/auth_service.py`). Install those too.
+
+### Tests
+`pytest` is declared in `webapp/requirements.txt` but **there are currently no test files** in the repo. There is no test suite to run; verify changes by exercising the app. The Flask factories accept a `test_config` with `TestConfig` (`DATABASE_PATH=':memory:'`).
+
+### CLI / seeding
+- `webapp`: `flask --app src.app init-db` and `flask --app src.app create-user <username> <password> [role]` (registered in `webapp/src/app.py`). Helper scripts: `webapp/scripts/create_doctor_user.py`, `webapp/scripts/seed_clinic_data.py`.
+- `specialist_clinic`: `.\.venv\Scripts\python.exe seed_demo_data.py` — idempotent seed of **10 demo patients** (national IDs `TEST0001..0010`) with 2 years of vitals/meds/flags spanning diverse clinical profiles. **Use these patients for all dev/testing.**
+
+### Building the .exe (PyInstaller)
+Both apps ship as a single Windows `.exe` that creates its DB and `backups/` next to the executable.
+- `webapp`: `pyinstaller HesabdariSib.spec` (bundles `src/templates`, `src/static`, and `schema.sql`).
+- `specialist_clinic`: see the `pyinstaller` command in `specialist_clinic/README.md`; pass `ACCOUNTING_DB_PATH` to point the build at the real accounting DB.
+
+Both `create_app` factories detect frozen mode via `sys.frozen` / `sys._MEIPASS` and resolve `templates/`, `static/`, and `schema.sql` accordingly. Keep that dual source/frozen path handling intact when touching app/config bootstrap or adding bundled data files.
+
+## Architecture
+
+Both apps use the same strict layering — respect it when adding features:
+
+```
+src/api/        Flask Blueprints — routes, request/response, auth checks only
+src/services/   Business logic (the only place rules/calculations live)
+src/adapters/sqlite/   Repositories — all SQL lives here; one repo per aggregate
+src/domain/     Plain domain models / dataclasses
+src/common/     Cross-cutting utils: jalali.py, utils.py, validators.py
+src/config/settings.py   Config (DB path, ports, backup folder)
+```
+
+A route should call a service; a service should call a repository. Do not put SQL in routes or services — add or extend a repo in `src/adapters/sqlite/`.
+
+### Database lifecycle (no migration framework)
+There is no Alembic/migrations tool. Instead:
+- `src/adapters/sqlite/schema.sql` is the source of truth and is **applied on first connection** (and is idempotent via `IF NOT EXISTS` / `INSERT OR IGNORE`), driven by `get_db()` in `src/adapters/sqlite/core.py`.
+- Schema changes to **existing** databases are made with **additive runtime migrations**: add an `_ensure_column(...)` call in `core.py` (`_ensure_*` in webapp, `_run_migrations` in specialist). Migrations run once per process and must be safe to re-run. Never assume a fresh DB.
+- In `specialist_clinic`, the ADA clinical-rule catalog is re-seeded idempotently on every startup from `core._run_migrations` → `clinical_rules_seed.seed_clinical_rules` (manager edits to rules are preserved). New seed data (`flag_catalog`, `drug_classes`, etc.) follows the same idempotent pattern.
+
+`webapp/clinic_new.db` **is committed to git** (despite `*.db` in `webapp/.gitignore`) — it carries real seeded data. Be deliberate about committing changes to it. `specialist.db` is not tracked.
+
+### Auth & roles
+- Passwords use `bcrypt`; legacy `werkzeug` hashes are transparently migrated to bcrypt on successful login (`webapp/src/services/auth_service.py`). After **5 failed attempts the account locks for 15 minutes**.
+- `webapp` has three roles — `manager` (`/manager`), `reception` (`/reception`), `doctor` (`/doctor`, plus a live "doctor room" backed by `doctor_room_state`). `specialist_clinic` logs in `admin/admin` (manager).
+- `g.user` is loaded in a `before_request` hook. Routes guard with the `login_required` decorator (`src/api/auth.py`) **plus an inline `if g.user['role'] != 'manager'` check** — there is no role decorator; follow the existing inline pattern.
+
+### Cross-cutting conventions (do not break these)
+- **Jalali dates everywhere.** Conversion via `src/common/jalali.py` + `src/common/utils.py`; exposed to templates as Jinja filters (`jalali_datetime`/`jalali`/`jalali_date`). UI date inputs are Jalali (`YYYY/MM/DD`) and converted to Gregorian server-side before storage.
+- **Persian digits in the UI** via the `fa_num` Jinja filter (adds thousands separators and converts `0-9` → `۰-۹`).
+- **Iran local time.** All timestamps are stored as Tehran local time (UTC+3:30), produced by `utils.iran_now()` (`datetime.utcnow() + offset`, OS-timezone-independent) or by SQLite `datetime('now','+3 hours','+30 minutes')`. Do not introduce naive `datetime.now()` or UTC timestamps.
+- **Manual shifts (webapp only).** Shifts (`morning`/`evening`/`night`) are switched manually by the user — there are **no automatic time boundaries**. Operational rows carry an explicit `work_date` (and `shift`) column rather than deriving the day from `DATE(timestamp)`, because a night shift can cross midnight. Use `utils.get_work_date_for_datetime()` / `g.user_shift_status`, not the calendar date, when attributing activity to a work day.
+- **Activity logging.** User actions are logged via `services/activity_logger.log_activity(...)` into `activity_logs`. Add a log call for new state-changing actions.
+- **Automatic backups.** A daemon thread (`services/scheduler.py`) copies the DB weekly (Saturday 03:00 Tehran) into `backups/`, keeping the last 4. It is started from `create_app` unless `TESTING`.
+
+### Specialist Clinic — domain specifics
+- **Clinical engines** live in `src/services/`: `rule_engine.py` (evaluates `clinical_rules.trigger_json` — a small all/any/not + leaf DSL — against patient "facts"), `followup_engine.py` (turns due rules into `followup_tasks`), `analytics_service.py` / `vitals_service.py` (risk/control scoring). The clinical thresholds are ADA-based; the authoritative spec is `specialist_clinic/docs/clinical_reference.md` and `specialist_clinic/ada_t2_rules.md`. When changing a threshold, update that doc **and** `vitals_service.THRESHOLDS` **and** `analytics_service.TARGETS` together. Decision support is advisory only ("suggestion, confirm with physician"); Red-Flag rules surface immediately.
+- **SMS** goes through Mediana (`src/services/sms/`): an abstract `provider` layer + `mediana_provider.py` (stdlib `urllib`, header `X-API-KEY`, `POST https://api.mediana.ir/sms/v1/send/sms`). With no API key configured it falls back to a `NullProvider` (simulated send). Keys/sending-number/message-type are stored in the `settings` table (Manager → Settings). `compliance.py` rewrites banned promo words automatically. Patient **wallet** credit (`wallet_repo.py`) is the lawful replacement for "discount/free".
+- **Offline by design:** front-end libraries (jQuery, persian-date, persian-datepicker, Chart.js) are vendored under `src/static/vendor/` — no CDNs. Date inputs with class `.jdate` get the datepicker wired up in `base.html`.
+
+## Dev gotchas
+- The preview/dev server runs with `debug=False`. Templates auto-reload in source mode, **but Python code changes require a full server restart** (stop + start) to take effect.
+- When adding a bundled file (template, static asset, schema), update the PyInstaller `datas` (in `webapp/HesabdariSib.spec` or the specialist `README.md` command) or it will be missing from the `.exe`.
