@@ -18,6 +18,15 @@ from apps.common.tenant import tenant_context
 from apps.identity.models import AppUser, Clinic
 from apps.identity.services import AuthError, authenticate
 from apps.patients.models import Patient
+from apps.rx.models import InsurerLog, Prescription, PrescriptionItem
+
+# Official insurer portals embedded by the WebView bridge (EPRESCRIPTION.md path A)
+INSURER_PORTALS = {
+    "tamin": "https://ep.tamin.ir/",
+    "ihio": "https://eservices.ihio.gov.ir/",
+    "armed": "",
+}
+INSURER_LABELS = {"tamin": "تأمین اجتماعی", "ihio": "بیمهٔ سلامت", "armed": "نیروهای مسلح"}
 
 
 def login_required_web(view):
@@ -102,13 +111,86 @@ def patient_detail(request, patient_id):
         .values_list("rule_code", flat=True)
     )
 
+    prescriptions = list(
+        Prescription.objects.filter(patient=patient).order_by("-created_at")[:10]
+    )
+
     return render(request, "web/patient_detail.html", {
         "patient": patient,
         "facts": facts,
         "suggestions": suggestions,
         "snapshot": snapshot,
         "acked": acked,
+        "prescriptions": prescriptions,
+        "insurer_labels": INSURER_LABELS,
     })
+
+
+# ── e-prescription (Epic 1) — WebView bridge workflow ──────────────────────
+
+@login_required_web
+def rx_new(request, patient_id):
+    """Start a draft prescription for a patient (channel=webview)."""
+    patient = get_object_or_404(Patient, id=patient_id)
+    if request.method != "POST":
+        return redirect("web:patient_detail", patient_id=patient_id)
+    insurer = (request.POST.get("insurer") or "tamin").strip()
+    if insurer not in INSURER_PORTALS:
+        insurer = "tamin"
+    rx = Prescription.objects.create(
+        clinic=patient.clinic, patient=patient, doctor=_current_user(request),
+        insurer=insurer, status="draft", channel="webview",
+    )
+    InsurerLog.objects.create(
+        clinic=patient.clinic, prescription=rx, insurer=insurer,
+        action="draft_created", status="draft", payload={},
+    )
+    return redirect("web:rx_detail", rx_id=rx.id)
+
+
+@login_required_web
+def rx_detail(request, rx_id):
+    rx = get_object_or_404(Prescription, id=rx_id)
+    items = list(PrescriptionItem.objects.filter(prescription=rx))
+    logs = list(InsurerLog.objects.filter(prescription=rx).order_by("created_at"))
+    return render(request, "web/rx_detail.html", {
+        "rx": rx, "items": items, "logs": logs,
+        "portal_url": INSURER_PORTALS.get(rx.insurer, ""),
+        "insurer_label": INSURER_LABELS.get(rx.insurer, rx.insurer),
+    })
+
+
+@login_required_web
+def rx_add_item(request, rx_id):
+    rx = get_object_or_404(Prescription, id=rx_id)
+    if request.method == "POST":
+        name = (request.POST.get("item_name") or "").strip()
+        if name:
+            PrescriptionItem.objects.create(
+                clinic=rx.clinic, prescription=rx, kind=request.POST.get("kind", "drug"),
+                item_name=name, dose=request.POST.get("dose", ""),
+                count=(request.POST.get("count") or None),
+                instruction=request.POST.get("instruction", ""),
+            )
+    return redirect("web:rx_detail", rx_id=rx.id)
+
+
+@login_required_web
+def rx_register(request, rx_id):
+    """Record the insurer tracking code returned by the portal and mark the
+    prescription registered (logs to InsurerLog for the audit trail)."""
+    rx = get_object_or_404(Prescription, id=rx_id)
+    if request.method == "POST":
+        code = (request.POST.get("tracking_code") or "").strip()
+        rx.tracking_code = code
+        rx.status = "registered" if code else "submitted"
+        rx.issued_at = timezone.now()
+        rx.save(update_fields=["tracking_code", "status", "issued_at", "updated_at"])
+        InsurerLog.objects.create(
+            clinic=rx.clinic, prescription=rx, insurer=rx.insurer,
+            action="register", status=rx.status, payload={"tracking_code": code},
+        )
+    return redirect("web:rx_detail", rx_id=rx.id)
 
 
 @login_required_web

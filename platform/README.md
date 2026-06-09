@@ -6,16 +6,17 @@ building it does **not** touch the running Flask apps (ports 8080 / 8090). See
 [`../docs/TECH_STACK.md`](../docs/TECH_STACK.md) and
 [`../docs/DATA_MODEL.md`](../docs/DATA_MODEL.md) for the *why*.
 
-> Status: **v0.11 scaffold — demoable** — all 8 modules from DATA_MODEL §2
+> Status: **v0.12 scaffold — demoable** — all 8 modules from DATA_MODEL §2
 > modelled (~40 models), RLS multi-tenancy, django-ninja API (session login +
 > authz-guarded routers), bcrypt + 5-fail/15-min lockout, a **full ETL** (users +
 > merged patients + per-patient vitals/meds/conditions/flags/followups) + a
 > **clinical-catalog ETL** (real 57 ADA rules), the **ported rule engine** (live
-> decision support), a **web frontend** with the three core chronic workflows —
-> One-Page **Snapshot**, ADA **suggestions** (+ acknowledge → SuggestionLog), and
-> the **recall/follow-up worklist** — all verified end-to-end on **real** legacy
-> data. `manage.py check` clean. Remaining: HTMX interactivity, accounting/sms
-> ETL, e-prescription, production hardening.
+> decision support), a **web frontend** with the three core chronic workflows
+> (Snapshot / ADA suggestions+acknowledge / recall worklist), AND the
+> **e-prescription WebView-bridge workflow** (Epic 1: compose → portal → register
+> + InsurerLog audit). All verified end-to-end on **real** legacy data.
+> `manage.py check` clean. Remaining: HTMX, accounting/sms ETL, direct-API
+> e-prescription (cert track), production hardening.
 
 ## Layout (modular monolith)
 
@@ -135,7 +136,13 @@ Minimal RTL, server-rendered Django templates — the demoable wedge with all th
 core chronic workflows: `/login/` → `/patients/` (search) → `/patients/<id>/`
 (One-Page Snapshot + grouped ADA suggestions w/ "تأیید با پزشک" disclaimer), and
 `/worklist/` (recall/follow-up worklist split overdue/today/upcoming, mark-done).
-Login follows the RLS-correct ordering and reuses the same session keys as the API.
+Plus the **e-prescription** flow (Epic 1, EPRESCRIPTION.md path A): from a patient,
+start a draft → `/rx/<id>/` composes items and shows the **WebView bridge** (opens
+the official insurer portal `ep.tamin.ir` / `eservices.ihio.gov.ir`) → record the
+returned tracking code to mark it registered. Every step writes an `InsurerLog`
+audit row. (The literal portal embed is a browser concern; direct-API integration
+is the parallel cert track.) Login follows the RLS-correct ordering and reuses the
+same session keys as the API.
 Each suggestion has a **تأیید (acknowledge)** action: the physician confirms it
 and an append-only `SuggestionLog` row is written (rule_code, severity, message,
 acknowledged_by, acknowledged_at) — the safety/legal backbone ("suggests,

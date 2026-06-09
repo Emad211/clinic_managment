@@ -13,4 +13,9 @@ urlpatterns = [
     path("patients/<uuid:patient_id>/ack/", views.acknowledge_suggestion, name="ack"),
     path("worklist/", views.worklist, name="worklist"),
     path("followups/<uuid:task_id>/done/", views.followup_done, name="followup_done"),
+    # e-prescription (Epic 1)
+    path("patients/<uuid:patient_id>/rx/new/", views.rx_new, name="rx_new"),
+    path("rx/<uuid:rx_id>/", views.rx_detail, name="rx_detail"),
+    path("rx/<uuid:rx_id>/add-item/", views.rx_add_item, name="rx_add_item"),
+    path("rx/<uuid:rx_id>/register/", views.rx_register, name="rx_register"),
 ]

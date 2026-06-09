@@ -25,6 +25,32 @@
 </div>
 
 <div class="card">
+  <h3>📝 نسخهٔ الکترونیک</h3>
+  <form method="post" action="{% url 'web:rx_new' patient.id %}" style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap">
+    {% csrf_token %}
+    <select name="insurer" style="padding:.5rem;background:var(--panel2);border:1px solid var(--line);border-radius:8px;color:var(--txt)">
+      {% for code, label in insurer_labels.items %}<option value="{{ code }}">{{ label }}</option>{% endfor %}
+    </select>
+    <button type="submit">نسخهٔ جدید</button>
+  </form>
+  {% if prescriptions %}
+  <table style="margin-top:.8rem">
+    <thead><tr><th>بیمه</th><th>وضعیت</th><th>کد رهگیری</th><th>تاریخ</th></tr></thead>
+    <tbody>
+      {% for rx in prescriptions %}
+      <tr>
+        <td><a href="{% url 'web:rx_detail' rx.id %}">{{ rx.insurer }}</a></td>
+        <td>{{ rx.status }}</td>
+        <td>{{ rx.tracking_code|default:'—' }}</td>
+        <td>{{ rx.created_at|date:"Y/m/d" }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</div>
+
+<div class="card">
   <h3>🧠 پیشنهادهای بالینی ({{ suggestions.count }})</h3>
   <div class="disclaimer">⚠️ {{ suggestions.disclaimer|default:"پیشنهاد — تأیید با پزشک" }}</div>
   {% for section in suggestions.sections %}
