@@ -32,7 +32,9 @@ NEW_TENANT_TABLES = [
     "sms_message",
 ]
 
-_PRED = "clinic_id = current_setting('app.current_clinic', true)::uuid"
+# nullif(..., '') -> unset/empty GUC behaves as NULL (deny-by-default); a bare
+# ::uuid cast on '' would raise "invalid input syntax for type uuid".
+_PRED = "clinic_id = nullif(current_setting('app.current_clinic', true), '')::uuid"
 
 
 def _policy_statements(table):

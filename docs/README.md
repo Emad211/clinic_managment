@@ -19,7 +19,7 @@
 - `REGULATORY.md` — جزئیاتِ مجوز/انطباق و چک‌لیستِ سپر.
 
 ## وضعیتِ پیاده‌سازی (کد)
-- **`../platform/`** — اسکلتِ **Django + django-ninja + PostgreSQL** (مقصدِ Evolve-not-Rewrite). نسخهٔ **v0.9 (دموپذیر)**: **هر ۸ ماژولِ DATA_MODEL §2** (≈۴۰ مدل)، **RLS**، API با **login + روترهای گاردشده**، **ETLِ کامل** (بیماران+vitals/meds/conditions/flags/followups) + **ETLِ کاتالوگ** (۵۷ قاعدهٔ ADA)، **موتورِ قاعده** با decision supportِ زنده، **frontendِ وب** با سه گردشِ کارِ مزمن (**Snapshot** + **پیشنهادهای ADA** +ack→SuggestionLog + **کارتابلِ Recall**) و **گردشِ کارِ نسخهٔ الکترونیک** (Epic 1، پلِ WebView: compose→portal→register + InsurerLog) — همگی e2e روی دادهٔ واقعی تأیید شدند. اپ‌های Flaskِ کارا دست‌نخورده. راهنما: [`../platform/README.md`](../platform/README.md). مبنا: [`DATA_MODEL.md`](DATA_MODEL.md).
+- **`../platform/`** — اسکلتِ **Django + django-ninja + PostgreSQL** (مقصدِ Evolve-not-Rewrite). نسخهٔ **v0.9 (دموپذیر)**: **هر ۸ ماژولِ DATA_MODEL §2** (≈۴۰ مدل)، **RLS**، API با **login + روترهای گاردشده**، **ETLِ کامل** (بیماران+vitals/meds/conditions/flags/followups) + **ETLِ کاتالوگ** (۵۷ قاعدهٔ ADA)، **موتورِ قاعده** با decision supportِ زنده، **frontendِ وب** با سه گردشِ کارِ مزمن (**Snapshot** + **پیشنهادهای ADA** +ack→SuggestionLog + **کارتابلِ Recall**) و **گردشِ کارِ نسخهٔ الکترونیک** (Epic 1، پلِ WebView). **ایزولاسیونِ RLS روی Postgresِ واقعی اثبات شد** (`manage.py verify_rls`؛ یک باگِ سیاستِ GUCِ خالی هم کشف/رفع شد). همگی e2e تأیید شدند؛ اپ‌های Flaskِ کارا دست‌نخورده. راهنما: [`../platform/README.md`](../platform/README.md). مبنا: [`DATA_MODEL.md`](DATA_MODEL.md).
 
 ## اصلِ کار
 **نردبان:** اول گوهِ مزمن (درآمدِ سریع) → لایهٔ هوشِ بالینی (تمایز) → پلتفرمِ دانش (خندقِ بلندمدت). جزئیات در `MASTER_PLAN.md`.

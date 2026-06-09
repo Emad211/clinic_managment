@@ -39,9 +39,11 @@ CATALOG_TABLES = [
     "flag_catalog",
 ]
 
-_TENANT_PRED = "clinic_id = current_setting('app.current_clinic', true)::uuid"
+# nullif(..., '') makes an unset OR empty-string GUC behave as NULL -> deny-by-default
+# (a bare ::uuid cast on '' raises "invalid input syntax for type uuid").
+_TENANT_PRED = "clinic_id = nullif(current_setting('app.current_clinic', true), '')::uuid"
 _CATALOG_USING = (
-    "clinic_id IS NULL OR clinic_id = current_setting('app.current_clinic', true)::uuid"
+    "clinic_id IS NULL OR clinic_id = nullif(current_setting('app.current_clinic', true), '')::uuid"
 )
 
 

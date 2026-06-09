@@ -57,7 +57,15 @@ Every domain table has `clinic_id` and is protected by an RLS policy
 
 The DB role the app connects with **must not have `BYPASSRLS`**. Global catalog
 rows (`clinic_id IS NULL`) are readable by all tenants but writable only as
-per-clinic overrides.
+per-clinic overrides. Policies use `nullif(current_setting('app.current_clinic',
+true), '')::uuid` so an unset **or empty** GUC denies-by-default (a bare `::uuid`
+cast on `''` would raise).
+
+**`manage.py verify_rls`** proves isolation on real PostgreSQL: it creates a
+non-superuser `rls_app` role + two throwaway clinics and asserts deny-by-default
+(unset & empty GUC → 0 rows), A/B isolation, and cross-tenant write rejection.
+Verified against `pgvector/pgvector:pg16`. No-op on SQLite. **Run it against the
+production Postgres before launch.**
 
 ## Setup & verify
 
