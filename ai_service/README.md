@@ -9,11 +9,11 @@ workload and its different release cadence don't slow/destabilise the clinic app
 Its data lives in a `knowledge` schema (global knowledge, **no RLS** — unlike
 patient data).
 
-> Status: **M1 (v0.1)** — Model Gateway (AvalAI + NullModel fallback), Ingestion &
-> Registry (content-hash dedup), and the core data model (source_document /
-> document_chunk / claim) with a FastAPI `/health` + `/ingest`. 8 tests green.
-> Next: M2 structural parsing → M3 extraction + verification gate → M4 ontology/
-> graph/MCP serving.
+> Status: **M2 (v0.2)** — M1 (Model Gateway, content-hash dedup ingestion, data
+> model, FastAPI `/health`+`/ingest`) **+ structural parsing** (PyMuPDF text +
+> tables → DocumentChunks with page anchors; no Camelot/Ghostscript dep). 10 tests
+> green. Next: M3 extraction + the verification gate (+ arq orchestrator) → M4
+> ontology / graph / MCP serving.
 
 ## Layout
 ```
@@ -23,6 +23,7 @@ ai_service/
     gateway.py     # layer 0: Model Gateway (AvalAI OpenAI-compat + NullModel)
     models.py      # SQLModel: SourceDocument / DocumentChunk / Claim
     ingestion.py   # layer 1: content_hash + ingest_document (dedup)
+    parsing.py     # layer 2: PyMuPDF PDF -> DocumentChunks (prose+tables, page anchors)
     db.py          # engine/session (SQLite dev, PostgreSQL+pgvector target)
     main.py        # FastAPI: /health, /ingest
   tests/           # pytest (in-memory SQLite)
