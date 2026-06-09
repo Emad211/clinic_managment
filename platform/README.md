@@ -17,7 +17,9 @@ building it does **not** touch the running Flask apps (ports 8080 / 8090). See
 > + InsurerLog audit). All verified end-to-end on **real** legacy data.
 > `manage.py check` clean; **RLS isolation proven on real Postgres** (`verify_rls`);
 > **Dockerfile + compose + RLS-correct DB-role split** + GitLab CI; **SMS reminders**
-> (Mediana/NullProvider) closing the recall loop. Remaining: HTMX, accounting ETL,
+> (Mediana/NullProvider) closing the recall loop; and the **SaaS subscription/billing
+> flow** (ZarinPal, simulated-gateway fallback). The full SaaS loop — onboard →
+> subscribe → charge → deliver — is in place. Remaining: HTMX, accounting ETL,
 > direct-API e-prescription (cert track).
 
 ## Layout (modular monolith)
@@ -81,6 +83,7 @@ copy .env.example .env          # then edit DATABASE_URL / secret
 # Clinical catalogs — pick ONE (mutually exclusive):
 .\.venv\Scripts\python.exe manage.py etl_catalog --specialist-db ..\specialist_clinic\specialist.db  # full real ADA set (preferred)
 .\.venv\Scripts\python.exe manage.py seed_catalog    # OR minimal fresh-install fallback
+.\.venv\Scripts\python.exe manage.py seed_plans      # subscription plans (free/clinic/multi)
 .\.venv\Scripts\python.exe manage.py bootstrap_clinic --name "درمانگاه نمونه" --slug demo
 # OR migrate the real legacy data into one tenant (idempotent, source DBs read-only):
 .\.venv\Scripts\python.exe manage.py etl_import --clinic-slug main --clinic-name "درمانگاه اصلی" `
@@ -162,6 +165,16 @@ with `ADMIN_DATABASE_URL`, then starts gunicorn with the unprivileged
 `DATABASE_URL`. In production use **managed Postgres** (Arvan/Liara) and create
 the two roles there. `manage.py check --deploy` is clean apart from the expected
 SECRET_KEY / TLS-redirect notes (set a strong key + `DJANGO_SSL_REDIRECT` in prod).
+
+## Billing (`apps/billing/`)
+
+SaaS subscription via ZarinPal (`services.py`): `subscribe()` creates a pending
+`Payment` + a gateway URL; the user pays; the callback `confirm_payment()`
+verifies and activates/extends the `Subscription`. Free plans activate instantly.
+With no `ZARINPAL_MERCHANT_ID` a `SimulatedGateway` auto-approves (dev/CI), same
+pattern as the SMS NullProvider; set the merchant id (+ `ZARINPAL_SANDBOX=1` for
+testing) for the real API. `manage.py seed_plans` seeds free/clinic/multi. UI at
+`/billing/`. Verified end-to-end (paid → paid+active; free → instant).
 
 ## Web frontend (`apps/web/`)
 

@@ -10,7 +10,12 @@ from functools import wraps
 
 from django.db.models import Q
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 from django.utils import timezone
+
+from apps.billing.models import Payment, Plan, Subscription
+from apps.billing.services import confirm_payment
+from apps.billing.services import subscribe as start_subscription
 
 from apps.chronic import rule_engine
 from apps.chronic.models import ClinicalRule, FollowupTask, SuggestionLog, VitalReading
@@ -125,6 +130,44 @@ def patient_detail(request, patient_id):
         "prescriptions": prescriptions,
         "insurer_labels": INSURER_LABELS,
     })
+
+
+# ── billing / subscription (ZarinPal) ─────────────────────────────────────
+
+@login_required_web
+def billing_home(request):
+    user = _current_user(request)
+    plans = list(Plan.objects.filter(is_active=True).order_by("price_rial"))
+    sub = (
+        Subscription.objects.filter(clinic=user.clinic, status="active")
+        .select_related("plan").order_by("-period_end").first()
+        if user else None
+    )
+    return render(request, "web/billing.html", {"plans": plans, "subscription": sub})
+
+
+@login_required_web
+def billing_subscribe(request, plan_id):
+    if request.method != "POST":
+        return redirect("web:billing")
+    user = _current_user(request)
+    plan = get_object_or_404(Plan, id=plan_id)
+    callback = request.build_absolute_uri(reverse("web:billing_callback"))
+    _payment, url = start_subscription(user.clinic, plan, callback)
+    if url:  # paid plan -> go to gateway (or simulated callback)
+        return redirect(url)
+    return redirect("web:billing")  # free plan activated immediately
+
+
+@login_required_web
+def billing_callback(request):
+    payment = Payment.objects.filter(id=request.GET.get("payment")).first()
+    if payment and request.GET.get("Status") == "OK" and payment.status == "pending":
+        # paid plan prices are distinct, so amount resolves the plan
+        plan = Plan.objects.filter(price_rial=payment.amount_rial, is_active=True).first()
+        if plan:
+            confirm_payment(payment, plan)
+    return redirect("web:billing")
 
 
 # ── e-prescription (Epic 1) — WebView bridge workflow ──────────────────────
