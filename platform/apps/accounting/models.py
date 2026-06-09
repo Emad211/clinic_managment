@@ -103,7 +103,11 @@ class Visit(TenantModel):
     tariff = models.ForeignKey(
         Tariff, on_delete=models.SET_NULL, related_name="+", null=True, blank=True
     )
-    amount_rial = models.BigIntegerField(default=0)
+    amount_rial = models.BigIntegerField(default=0)  # gross (full tariff price)
+    insurance_plan = models.ForeignKey(
+        InsurancePlan, on_delete=models.SET_NULL, related_name="+", null=True, blank=True
+    )
+    patient_share_rial = models.BigIntegerField(default=0)  # after insurance split
     work_date = models.DateField()
     shift = models.CharField(max_length=10, choices=SHIFTS)
 
@@ -132,7 +136,11 @@ class Injection(TenantModel):
         null=True, blank=True,
     )
     name = models.TextField()
-    amount_rial = models.BigIntegerField(default=0)
+    amount_rial = models.BigIntegerField(default=0)  # gross
+    insurance_plan = models.ForeignKey(
+        InsurancePlan, on_delete=models.SET_NULL, related_name="+", null=True, blank=True
+    )
+    patient_share_rial = models.BigIntegerField(default=0)
     work_date = models.DateField()
     shift = models.CharField(max_length=10, choices=SHIFTS)
 
@@ -150,7 +158,11 @@ class Procedure(TenantModel):
         null=True, blank=True,
     )
     name = models.TextField()
-    amount_rial = models.BigIntegerField(default=0)
+    amount_rial = models.BigIntegerField(default=0)  # gross
+    insurance_plan = models.ForeignKey(
+        InsurancePlan, on_delete=models.SET_NULL, related_name="+", null=True, blank=True
+    )
+    patient_share_rial = models.BigIntegerField(default=0)
     work_date = models.DateField()
     shift = models.CharField(max_length=10, choices=SHIFTS)
 

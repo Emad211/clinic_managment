@@ -46,10 +46,9 @@
 | اعتبارنامه‌های پیش‌فرضِ seed | حذف؛ `bootstrap_clinic` | ✅ (از قبل) |
 
 ## ۵. ترتیبِ ساخت (چنددلوپی)
-1. **بک‌بونِ عمومی‌سازی** ✅ *(این لوپ)*: `clinic_type`، `InsurancePlan`، `Tariff.category`، پروفایلِ کلینیک، `seed_accounting_defaults`، RLS، تست.
-2. **سرویسِ پذیرش + فاکتور**: ساختِ Invoice، افزودنِ Visit/Injection/Procedure/Consumable با قیمت‌گذاریِ خودکار از `Tariff`+`InsurancePlan` (سهمِ بیمار/بیمه)، لاگِ فعالیت.
-3. **تسویه + پرداخت**: `InvoiceItemPayment` (نقد/کارت/کیف‌پول/بیمه)، بستنِ فاکتور، چاپ/رسید.
-4. **UIِ وب**: میزِ پذیرش، فهرست/جزئیاتِ فاکتور، مدیریتِ تعرفه و بیمه (CRUD)، گاردِ نقش.
+1. **بک‌بونِ عمومی‌سازی** ✅: `clinic_type`، `InsurancePlan`، `Tariff.category`، پروفایلِ کلینیک، `seed_accounting_defaults`، RLS، تست.
+2. **سرویسِ پذیرش + فاکتور + تسویه** ✅ *(لایهٔ سرویس)*: `apps/accounting/services.py` — `open_invoice`، `add_visit/add_injection/add_procedure` با **قیمت‌گذاریِ خودکار** از `Tariff` و **تقسیمِ سهمِ بیمار/بیمه** از `InsurancePlan` (`split_shares`)، `recompute_invoice` (مجموع = سهمِ بیمار)، `record_payment` (نقد/کارت/**کیف‌پول با debitِ واقعی**/بیمه)، `close_invoice`، لاگِ فعالیت. فیلدهای `insurance_plan`+`patient_share_rial` به Visit/Injection/Procedure افزوده شد. *(مصرفی‌ها revenue نیستند → فاز بعد.)*
+3. **UIِ وب**: میزِ پذیرش، فهرست/جزئیاتِ فاکتور، مدیریتِ تعرفه و بیمه (CRUD)، گاردِ نقش. *(بعدی)*
 5. **گزارش‌های مالی**: درآمدِ روز/ماه (ویزیت+تزریق+پروسیجر، بدونِ مصرفی)، تفکیک بر اساسِ پزشک/بیمه/شیفت، CSV.
 6. **حقوق و دستمزد**: پارامتری‌سازیِ فرمول‌ها با `config_json`، محاسبه برای بازهٔ تاریخی.
 7. **اتاقِ پزشک + داشبوردِ نقش‌ها**؛ یکپارچه‌سازی با ماژولِ مزمن (همان بیمار).
@@ -58,9 +57,10 @@
 پول = **BIGINT ریال** (نه float) · هر ردیفِ عملیاتی `work_date`+`shift` صریح (شیفتِ شب از نیمه‌شب می‌گذرد) ·
 تاریخ‌ها جلالی در نمایش، UTC در ذخیره · لاگِ فعالیتِ افزودنی برای هر اقدامِ حالت‌تغییردهنده (`ActivityLog`).
 
-## ۷. این لوپ — چه ساخته شد
-- `Clinic.clinic_type` (درمانگاه/کلینیک/مطب) + `phone`/`address`؛ `bootstrap_clinic --type`.
-- `accounting.InsurancePlan` (پر-کلینیک، یکتا در نام، سهمِ بیمار، تکمیلی) + RLS (`0005_insuranceplan_rls`، اثبات در `verify_rls`).
-- `Tariff.category` (دارو/مصرفی).
-- `seed_accounting_defaults --clinic-slug …` (بیمه‌ها + تعرفه‌های ایران‌فراگیر، نوع‌آگاه، idempotent).
-- ۵ تستِ جدید (مجموع ۵۸ در platform).
+## ۷. پیشرفت
+**بک‌بون (لوپِ ۱):** `Clinic.clinic_type` (درمانگاه/کلینیک/مطب) + `phone`/`address`؛ `bootstrap_clinic --type`؛
+`accounting.InsurancePlan` + RLS (`0005`)؛ `Tariff.category`؛ `seed_accounting_defaults`. ۵ تست.
+
+**سرویسِ پذیرش/فاکتور (لوپِ ۲):** `apps/accounting/services.py` با `split_shares`/`open_invoice`/`add_visit`/`add_injection`/
+`add_procedure`/`recompute_invoice`/`record_payment`/`close_invoice`؛ فیلدهای `insurance_plan`+`patient_share_rial`
+(مهاجرتِ `0003`). ۷ تست. **مجموع ۶۵ تستِ سبز.** بعدی: UIِ میزِ پذیرش + CRUDِ تعرفه/بیمه.

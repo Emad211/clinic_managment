@@ -80,7 +80,7 @@ cd ai_service; .\.venv\Scripts\uvicorn.exe app.main:app --reload   # GET /health
 
 ## Tests
 
-`platform/` (58) + `ai_service/` (22) = **80 automated tests**, plus the Postgres
+`platform/` (65) + `ai_service/` (22) = **87 automated tests**, plus the Postgres
 RLS proof (`verify_rls`). All run in CI (`.gitlab-ci.yml`).
 
 ```powershell
