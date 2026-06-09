@@ -43,6 +43,13 @@ class Subscription(TenantModel):
     class Meta:
         db_table = "subscription"
         indexes = [models.Index(fields=["clinic", "status"])]
+        constraints = [
+            # one subscription row per (clinic, plan): makes _activate_subscription's
+            # update_or_create race-safe so concurrent callbacks can't duplicate it
+            models.UniqueConstraint(
+                fields=["clinic", "plan"], name="uq_subscription_clinic_plan"
+            )
+        ]
 
 
 class Payment(TenantModel):
@@ -51,6 +58,11 @@ class Payment(TenantModel):
     subscription = models.ForeignKey(
         Subscription, on_delete=models.SET_NULL, related_name="payments",
         null=True, blank=True,
+    )
+    # the plan the user is paying for, bound at request time so the callback never
+    # has to re-derive it from amount (two plans could share a price)
+    plan = models.ForeignKey(
+        Plan, on_delete=models.PROTECT, related_name="+", null=True, blank=True,
     )
     amount_rial = models.BigIntegerField()
     gateway = models.TextField(default="zarinpal")

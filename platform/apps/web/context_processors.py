@@ -13,4 +13,5 @@ def current_app_user(request):
     uid = request.session.get("user_id")
     if not uid:
         return {"current_app_user": None}
-    return {"current_app_user": AppUser.objects.filter(id=uid).first()}
+    # is_active re-checked so a deactivated user gets no role-gated nav
+    return {"current_app_user": AppUser.objects.filter(id=uid, is_active=True).first()}

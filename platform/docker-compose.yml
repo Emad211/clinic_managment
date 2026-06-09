@@ -23,7 +23,7 @@ services:
         condition: service_healthy
     environment:
       DJANGO_DEBUG: "False"
-      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-change-me-in-production}
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:?set a strong DJANGO_SECRET_KEY in your .env}
       DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-127.0.0.1,localhost}
       # migrations/seed run as the privileged role; the app runs as clinic_app
       ADMIN_DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD:-postgres}@db:5432/clinic_platform

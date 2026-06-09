@@ -11,9 +11,12 @@ import os
 os.environ.setdefault("DATABASE_URL", "sqlite://:memory:")
 os.environ.setdefault("DJANGO_SECRET_KEY", "test-secret")
 os.environ.setdefault("DJANGO_ALLOWED_HOSTS", "testserver,localhost,127.0.0.1")
-# force the dev providers (no real SMS / gateway)
+# force the dev providers (no real SMS / gateway). pytest-django forces DEBUG=False
+# in tests, so the billing simulator must be explicitly opted in (it is fail-closed
+# in production when no real gateway is configured).
 os.environ.pop("MEDIANA_API_KEY", None)
 os.environ.pop("ZARINPAL_MERCHANT_ID", None)
+os.environ.setdefault("BILLING_ALLOW_SIMULATED", "1")
 
 import bcrypt  # noqa: E402
 import pytest  # noqa: E402

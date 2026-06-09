@@ -65,6 +65,8 @@ def login(request, data: LoginIn):
             return Status(401, {"detail": e.message, "code": e.code})
         payload = _user_payload(user, clinic)
 
+    # rotate the session id at the auth boundary (anti session-fixation)
+    request.session.cycle_key()
     request.session["clinic_id"] = str(clinic.id)
     request.session["user_id"] = str(user.id)
     return Status(200, payload)

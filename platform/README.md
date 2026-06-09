@@ -73,11 +73,18 @@ production Postgres before launch.**
 
 ## Setup & verify
 
-**Tests:** `python -m pytest` — 43 tests (auth/lockout, clinical-licensing gate,
-audit trail, rule engine + DSL, billing + SMS providers, web flows +
-accountability, e-prescription workflow, recall worklist + SMS reminder, wallet
-ledger, knowledge-pipeline client) on in-memory SQLite via `config/settings_test`.
-Runs in CI alongside `verify_rls`.
+**Tests:** `python -m pytest` — 53 tests (auth/lockout, clinical-licensing gate,
+audit trail, security-hardening regressions, rule engine + DSL, billing + SMS
+providers, web flows + accountability, e-prescription workflow, recall worklist +
+SMS reminder, wallet ledger, knowledge-pipeline client) on in-memory SQLite via
+`config/settings_test`. Runs in CI alongside `verify_rls`.
+
+**Security:** a multi-agent adversarial audit hardened the platform (10 fixes:
+prescription-content license gate + state-machine, billing fail-closed in prod,
+SECRET_KEY prod hard-fail, session-key rotation, web `is_active` revocation,
+HSTS-on-by-default, login enumeration hardening, payment plan-binding + row-lock).
+RLS/multi-tenancy and XSS surfaces held with zero findings. See
+[`../docs/SECURITY.md`](../docs/SECURITY.md).
 
 **Knowledge integration:** `apps/common/knowledge.py` calls the `ai_service`
 knowledge pipeline (`/knowledge/*`) to enrich the patient page with ICD-11

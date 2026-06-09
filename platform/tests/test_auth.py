@@ -27,10 +27,33 @@ def test_lockout_after_max_attempts(manager):
         for _ in range(MAX_FAILED_ATTEMPTS):
             with pytest.raises(AuthError):
                 authenticate(manager.clinic, "mgr", "x")
-        # even with the correct password, the account is now locked
+        # even with the correct password, the account is now locked — and the
+        # error is the SAME generic code as any other failure (no state oracle)
         with pytest.raises(AuthError) as e:
             authenticate(manager.clinic, "mgr", "secret")
-    assert e.value.code == "locked"
+    assert e.value.code == "invalid_credentials"
+    manager.refresh_from_db()
+    assert manager.locked_until is not None  # lockout is enforced internally
+
+
+def test_login_failures_are_indistinguishable(clinic, manager):
+    """Wrong-user, wrong-password, and inactive all return the same code/message
+    so login can't be used to enumerate usernames or probe account state."""
+    import bcrypt as _bcrypt
+    from apps.identity.models import AppUser
+
+    inactive = AppUser.objects.create(
+        clinic=clinic, username="ghost", role="reception",
+        password_hash=_bcrypt.hashpw(b"secret", _bcrypt.gensalt()), is_active=False,
+    )
+    with tenant_context(clinic.id):
+        errs = []
+        for uname, pw in [("nobody", "x"), ("mgr", "WRONG"), ("ghost", "secret")]:
+            with pytest.raises(AuthError) as e:
+                authenticate(clinic, uname, pw)
+            errs.append((e.value.code, e.value.message))
+    assert len({c for c, _ in errs}) == 1   # one code for every failure mode
+    assert len({m for _, m in errs}) == 1   # one message too
 
 
 def test_api_login_flow(auth_client, manager):

@@ -46,7 +46,11 @@ INSURER_LABELS = {"tamin": "تأمین اجتماعی", "ihio": "بیمهٔ سل
 def login_required_web(view):
     @wraps(view)
     def wrapper(request, *args, **kwargs):
-        if not request.session.get("user_id"):
+        # Resolve the user fresh every request so a deactivated/deleted account
+        # loses access immediately (not only at next login) — matches the ninja
+        # SessionAuth contract. A stale session is flushed.
+        if _current_user(request) is None:
+            request.session.flush()
             return redirect("web:login")
         return view(request, *args, **kwargs)
 
@@ -54,10 +58,12 @@ def login_required_web(view):
 
 
 def _current_user(request):
+    """The logged-in, still-active user — or None. is_active is re-checked on
+    every call so deactivation revokes web access at once (security audit)."""
     uid = request.session.get("user_id")
     if not uid:
         return None
-    return AppUser.objects.filter(id=uid).first()
+    return AppUser.objects.filter(id=uid, is_active=True).first()
 
 
 def clinical_license_required(view):
@@ -131,6 +137,9 @@ def login_view(request):
                 user = authenticate(clinic, username, password)
         except AuthError as e:
             return render(request, "web/login.html", {**ctx, "error": e.message})
+        # Rotate the session id at the auth boundary to defeat session fixation
+        # (a pre-auth/planted cookie must not remain valid after login).
+        request.session.cycle_key()
         request.session["clinic_id"] = str(clinic.id)
         request.session["user_id"] = str(user.id)
         return redirect("web:patients")
@@ -272,12 +281,17 @@ def billing_subscribe(request, plan_id):
 
 @login_required_web
 def billing_callback(request):
-    payment = Payment.objects.filter(id=request.GET.get("payment")).first()
-    if payment and request.GET.get("Status") == "OK" and payment.status == "pending":
-        # paid plan prices are distinct, so amount resolves the plan
-        plan = Plan.objects.filter(price_rial=payment.amount_rial, is_active=True).first()
-        if plan:
-            confirm_payment(payment, plan)
+    # Lock the payment row so two concurrent callbacks can't both pass the
+    # 'pending' gate (the request is already inside an ATOMIC_REQUESTS tx).
+    with db_transaction.atomic():
+        payment = (
+            Payment.objects.select_for_update()
+            .filter(id=request.GET.get("payment"))
+            .first()
+        )
+        if payment and request.GET.get("Status") == "OK" and payment.status == "pending":
+            # plan is bound to the Payment at request time (never re-derived by price)
+            confirm_payment(payment)
     return redirect("web:billing")
 
 
@@ -315,24 +329,45 @@ def rx_detail(request, rx_id):
     rx = get_object_or_404(Prescription, id=rx_id)
     items = list(PrescriptionItem.objects.filter(prescription=rx))
     logs = list(InsurerLog.objects.filter(prescription=rx).order_by("created_at"))
+    user = _current_user(request)
     return render(request, "web/rx_detail.html", {
         "rx": rx, "items": items, "logs": logs,
         "portal_url": INSURER_PORTALS.get(rx.insurer, ""),
         "insurer_label": INSURER_LABELS.get(rx.insurer, rx.insurer),
+        # the clinical content (items) + registration are physician acts, and a
+        # submitted/registered script is frozen — drive the UI from these flags
+        "can_edit_rx": bool(user and user.can_practice_clinically() and rx.status == "draft"),
+        "can_register_rx": bool(
+            user and user.can_practice_clinically() and rx.status in ("draft", "submitted")
+        ),
     })
 
 
 @login_required_web
+@clinical_license_required
 def rx_add_item(request, rx_id):
+    """Add a line item (drug/dose/order) to a DRAFT prescription. This writes the
+    clinical substance of the script, so it is license-gated like rx_new/rx_register
+    (security audit: was previously only login-gated) and refused once the script
+    has been submitted/registered (append-only after sign-off)."""
     rx = get_object_or_404(Prescription, id=rx_id)
     if request.method == "POST":
+        if rx.status != "draft":
+            messages.error(request, "نسخهٔ ثبت/ارسال‌شده قابل ویرایش نیست.")
+            return redirect("web:rx_detail", rx_id=rx.id)
         name = (request.POST.get("item_name") or "").strip()
         if name:
-            PrescriptionItem.objects.create(
+            item = PrescriptionItem.objects.create(
                 clinic=rx.clinic, prescription=rx, kind=request.POST.get("kind", "drug"),
                 item_name=name, dose=request.POST.get("dose", ""),
                 count=(request.POST.get("count") or None),
                 instruction=request.POST.get("instruction", ""),
+            )
+            log_activity(
+                rx.clinic, _current_user(request), "rx.add_item",
+                summary=f"افزودن قلم «{name}» به نسخه",
+                entity_type="prescription", entity_id=rx.id,
+                metadata={"item": name, "kind": item.kind},
             )
     return redirect("web:rx_detail", rx_id=rx.id)
 
@@ -341,9 +376,14 @@ def rx_add_item(request, rx_id):
 @clinical_license_required
 def rx_register(request, rx_id):
     """Record the insurer tracking code returned by the portal and mark the
-    prescription registered (logs to InsurerLog for the audit trail)."""
+    prescription registered (logs to InsurerLog for the audit trail). Refused on
+    an already-registered script so the local record can't diverge from what was
+    submitted to the insurer."""
     rx = get_object_or_404(Prescription, id=rx_id)
     if request.method == "POST":
+        if rx.status not in ("draft", "submitted"):
+            messages.error(request, "این نسخه قبلاً ثبت شده است.")
+            return redirect("web:rx_detail", rx_id=rx.id)
         code = (request.POST.get("tracking_code") or "").strip()
         rx.tracking_code = code
         rx.status = "registered" if code else "submitted"

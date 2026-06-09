@@ -17,9 +17,17 @@ import urllib.request
 import uuid
 from datetime import timedelta
 
+from django.conf import settings
 from django.utils import timezone
 
 from apps.billing.models import Payment, Subscription
+
+
+def _simulator_allowed() -> bool:
+    """The auto-approving SimulatedGateway is for dev/CI only. Allow it when
+    DEBUG, or behind an explicit opt-in — NEVER silently in production (security
+    audit: a blank ZARINPAL_MERCHANT_ID must not grant paid subscriptions free)."""
+    return bool(settings.DEBUG) or os.getenv("BILLING_ALLOW_SIMULATED", "0") == "1"
 
 _BASE_PROD = "https://api.zarinpal.com/pg/v4/payment"
 _BASE_SANDBOX = "https://sandbox.zarinpal.com/pg/v4/payment"
@@ -46,6 +54,20 @@ class SimulatedGateway:
 
     def verify(self, amount_rial, authority):
         return {"ok": True, "ref_id": "SIMREF-" + authority[-8:]}
+
+
+class FailClosedGateway:
+    """Used in production when no real gateway is configured: refuses to issue a
+    payment URL and never verifies, so paid subscriptions cannot activate without
+    a real merchant id. Fail CLOSED on the money path."""
+
+    name = "unconfigured"
+
+    def request(self, amount_rial, callback_url, description):
+        return {"authority": "", "url": ""}
+
+    def verify(self, amount_rial, authority):
+        return {"ok": False, "ref_id": ""}
 
 
 class ZarinPalGateway:
@@ -86,7 +108,9 @@ def get_gateway():
     mid = os.getenv("ZARINPAL_MERCHANT_ID", "").strip()
     if mid:
         return ZarinPalGateway(mid, os.getenv("ZARINPAL_SANDBOX", "0") == "1")
-    return SimulatedGateway()
+    # No merchant id configured: only the dev/CI simulator may auto-approve; in
+    # production fail closed so a misconfig can't hand out free paid plans.
+    return SimulatedGateway() if _simulator_allowed() else FailClosedGateway()
 
 
 def _activate_subscription(clinic, plan):
@@ -107,8 +131,8 @@ def subscribe(clinic, plan, callback_url):
         _activate_subscription(clinic, plan)
         return None, None
     payment = Payment.objects.create(
-        clinic=clinic, amount_rial=plan.price_rial, gateway=get_gateway().name,
-        status="pending",
+        clinic=clinic, plan=plan, amount_rial=plan.price_rial,
+        gateway=get_gateway().name, status="pending",
     )
     res = get_gateway().request(
         plan.price_rial, f"{callback_url}?payment={payment.id}",
@@ -116,13 +140,16 @@ def subscribe(clinic, plan, callback_url):
     )
     payment.authority = res.get("authority", "")
     payment.save(update_fields=["authority", "updated_at"])
-    # stash the plan on the payment via a lightweight convention (subscription FK
-    # is set on success); we resolve plan from amount+pending on callback.
     return payment, res.get("url", "")
 
 
-def confirm_payment(payment, plan):
-    """Verify a payment and, on success, activate the subscription."""
+def confirm_payment(payment, plan=None):
+    """Verify a payment and, on success, activate the subscription. The plan is
+    taken from the Payment itself (bound at request time) so it provably matches
+    what was paid for; the optional arg is a legacy fallback."""
+    plan = payment.plan or plan
+    if plan is None:
+        return False
     res = get_gateway().verify(payment.amount_rial, payment.authority)
     if res.get("ok"):
         sub = _activate_subscription(payment.clinic, plan)

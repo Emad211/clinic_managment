@@ -23,6 +23,7 @@
       {% endfor %}
     </tbody>
   </table>
+  {% if can_edit_rx %}
   <form method="post" action="{% url 'web:rx_add_item' rx.id %}" style="margin-top:.8rem;display:grid;grid-template-columns:1fr 1fr 1fr 2fr auto;gap:.5rem">
     {% csrf_token %}
     <input type="text" name="item_name" placeholder="نام دارو/خدمت" required style="margin:0">
@@ -31,6 +32,11 @@
     <input type="text" name="instruction" placeholder="دستور مصرف" style="margin:0">
     <button type="submit">افزودن</button>
   </form>
+  {% elif rx.status == 'draft' %}
+  <p class="disclaimer">⚠️ افزودنِ اقلامِ نسخه نیازمندِ کاربرِ دارای پروانهٔ نظام‌پزشکی است.</p>
+  {% else %}
+  <p class="muted" style="font-size:.85rem">نسخهٔ ثبت‌شده قفل است؛ اقلام قابل تغییر نیستند.</p>
+  {% endif %}
 </div>
 
 <div class="card">
@@ -39,11 +45,15 @@
   {% if portal_url %}
     <a href="{{ portal_url }}" target="_blank" rel="noopener"><button type="button">باز کردن پورتالِ {{ insurer_label }} ↗</button></a>
   {% endif %}
+  {% if can_register_rx %}
   <form method="post" action="{% url 'web:rx_register' rx.id %}" style="margin-top:.8rem;display:flex;gap:.5rem;align-items:center">
     {% csrf_token %}
     <input type="text" name="tracking_code" placeholder="کدِ رهگیریِ بیمه" value="{{ rx.tracking_code }}" style="margin:0">
     <button type="submit">ثبتِ نسخه</button>
   </form>
+  {% elif rx.status == 'registered' %}
+  <p class="muted" style="font-size:.85rem">✓ این نسخه ثبت شده است.</p>
+  {% endif %}
 </div>
 
 <div class="card">

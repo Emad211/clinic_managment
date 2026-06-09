@@ -19,8 +19,23 @@ def _env_bool(key, default=False):
     return os.getenv(key, str(default)).lower() in {"1", "true", "yes", "on"}
 
 
-SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "dev-only-insecure-change-me")
 DEBUG = _env_bool("DJANGO_DEBUG", True)
+
+# SECRET_KEY: no usable insecure default in production. With DEBUG off, a missing
+# or known/weak key is a HARD error — a public key lets an attacker forge signed
+# session cookies, and on this RLS app a forged session carries a forged clinic_id
+# that TenantMiddleware would trust, crossing tenant isolation. (security audit)
+SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "")
+_WEAK_SECRETS = {"", "build-time", "change-me-in-production", "ci-only-secret"}
+if not DEBUG and (SECRET_KEY in _WEAK_SECRETS or SECRET_KEY.startswith("dev-")):
+    from django.core.exceptions import ImproperlyConfigured
+
+    raise ImproperlyConfigured(
+        "DJANGO_SECRET_KEY must be set to a strong value when DEBUG=False."
+    )
+if not SECRET_KEY:
+    SECRET_KEY = "dev-only-insecure-change-me"  # dev/test convenience only
+
 ALLOWED_HOSTS = os.getenv("DJANGO_ALLOWED_HOSTS", "127.0.0.1,localhost").split(",")
 
 INSTALLED_APPS = [
@@ -124,7 +139,8 @@ if not DEBUG:
     CSRF_COOKIE_SECURE = True
     SECURE_CONTENT_TYPE_NOSNIFF = True
     SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")  # behind TLS proxy
-    SECURE_SSL_REDIRECT = _env_bool("DJANGO_SSL_REDIRECT", False)
-    SECURE_HSTS_SECONDS = int(os.getenv("DJANGO_HSTS_SECONDS", "0") or 0)
+    # secure transport ON by default in prod (proxy header set below avoids loops)
+    SECURE_SSL_REDIRECT = _env_bool("DJANGO_SSL_REDIRECT", True)
+    SECURE_HSTS_SECONDS = int(os.getenv("DJANGO_HSTS_SECONDS", "31536000") or 0)
     SECURE_HSTS_INCLUDE_SUBDOMAINS = True
     SECURE_HSTS_PRELOAD = True

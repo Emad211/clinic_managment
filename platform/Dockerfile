@@ -27,8 +27,11 @@ RUN if [ -n "$PIP_INDEX_URL" ]; then \
 
 COPY . .
 
-# Collect static at build time (no DB needed). DEBUG=False above.
-RUN DJANGO_SECRET_KEY=build-time python manage.py collectstatic --noinput
+# Collect static at build time (no DB needed). A throwaway strong key is used so
+# the production SECRET_KEY guard (settings.py) is satisfied during the build; the
+# real key is supplied at runtime via the environment.
+RUN DJANGO_SECRET_KEY="$(python -c 'import secrets; print(secrets.token_urlsafe(50))')" \
+    python manage.py collectstatic --noinput
 
 RUN chmod +x /app/entrypoint.sh
 EXPOSE 8000

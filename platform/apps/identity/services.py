@@ -20,6 +20,20 @@ from apps.identity.models import AppUser
 MAX_FAILED_ATTEMPTS = 5
 LOCKOUT_MINUTES = 15
 
+# One generic message for every failure mode (wrong user, wrong password,
+# inactive, locked) so login responses can't be used to enumerate usernames or
+# probe account state. A fixed dummy hash equalises the no-such-user timing
+# against the real bcrypt path (security audit: username enumeration).
+_GENERIC_MSG = "نام کاربری یا رمز عبور نادرست است."
+_DUMMY_HASH = bcrypt.hashpw(b"timing-equalizer", bcrypt.gensalt())
+
+
+def _spend_bcrypt_time(password: str) -> None:
+    try:
+        bcrypt.checkpw(password.encode("utf-8"), _DUMMY_HASH)
+    except ValueError:
+        pass
+
 
 class AuthError(Exception):
     """Login failed. ``code`` is a stable machine string for the API layer."""
@@ -55,29 +69,38 @@ def _verify_password(user: AppUser, password: str) -> bool:
 
 
 def authenticate(clinic, username: str, password: str) -> AppUser:
-    """Return the AppUser on success, else raise AuthError. Call inside the
-    clinic's tenant context."""
+    """Return the AppUser on success, else raise AuthError("invalid_credentials").
+
+    All failure modes return the SAME generic error (no per-state code/message)
+    and spend equivalent bcrypt time, so login cannot be used to enumerate
+    usernames or distinguish inactive/locked accounts. The lockout + is_active
+    rules are still fully enforced internally. Call inside the clinic's tenant
+    context."""
     now = timezone.now()
-    try:
-        user = AppUser.objects.get(clinic=clinic, username=username)
-    except AppUser.DoesNotExist:
-        raise AuthError("invalid_credentials", "نام کاربری یا رمز عبور نادرست است.")
 
-    if not user.is_active:
-        raise AuthError("inactive", "این حساب غیرفعال است.")
+    user = AppUser.objects.filter(clinic=clinic, username=username).first()
+    if user is None:
+        _spend_bcrypt_time(password)  # equalise timing vs the real bcrypt path
+        raise AuthError("invalid_credentials", _GENERIC_MSG)
 
-    if user.locked_until and user.locked_until > now:
-        raise AuthError("locked", "حساب موقتاً قفل شده است؛ بعداً تلاش کنید.")
+    locked = bool(user.locked_until and user.locked_until > now)
+    # Always run the real password check so existing-user timing is uniform
+    # across active / inactive / locked states.
+    password_ok = _verify_password(user, password)
+    usable = user.is_active and not locked
 
-    if not _verify_password(user, password):
-        user.failed_attempts = (user.failed_attempts or 0) + 1
-        fields = ["failed_attempts"]
-        if user.failed_attempts >= MAX_FAILED_ATTEMPTS:
-            user.locked_until = now + timedelta(minutes=LOCKOUT_MINUTES)
-            user.failed_attempts = 0
-            fields.append("locked_until")
-        user.save(update_fields=fields)
-        raise AuthError("invalid_credentials", "نام کاربری یا رمز عبور نادرست است.")
+    if not usable or not password_ok:
+        # Count the failed attempt + maybe lock — but only for a usable account
+        # (don't let an attacker lock out or probe inactive/locked accounts).
+        if usable and not password_ok:
+            user.failed_attempts = (user.failed_attempts or 0) + 1
+            fields = ["failed_attempts"]
+            if user.failed_attempts >= MAX_FAILED_ATTEMPTS:
+                user.locked_until = now + timedelta(minutes=LOCKOUT_MINUTES)
+                user.failed_attempts = 0
+                fields.append("locked_until")
+            user.save(update_fields=fields)
+        raise AuthError("invalid_credentials", _GENERIC_MSG)
 
     # success
     user.failed_attempts = 0
