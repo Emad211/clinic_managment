@@ -39,6 +39,7 @@ INSTALLED_APPS = [
     "apps.rx",
     "apps.accounting",
     "apps.messaging",
+    "apps.web",
 ]
 
 MIDDLEWARE = [

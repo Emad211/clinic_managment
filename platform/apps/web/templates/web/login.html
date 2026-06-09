@@ -1,0 +1,18 @@
+{% extends "web/base.html" %}
+{% block title %}ورود — پلتفرم کلینیک{% endblock %}
+{% block content %}
+<div class="card" style="max-width:420px;margin:3rem auto">
+  <h2>ورود</h2>
+  {% if error %}<div class="error">{{ error }}</div>{% endif %}
+  <form method="post" action="{% url 'web:login' %}">
+    {% csrf_token %}
+    <label>شناسهٔ کلینیک (slug)</label>
+    <input type="text" name="clinic_slug" value="{{ slug|default:'' }}" autofocus required>
+    <label>نام کاربری</label>
+    <input type="text" name="username" value="{{ username|default:'' }}" required>
+    <label>رمز عبور</label>
+    <input type="password" name="password" required>
+    <button type="submit">ورود</button>
+  </form>
+</div>
+{% endblock %}

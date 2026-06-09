@@ -6,15 +6,15 @@ building it does **not** touch the running Flask apps (ports 8080 / 8090). See
 [`../docs/TECH_STACK.md`](../docs/TECH_STACK.md) and
 [`../docs/DATA_MODEL.md`](../docs/DATA_MODEL.md) for the *why*.
 
-> Status: **v0.8 scaffold** — all 8 modules from DATA_MODEL §2 modelled (~40
-> models), RLS multi-tenancy across every tenant table, django-ninja API with
-> session login + **authz-guarded** data routers, bcrypt + 5-fail/15-min lockout,
-> a **full SQLite->Postgres ETL** (clinic + users + merged patients + per-patient
-> vitals/meds/conditions/flags/followups), a **clinical-catalog ETL** (real 57
-> ADA rules), and the **ported rule engine** producing live ADA decision support
-> (`/api/chronic/suggestions`). End-to-end verified on the **real** legacy data:
-> patient TEST0008 → 22 suggestions from real vitals. `manage.py check` clean.
-> Remaining: accounting/sms ETL, SPA, production hardening.
+> Status: **v0.9 scaffold — demoable** — all 8 modules from DATA_MODEL §2
+> modelled (~40 models), RLS multi-tenancy, django-ninja API (session login +
+> authz-guarded routers), bcrypt + 5-fail/15-min lockout, a **full ETL** (users +
+> merged patients + per-patient vitals/meds/conditions/flags/followups) + a
+> **clinical-catalog ETL** (real 57 ADA rules), the **ported rule engine** (live
+> decision support), AND a **server-rendered web frontend** (login → patient list
+> → snapshot + grouped ADA suggestions). End-to-end verified on the **real**
+> legacy data (TEST0008 → 26 suggestions in the UI). `manage.py check` clean.
+> Remaining: HTMX interactivity, accounting/sms ETL, production hardening.
 
 ## Layout (modular monolith)
 
@@ -31,6 +31,7 @@ platform/
     rx/              # Drug (global), Prescription/Item, InsurerLog (Epic 1, WebView->API)
     accounting/      # Invoice, Visit, Injection, Procedure, Consumable, Tariff, Payroll
     messaging/       # SmsTemplate, SmsCampaign, SmsMessage (Mediana + NullProvider)
+    web/             # server-rendered frontend: login + patient list + detail (RTL)
   requirements.txt
   .env.example
 ```
@@ -126,6 +127,15 @@ install with no legacy data.
 Both verified idempotent against the real DBs. **TODO (later loops):** accounting
 rows, SMS, tariffs, allergies/labs/appointments (empty in source); Tehran→UTC
 normalisation of timestamps.
+
+## Web frontend (`apps/web/`)
+
+Minimal RTL, server-rendered Django templates — the demoable slice of the wedge:
+`/login/` → `/patients/` (search) → `/patients/<id>/` (One-Page Snapshot of latest
+indicators + grouped ADA suggestions with the "تأیید با پزشک" disclaimer). Login
+follows the RLS-correct ordering and reuses the same session keys as the API.
+Verified end-to-end on real data (TEST0008 → 26 suggestions). HTMX interactivity
+(live search, inline suggestion ack) is the next enhancement.
 
 ## Clinical rule engine (`apps/chronic/rule_engine.py`)
 

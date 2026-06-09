@@ -1,0 +1,46 @@
+{% extends "web/base.html" %}
+{% block title %}{{ patient.full_name }} — پرونده{% endblock %}
+{% block content %}
+<div class="card">
+  <h2>{{ patient.full_name|default:'بیمار' }}</h2>
+  <span class="chip">کد ملی: {{ patient.national_id|default:'—' }}</span>
+  {% if facts.age %}<span class="chip">سن: {{ facts.age }}</span>{% endif %}
+  {% for c in facts.conditions %}<span class="chip">{{ c }}</span>{% endfor %}
+  {% for m in facts.med_classes %}<span class="chip">💊 {{ m }}</span>{% endfor %}
+</div>
+
+<div class="card">
+  <h3>📊 آخرین شاخص‌ها (Snapshot)</h3>
+  <div class="grid">
+    {% for vr in snapshot %}
+      <div class="metric">
+        <div class="muted">{{ vr.indicator_key }}</div>
+        <div class="big">{{ vr.value }}</div>
+        <div class="muted" style="font-size:.8rem">{{ vr.measured_at|date:"Y/m/d" }}</div>
+      </div>
+    {% empty %}
+      <div class="muted">شاخصی ثبت نشده است.</div>
+    {% endfor %}
+  </div>
+</div>
+
+<div class="card">
+  <h3>🧠 پیشنهادهای بالینی ({{ suggestions.count }})</h3>
+  <div class="disclaimer">⚠️ {{ suggestions.disclaimer|default:"پیشنهاد — تأیید با پزشک" }}</div>
+  {% for section in suggestions.sections %}
+    <h4>{{ section.label }}</h4>
+    {% for r in section.rules %}
+      <div class="sugg">
+        <div>
+          <strong>{{ r.title }}</strong>
+          <span class="chip sev-{{ r.severity }}">{{ r.severity }}</span>
+        </div>
+        {% if r.recommendation %}<div class="muted">{{ r.recommendation }}</div>{% endif %}
+        {% if r.source_ref %}<div class="muted" style="font-size:.8rem">منبع: {{ r.source_ref }}</div>{% endif %}
+      </div>
+    {% endfor %}
+  {% empty %}
+    <div class="muted">پیشنهادی برای این بیمار فعال نشد.</div>
+  {% endfor %}
+</div>
+{% endblock %}
