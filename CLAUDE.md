@@ -32,6 +32,8 @@ Most domain comments and UI strings are in Persian. The product is RTL/Jalali th
 
 **Fourth tree — `ai_service/` (Phase-0 knowledge pipeline, ladder rung 3):** a **separate FastAPI + arq** service (its own `.venv`, `requirements.txt`, `pytest`) that turns authoritative guidelines into a queryable clinical-knowledge graph (architecture in `docs/PIPELINE.md`). Kept apart from Django so the LLM workload/cadence doesn't destabilise the clinic app; its `knowledge` data has **no RLS** (global knowledge, not per-tenant). Current state: **M4 — all 9 layers end-to-end.** A PDF flows ingest (hash dedup) → parse (PyMuPDF) → extract (anchored Claims) → **verification gate** (independent grounding; hallucinations → `review_queue`) → ontology (canonical + ICD-11/MeSH/INN/ATC, entity resolution) → graph (nodes + provenance edges) → **MCP-style serving** (`/knowledge/concept`, `/knowledge/neighbors`). The `orchestrator.py` runs it idempotently (status → `graphed`), routing safety-critical/ungrounded claims to human review. A **Gold Set + benchmark harness** (`benchmark.py`) scores extracted/verified concepts vs hand-labels (precision/recall/F1) and reports coverage gaps. 20 tests green. See `ai_service/README.md`.
 
+**Platform ↔ pipeline integration:** the Django platform calls `ai_service` over HTTP via `platform/apps/common/knowledge.py` (`KnowledgeClient`, graceful no-op when `AI_SERVICE_URL` is unset) to enrich the patient page with ICD-11 crosswalk — the moat feeding the product, without the clinic app depending on the pipeline being up.
+
 ## Running
 
 **Specialist Clinic** (working venv with Python 3.13):

@@ -6,7 +6,7 @@
   <h2>{{ patient.full_name|default:'بیمار' }}</h2>
   <span class="chip">کد ملی: {{ patient.national_id|default:'—' }}</span>
   {% if facts.age %}<span class="chip">سن: {{ facts.age }}</span>{% endif %}
-  {% for c in facts.conditions %}<span class="chip">{{ c }}</span>{% endfor %}
+  {% for c in facts.conditions %}<span class="chip">{{ c }}{% if condition_crosswalk|get_item:c %} · ICD-11 {{ condition_crosswalk|get_item:c }}{% endif %}</span>{% endfor %}
   {% for m in facts.med_classes %}<span class="chip">💊 {{ m }}</span>{% endfor %}
 </div>
 

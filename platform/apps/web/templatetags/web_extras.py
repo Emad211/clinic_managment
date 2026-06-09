@@ -49,6 +49,15 @@ def jalali(value, fmt="%Y/%m/%d"):
 
 
 @register.filter
+def get_item(mapping, key):
+    """Dict lookup by a variable key (templates can't do mapping[key])."""
+    try:
+        return mapping.get(key)
+    except AttributeError:
+        return None
+
+
+@register.filter
 def rial(value):
     if value is None or value == "":
         return ""

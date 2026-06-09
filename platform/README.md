@@ -73,10 +73,15 @@ production Postgres before launch.**
 
 ## Setup & verify
 
-**Tests:** `python -m pytest` — 25 tests (auth/lockout, rule engine + DSL,
+**Tests:** `python -m pytest` — 29 tests (auth/lockout, rule engine + DSL,
 billing + SMS providers, web flows + accountability, e-prescription workflow,
-recall worklist + SMS reminder, wallet ledger) on in-memory SQLite via
-`config/settings_test`. Runs in CI alongside `verify_rls`.
+recall worklist + SMS reminder, wallet ledger, knowledge-pipeline client) on
+in-memory SQLite via `config/settings_test`. Runs in CI alongside `verify_rls`.
+
+**Knowledge integration:** `apps/common/knowledge.py` calls the `ai_service`
+knowledge pipeline (`/knowledge/*`) to enrich the patient page with ICD-11
+crosswalk for conditions. Set `AI_SERVICE_URL` to enable; unset → graceful
+no-op (the moat feeding the product, but the clinic app never depends on it).
 
 ```powershell
 cd platform

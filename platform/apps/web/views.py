@@ -23,6 +23,7 @@ from apps.chronic.models import (
     ClinicalRule, FollowupTask, SuggestionLog, VitalReading, WalletTransaction,
 )
 from apps.messaging.models import SmsMessage
+from apps.common.knowledge import knowledge_client
 from apps.common.tenant import tenant_context
 from apps.identity.models import AppUser, Clinic
 from apps.identity.services import AuthError, authenticate
@@ -155,6 +156,15 @@ def patient_detail(request, patient_id):
         WalletTransaction.objects.filter(patient=patient).order_by("-created_at")[:8]
     )
 
+    # best-effort ICD-11 crosswalk from the knowledge pipeline (empty if the
+    # ai_service is not configured/reachable — the page is unaffected)
+    kc = knowledge_client()
+    condition_crosswalk = {}
+    for code in facts.get("conditions", []):
+        concept = kc.concept(code)
+        if concept and concept.get("icd11"):
+            condition_crosswalk[code] = concept["icd11"]
+
     return render(request, "web/patient_detail.html", {
         "patient": patient,
         "facts": facts,
@@ -164,6 +174,7 @@ def patient_detail(request, patient_id):
         "prescriptions": prescriptions,
         "insurer_labels": INSURER_LABELS,
         "wallet_txns": wallet_txns,
+        "condition_crosswalk": condition_crosswalk,
     })
 
 
