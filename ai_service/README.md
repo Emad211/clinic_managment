@@ -15,8 +15,10 @@ patient data).
 > ontology (canonical + ICD-11/MeSH/INN/ATC, entity resolution) → graph (nodes +
 > provenance edges) → **MCP-style serving** (`get_concept`/`get_neighbors`). The
 > orchestrator runs it idempotently and routes safety-critical/ungrounded claims
-> to human review. **18 tests green.** Next: arq+Redis async orchestration, real
-> LLM extraction/verification on AvalAI, a Gold Set, and pgvector retrieval.
+> to human review. **+ a Gold Set + benchmark harness** (`benchmark.py`) that
+> scores extracted-and-verified concepts vs hand-labels (precision/recall/F1) and
+> reports coverage gaps. **20 tests green.** Next: arq+Redis async orchestration,
+> real LLM extraction/verification on AvalAI, pgvector retrieval.
 
 ## Layout
 ```
@@ -32,6 +34,7 @@ ai_service/
     ontology.py    # layer 6: term -> canonical concept + ICD-11/MeSH/INN/ATC crosswalk
     graph.py       # layer 7: concept nodes + provenance edges (conflicts not overwritten)
     serving.py     # layer 9: MCP-style get_concept / get_neighbors
+    benchmark.py   # Gold Set + precision/recall/F1 harness (quality gate)
     orchestrator.py# spine: extract->verify->ontology->graph (idempotent; human review)
     db.py          # engine/session (SQLite dev, PostgreSQL+pgvector target)
     main.py        # FastAPI: /health, /ingest

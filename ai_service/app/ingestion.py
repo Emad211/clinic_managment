@@ -11,7 +11,7 @@ from typing import Optional, Tuple
 
 from sqlmodel import Session, select
 
-from .models import SourceDocument
+from .models import DocumentChunk, SourceDocument
 
 
 def content_hash(data: bytes) -> str:
@@ -45,3 +45,18 @@ def ingest_document(
     session.commit()
     session.refresh(doc)
     return doc, True
+
+
+def ingest_text_document(session: Session, title: str, text: str, **kw) -> SourceDocument:
+    """Ingest a plain-text document as a single prose chunk (status='parsed').
+    Convenience for text sources / the Gold Set (bypasses PDF parsing)."""
+    doc, created = ingest_document(session, title=title, raw=text.encode("utf-8"), **kw)
+    if created:
+        session.add(DocumentChunk(
+            document_id=doc.id, ordinal=0, page_anchor=1, kind="prose", content=text,
+        ))
+        doc.status = "parsed"
+        session.add(doc)
+        session.commit()
+        session.refresh(doc)
+    return doc
