@@ -6,10 +6,11 @@ building it does **not** touch the running Flask apps (ports 8080 / 8090). See
 [`../docs/TECH_STACK.md`](../docs/TECH_STACK.md) and
 [`../docs/DATA_MODEL.md`](../docs/DATA_MODEL.md) for the *why*.
 
-> Status: **v0.2 scaffold** — all 8 modules from DATA_MODEL §2 modelled (~40
+> Status: **v0.3 scaffold** — all 8 modules from DATA_MODEL §2 modelled (~40
 > models), RLS multi-tenancy wired across every tenant table, django-ninja API
-> root + patients/chronic routers, `manage.py check` clean, all migrations apply.
-> Not yet runnable as a product (no auth flow yet, no data ETL).
+> root + patients/chronic routers, idempotent global-catalog seed + clinic
+> bootstrap commands, `manage.py check` clean, all migrations apply.
+> Not yet runnable as a product (no auth/login flow yet, no SQLite->Postgres ETL).
 
 ## Layout (modular monolith)
 
@@ -60,8 +61,17 @@ py -3.13 -m venv .venv
 copy .env.example .env          # then edit DATABASE_URL / secret
 .\.venv\Scripts\python.exe manage.py check
 .\.venv\Scripts\python.exe manage.py migrate        # needs a PostgreSQL DB
+.\.venv\Scripts\python.exe manage.py seed_catalog    # global ADA catalogs (idempotent)
+.\.venv\Scripts\python.exe manage.py bootstrap_clinic --name "درمانگاه نمونه" --slug demo
 .\.venv\Scripts\python.exe manage.py runserver       # GET /api/health -> {"status":"ok"}
 ```
+
+**Seeding & RLS:** `seed_catalog` writes GLOBAL catalog rows (`clinic_id NULL`)
+and `bootstrap_clinic` writes the first `app_user` of a clinic. Both write rows
+the per-request tenant RLS policies would reject, so on PostgreSQL **run them
+under the platform owner / a `BYPASSRLS` ops role**, not the app's tenant role.
+ADA thresholds in `seed_catalog` must stay in sync with `specialist_clinic`'s
+`vitals_service.THRESHOLDS` / `analytics_service.TARGETS` (CLAUDE.md rule).
 
 Migrations were smoke-tested end-to-end against throwaway SQLite (the RLS
 migration no-ops off PostgreSQL by design). Real RLS enforcement requires a
