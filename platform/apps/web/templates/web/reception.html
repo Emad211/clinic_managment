@@ -1,0 +1,38 @@
+{% extends "web/base.html" %}
+{% load web_extras %}
+{% block title %}میز پذیرش{% endblock %}
+{% block content %}
+<div class="card">
+  <h2>🧾 میز پذیرش / صندوق</h2>
+  <p class="muted" style="font-size:.9rem">فاکتور جدید برای بیمار باز کنید (با کد ملی)، سپس اقلام را اضافه و تسویه کنید.</p>
+  <form method="post" style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap">
+    {% csrf_token %}
+    <input type="text" name="national_id" placeholder="کد ملی بیمار" required style="margin:0;width:200px">
+    <select name="shift" style="padding:.5rem;background:var(--panel2);border:1px solid var(--line);border-radius:8px;color:var(--txt)">
+      {% for code, label in shifts %}<option value="{{ code }}">{{ label }}</option>{% endfor %}
+    </select>
+    <button type="submit">باز کردن فاکتور</button>
+  </form>
+</div>
+
+<div class="card">
+  <h3>فاکتورهای باز / نیمه‌تسویه</h3>
+  <table>
+    <thead><tr><th>بیمار</th><th>تاریخ</th><th>شیفت</th><th>مبلغ بیمار</th><th>پرداخت‌شده</th><th>وضعیت</th></tr></thead>
+    <tbody>
+      {% for inv in open_invoices %}
+        <tr>
+          <td><a href="{% url 'web:invoice_detail' inv.id %}">{{ inv.patient.full_name|default:'—' }}</a></td>
+          <td class="muted">{{ inv.work_date }}</td>
+          <td>{{ inv.shift }}</td>
+          <td>{{ inv.total_rial|rial }}</td>
+          <td>{{ inv.paid_rial|rial }}</td>
+          <td>{% if inv.status == 'partial' %}<span class="sev-warn">نیمه‌تسویه</span>{% else %}<span class="sev-info">باز</span>{% endif %}</td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="6" class="muted">فاکتور بازی نیست.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

@@ -73,12 +73,12 @@ production Postgres before launch.**
 
 ## Setup & verify
 
-**Tests:** `python -m pytest` — 65 tests (auth/lockout, clinical-licensing gate,
+**Tests:** `python -m pytest` — 73 tests (auth/lockout, clinical-licensing gate,
 audit trail, security-hardening regressions, accounting generalization + invoice
-pricing service, rule engine + DSL, billing + SMS providers, web flows +
-accountability, e-prescription workflow, recall worklist + SMS reminder, wallet
-ledger, knowledge-pipeline client) on in-memory SQLite via `config/settings_test`.
-Runs in CI alongside `verify_rls`.
+pricing service + reception desk UI, rule engine + DSL, billing + SMS providers,
+web flows + accountability, e-prescription workflow, recall worklist + SMS
+reminder, wallet ledger, knowledge-pipeline client) on in-memory SQLite via
+`config/settings_test`. Runs in CI alongside `verify_rls`.
 
 **Security:** a multi-agent adversarial audit hardened the platform (10 fixes:
 prescription-content license gate + state-machine, billing fail-closed in prod,

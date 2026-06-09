@@ -8,6 +8,13 @@
   {% if facts.age %}<span class="chip">سن: {{ facts.age }}</span>{% endif %}
   {% for c in facts.conditions %}<span class="chip">{{ c }}{% if condition_crosswalk|get_item:c %} · ICD-11 {{ condition_crosswalk|get_item:c }}{% endif %}</span>{% endfor %}
   {% for m in facts.med_classes %}<span class="chip">💊 {{ m }}</span>{% endfor %}
+  {% if current_app_user.role == 'reception' or current_app_user.role == 'clinic_manager' %}
+  <form method="post" action="{% url 'web:invoice_open_for_patient' patient.id %}" style="display:inline;margin-inline-start:.5rem">
+    {% csrf_token %}
+    <input type="hidden" name="shift" value="morning">
+    <button type="submit" style="padding:.25rem .7rem;font-size:.85rem">🧾 فاکتور جدید</button>
+  </form>
+  {% endif %}
 </div>
 
 <div class="card">

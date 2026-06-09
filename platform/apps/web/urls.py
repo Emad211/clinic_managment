@@ -15,6 +15,14 @@ urlpatterns = [
     path("patients/<uuid:patient_id>/wallet/", views.wallet_txn, name="wallet_txn"),
     path("worklist/", views.worklist, name="worklist"),
     path("activity/", views.activity_log, name="activity"),
+    # reception desk / invoicing (accounting port)
+    path("reception/", views.reception, name="reception"),
+    path("patients/<uuid:patient_id>/invoice/new/", views.invoice_open_for_patient, name="invoice_open_for_patient"),
+    path("invoices/<uuid:invoice_id>/", views.invoice_detail, name="invoice_detail"),
+    path("invoices/<uuid:invoice_id>/add-item/", views.invoice_add_item, name="invoice_add_item"),
+    path("invoices/<uuid:invoice_id>/pay/", views.invoice_pay, name="invoice_pay"),
+    path("invoices/<uuid:invoice_id>/close/", views.invoice_close, name="invoice_close"),
+    path("tariffs/", views.tariffs, name="tariffs"),
     # billing / subscription
     path("billing/", views.billing_home, name="billing"),
     path("billing/subscribe/<uuid:plan_id>/", views.billing_subscribe, name="billing_subscribe"),

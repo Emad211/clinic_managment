@@ -19,6 +19,8 @@ from apps.billing.models import Payment, Plan, Subscription
 from apps.billing.services import confirm_payment
 from apps.billing.services import subscribe as start_subscription
 
+from apps.accounting import services as acc
+from apps.accounting.models import InsurancePlan, Invoice, Tariff
 from apps.chronic import rule_engine
 from apps.chronic.models import (
     ClinicalRule, FollowupTask, SuggestionLog, VitalReading, WalletTransaction,
@@ -64,6 +66,21 @@ def _current_user(request):
     if not uid:
         return None
     return AppUser.objects.filter(id=uid, is_active=True).first()
+
+
+def roles_required(*roles):
+    """Gate a web view to one of ``roles`` (inline pattern, like the Flask apps).
+    Composes under @login_required_web."""
+    def deco(view):
+        @wraps(view)
+        def wrapper(request, *args, **kwargs):
+            user = _current_user(request)
+            if user is None or user.role not in roles:
+                messages.error(request, "دسترسی به این بخش مجاز نیست.")
+                return redirect("web:dashboard")
+            return view(request, *args, **kwargs)
+        return wrapper
+    return deco
 
 
 def clinical_license_required(view):
@@ -510,3 +527,151 @@ def acknowledge_suggestion(request, patient_id):
             metadata={"rule_code": rule_code, "severity": rule.severity},
         )
     return redirect("web:patient_detail", patient_id=patient_id)
+
+
+# ── reception desk / invoicing (accounting port, ACCOUNTING.md phase 3) ─────
+SHIFT_CHOICES = [("morning", "صبح"), ("evening", "عصر"), ("night", "شب")]
+PAY_METHODS = [("cash", "نقد"), ("card", "کارت"), ("wallet", "کیف‌پول"), ("insurance", "بیمه")]
+_DESK_ROLES = ("reception", "clinic_manager")
+# tariff.kind -> the service that books it as a priced, insurance-split item
+_KIND_TO_ADDER = {
+    "visit": acc.add_visit,
+    "injection": acc.add_injection,
+    "nursing": acc.add_injection,
+    "procedure": acc.add_procedure,
+    "service": acc.add_procedure,
+}
+
+
+@login_required_web
+@roles_required(*_DESK_ROLES)
+def reception(request):
+    """The desk: open a new invoice for a patient (by national id) and see the
+    open/partial invoices to settle."""
+    user = _current_user(request)
+    today = timezone.localdate()
+    if request.method == "POST":
+        nid = (request.POST.get("national_id") or "").strip()
+        shift = request.POST.get("shift") or "morning"
+        patient = Patient.objects.filter(national_id=nid, is_active=True).first()
+        if not patient:
+            messages.error(request, "بیمار با این کد ملی یافت نشد.")
+            return redirect("web:reception")
+        inv = acc.open_invoice(user.clinic, patient, today, shift, created_by=user)
+        return redirect("web:invoice_detail", invoice_id=inv.id)
+    open_invoices = list(
+        Invoice.objects.filter(status__in=["open", "partial"])
+        .select_related("patient").order_by("-created_at")[:50]
+    )
+    return render(request, "web/reception.html", {
+        "open_invoices": open_invoices, "shifts": SHIFT_CHOICES, "today": today,
+    })
+
+
+@login_required_web
+@roles_required(*_DESK_ROLES)
+def invoice_open_for_patient(request, patient_id):
+    """Open an invoice directly from a patient's page."""
+    patient = get_object_or_404(Patient, id=patient_id)
+    if request.method == "POST":
+        user = _current_user(request)
+        shift = request.POST.get("shift") or "morning"
+        inv = acc.open_invoice(user.clinic, patient, timezone.localdate(), shift, created_by=user)
+        return redirect("web:invoice_detail", invoice_id=inv.id)
+    return redirect("web:patient_detail", patient_id=patient_id)
+
+
+@login_required_web
+@roles_required(*_DESK_ROLES)
+def invoice_detail(request, invoice_id):
+    inv = get_object_or_404(Invoice, id=invoice_id)
+    visits = list(inv.visits.select_related("insurance_plan", "tariff").all())
+    injections = list(inv.injections.select_related("insurance_plan").all())
+    procedures = list(inv.procedures.select_related("insurance_plan").all())
+    payments = list(inv.payments.all())
+    tariffs = list(Tariff.objects.filter(is_active=True).order_by("kind", "name"))
+    plans = list(InsurancePlan.objects.filter(is_active=True).order_by("name"))
+    editable = inv.status in ("open", "partial")
+    return render(request, "web/invoice_detail.html", {
+        "inv": inv, "visits": visits, "injections": injections, "procedures": procedures,
+        "payments": payments, "tariffs": tariffs, "plans": plans,
+        "methods": PAY_METHODS, "editable": editable,
+    })
+
+
+@login_required_web
+@roles_required(*_DESK_ROLES)
+def invoice_add_item(request, invoice_id):
+    inv = get_object_or_404(Invoice, id=invoice_id)
+    if request.method == "POST" and inv.status in ("open", "partial"):
+        tariff = Tariff.objects.filter(id=request.POST.get("tariff_id"), is_active=True).first()
+        plan = InsurancePlan.objects.filter(id=request.POST.get("insurance_plan_id")).first()
+        manual_name = (request.POST.get("name") or "").strip()
+        try:
+            manual_amount = int(request.POST.get("amount") or 0) or None
+        except ValueError:
+            manual_amount = None
+        kind = tariff.kind if tariff else (request.POST.get("kind") or "procedure")
+        adder = _KIND_TO_ADDER.get(kind, acc.add_procedure)
+        if tariff or manual_amount:
+            kwargs = {"tariff": tariff, "amount_rial": manual_amount, "insurance_plan": plan}
+            if adder is acc.add_visit:
+                adder(inv, **kwargs)
+            else:
+                adder(inv, name=manual_name or None, **kwargs)
+    return redirect("web:invoice_detail", invoice_id=inv.id)
+
+
+@login_required_web
+@roles_required(*_DESK_ROLES)
+def invoice_pay(request, invoice_id):
+    inv = get_object_or_404(Invoice, id=invoice_id)
+    if request.method == "POST":
+        try:
+            amount = int(request.POST.get("amount") or 0)
+        except ValueError:
+            amount = 0
+        method = request.POST.get("method") or "cash"
+        if amount > 0:
+            acc.record_payment(inv, amount, method, actor=_current_user(request))
+    return redirect("web:invoice_detail", invoice_id=inv.id)
+
+
+@login_required_web
+@roles_required(*_DESK_ROLES)
+def invoice_close(request, invoice_id):
+    inv = get_object_or_404(Invoice, id=invoice_id)
+    if request.method == "POST":
+        acc.close_invoice(inv, actor=_current_user(request))
+    return redirect("web:invoice_detail", invoice_id=inv.id)
+
+
+@login_required_web
+@roles_required("clinic_manager")
+def tariffs(request):
+    """Manager: the per-clinic price list (the generalisation — editable data, not
+    code). Add a tariff or toggle one active/inactive."""
+    user = _current_user(request)
+    if request.method == "POST":
+        action = request.POST.get("action")
+        if action == "add":
+            name = (request.POST.get("name") or "").strip()
+            try:
+                amount = int(request.POST.get("amount") or 0)
+            except ValueError:
+                amount = 0
+            if name:
+                Tariff.objects.create(
+                    clinic=user.clinic, kind=request.POST.get("kind") or "service",
+                    name=name, amount_rial=amount, category=request.POST.get("category") or "",
+                )
+        elif action == "toggle":
+            t = Tariff.objects.filter(id=request.POST.get("tariff_id")).first()
+            if t:
+                t.is_active = not t.is_active
+                t.save(update_fields=["is_active", "updated_at"])
+        return redirect("web:tariffs")
+    rows = list(Tariff.objects.all().order_by("kind", "name"))
+    return render(request, "web/tariffs.html", {
+        "tariffs": rows, "kinds": Tariff.KIND, "categories": Tariff.CATEGORY,
+    })

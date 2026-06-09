@@ -1,0 +1,49 @@
+{% extends "web/base.html" %}
+{% load web_extras %}
+{% block title %}تعرفه‌ها{% endblock %}
+{% block content %}
+<div class="card">
+  <h2>💲 تعرفه‌ها (لیست قیمتِ کلینیک)</h2>
+  <p class="muted" style="font-size:.9rem">قیمت‌ها دادهٔ قابلِ‌ویرایشِ همین کلینیک‌اند (نه ثابتِ کد) — هر کلینیک/مطب تعرفهٔ خودش را دارد.</p>
+  <form method="post" style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap">
+    {% csrf_token %}
+    <input type="hidden" name="action" value="add">
+    <select name="kind" style="padding:.5rem;background:var(--panel2);border:1px solid var(--line);border-radius:8px;color:var(--txt)">
+      {% for code, label in kinds %}<option value="{{ code }}">{{ label }}</option>{% endfor %}
+    </select>
+    <input type="text" name="name" placeholder="عنوان خدمت" required style="margin:0;width:200px">
+    <input type="text" name="amount" placeholder="مبلغ (ریال)" style="margin:0;width:140px">
+    <select name="category" style="padding:.5rem;background:var(--panel2);border:1px solid var(--line);border-radius:8px;color:var(--txt)">
+      {% for code, label in categories %}<option value="{{ code }}">{{ label }}</option>{% endfor %}
+    </select>
+    <button type="submit">افزودن تعرفه</button>
+  </form>
+</div>
+
+<div class="card">
+  <table>
+    <thead><tr><th>نوع</th><th>عنوان</th><th>دسته</th><th>مبلغ</th><th>وضعیت</th><th></th></tr></thead>
+    <tbody>
+      {% for t in tariffs %}
+        <tr>
+          <td>{{ t.kind }}</td>
+          <td>{{ t.name }}</td>
+          <td class="muted">{{ t.category|default:'—' }}</td>
+          <td>{{ t.amount_rial|rial }}</td>
+          <td>{% if t.is_active %}<span class="sev-info">فعال</span>{% else %}<span class="muted">غیرفعال</span>{% endif %}</td>
+          <td>
+            <form method="post" style="margin:0">
+              {% csrf_token %}
+              <input type="hidden" name="action" value="toggle">
+              <input type="hidden" name="tariff_id" value="{{ t.id }}">
+              <button type="submit" style="padding:.2rem .6rem;font-size:.8rem;background:var(--panel2);color:var(--txt);border:1px solid var(--line)">{% if t.is_active %}غیرفعال{% else %}فعال{% endif %}</button>
+            </form>
+          </td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="6" class="muted">تعرفه‌ای ثبت نشده است. (با <code>seed_accounting_defaults</code> دیفالت‌ها را بسازید.)</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}
