@@ -18,6 +18,7 @@ from apps.common.tenant import tenant_context
 from apps.identity.models import AppUser, Clinic
 from apps.identity.services import AuthError, authenticate
 from apps.patients.models import Patient
+from apps.messaging.services import send_sms
 from apps.rx.models import InsurerLog, Prescription, PrescriptionItem
 
 # Official insurer portals embedded by the WebView bridge (EPRESCRIPTION.md path A)
@@ -221,6 +222,21 @@ def followup_done(request, task_id):
             t.status = "done"
             t.handled_at = timezone.now()
             t.save(update_fields=["status", "handled_at", "updated_at"])
+    return redirect("web:worklist")
+
+
+@login_required_web
+def followup_remind(request, task_id):
+    """Send the patient an SMS reminder for a due follow-up (Epic 6). Falls back
+    to a simulated send when no Mediana key is configured."""
+    if request.method == "POST":
+        t = FollowupTask.objects.select_related("patient").filter(id=task_id).first()
+        if t and t.patient:
+            label = t.title or t.item_key
+            body = f"یادآوری پیگیری سلامت: {label}"
+            if t.due_date:
+                body += f" — سررسید {t.due_date}"
+            send_sms(t.clinic, t.patient.phone_number, body, patient=t.patient)
     return redirect("web:worklist")
 
 

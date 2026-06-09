@@ -16,8 +16,9 @@ building it does **not** touch the running Flask apps (ports 8080 / 8090). See
 > **e-prescription WebView-bridge workflow** (Epic 1: compose → portal → register
 > + InsurerLog audit). All verified end-to-end on **real** legacy data.
 > `manage.py check` clean; **RLS isolation proven on real Postgres** (`verify_rls`);
-> **Dockerfile + compose + RLS-correct DB-role split** for deployment. Remaining:
-> HTMX, accounting/sms ETL, direct-API e-prescription (cert track).
+> **Dockerfile + compose + RLS-correct DB-role split** + GitLab CI; **SMS reminders**
+> (Mediana/NullProvider) closing the recall loop. Remaining: HTMX, accounting ETL,
+> direct-API e-prescription (cert track).
 
 ## Layout (modular monolith)
 
@@ -167,8 +168,10 @@ SECRET_KEY / TLS-redirect notes (set a strong key + `DJANGO_SSL_REDIRECT` in pro
 Minimal RTL, server-rendered Django templates — the demoable wedge with all three
 core chronic workflows: `/login/` → `/patients/` (search) → `/patients/<id>/`
 (One-Page Snapshot + grouped ADA suggestions w/ "تأیید با پزشک" disclaimer), and
-`/worklist/` (recall/follow-up worklist split overdue/today/upcoming, mark-done).
-Plus the **e-prescription** flow (Epic 1, EPRESCRIPTION.md path A): from a patient,
+`/worklist/` (recall/follow-up worklist split overdue/today/upcoming, mark-done **+
+📲 SMS reminder** per row — Mediana with NullProvider fallback + a compliance
+rewrite of banned promo words; `apps/messaging/services.py`). Plus the
+**e-prescription** flow (Epic 1, EPRESCRIPTION.md path A): from a patient,
 start a draft → `/rx/<id>/` composes items and shows the **WebView bridge** (opens
 the official insurer portal `ep.tamin.ir` / `eservices.ihio.gov.ir`) → record the
 returned tracking code to mark it registered. Every step writes an `InsurerLog`
