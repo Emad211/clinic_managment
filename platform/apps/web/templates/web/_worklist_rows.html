@@ -1,3 +1,4 @@
+{% load web_extras %}
 {% if rows %}
 <table>
   <thead><tr><th>بیمار</th><th>پیگیری</th><th>سررسید</th><th></th></tr></thead>
@@ -6,7 +7,7 @@
       <tr>
         <td><a href="{% url 'web:patient_detail' t.patient.id %}">{{ t.patient.full_name|default:t.patient.national_id|default:'—' }}</a></td>
         <td>{{ t.title|default:t.item_key }}</td>
-        <td>{{ t.due_date|date:"Y/m/d"|default:'—' }}</td>
+        <td>{{ t.due_date|jalali }}</td>
         <td style="display:flex;gap:.4rem">
           <form method="post" action="{% url 'web:followup_remind' t.id %}" style="margin:0">
             {% csrf_token %}

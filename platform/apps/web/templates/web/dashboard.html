@@ -1,22 +1,23 @@
 {% extends "web/base.html" %}
+{% load web_extras %}
 {% block title %}داشبورد — پلتفرم کلینیک{% endblock %}
 {% block content %}
 <div class="card">
   <h2>📊 داشبورد کلینیک</h2>
   {% if subscription %}
-    <span class="chip" style="color:var(--accent)">پلن: {{ subscription.plan.name }} — تا {{ subscription.period_end|date:"Y/m/d" }}</span>
+    <span class="chip" style="color:var(--accent)">پلن: {{ subscription.plan.name }} — تا {{ subscription.period_end|jalali }}</span>
   {% else %}
     <a href="{% url 'web:billing' %}"><span class="chip" style="color:var(--warn)">اشتراکِ فعال ندارید — انتخابِ پلن</span></a>
   {% endif %}
 </div>
 
 <div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(160px,1fr))">
-  <a href="{% url 'web:patients' %}" class="metric"><div class="muted">بیماران</div><div class="big">{{ kpis.patients }}</div></a>
-  <a href="{% url 'web:worklist' %}" class="metric"><div class="muted">پیگیری باز</div><div class="big">{{ kpis.followups_open }}</div></a>
-  <a href="{% url 'web:worklist' %}" class="metric"><div class="muted sev-urgent">عقب‌افتاده</div><div class="big sev-urgent">{{ kpis.followups_overdue }}</div></a>
-  <div class="metric"><div class="muted">نسخهٔ ثبت‌شده</div><div class="big">{{ kpis.rx_registered }}</div></div>
-  <div class="metric"><div class="muted">پیامک ارسالی</div><div class="big">{{ kpis.sms_sent }}</div></div>
-  <div class="metric"><div class="muted">پیشنهادِ تأییدشده</div><div class="big">{{ kpis.suggestions_acked }}</div></div>
+  <a href="{% url 'web:patients' %}" class="metric"><div class="muted">بیماران</div><div class="big">{{ kpis.patients|fa_num }}</div></a>
+  <a href="{% url 'web:worklist' %}" class="metric"><div class="muted">پیگیری باز</div><div class="big">{{ kpis.followups_open|fa_num }}</div></a>
+  <a href="{% url 'web:worklist' %}" class="metric"><div class="muted sev-urgent">عقب‌افتاده</div><div class="big sev-urgent">{{ kpis.followups_overdue|fa_num }}</div></a>
+  <div class="metric"><div class="muted">نسخهٔ ثبت‌شده</div><div class="big">{{ kpis.rx_registered|fa_num }}</div></div>
+  <div class="metric"><div class="muted">پیامک ارسالی</div><div class="big">{{ kpis.sms_sent|fa_num }}</div></div>
+  <div class="metric"><div class="muted">پیشنهادِ تأییدشده</div><div class="big">{{ kpis.suggestions_acked|fa_num }}</div></div>
 </div>
 
 <div class="card">
@@ -29,7 +30,7 @@
         <tr>
           <td><a href="{% url 'web:patient_detail' t.patient.id %}">{{ t.patient.full_name|default:t.patient.national_id|default:'—' }}</a></td>
           <td>{{ t.title|default:t.item_key }}</td>
-          <td>{{ t.due_date|date:"Y/m/d" }}</td>
+          <td>{{ t.due_date|jalali }}</td>
         </tr>
       {% endfor %}
     </tbody>

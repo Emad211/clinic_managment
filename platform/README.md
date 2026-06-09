@@ -193,7 +193,9 @@ the official insurer portal `ep.tamin.ir` / `eservices.ihio.gov.ir`) → record 
 returned tracking code to mark it registered. Every step writes an `InsurerLog`
 audit row. (The literal portal embed is a browser concern; direct-API integration
 is the parallel cert track.) Login follows the RLS-correct ordering and reuses the
-same session keys as the API.
+same session keys as the API. RTL/Jalali presentation filters
+(`apps/web/templatetags/web_extras.py`: `fa_num`, `jalali`, `rial`) render Persian
+digits + Jalali dates throughout.
 Each suggestion has a **تأیید (acknowledge)** action: the physician confirms it
 and an append-only `SuggestionLog` row is written (rule_code, severity, message,
 acknowledged_by, acknowledged_at) — the safety/legal backbone ("suggests,

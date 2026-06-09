@@ -1,4 +1,5 @@
 {% extends "web/base.html" %}
+{% load web_extras %}
 {% block title %}نسخهٔ الکترونیک — {{ insurer_label }}{% endblock %}
 {% block content %}
 <div class="card">
@@ -51,7 +52,7 @@
     <thead><tr><th>زمان</th><th>اقدام</th><th>وضعیت</th></tr></thead>
     <tbody>
       {% for l in logs %}
-        <tr><td>{{ l.created_at|date:"Y/m/d H:i" }}</td><td>{{ l.action }}</td><td>{{ l.status }}</td></tr>
+        <tr><td>{{ l.created_at|jalali:"%Y/%m/%d %H:%M" }}</td><td>{{ l.action }}</td><td>{{ l.status }}</td></tr>
       {% empty %}
         <tr><td colspan="3" class="muted">—</td></tr>
       {% endfor %}

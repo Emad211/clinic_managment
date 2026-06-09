@@ -1,12 +1,12 @@
 {% extends "web/base.html" %}
-{% load i18n %}
+{% load web_extras %}
 {% block title %}اشتراک — پلتفرم کلینیک{% endblock %}
 {% block content %}
 <div class="card">
   <h2>💳 اشتراک کلینیک</h2>
   {% if subscription %}
     <p>پلنِ فعال: <strong>{{ subscription.plan.name }}</strong>
-       — تا تاریخ {{ subscription.period_end|date:"Y/m/d" }}
+       — تا تاریخ {{ subscription.period_end|jalali }}
        <span class="chip" style="color:var(--accent)">{{ subscription.status }}</span></p>
   {% else %}
     <p class="muted">اشتراکِ فعالی ندارید. یک پلن انتخاب کنید.</p>
@@ -17,7 +17,7 @@
   {% for plan in plans %}
     <div class="card">
       <h3>{{ plan.name }}</h3>
-      <div class="big">{% if plan.price_rial %}{{ plan.price_rial }} ﷼{% else %}رایگان{% endif %}</div>
+      <div class="big">{% if plan.price_rial %}{{ plan.price_rial|rial }}{% else %}رایگان{% endif %}</div>
       <div class="muted">دوره: {{ plan.period }}</div>
       <ul class="muted" style="padding-inline-start:1.2rem">
         {% for k, v in plan.features_json.items %}<li>{{ k }}: {{ v }}</li>{% endfor %}

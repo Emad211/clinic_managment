@@ -1,4 +1,5 @@
 {% extends "web/base.html" %}
+{% load web_extras %}
 {% block title %}{{ patient.full_name }} — پرونده{% endblock %}
 {% block content %}
 <div class="card">
@@ -15,8 +16,8 @@
     {% for vr in snapshot %}
       <div class="metric">
         <div class="muted">{{ vr.indicator_key }}</div>
-        <div class="big">{{ vr.value }}</div>
-        <div class="muted" style="font-size:.8rem">{{ vr.measured_at|date:"Y/m/d" }}</div>
+        <div class="big">{{ vr.value|fa_num }}</div>
+        <div class="muted" style="font-size:.8rem">{{ vr.measured_at|jalali }}</div>
       </div>
     {% empty %}
       <div class="muted">شاخصی ثبت نشده است.</div>
@@ -42,7 +43,7 @@
         <td><a href="{% url 'web:rx_detail' rx.id %}">{{ rx.insurer }}</a></td>
         <td>{{ rx.status }}</td>
         <td>{{ rx.tracking_code|default:'—' }}</td>
-        <td>{{ rx.created_at|date:"Y/m/d" }}</td>
+        <td>{{ rx.created_at|jalali }}</td>
       </tr>
       {% endfor %}
     </tbody>
