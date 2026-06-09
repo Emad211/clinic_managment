@@ -12,6 +12,7 @@ go to human review regardless of the gate's confidence.
 from sqlmodel import select
 
 from .extraction import extract_claims
+from .graph import build_graph_for_document
 from .models import Claim, DocumentChunk, ReviewQueue, SourceDocument
 from .verification import verify_claim
 
@@ -33,8 +34,9 @@ def verify_and_route(session, claim: Claim, chunk_text: str, model=None):
 def process_document(session, document: SourceDocument) -> dict:
     """Extract → verify → route, for every chunk of a parsed document. Idempotent:
     a document already past verification is skipped."""
-    if document.status == "verified":
-        return {"skipped": True, "claims": 0, "verified": 0, "review": 0}
+    if document.status == "graphed":
+        return {"skipped": True, "claims": 0, "verified": 0, "review": 0,
+                "nodes": 0, "edges": 0}
 
     chunks = session.exec(
         select(DocumentChunk).where(DocumentChunk.document_id == document.id)
@@ -50,7 +52,12 @@ def process_document(session, document: SourceDocument) -> dict:
             else:
                 stats["verified"] += 1
 
-    document.status = "verified"
+    # layer 6-7: ontology mapping + graph build (only verified claims become nodes)
+    graph_stats = build_graph_for_document(session, document)
+    stats["nodes"] = graph_stats["nodes"]
+    stats["edges"] = graph_stats["edges"]
+
+    document.status = "graphed"
     session.add(document)
     session.commit()
     return stats

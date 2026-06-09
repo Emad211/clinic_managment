@@ -13,6 +13,7 @@ from sqlmodel import Session
 
 from .db import create_db_and_tables, get_session
 from .ingestion import ingest_document
+from .serving import get_concept, get_neighbors
 
 
 @asynccontextmanager
@@ -45,3 +46,15 @@ def ingest(data: IngestIn, session: Session = Depends(get_session)):
     )
     return {"id": str(doc.id), "content_hash": doc.content_hash,
             "status": doc.status, "created": created}
+
+
+# ── MCP-style serving over the knowledge graph (layer 9) ──
+@app.get("/knowledge/concept")
+def knowledge_concept(term: str, session: Session = Depends(get_session)):
+    concept = get_concept(session, term)
+    return concept or {"detail": "concept not found", "term": term}
+
+
+@app.get("/knowledge/neighbors")
+def knowledge_neighbors(term: str, session: Session = Depends(get_session)):
+    return {"term": term, "neighbors": get_neighbors(session, term)}

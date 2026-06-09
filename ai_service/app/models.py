@@ -89,3 +89,42 @@ class ReviewQueue(SQLModel, table=True):
     assigned_to: str = ""
     resolved: bool = False
     created_at: datetime = Field(default_factory=_now)
+
+
+class OntologyConcept(SQLModel, table=True):
+    """Canonical internal concept + crosswalk to ICD-11/MeSH/INN/ATC (layer 6).
+    (SNOMED/UMLS/RxNorm avoided — sanctions/access; ICD-11+MeSH+INN+ATC base.)"""
+
+    __tablename__ = "ontology_concept"
+
+    id: uuid.UUID = Field(default_factory=_uuid, primary_key=True)
+    canonical_name: str = Field(index=True)
+    icd11: str = ""
+    mesh: str = ""
+    inn: str = ""
+    atc: str = ""
+    aliases: dict = Field(default_factory=dict, sa_column=Column(JSON))
+
+
+class GraphNode(SQLModel, table=True):
+    __tablename__ = "graph_node"
+
+    id: uuid.UUID = Field(default_factory=_uuid, primary_key=True)
+    concept_id: uuid.UUID = Field(foreign_key="ontology_concept.id", index=True)
+    kind: str = "concept"
+    props: dict = Field(default_factory=dict, sa_column=Column(JSON))
+
+
+class GraphEdge(SQLModel, table=True):
+    """Edge with provenance. Conflicts are NOT overwritten — parallel edges keep
+    both, flagged with evidence level + version (layer 7)."""
+
+    __tablename__ = "graph_edge"
+
+    id: uuid.UUID = Field(default_factory=_uuid, primary_key=True)
+    src: uuid.UUID = Field(foreign_key="graph_node.id", index=True)
+    dst: uuid.UUID = Field(foreign_key="graph_node.id", index=True)
+    rel: str = ""
+    provenance: dict = Field(default_factory=dict, sa_column=Column(JSON))
+    evidence_level: str = ""
+    version: int = 1

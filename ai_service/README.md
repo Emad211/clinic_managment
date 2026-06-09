@@ -9,13 +9,14 @@ workload and its different release cadence don't slow/destabilise the clinic app
 Its data lives in a `knowledge` schema (global knowledge, **no RLS** — unlike
 patient data).
 
-> Status: **M3 (v0.3)** — M1 (gateway/ingestion/data-model) + M2 (PyMuPDF parsing)
-> **+ extraction → the critical verification gate → orchestrator**. Terminology
-> claims are anchored to source; an INDEPENDENT gate verifies each against the
-> chunk text (hallucinated/ungrounded claims → `not_found` → review_queue); the
-> orchestrator runs extract→verify→route idempotently and routes safety-critical
-> claims to human review unconditionally. 16 tests green. Next: arq+Redis async
-> orchestration, real LLM extraction/verification, M4 ontology / graph / MCP.
+> Status: **M4 (v0.4) — all 9 layers, end-to-end.** A PDF flows: ingest (hash
+> dedup) → parse (PyMuPDF, page anchors) → extract (anchored claims) →
+> **verification gate** (independent grounding; hallucinations → review_queue) →
+> ontology (canonical + ICD-11/MeSH/INN/ATC, entity resolution) → graph (nodes +
+> provenance edges) → **MCP-style serving** (`get_concept`/`get_neighbors`). The
+> orchestrator runs it idempotently and routes safety-critical/ungrounded claims
+> to human review. **18 tests green.** Next: arq+Redis async orchestration, real
+> LLM extraction/verification on AvalAI, a Gold Set, and pgvector retrieval.
 
 ## Layout
 ```
@@ -28,7 +29,10 @@ ai_service/
     parsing.py     # layer 2: PyMuPDF PDF -> DocumentChunks (prose+tables, page anchors)
     extraction.py  # layer 4: chunk -> anchored terminology Claims (LLM + deterministic)
     verification.py# layer 5: the CRITICAL gate — independent grounding check per claim
-    orchestrator.py# spine: extract->verify->route (idempotent; review for failures/safety)
+    ontology.py    # layer 6: term -> canonical concept + ICD-11/MeSH/INN/ATC crosswalk
+    graph.py       # layer 7: concept nodes + provenance edges (conflicts not overwritten)
+    serving.py     # layer 9: MCP-style get_concept / get_neighbors
+    orchestrator.py# spine: extract->verify->ontology->graph (idempotent; human review)
     db.py          # engine/session (SQLite dev, PostgreSQL+pgvector target)
     main.py        # FastAPI: /health, /ingest
   tests/           # pytest (in-memory SQLite)

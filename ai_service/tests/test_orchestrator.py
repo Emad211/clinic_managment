@@ -24,9 +24,9 @@ def test_orchestrator_end_to_end(session):
     stats = process_document(session, doc)
     assert stats["claims"] > 0 and stats["verified"] > 0
     session.refresh(doc)
-    assert doc.status == "verified"
+    assert doc.status == "graphed"  # full pipeline: extract -> verify -> graph
 
-    # idempotent: re-processing a verified document is a no-op
+    # idempotent: re-processing a finished document is a no-op
     assert process_document(session, doc)["skipped"] is True
 
 
