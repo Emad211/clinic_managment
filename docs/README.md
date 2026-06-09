@@ -14,9 +14,9 @@
 | [`EPRESCRIPTION.md`](EPRESCRIPTION.md) | امکان‌سنجی و تصمیمِ اتصالِ نسخهٔ الکترونیک (Spike Epic 1) | v1.0 |
 | [`DATA_MODEL.md`](DATA_MODEL.md) | مدلِ یکپارچهٔ Postgres + multi-tenancy (RLS) + نگاشتِ مهاجرت | زنده v0.1 |
 | [`PIPELINE.md`](PIPELINE.md) | معماریِ build-readyِ پایپ‌لاینِ استخراجِ دانش (فاز۰/رتبهٔ۳) — ۹ لایه، توپولوژیِ سرویس، مدلِ داده، ترتیبِ ساخت | زنده v0.1 |
+| [`REGULATORY.md`](REGULATORY.md) | انطباق/مجوز: نهادهای متولی، ابهامِ SaMD، سپرِ قانونی (نگاشت به کدِ موجود)، چک‌لیست و اقدامات | زنده v0.1 |
 
-## اسنادِ آینده (هنوز ساخته نشده)
-- `REGULATORY.md` — جزئیاتِ مجوز/انطباق و چک‌لیستِ سپر.
+> همهٔ اسنادِ برنامه‌ریزی‌شده ساخته شده‌اند. به‌روزرسانی با هر تصمیمِ جدید.
 
 ## وضعیتِ پیاده‌سازی (کد)
 - **`../ai_service/`** — سرویسِ **پایپ‌لاینِ دانش** (FastAPI، فاز۰/رتبهٔ۳، خندقِ بلندمدت). **M4 (v0.4) — هر ۹ لایه end-to-end:** PDF→ingest→parse→extract→**گیتِ تأیید**→ontology(کراس‌واکِ ICD-11/MeSH/INN/ATC)→graph(گره+یالِ provenance)→**سروینگِ MCP-style** (`/knowledge/concept`,`/knowledge/neighbors`). ارکستریتورِ idempotent. ۱۸ تست سبز. معماری: [`PIPELINE.md`](PIPELINE.md). راهنما: [`../ai_service/README.md`](../ai_service/README.md).
