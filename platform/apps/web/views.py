@@ -10,11 +10,12 @@ from functools import wraps
 
 from django.db.models import Q
 from django.shortcuts import get_object_or_404, redirect, render
+from django.utils import timezone
 
 from apps.chronic import rule_engine
-from apps.chronic.models import ClinicalRule, VitalReading
+from apps.chronic.models import ClinicalRule, SuggestionLog, VitalReading
 from apps.common.tenant import tenant_context
-from apps.identity.models import Clinic
+from apps.identity.models import AppUser, Clinic
 from apps.identity.services import AuthError, authenticate
 from apps.patients.models import Patient
 
@@ -27,6 +28,13 @@ def login_required_web(view):
         return view(request, *args, **kwargs)
 
     return wrapper
+
+
+def _current_user(request):
+    uid = request.session.get("user_id")
+    if not uid:
+        return None
+    return AppUser.objects.filter(id=uid).first()
 
 
 def index(request):
@@ -87,9 +95,42 @@ def patient_detail(request, patient_id):
         seen.add(vr.indicator_key)
         snapshot.append(vr)
 
+    # which suggestions has a physician already acknowledged? (accountability)
+    acked = set(
+        SuggestionLog.objects.filter(patient=patient)
+        .exclude(acknowledged_at__isnull=True)
+        .values_list("rule_code", flat=True)
+    )
+
     return render(request, "web/patient_detail.html", {
         "patient": patient,
         "facts": facts,
         "suggestions": suggestions,
         "snapshot": snapshot,
+        "acked": acked,
     })
+
+
+@login_required_web
+def acknowledge_suggestion(request, patient_id):
+    """Physician acknowledges a suggestion -> append-only SuggestionLog row.
+    Embodies the safety principle: the system suggests, the physician decides,
+    and the decision is logged (gated to logged-in clinical users)."""
+    if request.method != "POST":
+        return redirect("web:patient_detail", patient_id=patient_id)
+    patient = get_object_or_404(Patient, id=patient_id)
+    rule_code = (request.POST.get("rule_code") or "").strip()
+    rule = ClinicalRule.objects.filter(code=rule_code).first()
+    if rule and not SuggestionLog.objects.filter(
+        patient=patient, rule_code=rule_code
+    ).exclude(acknowledged_at__isnull=True).exists():
+        SuggestionLog.objects.create(
+            clinic=patient.clinic,
+            patient=patient,
+            rule_code=rule_code,
+            severity=rule.severity,
+            message_fa=rule.recommendation or rule.title,
+            acknowledged_by=_current_user(request),
+            acknowledged_at=timezone.now(),
+        )
+    return redirect("web:patient_detail", patient_id=patient_id)

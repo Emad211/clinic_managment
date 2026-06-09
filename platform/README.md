@@ -6,15 +6,16 @@ building it does **not** touch the running Flask apps (ports 8080 / 8090). See
 [`../docs/TECH_STACK.md`](../docs/TECH_STACK.md) and
 [`../docs/DATA_MODEL.md`](../docs/DATA_MODEL.md) for the *why*.
 
-> Status: **v0.9 scaffold — demoable** — all 8 modules from DATA_MODEL §2
+> Status: **v0.10 scaffold — demoable** — all 8 modules from DATA_MODEL §2
 > modelled (~40 models), RLS multi-tenancy, django-ninja API (session login +
 > authz-guarded routers), bcrypt + 5-fail/15-min lockout, a **full ETL** (users +
 > merged patients + per-patient vitals/meds/conditions/flags/followups) + a
 > **clinical-catalog ETL** (real 57 ADA rules), the **ported rule engine** (live
-> decision support), AND a **server-rendered web frontend** (login → patient list
-> → snapshot + grouped ADA suggestions). End-to-end verified on the **real**
-> legacy data (TEST0008 → 26 suggestions in the UI). `manage.py check` clean.
-> Remaining: HTMX interactivity, accounting/sms ETL, production hardening.
+> decision support), a **web frontend** (login → patient list → snapshot + grouped
+> ADA suggestions), and the **accountability loop** (physician-acknowledge →
+> append-only SuggestionLog). End-to-end verified on the **real** legacy data.
+> `manage.py check` clean. Remaining: HTMX interactivity, accounting/sms ETL,
+> production hardening.
 
 ## Layout (modular monolith)
 
@@ -134,8 +135,12 @@ Minimal RTL, server-rendered Django templates — the demoable slice of the wedg
 `/login/` → `/patients/` (search) → `/patients/<id>/` (One-Page Snapshot of latest
 indicators + grouped ADA suggestions with the "تأیید با پزشک" disclaimer). Login
 follows the RLS-correct ordering and reuses the same session keys as the API.
-Verified end-to-end on real data (TEST0008 → 26 suggestions). HTMX interactivity
-(live search, inline suggestion ack) is the next enhancement.
+Each suggestion has a **تأیید (acknowledge)** action: the physician confirms it
+and an append-only `SuggestionLog` row is written (rule_code, severity, message,
+acknowledged_by, acknowledged_at) — the safety/legal backbone ("suggests,
+physician decides, logged"). Idempotent; the page then shows ✓ تأیید پزشک.
+Verified end-to-end on real data (TEST0008 → 26 suggestions, ack logged). HTMX
+interactivity (live search, inline ack without full reload) is the next polish.
 
 ## Clinical rule engine (`apps/chronic/rule_engine.py`)
 

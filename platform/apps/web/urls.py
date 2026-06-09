@@ -10,4 +10,5 @@ urlpatterns = [
     path("logout/", views.logout_view, name="logout"),
     path("patients/", views.patient_list, name="patients"),
     path("patients/<uuid:patient_id>/", views.patient_detail, name="patient_detail"),
+    path("patients/<uuid:patient_id>/ack/", views.acknowledge_suggestion, name="ack"),
 ]

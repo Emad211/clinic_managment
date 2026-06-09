@@ -31,9 +31,20 @@
     <h4>{{ section.label }}</h4>
     {% for r in section.rules %}
       <div class="sugg">
-        <div>
-          <strong>{{ r.title }}</strong>
-          <span class="chip sev-{{ r.severity }}">{{ r.severity }}</span>
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:.5rem">
+          <div>
+            <strong>{{ r.title }}</strong>
+            <span class="chip sev-{{ r.severity }}">{{ r.severity }}</span>
+          </div>
+          {% if r.code in acked %}
+            <span class="chip" style="color:var(--accent)">✓ تأیید پزشک</span>
+          {% else %}
+            <form method="post" action="{% url 'web:ack' patient.id %}" style="margin:0">
+              {% csrf_token %}
+              <input type="hidden" name="rule_code" value="{{ r.code }}">
+              <button type="submit" style="padding:.25rem .7rem;font-size:.85rem">تأیید</button>
+            </form>
+          {% endif %}
         </div>
         {% if r.recommendation %}<div class="muted">{{ r.recommendation }}</div>{% endif %}
         {% if r.source_ref %}<div class="muted" style="font-size:.8rem">منبع: {{ r.source_ref }}</div>{% endif %}
