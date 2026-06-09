@@ -2,6 +2,21 @@
 # the RLS isolation proof against a real Postgres on every push.
 stages: [test]
 
+# Fast unit/integration suite on in-memory SQLite (no DB service needed).
+pytest:
+  stage: test
+  image: python:3.13-slim
+  variables:
+    DJANGO_SECRET_KEY: ci-only-secret
+    PIP_INDEX_URL: "${PIP_INDEX_URL}"
+  before_script:
+    - cd platform
+    - pip install -r requirements.txt
+  script:
+    - python -m pytest
+  rules:
+    - if: '$CI_COMMIT_BRANCH'
+
 platform-test:
   stage: test
   image: python:3.13-slim

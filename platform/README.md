@@ -73,6 +73,10 @@ production Postgres before launch.**
 
 ## Setup & verify
 
+**Tests:** `python -m pytest` — 18 tests (auth/lockout, rule engine + DSL,
+billing + SMS providers, web flows + accountability) on in-memory SQLite via
+`config/settings_test`. Runs in CI alongside `verify_rls`.
+
 ```powershell
 cd platform
 py -3.13 -m venv .venv
