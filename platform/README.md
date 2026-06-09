@@ -6,13 +6,15 @@ building it does **not** touch the running Flask apps (ports 8080 / 8090). See
 [`../docs/TECH_STACK.md`](../docs/TECH_STACK.md) and
 [`../docs/DATA_MODEL.md`](../docs/DATA_MODEL.md) for the *why*.
 
-> Status: **v0.5 scaffold** — all 8 modules from DATA_MODEL §2 modelled (~40
+> Status: **v0.6 scaffold** — all 8 modules from DATA_MODEL §2 modelled (~40
 > models), RLS multi-tenancy across every tenant table, django-ninja API with
 > session login + **authz-guarded** data routers, bcrypt + 5-fail/15-min lockout,
-> idempotent catalog seed + clinic bootstrap, and a **SQLite->Postgres ETL**
-> (clinic + users + merged patients) verified against the real legacy DBs.
-> `manage.py check` clean. Remaining for a usable product: ETL long tail
-> (chronic/accounting/sms), SPA, production hardening.
+> a **SQLite->Postgres ETL** (clinic + users + merged patients), and a
+> **clinical-catalog ETL** that ports the **real full ADA engine** from
+> specialist.db — 57 rules / 13 indicators / 18 flags / 19 drug classes /
+> 5 conditions with their complete clinical fields. `manage.py check` clean.
+> Remaining for a usable product: ETL long tail (per-patient chronic/accounting/
+> sms rows), SPA, production hardening.
 
 ## Layout (modular monolith)
 
@@ -63,7 +65,9 @@ py -3.13 -m venv .venv
 copy .env.example .env          # then edit DATABASE_URL / secret
 .\.venv\Scripts\python.exe manage.py check
 .\.venv\Scripts\python.exe manage.py migrate        # needs a PostgreSQL DB
-.\.venv\Scripts\python.exe manage.py seed_catalog    # global ADA catalogs (idempotent)
+# Clinical catalogs — pick ONE (mutually exclusive):
+.\.venv\Scripts\python.exe manage.py etl_catalog --specialist-db ..\specialist_clinic\specialist.db  # full real ADA set (preferred)
+.\.venv\Scripts\python.exe manage.py seed_catalog    # OR minimal fresh-install fallback
 .\.venv\Scripts\python.exe manage.py bootstrap_clinic --name "درمانگاه نمونه" --slug demo
 # OR migrate the real legacy data into one tenant (idempotent, source DBs read-only):
 .\.venv\Scripts\python.exe manage.py etl_import --clinic-slug main --clinic-name "درمانگاه اصلی" `
@@ -103,9 +107,19 @@ PostgreSQL target — use a `pgvector/pgvector:pg16` image to match the stack.
 `etl_import` opens `webapp/clinic_new.db` + `specialist_clinic/specialist.db`
 **read-only** and merges them into one `clinic`. v1 scope: clinic + users (both
 apps, deduped by username) + patients (webapp.patients ⋈ specialist.patient_links
-by national_id, retiring the accounting_bridge) + wallet balance. Verified
-idempotent against the real DBs. **TODO (later loops):** chronic records,
-accounting rows, SMS, tariffs; proper Jalali↔Gregorian + Tehran→UTC conversion.
+by national_id, retiring the accounting_bridge) + wallet balance.
+
+`etl_catalog` ports the GLOBAL clinical catalogs from `specialist.db` (the
+authoritative 57 ADA rules + 13 indicators + 18 flags + 19 drug classes +
+5 conditions, with full trigger_json + recommendation + dosage/monitoring/
+contraindications). The catalog models mirror the specialist schema 1:1 so
+nothing is dropped. `etl_catalog` and `seed_catalog` are **mutually exclusive** —
+run `etl_catalog` when `specialist.db` exists, `seed_catalog` only for a fresh
+install with no legacy data.
+
+Both verified idempotent against the real DBs. **TODO (later loops):** per-patient
+chronic records, accounting rows, SMS, tariffs; proper Jalali↔Gregorian +
+Tehran→UTC conversion.
 
 ## Open scaffold decisions
 

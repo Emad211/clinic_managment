@@ -19,12 +19,14 @@ from apps.common.models import CatalogModel, TenantModel
 
 
 class DrugClass(CatalogModel):
-    """19 seeded drug classes (metformin, sulfonylurea, ...)."""
+    """19 drug classes (metformin, sulfonylurea, ...). Mirrors
+    specialist.drug_classes (class_key -> code)."""
 
-    code = models.TextField()
-    name_fa = models.TextField()
-    name_en = models.TextField(blank=True, default="")
-    notes = models.TextField(blank=True, default="")
+    code = models.TextField()  # class_key
+    label = models.TextField()
+    glucose_lowering = models.BooleanField(default=False)
+    display_order = models.IntegerField(default=0)
+    is_active = models.BooleanField(default=True)
 
     class Meta:
         db_table = "drug_class"
@@ -35,8 +37,8 @@ class Condition(CatalogModel):
     """Chronic condition catalog (diabetes T2, hypertension, ...)."""
 
     code = models.TextField()
-    name_fa = models.TextField()
-    name_en = models.TextField(blank=True, default="")
+    name = models.TextField()
+    is_active = models.BooleanField(default=True)
 
     class Meta:
         db_table = "condition"
@@ -44,18 +46,27 @@ class Condition(CatalogModel):
 
 
 class ClinicalIndicator(CatalogModel):
-    """ADA-based threshold catalog: e.g. hba1c warn=7 danger=8, fbs 130/180,
-    bp_systolic 130/140. Keep in sync with vitals_service.THRESHOLDS and
-    analytics_service.TARGETS when a threshold changes (CLAUDE.md rule)."""
+    """ADA-based indicator catalog mirroring specialist.clinical_indicators:
+    e.g. hba1c warn=7 danger=8, fbs 130/180, bp_systolic 130/140. Keep thresholds
+    in sync with vitals_service.THRESHOLDS / analytics_service.TARGETS (CLAUDE.md
+    rule). ``direction`` says which side is bad (high_bad|low_bad)."""
 
     key = models.TextField()  # hba1c, fbs, bp_systolic, ...
-    name_fa = models.TextField()
+    label = models.TextField()
     unit = models.TextField(blank=True, default="")
-    warn_low = models.FloatField(null=True, blank=True)
-    warn_high = models.FloatField(null=True, blank=True)
-    danger_low = models.FloatField(null=True, blank=True)
-    danger_high = models.FloatField(null=True, blank=True)
-    target_text = models.TextField(blank=True, default="")
+    category = models.TextField(blank=True, default="")
+    direction = models.TextField(blank=True, default="")  # high_bad|low_bad
+    warn = models.FloatField(null=True, blank=True)
+    danger = models.FloatField(null=True, blank=True)
+    target = models.TextField(blank=True, default="")
+    goal_low = models.FloatField(null=True, blank=True)
+    goal_high = models.FloatField(null=True, blank=True)
+    conditions = models.TextField(blank=True, default="")  # applicable conditions
+    risk_weight = models.FloatField(null=True, blank=True)
+    is_vital = models.BooleanField(default=False)
+    display_order = models.IntegerField(default=0)
+    is_active = models.BooleanField(default=True)
+    notes = models.TextField(blank=True, default="")
 
     class Meta:
         db_table = "clinical_indicator"
@@ -63,24 +74,29 @@ class ClinicalIndicator(CatalogModel):
 
 
 class ClinicalRule(CatalogModel):
-    """The ~57 ADA rules. ``trigger_json`` is the all/any/not + leaf DSL the
-    rule_engine evaluates against patient facts. Stored as JSON(B on Postgres)."""
+    """The ~57 ADA rules, mirroring specialist.clinical_rules. ``trigger_json``
+    is the all/any/not + leaf DSL the rule_engine evaluates against patient
+    facts (JSONB on Postgres). The rich clinical fields (recommendation, dosage
+    titration, monitoring, contraindications) are the engine's moat — preserved
+    in full, not summarised."""
 
-    SEVERITY = [
-        ("info", "info"),
-        ("suggestion", "suggestion"),
-        ("warning", "warning"),
-        ("red_flag", "red_flag"),
-    ]
-
-    code = models.TextField()
+    code = models.TextField()  # rule_code
     title = models.TextField()
     category = models.TextField(blank=True, default="")
-    severity = models.CharField(max_length=16, choices=SEVERITY, default="suggestion")
     trigger_json = models.JSONField(default=dict)
-    message_fa = models.TextField(blank=True, default="")
+    human_if = models.TextField(blank=True, default="")
+    recommendation = models.TextField(blank=True, default="")
+    dosage_titration = models.TextField(blank=True, default="")
+    monitoring = models.TextField(blank=True, default="")
+    contraindications = models.TextField(blank=True, default="")
+    evidence_level = models.TextField(blank=True, default="")
+    action_type = models.TextField(blank=True, default="")
+    action_params_json = models.JSONField(default=dict, blank=True)
+    severity = models.TextField(blank=True, default="suggestion")
+    priority = models.IntegerField(default=0)
     source_ref = models.TextField(blank=True, default="", help_text="ADA citation")
     is_active = models.BooleanField(default=True)
+    notes = models.TextField(blank=True, default="")
 
     class Meta:
         db_table = "clinical_rule"
@@ -88,12 +104,17 @@ class ClinicalRule(CatalogModel):
 
 
 class FlagCatalog(CatalogModel):
-    """18 seeded patient flags (red-flag/risk markers)."""
+    """18 patient flags (red-flag/risk markers). Mirrors specialist.flag_catalog
+    (flag_key -> code)."""
 
-    code = models.TextField()
-    label_fa = models.TextField()
-    severity = models.TextField(blank=True, default="")
-    color = models.TextField(blank=True, default="")
+    code = models.TextField()  # flag_key
+    label = models.TextField()
+    flag_type = models.TextField(blank=True, default="")
+    options = models.JSONField(default=dict, blank=True)
+    category = models.TextField(blank=True, default="")
+    display_order = models.IntegerField(default=0)
+    is_active = models.BooleanField(default=True)
+    notes = models.TextField(blank=True, default="")
 
     class Meta:
         db_table = "flag_catalog"
