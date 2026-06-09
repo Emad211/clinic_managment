@@ -6,15 +6,15 @@ building it does **not** touch the running Flask apps (ports 8080 / 8090). See
 [`../docs/TECH_STACK.md`](../docs/TECH_STACK.md) and
 [`../docs/DATA_MODEL.md`](../docs/DATA_MODEL.md) for the *why*.
 
-> Status: **v0.6 scaffold** — all 8 modules from DATA_MODEL §2 modelled (~40
+> Status: **v0.7 scaffold** — all 8 modules from DATA_MODEL §2 modelled (~40
 > models), RLS multi-tenancy across every tenant table, django-ninja API with
 > session login + **authz-guarded** data routers, bcrypt + 5-fail/15-min lockout,
-> a **SQLite->Postgres ETL** (clinic + users + merged patients), and a
-> **clinical-catalog ETL** that ports the **real full ADA engine** from
-> specialist.db — 57 rules / 13 indicators / 18 flags / 19 drug classes /
-> 5 conditions with their complete clinical fields. `manage.py check` clean.
-> Remaining for a usable product: ETL long tail (per-patient chronic/accounting/
-> sms rows), SPA, production hardening.
+> a **SQLite->Postgres ETL** (clinic + users + merged patients) + a
+> **clinical-catalog ETL** (real 57 ADA rules / 13 indicators / 18 flags / 19
+> drug classes / 5 conditions), and the **ported rule engine** producing live
+> ADA decision support (`/api/chronic/suggestions`) — verified against the real
+> 57 rules. `manage.py check` clean. Remaining: ETL long tail (per-patient
+> chronic/accounting/sms rows), SPA, production hardening.
 
 ## Layout (modular monolith)
 
@@ -27,7 +27,7 @@ platform/
     identity/        # Clinic (tenant), AppUser, UserShift
     billing/         # Plan (global), Subscription, Payment (ZarinPal)
     patients/        # Patient (unified webapp.patients + specialist.patient_links) + api
-    chronic/         # ADA engine catalogs + per-patient clinical records + wallet + api
+    chronic/         # ADA catalogs + clinical records + wallet + rule_engine + api
     rx/              # Drug (global), Prescription/Item, InsurerLog (Epic 1, WebView->API)
     accounting/      # Invoice, Visit, Injection, Procedure, Consumable, Tariff, Payroll
     messaging/       # SmsTemplate, SmsCampaign, SmsMessage (Mediana + NullProvider)
@@ -120,6 +120,18 @@ install with no legacy data.
 Both verified idempotent against the real DBs. **TODO (later loops):** per-patient
 chronic records, accounting rows, SMS, tariffs; proper Jalali↔Gregorian +
 Tehran→UTC conversion.
+
+## Clinical rule engine (`apps/chronic/rule_engine.py`)
+
+Ported from `specialist_clinic/src/services/rule_engine.py`. A pure evaluator
+(`_resolve`/`_leaf`/`_eval`) over the `trigger_json` DSL (all/any/not + leaf
+`{var, op, value}`), decoupled from the DB: `evaluate(facts, rules)` /
+`grouped(facts, rules)` take a facts dict + ClinicalRule iterable. `build_facts(
+patient)` assembles the bundle from the ORM (age, conditions, latest vitals per
+indicator, flags w/ values, active med classes). Surfaced at
+**`GET /api/chronic/suggestions?patient_id=…`** — suggestion-only, physician
+confirms. Verified against the real 57 rules (a poorly-controlled diabetic fires
+25 grouped suggestions; a healthy person fires 0).
 
 ## Open scaffold decisions
 

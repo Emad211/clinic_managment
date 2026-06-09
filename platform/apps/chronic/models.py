@@ -293,6 +293,7 @@ class PatientFlag(TenantModel):
         "patients.Patient", on_delete=models.CASCADE, related_name="flags"
     )
     flag = models.ForeignKey(FlagCatalog, on_delete=models.PROTECT, related_name="+")
+    value = models.TextField(blank=True, default="")  # e.g. frailty='robust', hypo_risk='high'
     is_active = models.BooleanField(default=True)
     raised_at = models.DateTimeField()
     cleared_at = models.DateTimeField(null=True, blank=True)

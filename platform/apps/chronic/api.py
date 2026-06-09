@@ -3,9 +3,13 @@ recent vitals and the open follow-up worklist. Tenant-filtered by RLS."""
 
 from typing import List, Optional
 
+from django.shortcuts import get_object_or_404
 from ninja import ModelSchema, Router
 
-from .models import FollowupTask, VitalReading
+from apps.patients.models import Patient
+
+from . import rule_engine
+from .models import ClinicalRule, FollowupTask, VitalReading
 
 router = Router(tags=["chronic"])
 
@@ -34,3 +38,15 @@ def list_vitals(request, patient_id: str, indicator_key: Optional[str] = None, l
 def list_followups(request, status: str = "open", limit: int = 100):
     qs = FollowupTask.objects.filter(status=status)
     return list(qs.order_by("due_date")[: min(limit, 500)])
+
+
+@router.get("/suggestions")
+def suggestions(request, patient_id: str):
+    """ADA decision support for a patient (suggestion-only, physician confirms).
+    Runs the ported rule engine over the patient's facts + active global rules."""
+    patient = get_object_or_404(Patient, id=patient_id)
+    facts = rule_engine.build_facts(patient)
+    rules = ClinicalRule.objects.filter(is_active=True).order_by("priority", "code")
+    result = rule_engine.grouped(facts, rules)
+    result["disclaimer"] = "پیشنهاد — تأیید با پزشک"
+    return result

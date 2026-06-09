@@ -19,7 +19,7 @@
 - `REGULATORY.md` — جزئیاتِ مجوز/انطباق و چک‌لیستِ سپر.
 
 ## وضعیتِ پیاده‌سازی (کد)
-- **`../platform/`** — اسکلتِ **Django + django-ninja + PostgreSQL** (مقصدِ Evolve-not-Rewrite). نسخهٔ **v0.6**: **هر ۸ ماژولِ DATA_MODEL §2** (≈۴۰ مدل)، **RLS** روی همهٔ جداولِ tenant، API با **login + روترهای گاردشده**، bcrypt + قفلِ ۵تلاش، **ETLِ SQLite→tenant** (کلینیک+کاربران+بیماران)، و **ETLِ کاتالوگِ بالینی** که **موتورِ واقعیِ ADA** را از specialist.db پورت می‌کند (۵۷ قاعده/۱۳ شاخص/۱۸ فلگ/۱۹ کلاسِ دارو/۵ بیماری با همهٔ فیلدهای بالینی — تأییدِ دقیق). اپ‌های Flaskِ کارا دست‌نخورده. راهنما: [`../platform/README.md`](../platform/README.md). مبنا: [`DATA_MODEL.md`](DATA_MODEL.md).
+- **`../platform/`** — اسکلتِ **Django + django-ninja + PostgreSQL** (مقصدِ Evolve-not-Rewrite). نسخهٔ **v0.7**: **هر ۸ ماژولِ DATA_MODEL §2** (≈۴۰ مدل)، **RLS** روی همهٔ جداولِ tenant، API با **login + روترهای گاردشده**، bcrypt + قفلِ ۵تلاش، **ETLِ SQLite→tenant** + **ETLِ کاتالوگِ بالینی** (۵۷ قاعدهٔ واقعیِ ADA)، و **موتورِ قاعدهٔ پورت‌شده** که decision support زنده می‌دهد (`/api/chronic/suggestions`؛ روی ۵۷ قاعدهٔ واقعی تأیید شد — دیابتیِ بدکنترل ۲۵ پیشنهاد). اپ‌های Flaskِ کارا دست‌نخورده. راهنما: [`../platform/README.md`](../platform/README.md). مبنا: [`DATA_MODEL.md`](DATA_MODEL.md).
 
 ## اصلِ کار
 **نردبان:** اول گوهِ مزمن (درآمدِ سریع) → لایهٔ هوشِ بالینی (تمایز) → پلتفرمِ دانش (خندقِ بلندمدت). جزئیات در `MASTER_PLAN.md`.
