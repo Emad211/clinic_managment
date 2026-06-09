@@ -30,6 +30,12 @@ class Command(BaseCommand):
         parser.add_argument("--province", default="")
         parser.add_argument("--city", default="")
         parser.add_argument(
+            "--type", default="polyclinic",
+            choices=["polyclinic", "clinic", "office"],
+            help="practice type: polyclinic=درمانگاه, clinic=کلینیک, office=مطب "
+                 "(drives accounting defaults).",
+        )
+        parser.add_argument(
             "--license", default="",
             help="نظام‌پزشکی license no. for the manager — set it when the owner "
                  "is also the practising physician so they can sign clinical "
@@ -43,6 +49,7 @@ class Command(BaseCommand):
             defaults={
                 "name": opts["name"],
                 "status": "trial",
+                "clinic_type": opts["type"],
                 "province": opts["province"],
                 "city": opts["city"],
             },

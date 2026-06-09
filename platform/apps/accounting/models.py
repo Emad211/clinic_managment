@@ -14,6 +14,35 @@ from apps.common.models import TenantModel
 SHIFTS = [("morning", "morning"), ("evening", "evening"), ("night", "night")]
 
 
+class InsurancePlan(TenantModel):
+    """A payer the clinic accepts. Generalises the legacy hard-coded insurance
+    strings (آزاد / تأمین اجتماعی / سلامت …) into per-clinic, editable rows so the
+    product fits any clinic's payer mix. Self-pay ("آزاد") is simply a plan whose
+    patient share is 100%. Supplementary (تکمیلی) plans stack on a base payer.
+    """
+
+    name = models.TextField()
+    is_supplementary = models.BooleanField(default=False)
+    # share (0..100) the PATIENT pays when this is the base payer; the remainder
+    # is the insurer's share. Clinics tune per-service later; this is the default.
+    patient_share_percent = models.DecimalField(
+        max_digits=5, decimal_places=2, default=100
+    )
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        db_table = "insurance_plan"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["clinic", "name"], name="uq_insurance_plan_clinic_name"
+            )
+        ]
+        indexes = [models.Index(fields=["clinic", "is_active"])]
+
+    def __str__(self):
+        return self.name
+
+
 class Tariff(TenantModel):
     """Per-clinic price list (visit/service/nursing/procedure/consumable)."""
 
@@ -25,9 +54,13 @@ class Tariff(TenantModel):
         ("consumable", "consumable"),
         ("injection", "injection"),
     ]
+    # sub-category for consumables (drug/supply) — replaces the legacy fixed enum
+    CATEGORY = [("", "—"), ("drug", "دارو"), ("supply", "مصرفی عمومی")]
+
     kind = models.CharField(max_length=16, choices=KIND)
     name = models.TextField()
     amount_rial = models.BigIntegerField(default=0)
+    category = models.CharField(max_length=10, choices=CATEGORY, blank=True, default="")
     is_active = models.BooleanField(default=True)
 
     class Meta:

@@ -31,11 +31,26 @@ class Clinic(UUIDModel, TimeStampedModel):
         ("cancelled", "cancelled"),
     ]
 
+    # The kind of practice — drives sensible accounting defaults so the product
+    # fits a single-doctor office as well as a multi-specialty polyclinic.
+    # (Generalisation: the legacy app was hard-wired to one درمانگاه.)
+    CLINIC_TYPES = [
+        ("polyclinic", "درمانگاه"),  # multi-specialty, multi-staff, shifts, nursing
+        ("clinic", "کلینیک"),         # focused clinic
+        ("office", "مطب"),            # single-doctor office (simplest workflow)
+    ]
+
     name = models.TextField()
     slug = models.SlugField(unique=True, max_length=64)
     status = models.CharField(max_length=16, choices=STATUS, default="trial")
+    clinic_type = models.CharField(
+        max_length=16, choices=CLINIC_TYPES, default="polyclinic"
+    )
     province = models.TextField(blank=True, default="")
     city = models.TextField(blank=True, default="")
+    # operational profile (generalised from the legacy hard-coded settings table)
+    phone = models.TextField(blank=True, default="")
+    address = models.TextField(blank=True, default="")
 
     class Meta:
         db_table = "clinic"

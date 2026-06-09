@@ -112,14 +112,15 @@ class Command(BaseCommand):
                             c2.execute("RESET ROLE;")
             check("cross-tenant write rejected (WITH CHECK)", blocked)
 
-            # the append-only audit table (activity_log) also carries the policy
-            with connection.cursor() as cur:
-                cur.execute(
-                    "SELECT count(*) FROM pg_policies WHERE tablename='activity_log' "
-                    "AND policyname='tenant_isolation';"
-                )
-                has_policy = cur.fetchone()[0] == 1
-            check("activity_log has tenant_isolation policy", has_policy)
+            # later-added tenant tables also carry the policy (regression guard)
+            for tbl in ("activity_log", "insurance_plan"):
+                with connection.cursor() as cur:
+                    cur.execute(
+                        "SELECT count(*) FROM pg_policies WHERE tablename=%s "
+                        "AND policyname='tenant_isolation';", [tbl]
+                    )
+                    has_policy = cur.fetchone()[0] == 1
+                check(f"{tbl} has tenant_isolation policy", has_policy)
 
         finally:
             # cleanup (as superuser)
