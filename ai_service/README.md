@@ -9,11 +9,13 @@ workload and its different release cadence don't slow/destabilise the clinic app
 Its data lives in a `knowledge` schema (global knowledge, **no RLS** — unlike
 patient data).
 
-> Status: **M2 (v0.2)** — M1 (Model Gateway, content-hash dedup ingestion, data
-> model, FastAPI `/health`+`/ingest`) **+ structural parsing** (PyMuPDF text +
-> tables → DocumentChunks with page anchors; no Camelot/Ghostscript dep). 10 tests
-> green. Next: M3 extraction + the verification gate (+ arq orchestrator) → M4
-> ontology / graph / MCP serving.
+> Status: **M3 (v0.3)** — M1 (gateway/ingestion/data-model) + M2 (PyMuPDF parsing)
+> **+ extraction → the critical verification gate → orchestrator**. Terminology
+> claims are anchored to source; an INDEPENDENT gate verifies each against the
+> chunk text (hallucinated/ungrounded claims → `not_found` → review_queue); the
+> orchestrator runs extract→verify→route idempotently and routes safety-critical
+> claims to human review unconditionally. 16 tests green. Next: arq+Redis async
+> orchestration, real LLM extraction/verification, M4 ontology / graph / MCP.
 
 ## Layout
 ```
@@ -24,6 +26,9 @@ ai_service/
     models.py      # SQLModel: SourceDocument / DocumentChunk / Claim
     ingestion.py   # layer 1: content_hash + ingest_document (dedup)
     parsing.py     # layer 2: PyMuPDF PDF -> DocumentChunks (prose+tables, page anchors)
+    extraction.py  # layer 4: chunk -> anchored terminology Claims (LLM + deterministic)
+    verification.py# layer 5: the CRITICAL gate — independent grounding check per claim
+    orchestrator.py# spine: extract->verify->route (idempotent; review for failures/safety)
     db.py          # engine/session (SQLite dev, PostgreSQL+pgvector target)
     main.py        # FastAPI: /health, /ingest
   tests/           # pytest (in-memory SQLite)

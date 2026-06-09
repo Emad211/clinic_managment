@@ -19,7 +19,7 @@
 - `REGULATORY.md` — جزئیاتِ مجوز/انطباق و چک‌لیستِ سپر.
 
 ## وضعیتِ پیاده‌سازی (کد)
-- **`../ai_service/`** — سرویسِ **پایپ‌لاینِ دانش** (FastAPI+arq، فاز۰/رتبهٔ۳، خندقِ بلندمدت). **M2 (v0.2):** Model Gateway (AvalAI+NullModel)، Ingestion با dedupِ هش‌محور، **پارسِ ساختاریِ PyMuPDF** (متن+جدول→DocumentChunk با page anchor)، `/health`+`/ingest`، ۱۰ تست سبز. معماری: [`PIPELINE.md`](PIPELINE.md). راهنما: [`../ai_service/README.md`](../ai_service/README.md).
+- **`../ai_service/`** — سرویسِ **پایپ‌لاینِ دانش** (FastAPI+arq، فاز۰/رتبهٔ۳، خندقِ بلندمدت). **M3 (v0.3):** Gateway + ingestion + پارسِ PyMuPDF + **استخراجِ لنگردار → گیتِ تأییدِ مستقل → ارکستریتور** (ادعای توهمی→review_queue؛ idempotent). لایه‌های ۰–۵ + spine. ۱۶ تست سبز. معماری: [`PIPELINE.md`](PIPELINE.md). راهنما: [`../ai_service/README.md`](../ai_service/README.md).
 - **`../platform/`** — اسکلتِ **Django + django-ninja + PostgreSQL** (مقصدِ Evolve-not-Rewrite). نسخهٔ **v0.9 (دموپذیر)**: **هر ۸ ماژولِ DATA_MODEL §2** (≈۴۰ مدل)، **RLS**، API با **login + روترهای گاردشده**، **ETLِ کامل** (بیماران+vitals/meds/conditions/flags/followups) + **ETLِ کاتالوگ** (۵۷ قاعدهٔ ADA)، **موتورِ قاعده** با decision supportِ زنده، **frontendِ وب** با سه گردشِ کارِ مزمن (**Snapshot** + **پیشنهادهای ADA** +ack→SuggestionLog + **کارتابلِ Recall**) و **گردشِ کارِ نسخهٔ الکترونیک** (Epic 1، پلِ WebView). **یادآورِ پیامکی (Epic 6)** + **حلقهٔ اشتراک/پرداختِ SaaS (ZarinPal، Epic 0)** — کلِ حلقهٔ onboard→subscribe→charge→deliver. **RLS روی Postgresِ واقعی اثبات شد** (`verify_rls`)؛ **Docker + CIِ GitLab** آماده. همگی e2e تأیید شدند؛ اپ‌های Flaskِ کارا دست‌نخورده. راهنما: [`../platform/README.md`](../platform/README.md). مبنا: [`DATA_MODEL.md`](DATA_MODEL.md).
 
 ## اصلِ کار

@@ -19,3 +19,25 @@ def session():
     SQLModel.metadata.create_all(engine)
     with Session(engine) as s:
         yield s
+
+
+@pytest.fixture
+def make_chunk(session):
+    """Factory: persist a SourceDocument + one DocumentChunk with given text."""
+    import uuid
+
+    from app.models import DocumentChunk, SourceDocument
+
+    def _make(text):
+        doc = SourceDocument(content_hash=uuid.uuid4().hex, title="t")
+        session.add(doc)
+        session.commit()
+        session.refresh(doc)
+        ch = DocumentChunk(document_id=doc.id, ordinal=0, page_anchor=1,
+                           kind="prose", content=text)
+        session.add(ch)
+        session.commit()
+        session.refresh(ch)
+        return doc, ch
+
+    return _make

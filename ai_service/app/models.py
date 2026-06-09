@@ -61,3 +61,31 @@ class Claim(SQLModel, table=True):
     confidence: Optional[float] = None
     version: int = 1
     created_at: datetime = Field(default_factory=_now)
+
+
+class Verification(SQLModel, table=True):
+    """Output of the critical verification gate (layer 5)."""
+
+    __tablename__ = "verification"
+
+    id: uuid.UUID = Field(default_factory=_uuid, primary_key=True)
+    claim_id: uuid.UUID = Field(foreign_key="claim.id", index=True)
+    verdict: str = ""  # verified|partial|not_found|conflicting
+    confidence: Optional[float] = None
+    supporting_snippet: str = ""
+    model: str = ""
+    created_at: datetime = Field(default_factory=_now)
+
+
+class ReviewQueue(SQLModel, table=True):
+    """Human-review backlog — a first-class component (safety-critical or
+    gate-failed claims land here)."""
+
+    __tablename__ = "review_queue"
+
+    id: uuid.UUID = Field(default_factory=_uuid, primary_key=True)
+    claim_id: uuid.UUID = Field(foreign_key="claim.id", index=True)
+    reason: str = ""
+    assigned_to: str = ""
+    resolved: bool = False
+    created_at: datetime = Field(default_factory=_now)
