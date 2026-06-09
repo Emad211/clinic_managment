@@ -36,15 +36,38 @@ def manager(clinic):
 
 
 @pytest.fixture
-def auth_client(manager):
-    """A Django test client logged in as the manager (session set directly)."""
+def doctor(clinic):
+    """A licensed physician — the only kind of user allowed to SIGN a clinical
+    decision (acknowledge an ADA suggestion, e-prescribe). REGULATORY §1/§6."""
+    from apps.identity.models import AppUser
+    return AppUser.objects.create(
+        clinic=clinic, username="doc", role="doctor", full_name="دکتر",
+        medical_license_no="12345",
+        password_hash=bcrypt.hashpw(b"secret", bcrypt.gensalt()),
+        is_active=True,
+    )
+
+
+def _logged_in_client(user):
     from django.test import Client
     c = Client()
     s = c.session
-    s["clinic_id"] = str(manager.clinic_id)
-    s["user_id"] = str(manager.id)
+    s["clinic_id"] = str(user.clinic_id)
+    s["user_id"] = str(user.id)
     s.save()
     return c
+
+
+@pytest.fixture
+def auth_client(manager):
+    """A Django test client logged in as the (unlicensed) manager."""
+    return _logged_in_client(manager)
+
+
+@pytest.fixture
+def doctor_client(doctor):
+    """A Django test client logged in as a licensed physician."""
+    return _logged_in_client(doctor)
 
 
 @pytest.fixture

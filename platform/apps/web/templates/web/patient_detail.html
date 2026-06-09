@@ -59,6 +59,7 @@
 
 <div class="card">
   <h3>📝 نسخهٔ الکترونیک</h3>
+  {% if can_sign %}
   <form method="post" action="{% url 'web:rx_new' patient.id %}" style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap">
     {% csrf_token %}
     <select name="insurer" style="padding:.5rem;background:var(--panel2);border:1px solid var(--line);border-radius:8px;color:var(--txt)">
@@ -66,6 +67,9 @@
     </select>
     <button type="submit">نسخهٔ جدید</button>
   </form>
+  {% else %}
+  <p class="disclaimer">⚠️ تجویزِ نسخه نیازمند کاربرِ دارای پروانهٔ نظام‌پزشکی است.</p>
+  {% endif %}
   {% if prescriptions %}
   <table style="margin-top:.8rem">
     <thead><tr><th>بیمه</th><th>وضعیت</th><th>کد رهگیری</th><th>تاریخ</th></tr></thead>
@@ -97,12 +101,14 @@
           </div>
           {% if r.code in acked %}
             <span class="chip" style="color:var(--accent)">✓ تأیید پزشک</span>
-          {% else %}
+          {% elif can_sign %}
             <form method="post" action="{% url 'web:ack' patient.id %}" style="margin:0">
               {% csrf_token %}
               <input type="hidden" name="rule_code" value="{{ r.code }}">
               <button type="submit" style="padding:.25rem .7rem;font-size:.85rem">تأیید</button>
             </form>
+          {% else %}
+            <span class="chip muted" title="نیازمند پروانهٔ نظام‌پزشکی">🔒 تأیید</span>
           {% endif %}
         </div>
         {% if r.recommendation %}<div class="muted">{{ r.recommendation }}</div>{% endif %}

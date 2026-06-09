@@ -9,9 +9,16 @@ preserves the existing bcrypt + lockout semantics.
 
 import uuid
 
+from django.core.exceptions import ValidationError
 from django.db import models
 
 from apps.common.models import TimeStampedModel, UUIDModel
+
+# Roles that practice medicine and must therefore carry a نظام‌پزشکی license
+# number on file (data-hygiene rule, enforced by AppUser.clean()). The runtime
+# gate for signing a clinical decision is licence-presence, not role — see
+# AppUser.can_practice_clinically(). REGULATORY.md §1/§6.
+CLINICAL_ROLES = ("doctor", "nurse")
 
 
 class Clinic(UUIDModel, TimeStampedModel):
@@ -74,6 +81,36 @@ class AppUser(UUIDModel, TimeStampedModel):
 
     def __str__(self):
         return f"{self.username}@{self.clinic_id}"
+
+    # ── clinical licensing gate (REGULATORY.md §1/§6 — "suggests; a licensed
+    #    physician decides; logged") ─────────────────────────────────────────
+    @property
+    def is_licensed(self) -> bool:
+        """Holds a non-empty نظام‌پزشکی license number."""
+        return bool((self.medical_license_no or "").strip())
+
+    @property
+    def is_clinical_role(self) -> bool:
+        return self.role in CLINICAL_ROLES
+
+    def can_practice_clinically(self) -> bool:
+        """May this user SIGN a clinical decision (acknowledge an ADA suggestion,
+        issue an e-prescription)? Gate: an active account that holds a license.
+        Role is intentionally NOT a further restriction — a licensed owner who
+        is also the clinic_manager (the common small-clinic case) may sign; an
+        unlicensed reception/manager may not."""
+        return bool(self.is_active and self.is_licensed)
+
+    def clean(self):
+        """Clinical-role accounts must record a license number. Called by
+        ModelForm/admin and any caller that invokes full_clean(); the ETL
+        importers create users directly (.save) and are intentionally exempt so
+        legacy data without a recorded license still imports."""
+        super().clean()
+        if self.is_clinical_role and not self.is_licensed:
+            raise ValidationError(
+                {"medical_license_no": "نقش بالینی نیازمند ثبت شمارهٔ نظام‌پزشکی است."}
+            )
 
 
 class UserShift(UUIDModel, TimeStampedModel):

@@ -8,6 +8,7 @@ TenantMiddleware from the session; login follows the RLS-correct ordering
 
 from functools import wraps
 
+from django.contrib import messages
 from django.db import transaction as db_transaction
 from django.db.models import Q
 from django.shortcuts import get_object_or_404, redirect, render
@@ -55,6 +56,29 @@ def _current_user(request):
     if not uid:
         return None
     return AppUser.objects.filter(id=uid).first()
+
+
+def clinical_license_required(view):
+    """Gate a "physician decides" action (acknowledge an ADA suggestion, issue an
+    e-prescription) to a user holding a نظام‌پزشکی license. Unlicensed users are
+    bounced back with a message rather than silently completing the action —
+    REGULATORY §1/§6 ("the system suggests; a licensed physician decides")."""
+    @wraps(view)
+    def wrapper(request, *args, **kwargs):
+        user = _current_user(request)
+        if user is None or not user.can_practice_clinically():
+            messages.error(
+                request,
+                "این اقدام بالینی نیازمند کاربر دارای پروانهٔ نظام‌پزشکی است.",
+            )
+            if "patient_id" in kwargs:
+                return redirect("web:patient_detail", patient_id=kwargs["patient_id"])
+            if "rx_id" in kwargs:
+                return redirect("web:rx_detail", rx_id=kwargs["rx_id"])
+            return redirect("web:patients")
+        return view(request, *args, **kwargs)
+
+    return wrapper
 
 
 def index(request):
@@ -165,6 +189,9 @@ def patient_detail(request, patient_id):
         if concept and concept.get("icd11"):
             condition_crosswalk[code] = concept["icd11"]
 
+    user = _current_user(request)
+    can_sign = bool(user and user.can_practice_clinically())
+
     return render(request, "web/patient_detail.html", {
         "patient": patient,
         "facts": facts,
@@ -175,6 +202,7 @@ def patient_detail(request, patient_id):
         "insurer_labels": INSURER_LABELS,
         "wallet_txns": wallet_txns,
         "condition_crosswalk": condition_crosswalk,
+        "can_sign": can_sign,
     })
 
 
@@ -247,6 +275,7 @@ def billing_callback(request):
 # ── e-prescription (Epic 1) — WebView bridge workflow ──────────────────────
 
 @login_required_web
+@clinical_license_required
 def rx_new(request, patient_id):
     """Start a draft prescription for a patient (channel=webview)."""
     patient = get_object_or_404(Patient, id=patient_id)
@@ -294,6 +323,7 @@ def rx_add_item(request, rx_id):
 
 
 @login_required_web
+@clinical_license_required
 def rx_register(request, rx_id):
     """Record the insurer tracking code returned by the portal and mark the
     prescription registered (logs to InsurerLog for the audit trail)."""
@@ -358,10 +388,11 @@ def followup_remind(request, task_id):
 
 
 @login_required_web
+@clinical_license_required
 def acknowledge_suggestion(request, patient_id):
     """Physician acknowledges a suggestion -> append-only SuggestionLog row.
     Embodies the safety principle: the system suggests, the physician decides,
-    and the decision is logged (gated to logged-in clinical users)."""
+    and the decision is logged (gated to a licensed clinical user)."""
     if request.method != "POST":
         return redirect("web:patient_detail", patient_id=patient_id)
     patient = get_object_or_404(Patient, id=patient_id)

@@ -34,6 +34,8 @@ class UserOut(Schema):
     full_name: str = ""
     clinic_id: str
     clinic_slug: str
+    is_licensed: bool = False
+    can_practice_clinically: bool = False
 
 
 def _user_payload(user: AppUser, clinic: Clinic) -> dict:
@@ -44,6 +46,8 @@ def _user_payload(user: AppUser, clinic: Clinic) -> dict:
         "full_name": user.full_name or "",
         "clinic_id": str(clinic.id),
         "clinic_slug": clinic.slug,
+        "is_licensed": user.is_licensed,
+        "can_practice_clinically": user.can_practice_clinically(),
     }
 
 

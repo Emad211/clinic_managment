@@ -56,6 +56,13 @@
       {% endif %}
     </nav>
   </header>
-  <main>{% block content %}{% endblock %}</main>
+  <main>
+    {% if messages %}
+      {% for message in messages %}
+        <div class="error">{{ message }}</div>
+      {% endfor %}
+    {% endif %}
+    {% block content %}{% endblock %}
+  </main>
 </body>
 </html>

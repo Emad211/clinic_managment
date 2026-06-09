@@ -46,6 +46,8 @@ migrated data:
 - The **chronic co-pilot**: One-Page Snapshot · ADA **rule engine** (57 rules,
   ported) → live suggestions + physician acknowledgement (logged) · recall
   worklist · SMS reminders.
+- **Clinical-licensing gate** (REGULATORY §1/§6): signing a clinical decision
+  (acknowledge a suggestion, e-prescribe) requires a نظام‌پزشکی license number.
 - **E-prescription** (Epic 1) WebView-bridge workflow + insurer audit log.
 - **SaaS billing** (ZarinPal) — subscribe → pay → activate.
 - Wallet ledger, manager dashboard, Persian/Jalali UI.
@@ -73,7 +75,7 @@ cd ai_service; .\.venv\Scripts\uvicorn.exe app.main:app --reload   # GET /health
 
 ## Tests
 
-`platform/` (29) + `ai_service/` (20) = **49 automated tests**, plus the Postgres
+`platform/` (37) + `ai_service/` (22) = **59 automated tests**, plus the Postgres
 RLS proof (`verify_rls`). All run in CI (`.gitlab-ci.yml`).
 
 ```powershell

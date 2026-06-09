@@ -73,10 +73,11 @@ production Postgres before launch.**
 
 ## Setup & verify
 
-**Tests:** `python -m pytest` — 29 tests (auth/lockout, rule engine + DSL,
-billing + SMS providers, web flows + accountability, e-prescription workflow,
-recall worklist + SMS reminder, wallet ledger, knowledge-pipeline client) on
-in-memory SQLite via `config/settings_test`. Runs in CI alongside `verify_rls`.
+**Tests:** `python -m pytest` — 37 tests (auth/lockout, clinical-licensing gate,
+rule engine + DSL, billing + SMS providers, web flows + accountability,
+e-prescription workflow, recall worklist + SMS reminder, wallet ledger,
+knowledge-pipeline client) on in-memory SQLite via `config/settings_test`. Runs
+in CI alongside `verify_rls`.
 
 **Knowledge integration:** `apps/common/knowledge.py` calls the `ai_service`
 knowledge pipeline (`/knowledge/*`) to enrich the patient page with ICD-11
@@ -214,6 +215,17 @@ acknowledged_by, acknowledged_at) — the safety/legal backbone ("suggests,
 physician decides, logged"). Idempotent; the page then shows ✓ تأیید پزشک.
 Verified end-to-end on real data (TEST0008 → 26 suggestions, ack logged). HTMX
 interactivity (live search, inline ack without full reload) is the next polish.
+
+**Clinical-licensing gate (REGULATORY §1/§6).** The two "physician decides"
+actions — acknowledging a suggestion and issuing an e-prescription — are gated to
+a user who **holds a نظام‌پزشکی license**: `AppUser.can_practice_clinically()`
+(active + non-empty `medical_license_no`), enforced by the `clinical_license_required`
+web decorator and `common.auth.require_clinical_license` (ninja). Clinical-role
+accounts (doctor/nurse) must record a license number (`AppUser.clean()`). The UI
+locks the ack/rx controls for unlicensed users (🔒) and shows a banner if they
+POST anyway. `bootstrap_clinic --license <no>` sets the owner-manager's license so
+a small-clinic owner-physician can sign. Role doesn't further restrict — a
+licensed manager-physician may sign; an unlicensed reception/manager may not.
 
 ## Clinical rule engine (`apps/chronic/rule_engine.py`)
 

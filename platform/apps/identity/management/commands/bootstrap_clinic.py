@@ -29,6 +29,12 @@ class Command(BaseCommand):
         parser.add_argument("--admin-password", default="admin")
         parser.add_argument("--province", default="")
         parser.add_argument("--city", default="")
+        parser.add_argument(
+            "--license", default="",
+            help="نظام‌پزشکی license no. for the manager — set it when the owner "
+                 "is also the practising physician so they can sign clinical "
+                 "decisions (acknowledge suggestions, e-prescribe).",
+        )
 
     @transaction.atomic
     def handle(self, *args, **opts):
@@ -55,6 +61,7 @@ class Command(BaseCommand):
                 "password_hash": pw_hash,
                 "role": "clinic_manager",
                 "full_name": "مدیر کلینیک",
+                "medical_license_no": opts["license"],
                 "is_active": True,
             },
         )

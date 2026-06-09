@@ -40,3 +40,13 @@ def require_role(request, *roles):
     if user is None or user.role not in roles:
         raise HttpError(403, "دسترسی مجاز نیست.")
     return user
+
+
+def require_clinical_license(request):
+    """Raise 403 unless the authenticated user may SIGN a clinical decision
+    (holds a نظام‌پزشکی license). The shield for "the physician decides" actions —
+    acknowledging an ADA suggestion, issuing an e-prescription. REGULATORY §1/§6."""
+    user = getattr(request, "app_user", None)
+    if user is None or not user.can_practice_clinically():
+        raise HttpError(403, "این اقدام بالینی نیازمند کاربر دارای پروانهٔ نظام‌پزشکی است.")
+    return user
