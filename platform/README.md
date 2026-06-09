@@ -178,8 +178,11 @@ testing) for the real API. `manage.py seed_plans` seeds free/clinic/multi. UI at
 
 ## Web frontend (`apps/web/`)
 
-Minimal RTL, server-rendered Django templates — the demoable wedge with all three
-core chronic workflows: `/login/` → `/patients/` (search) → `/patients/<id>/`
+Minimal RTL, server-rendered Django templates — the demoable wedge. Login lands
+on `/dashboard/` (clinic-at-a-glance KPIs: patients, open/overdue follow-ups,
+registered prescriptions, SMS sent, acknowledged suggestions + an overdue
+preview + subscription status). Then the three core chronic workflows:
+`/patients/` (search) → `/patients/<id>/`
 (One-Page Snapshot + grouped ADA suggestions w/ "تأیید با پزشک" disclaimer), and
 `/worklist/` (recall/follow-up worklist split overdue/today/upcoming, mark-done **+
 📲 SMS reminder** per row — Mediana with NullProvider fallback + a compliance

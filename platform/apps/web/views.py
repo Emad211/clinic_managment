@@ -19,6 +19,7 @@ from apps.billing.services import subscribe as start_subscription
 
 from apps.chronic import rule_engine
 from apps.chronic.models import ClinicalRule, FollowupTask, SuggestionLog, VitalReading
+from apps.messaging.models import SmsMessage
 from apps.common.tenant import tenant_context
 from apps.identity.models import AppUser, Clinic
 from apps.identity.services import AuthError, authenticate
@@ -54,8 +55,35 @@ def _current_user(request):
 
 def index(request):
     if request.session.get("user_id"):
-        return redirect("web:patients")
+        return redirect("web:dashboard")
     return redirect("web:login")
+
+
+@login_required_web
+def dashboard(request):
+    """Clinic-at-a-glance landing for the manager."""
+    user = _current_user(request)
+    today = timezone.localdate()
+    open_fu = FollowupTask.objects.filter(status="open")
+    kpis = {
+        "patients": Patient.objects.filter(is_active=True).count(),
+        "followups_open": open_fu.count(),
+        "followups_overdue": open_fu.filter(due_date__lt=today).count(),
+        "rx_registered": Prescription.objects.filter(status="registered").count(),
+        "sms_sent": SmsMessage.objects.exclude(status="failed").count(),
+        "suggestions_acked": SuggestionLog.objects.exclude(acknowledged_at__isnull=True).count(),
+    }
+    overdue_list = list(
+        open_fu.filter(due_date__lt=today).select_related("patient").order_by("due_date")[:5]
+    )
+    sub = (
+        Subscription.objects.filter(clinic=user.clinic, status="active")
+        .select_related("plan").first()
+        if user else None
+    )
+    return render(request, "web/dashboard.html", {
+        "kpis": kpis, "overdue_list": overdue_list, "subscription": sub,
+    })
 
 
 def login_view(request):
