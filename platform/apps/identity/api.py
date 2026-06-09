@@ -12,7 +12,7 @@ NOTE: CSRF protection for these cookie-session POSTs is a hardening follow-up
 production without it.
 """
 
-from ninja import Router, Schema
+from ninja import Router, Schema, Status
 
 from apps.common.tenant import tenant_context
 from apps.identity.models import AppUser, Clinic
@@ -52,24 +52,24 @@ def login(request, data: LoginIn):
     try:
         clinic = Clinic.objects.get(slug=data.clinic_slug)
     except Clinic.DoesNotExist:
-        return 404, {"detail": "کلینیک یافت نشد.", "code": "clinic_not_found"}
+        return Status(404, {"detail": "کلینیک یافت نشد.", "code": "clinic_not_found"})
 
     with tenant_context(clinic.id):
         try:
             user = authenticate(clinic, data.username, data.password)
         except AuthError as e:
-            return 401, {"detail": e.message, "code": e.code}
+            return Status(401, {"detail": e.message, "code": e.code})
         payload = _user_payload(user, clinic)
 
     request.session["clinic_id"] = str(clinic.id)
     request.session["user_id"] = str(user.id)
-    return 200, payload
+    return Status(200, payload)
 
 
 @router.post("/logout", response={200: dict})
 def logout(request):
     request.session.flush()
-    return 200, {"detail": "خروج انجام شد."}
+    return Status(200, {"detail": "خروج انجام شد."})
 
 
 @router.get("/me", response={200: UserOut, 401: dict})
@@ -77,12 +77,12 @@ def me(request):
     clinic_id = request.session.get("clinic_id")
     user_id = request.session.get("user_id")
     if not clinic_id or not user_id:
-        return 401, {"detail": "وارد نشده‌اید.", "code": "unauthenticated"}
+        return Status(401, {"detail": "وارد نشده‌اید.", "code": "unauthenticated"})
     with tenant_context(clinic_id):
         try:
             clinic = Clinic.objects.get(id=clinic_id)
             user = AppUser.objects.get(id=user_id)
         except (Clinic.DoesNotExist, AppUser.DoesNotExist):
             request.session.flush()
-            return 401, {"detail": "نشست نامعتبر است.", "code": "invalid_session"}
-        return 200, _user_payload(user, clinic)
+            return Status(401, {"detail": "نشست نامعتبر است.", "code": "invalid_session"})
+        return Status(200, _user_payload(user, clinic))

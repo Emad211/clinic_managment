@@ -76,3 +76,12 @@ def diabetic_patient(clinic):
         trigger_json={}, is_active=True,  # reference-only, must NOT fire
     )
     return p
+
+
+@pytest.fixture
+def followup(diabetic_patient):
+    from apps.chronic.models import FollowupTask
+    return FollowupTask.objects.create(
+        clinic=diabetic_patient.clinic, patient=diabetic_patient,
+        item_key="a1c", title="آزمایش HbA1c", due_date="2026-05-01", status="open",
+    )
