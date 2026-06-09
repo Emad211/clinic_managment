@@ -33,8 +33,12 @@ INSTALLED_APPS = [
     # platform modules (modular monolith)
     "apps.common",
     "apps.identity",
+    "apps.billing",
     "apps.patients",
     "apps.chronic",
+    "apps.rx",
+    "apps.accounting",
+    "apps.messaging",
 ]
 
 MIDDLEWARE = [

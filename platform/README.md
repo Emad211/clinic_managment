@@ -6,27 +6,33 @@ building it does **not** touch the running Flask apps (ports 8080 / 8090). See
 [`../docs/TECH_STACK.md`](../docs/TECH_STACK.md) and
 [`../docs/DATA_MODEL.md`](../docs/DATA_MODEL.md) for the *why*.
 
-> Status: **v0.1 scaffold** — identity / patients / chronic modules modelled,
-> RLS multi-tenancy wired, `manage.py check` clean, all migrations apply.
-> Not yet runnable as a product (no auth flow, no API routers, no data ETL).
+> Status: **v0.2 scaffold** — all 8 modules from DATA_MODEL §2 modelled (~40
+> models), RLS multi-tenancy wired across every tenant table, django-ninja API
+> root + patients/chronic routers, `manage.py check` clean, all migrations apply.
+> Not yet runnable as a product (no auth flow yet, no data ETL).
 
 ## Layout (modular monolith)
 
 ```
 platform/
   config/            # Django project: settings, urls, ninja api root, wsgi/asgi
-    api.py           # NinjaAPI instance (mount module routers here)
+    api.py           # NinjaAPI: /api/health + /api/patients + /api/chronic
   apps/
-    common/          # base models (UUID/Tenant/Catalog), RLS middleware + 0001_rls
+    common/          # base models (UUID/Tenant/Catalog), RLS middleware + RLS migrations
     identity/        # Clinic (tenant), AppUser, UserShift
-    patients/        # Patient (unified webapp.patients + specialist.patient_links)
-    chronic/         # ADA engine catalogs + per-patient clinical records + wallet
+    billing/         # Plan (global), Subscription, Payment (ZarinPal)
+    patients/        # Patient (unified webapp.patients + specialist.patient_links) + api
+    chronic/         # ADA engine catalogs + per-patient clinical records + wallet + api
+    rx/              # Drug (global), Prescription/Item, InsurerLog (Epic 1, WebView->API)
+    accounting/      # Invoice, Visit, Injection, Procedure, Consumable, Tariff, Payroll
+    messaging/       # SmsTemplate, SmsCampaign, SmsMessage (Mediana + NullProvider)
   requirements.txt
   .env.example
 ```
 
-Module boundaries mirror `docs/DATA_MODEL.md` §2. `billing`, `rx`, `accounting`,
-`messaging` apps come in later loops.
+Module boundaries mirror `docs/DATA_MODEL.md` §2. `plan` and `drug` are
+platform-level global reference tables (no `clinic_id`, no RLS); everything else
+is tenant-owned and RLS-protected.
 
 ## Multi-tenancy: PostgreSQL Row-Level Security
 
