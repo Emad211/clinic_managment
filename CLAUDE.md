@@ -2,6 +2,19 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Project vision & North Star (read this first)
+
+This repo is the **seed of a larger Iranian medical-software startup**, not just two clinic apps. The full product strategy, market research, positioning, roadmap, and the knowledge-pipeline architecture live in **[`docs/`](docs/README.md)** — start at [`docs/MASTER_PLAN.md`](docs/MASTER_PLAN.md) (strategy & roadmap), [`docs/TECH_STACK.md`](docs/TECH_STACK.md) (the locked target stack), and [`docs/MARKET_RESEARCH.md`](docs/MARKET_RESEARCH.md). Treat `docs/` as the source of truth for *why* and *what next*; treat this file as the source of truth for *how the current code works*.
+
+**Heads-up on the stack:** the two apps documented below are the *current* state (Flask + SQLite desktop). The *target* is a cloud multi-tenant SaaS on **Django + django-ninja + PostgreSQL** (see `docs/TECH_STACK.md`), reached by **evolving** the existing layered code — keep `services/`+`domain/` (incl. the ADA engine), swap SQLite→Postgres and Flask→Django, unify the two apps into modules — **not** rewriting from scratch. Don't assume Flask/SQLite is the end-state.
+
+The strategy is a **3-rung ladder** (decided خرداد۱۴۰۵):
+1. **Revenue wedge (now):** turn `specialist_clinic` into a sellable **chronic-disease co-pilot** (diabetes/HTN) + add **e-prescription/insurance integration** — this hits a real market gap no Iranian clinic-software competitor fills.
+2. **Differentiation:** generalize the ADA rule engine (`rule_engine.py` + `clinical_rules`) into a **physician-facing clinical-intelligence layer** inside the clinic product (lower regulatory risk than a consumer diagnosis app).
+3. **Long-term moat:** a **clinical-knowledge platform** (education → diagnostic reasoning → treatment assistant) powered by a multi-agent **knowledge-extraction pipeline** (Phase-0), built in parallel and fed by the proprietary Iranian patient data the clinic product accumulates.
+
+Safety/legal principle baked into every clinical feature: **the system suggests, it does not decide** ("پیشنهاد — تأیید با پزشک"), gated to licensed users, with logged disclaimers. See `docs/MASTER_PLAN.md` §4.4.
+
 ## Repository layout: two independent apps
 
 This repo holds **two separate Flask + SQLite desktop apps** for an Iranian clinic. They share the same architecture and conventions but run as different processes on different ports with different databases. They are linked only by patient `national_id` through a strictly read-only bridge.
@@ -14,6 +27,8 @@ This repo holds **two separate Flask + SQLite desktop apps** for an Iranian clin
 `specialist_clinic` reads patient demographics and revenue **live and read-only** from the accounting DB via `specialist_clinic/src/adapters/accounting_bridge.py` (opens `clinic_new.db` with `sqlite3` URI `mode=ro`). **Never write to the accounting DB from the specialist app** — the bridge is intentionally read-only and any write must stay impossible. The path defaults to `../webapp/clinic_new.db` and is overridable with the `ACCOUNTING_DB_PATH` env var.
 
 Most domain comments and UI strings are in Persian. The product is RTL/Jalali throughout.
+
+**Emerging third tree — `platform/` (the Evolve target, do not confuse with the Flask apps):** a separate **Django + django-ninja + PostgreSQL** project that is the cloud SaaS destination per `docs/TECH_STACK.md` + `docs/DATA_MODEL.md`. It is **additive and isolated** — building it never touches `webapp/` or `specialist_clinic/` (still on 8080/8090). Current state: **v0.1 scaffold** — `identity`/`patients`/`chronic` modules modelled, PostgreSQL **RLS multi-tenancy** wired (per-request `SET LOCAL app.current_clinic` + `tenant_isolation` policies, deny-by-default), `manage.py check` clean. Its own venv (`platform/.venv`, Python 3.13) and `platform/requirements.txt`. See `platform/README.md`. When working in `platform/`, follow Django conventions there, not the Flask `src/api|services|adapters` layering of the two desktop apps.
 
 ## Running
 

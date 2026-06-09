@@ -1,0 +1,24 @@
+# ── Python / Django platform (platform/) ──
+platform/.venv/
+**/__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# Local env & secrets
+platform/.env
+.env
+
+# Django local DB (if SQLite ever used for a quick local run)
+platform/*.sqlite3
+platform/db.sqlite3
+
+# ── Research / scratch ──
+tmp_*.txt
+
+# ── Editor / OS ──
+.DS_Store
+Thumbs.db
+
+# ── Scheduler lock ──
+.claude/scheduled_tasks.lock
