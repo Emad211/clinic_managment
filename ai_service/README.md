@@ -17,8 +17,11 @@ patient data).
 > orchestrator runs it idempotently and routes safety-critical/ungrounded claims
 > to human review. **+ a Gold Set + benchmark harness** (`benchmark.py`) that
 > scores extracted-and-verified concepts vs hand-labels (precision/recall/F1) and
-> reports coverage gaps. **20 tests green.** Next: arq+Redis async orchestration,
-> real LLM extraction/verification on AvalAI, pgvector retrieval.
+> reports coverage gaps. **The full pipeline is usable over HTTP** —
+> `POST /documents/process` (text) / `POST /documents/upload` (PDF) run
+> ingest→parse→extract→verify→graph; results are queryable at `/knowledge/*`.
+> **22 tests green.** Next: arq+Redis async orchestration, real LLM
+> extraction/verification on AvalAI, pgvector retrieval.
 
 ## Layout
 ```
