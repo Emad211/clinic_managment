@@ -4,6 +4,7 @@ as they come online."""
 from ninja import NinjaAPI
 
 from apps.chronic.api import router as chronic_router
+from apps.common.auth import session_auth
 from apps.identity.api import router as auth_router
 from apps.patients.api import router as patients_router
 
@@ -15,6 +16,7 @@ def health(request):
     return {"status": "ok", "service": "clinic-platform", "version": "0.1.0"}
 
 
+# /auth (login/logout/me) stays open; data routers require a logged-in user.
 api.add_router("/auth", auth_router)
-api.add_router("/patients", patients_router)
-api.add_router("/chronic", chronic_router)
+api.add_router("/patients", patients_router, auth=session_auth)
+api.add_router("/chronic", chronic_router, auth=session_auth)

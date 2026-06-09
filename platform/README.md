@@ -6,12 +6,13 @@ building it does **not** touch the running Flask apps (ports 8080 / 8090). See
 [`../docs/TECH_STACK.md`](../docs/TECH_STACK.md) and
 [`../docs/DATA_MODEL.md`](../docs/DATA_MODEL.md) for the *why*.
 
-> Status: **v0.4 scaffold** — all 8 modules from DATA_MODEL §2 modelled (~40
-> models), RLS multi-tenancy wired across every tenant table, django-ninja API
-> (auth + patients + chronic routers), session **login/logout/me** with bcrypt +
-> 5-fail/15-min lockout (verified end-to-end), idempotent catalog seed + clinic
-> bootstrap commands, `manage.py check` clean.
-> Remaining for a usable product: SQLite->Postgres ETL, API authz guards, SPA.
+> Status: **v0.5 scaffold** — all 8 modules from DATA_MODEL §2 modelled (~40
+> models), RLS multi-tenancy across every tenant table, django-ninja API with
+> session login + **authz-guarded** data routers, bcrypt + 5-fail/15-min lockout,
+> idempotent catalog seed + clinic bootstrap, and a **SQLite->Postgres ETL**
+> (clinic + users + merged patients) verified against the real legacy DBs.
+> `manage.py check` clean. Remaining for a usable product: ETL long tail
+> (chronic/accounting/sms), SPA, production hardening.
 
 ## Layout (modular monolith)
 
@@ -64,6 +65,9 @@ copy .env.example .env          # then edit DATABASE_URL / secret
 .\.venv\Scripts\python.exe manage.py migrate        # needs a PostgreSQL DB
 .\.venv\Scripts\python.exe manage.py seed_catalog    # global ADA catalogs (idempotent)
 .\.venv\Scripts\python.exe manage.py bootstrap_clinic --name "درمانگاه نمونه" --slug demo
+# OR migrate the real legacy data into one tenant (idempotent, source DBs read-only):
+.\.venv\Scripts\python.exe manage.py etl_import --clinic-slug main --clinic-name "درمانگاه اصلی" `
+    --webapp-db ..\webapp\clinic_new.db --specialist-db ..\specialist_clinic\specialist.db
 .\.venv\Scripts\python.exe manage.py runserver       # GET /api/health -> {"status":"ok"}
 ```
 
@@ -90,9 +94,20 @@ PostgreSQL target — use a `pgvector/pgvector:pg16` image to match the stack.
   `app_user`. `apps/common/tenant.py` no-ops the GUC off PostgreSQL so the app
   also runs on SQLite for local dev/tests.
 
+- **API authz guard → done.** `apps/common/auth.SessionAuth` (ninja dependency)
+  401s when the session has no logged-in user; attached to the patients/chronic
+  routers (auth router stays open). `require_role()` helper for endpoint RBAC.
+
+## ETL (legacy SQLite -> one tenant)
+
+`etl_import` opens `webapp/clinic_new.db` + `specialist_clinic/specialist.db`
+**read-only** and merges them into one `clinic`. v1 scope: clinic + users (both
+apps, deduped by username) + patients (webapp.patients ⋈ specialist.patient_links
+by national_id, retiring the accounting_bridge) + wallet balance. Verified
+idempotent against the real DBs. **TODO (later loops):** chronic records,
+accounting rows, SMS, tariffs; proper Jalali↔Gregorian + Tehran→UTC conversion.
+
 ## Open scaffold decisions
 
-- **API authz guards:** endpoints are not yet gated by login/role — add a ninja
-  auth dependency that 401s when the session has no `user_id` and enforces role.
 - **CSRF** for cookie-session POSTs (login/logout) — hardening follow-up.
 - **`drug` reference dataset** source (Epic 1) — see `docs/DATA_MODEL.md` §8.
