@@ -48,6 +48,8 @@ migrated data:
   worklist · SMS reminders.
 - **Clinical-licensing gate** (REGULATORY §1/§6): signing a clinical decision
   (acknowledge a suggestion, e-prescribe) requires a نظام‌پزشکی license number.
+- **Append-only audit trail** (`ActivityLog` + manager-only `/activity/` page):
+  every state-changing action is logged for accountability (REGULATORY §6).
 - **E-prescription** (Epic 1) WebView-bridge workflow + insurer audit log.
 - **SaaS billing** (ZarinPal) — subscribe → pay → activate.
 - Wallet ledger, manager dashboard, Persian/Jalali UI.
@@ -75,7 +77,7 @@ cd ai_service; .\.venv\Scripts\uvicorn.exe app.main:app --reload   # GET /health
 
 ## Tests
 
-`platform/` (37) + `ai_service/` (22) = **59 automated tests**, plus the Postgres
+`platform/` (43) + `ai_service/` (22) = **65 automated tests**, plus the Postgres
 RLS proof (`verify_rls`). All run in CI (`.gitlab-ci.yml`).
 
 ```powershell

@@ -1,0 +1,36 @@
+{% extends "web/base.html" %}
+{% load web_extras %}
+{% block title %}گزارشِ ممیزی{% endblock %}
+{% block content %}
+<div class="card">
+  <h2>🧾 گزارشِ ممیزی (Activity Log)</h2>
+  <p class="muted" style="font-size:.9rem">ردِ پایِ تغییردهندهٔ وضعیت — افزودنی و تغییرناپذیر (accountability، REGULATORY §۶).</p>
+  <form method="get" style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap">
+    <select name="action" onchange="this.form.submit()" style="padding:.5rem;background:var(--panel2);border:1px solid var(--line);border-radius:8px;color:var(--txt)">
+      <option value="">همهٔ اقدام‌ها</option>
+      {% for a in actions %}
+        <option value="{{ a }}" {% if a == action %}selected{% endif %}>{{ a }}</option>
+      {% endfor %}
+    </select>
+    <noscript><button type="submit">فیلتر</button></noscript>
+  </form>
+</div>
+
+<div class="card">
+  <table>
+    <thead><tr><th>زمان</th><th>کاربر</th><th>اقدام</th><th>شرح</th></tr></thead>
+    <tbody>
+      {% for r in rows %}
+        <tr>
+          <td class="muted" style="font-size:.85rem;white-space:nowrap">{{ r.created_at|jalali }}</td>
+          <td>{{ r.actor_username|default:'سیستم' }}</td>
+          <td><span class="chip">{{ r.action }}</span></td>
+          <td>{{ r.summary|default:'—' }}</td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="4" class="muted">رویدادی ثبت نشده است.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

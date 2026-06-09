@@ -73,11 +73,11 @@ production Postgres before launch.**
 
 ## Setup & verify
 
-**Tests:** `python -m pytest` — 37 tests (auth/lockout, clinical-licensing gate,
-rule engine + DSL, billing + SMS providers, web flows + accountability,
-e-prescription workflow, recall worklist + SMS reminder, wallet ledger,
-knowledge-pipeline client) on in-memory SQLite via `config/settings_test`. Runs
-in CI alongside `verify_rls`.
+**Tests:** `python -m pytest` — 43 tests (auth/lockout, clinical-licensing gate,
+audit trail, rule engine + DSL, billing + SMS providers, web flows +
+accountability, e-prescription workflow, recall worklist + SMS reminder, wallet
+ledger, knowledge-pipeline client) on in-memory SQLite via `config/settings_test`.
+Runs in CI alongside `verify_rls`.
 
 **Knowledge integration:** `apps/common/knowledge.py` calls the `ai_service`
 knowledge pipeline (`/knowledge/*`) to enrich the patient page with ICD-11
@@ -226,6 +226,16 @@ locks the ack/rx controls for unlicensed users (🔒) and shows a banner if they
 POST anyway. `bootstrap_clinic --license <no>` sets the owner-manager's license so
 a small-clinic owner-physician can sign. Role doesn't further restrict — a
 licensed manager-physician may sign; an unlicensed reception/manager may not.
+
+**Audit trail (REGULATORY §6 — accountability / ممیزی).** Every state-changing
+action writes an append-only row to `activity_log` via
+`apps/common/activity.log_activity(clinic, actor, action, summary, …)`: suggestion
+acknowledge, rx create/register, wallet credit/debit, followup done/remind. It's
+**best-effort** — the insert is savepoint-isolated, so a logging failure never
+rolls back the primary action. A **manager-only `/activity/`** page renders the
+filterable trail. The table is RLS-protected like any tenant table (migration
+`0004_activitylog_rls`, asserted by `verify_rls`). Wiring login/logout and the
+accounting module into the trail is the remaining coverage.
 
 ## Clinical rule engine (`apps/chronic/rule_engine.py`)
 

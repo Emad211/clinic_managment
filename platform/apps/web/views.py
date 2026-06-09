@@ -24,7 +24,9 @@ from apps.chronic.models import (
     ClinicalRule, FollowupTask, SuggestionLog, VitalReading, WalletTransaction,
 )
 from apps.messaging.models import SmsMessage
+from apps.common.activity import log_activity
 from apps.common.knowledge import knowledge_client
+from apps.common.models import ActivityLog
 from apps.common.tenant import tenant_context
 from apps.identity.models import AppUser, Clinic
 from apps.identity.services import AuthError, authenticate
@@ -224,12 +226,19 @@ def wallet_txn(request, patient_id):
                 if kind == "debit":
                     amount = min(amount, p.wallet_balance)  # never go negative
                 if amount > 0:
+                    actor = _current_user(request)
                     p.wallet_balance += amount if kind == "credit" else -amount
                     p.save(update_fields=["wallet_balance", "updated_at"])
                     WalletTransaction.objects.create(
                         clinic=p.clinic, patient=p, kind=kind, amount=amount,
                         balance_after=p.wallet_balance, reason=reason,
-                        created_by=_current_user(request),
+                        created_by=actor,
+                    )
+                    log_activity(
+                        p.clinic, actor, f"wallet.{kind}",
+                        summary=f"{'واریز' if kind == 'credit' else 'برداشت'} {amount} ریال — {p.full_name}",
+                        entity_type="patient", entity_id=p.id,
+                        metadata={"amount": amount, "balance_after": p.wallet_balance, "reason": reason},
                     )
     return redirect("web:patient_detail", patient_id=patient_id)
 
@@ -284,13 +293,19 @@ def rx_new(request, patient_id):
     insurer = (request.POST.get("insurer") or "tamin").strip()
     if insurer not in INSURER_PORTALS:
         insurer = "tamin"
+    actor = _current_user(request)
     rx = Prescription.objects.create(
-        clinic=patient.clinic, patient=patient, doctor=_current_user(request),
+        clinic=patient.clinic, patient=patient, doctor=actor,
         insurer=insurer, status="draft", channel="webview",
     )
     InsurerLog.objects.create(
         clinic=patient.clinic, prescription=rx, insurer=insurer,
         action="draft_created", status="draft", payload={},
+    )
+    log_activity(
+        patient.clinic, actor, "rx.create",
+        summary=f"ایجاد نسخهٔ {INSURER_LABELS.get(insurer, insurer)} برای {patient.full_name}",
+        entity_type="prescription", entity_id=rx.id, metadata={"insurer": insurer},
     )
     return redirect("web:rx_detail", rx_id=rx.id)
 
@@ -338,7 +353,34 @@ def rx_register(request, rx_id):
             clinic=rx.clinic, prescription=rx, insurer=rx.insurer,
             action="register", status=rx.status, payload={"tracking_code": code},
         )
+        log_activity(
+            rx.clinic, _current_user(request), "rx.register",
+            summary=f"ثبت نسخه با کد رهگیری {code or '—'} ({rx.status})",
+            entity_type="prescription", entity_id=rx.id,
+            metadata={"tracking_code": code, "status": rx.status},
+        )
     return redirect("web:rx_detail", rx_id=rx.id)
+
+
+@login_required_web
+def activity_log(request):
+    """Append-only audit trail (REGULATORY §6 — ممیزی). Manager-only: the audit
+    view is for clinic oversight, not day-to-day clinical staff."""
+    user = _current_user(request)
+    if user is None or user.role != "clinic_manager":
+        messages.error(request, "دسترسی به گزارشِ ممیزی فقط برای مدیر مجاز است.")
+        return redirect("web:dashboard")
+    action = (request.GET.get("action") or "").strip()
+    qs = ActivityLog.objects.all()
+    if action:
+        qs = qs.filter(action=action)
+    rows = list(qs.select_related("actor").order_by("-created_at")[:200])
+    actions = list(
+        ActivityLog.objects.values_list("action", flat=True).distinct().order_by("action")
+    )
+    return render(request, "web/activity.html", {
+        "rows": rows, "actions": actions, "action": action,
+    })
 
 
 @login_required_web
@@ -369,6 +411,11 @@ def followup_done(request, task_id):
             t.status = "done"
             t.handled_at = timezone.now()
             t.save(update_fields=["status", "handled_at", "updated_at"])
+            log_activity(
+                t.clinic, _current_user(request), "followup.done",
+                summary=f"انجام پیگیری: {t.title or t.item_key}",
+                entity_type="followup_task", entity_id=t.id,
+            )
     return redirect("web:worklist")
 
 
@@ -384,6 +431,11 @@ def followup_remind(request, task_id):
             if t.due_date:
                 body += f" — سررسید {t.due_date}"
             send_sms(t.clinic, t.patient.phone_number, body, patient=t.patient)
+            log_activity(
+                t.clinic, _current_user(request), "followup.remind",
+                summary=f"ارسال یادآور پیامکی: {label} — {t.patient.full_name}",
+                entity_type="followup_task", entity_id=t.id,
+            )
     return redirect("web:worklist")
 
 
@@ -401,13 +453,20 @@ def acknowledge_suggestion(request, patient_id):
     if rule and not SuggestionLog.objects.filter(
         patient=patient, rule_code=rule_code
     ).exclude(acknowledged_at__isnull=True).exists():
+        actor = _current_user(request)
         SuggestionLog.objects.create(
             clinic=patient.clinic,
             patient=patient,
             rule_code=rule_code,
             severity=rule.severity,
             message_fa=rule.recommendation or rule.title,
-            acknowledged_by=_current_user(request),
+            acknowledged_by=actor,
             acknowledged_at=timezone.now(),
+        )
+        log_activity(
+            patient.clinic, actor, "suggestion.acknowledge",
+            summary=f"تأیید پیشنهاد {rule_code} برای {patient.full_name}",
+            entity_type="patient", entity_id=patient.id,
+            metadata={"rule_code": rule_code, "severity": rule.severity},
         )
     return redirect("web:patient_detail", patient_id=patient_id)

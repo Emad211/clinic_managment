@@ -14,6 +14,7 @@ urlpatterns = [
     path("patients/<uuid:patient_id>/ack/", views.acknowledge_suggestion, name="ack"),
     path("patients/<uuid:patient_id>/wallet/", views.wallet_txn, name="wallet_txn"),
     path("worklist/", views.worklist, name="worklist"),
+    path("activity/", views.activity_log, name="activity"),
     # billing / subscription
     path("billing/", views.billing_home, name="billing"),
     path("billing/subscribe/<uuid:plan_id>/", views.billing_subscribe, name="billing_subscribe"),
