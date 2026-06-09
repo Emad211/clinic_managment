@@ -8,6 +8,7 @@ TenantMiddleware from the session; login follows the RLS-correct ordering
 
 from functools import wraps
 
+from django.db import transaction as db_transaction
 from django.db.models import Q
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -18,7 +19,9 @@ from apps.billing.services import confirm_payment
 from apps.billing.services import subscribe as start_subscription
 
 from apps.chronic import rule_engine
-from apps.chronic.models import ClinicalRule, FollowupTask, SuggestionLog, VitalReading
+from apps.chronic.models import (
+    ClinicalRule, FollowupTask, SuggestionLog, VitalReading, WalletTransaction,
+)
 from apps.messaging.models import SmsMessage
 from apps.common.tenant import tenant_context
 from apps.identity.models import AppUser, Clinic
@@ -148,6 +151,9 @@ def patient_detail(request, patient_id):
     prescriptions = list(
         Prescription.objects.filter(patient=patient).order_by("-created_at")[:10]
     )
+    wallet_txns = list(
+        WalletTransaction.objects.filter(patient=patient).order_by("-created_at")[:8]
+    )
 
     return render(request, "web/patient_detail.html", {
         "patient": patient,
@@ -157,7 +163,36 @@ def patient_detail(request, patient_id):
         "acked": acked,
         "prescriptions": prescriptions,
         "insurer_labels": INSURER_LABELS,
+        "wallet_txns": wallet_txns,
     })
+
+
+@login_required_web
+def wallet_txn(request, patient_id):
+    """Append-only wallet credit/debit (the lawful substitute for discount/free).
+    Updates the patient balance and records a WalletTransaction atomically."""
+    patient = get_object_or_404(Patient, id=patient_id)
+    if request.method == "POST":
+        kind = request.POST.get("kind")
+        reason = request.POST.get("reason", "")
+        try:
+            amount = int(request.POST.get("amount") or 0)
+        except ValueError:
+            amount = 0
+        if amount > 0 and kind in ("credit", "debit"):
+            with db_transaction.atomic():
+                p = Patient.objects.select_for_update().get(id=patient.id)
+                if kind == "debit":
+                    amount = min(amount, p.wallet_balance)  # never go negative
+                if amount > 0:
+                    p.wallet_balance += amount if kind == "credit" else -amount
+                    p.save(update_fields=["wallet_balance", "updated_at"])
+                    WalletTransaction.objects.create(
+                        clinic=p.clinic, patient=p, kind=kind, amount=amount,
+                        balance_after=p.wallet_balance, reason=reason,
+                        created_by=_current_user(request),
+                    )
+    return redirect("web:patient_detail", patient_id=patient_id)
 
 
 # ── billing / subscription (ZarinPal) ─────────────────────────────────────

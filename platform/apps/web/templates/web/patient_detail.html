@@ -26,6 +26,38 @@
 </div>
 
 <div class="card">
+  <h3>👛 کیف پول</h3>
+  <p>موجودی: <strong class="big">{{ patient.wallet_balance|rial }}</strong></p>
+  <p class="muted" style="font-size:.85rem">اعتبارِ کیف‌پول جایگزینِ قانونیِ «تخفیف/رایگان» است.</p>
+  <form method="post" action="{% url 'web:wallet_txn' patient.id %}" style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:center">
+    {% csrf_token %}
+    <select name="kind" style="padding:.5rem;background:var(--panel2);border:1px solid var(--line);border-radius:8px;color:var(--txt)">
+      <option value="credit">واریز (شارژ)</option>
+      <option value="debit">برداشت</option>
+    </select>
+    <input type="text" name="amount" placeholder="مبلغ (ریال)" style="margin:0;width:140px">
+    <input type="text" name="reason" placeholder="بابت…" style="margin:0">
+    <button type="submit">ثبت</button>
+  </form>
+  {% if wallet_txns %}
+  <table style="margin-top:.8rem">
+    <thead><tr><th>نوع</th><th>مبلغ</th><th>موجودیِ بعد</th><th>بابت</th><th>تاریخ</th></tr></thead>
+    <tbody>
+      {% for w in wallet_txns %}
+        <tr>
+          <td>{% if w.kind == 'credit' %}<span class="sev-info">واریز</span>{% else %}<span class="sev-warn">برداشت</span>{% endif %}</td>
+          <td>{{ w.amount|rial }}</td>
+          <td>{{ w.balance_after|rial }}</td>
+          <td>{{ w.reason|default:'—' }}</td>
+          <td>{{ w.created_at|jalali }}</td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</div>
+
+<div class="card">
   <h3>📝 نسخهٔ الکترونیک</h3>
   <form method="post" action="{% url 'web:rx_new' patient.id %}" style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap">
     {% csrf_token %}

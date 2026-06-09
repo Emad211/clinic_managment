@@ -73,10 +73,10 @@ production Postgres before launch.**
 
 ## Setup & verify
 
-**Tests:** `python -m pytest` — 22 tests (auth/lockout, rule engine + DSL,
+**Tests:** `python -m pytest` — 25 tests (auth/lockout, rule engine + DSL,
 billing + SMS providers, web flows + accountability, e-prescription workflow,
-recall worklist + SMS reminder) on in-memory SQLite via `config/settings_test`.
-Runs in CI alongside `verify_rls`.
+recall worklist + SMS reminder, wallet ledger) on in-memory SQLite via
+`config/settings_test`. Runs in CI alongside `verify_rls`.
 
 ```powershell
 cd platform
@@ -191,7 +191,9 @@ preview + subscription status). Then the three core chronic workflows:
 (One-Page Snapshot + grouped ADA suggestions w/ "تأیید با پزشک" disclaimer), and
 `/worklist/` (recall/follow-up worklist split overdue/today/upcoming, mark-done **+
 📲 SMS reminder** per row — Mediana with NullProvider fallback + a compliance
-rewrite of banned promo words; `apps/messaging/services.py`). Plus the
+rewrite of banned promo words; `apps/messaging/services.py`). The patient page
+also has a **wallet** panel (append-only credit/debit ledger — the lawful
+substitute for discount/free; balance can't go negative). Plus the
 **e-prescription** flow (Epic 1, EPRESCRIPTION.md path A): from a patient,
 start a draft → `/rx/<id>/` composes items and shows the **WebView bridge** (opens
 the official insurer portal `ep.tamin.ir` / `eservices.ihio.gov.ir`) → record the

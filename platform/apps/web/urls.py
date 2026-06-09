@@ -12,6 +12,7 @@ urlpatterns = [
     path("patients/", views.patient_list, name="patients"),
     path("patients/<uuid:patient_id>/", views.patient_detail, name="patient_detail"),
     path("patients/<uuid:patient_id>/ack/", views.acknowledge_suggestion, name="ack"),
+    path("patients/<uuid:patient_id>/wallet/", views.wallet_txn, name="wallet_txn"),
     path("worklist/", views.worklist, name="worklist"),
     # billing / subscription
     path("billing/", views.billing_home, name="billing"),
