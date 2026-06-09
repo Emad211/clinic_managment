@@ -6,15 +6,15 @@ building it does **not** touch the running Flask apps (ports 8080 / 8090). See
 [`../docs/TECH_STACK.md`](../docs/TECH_STACK.md) and
 [`../docs/DATA_MODEL.md`](../docs/DATA_MODEL.md) for the *why*.
 
-> Status: **v0.7 scaffold** — all 8 modules from DATA_MODEL §2 modelled (~40
+> Status: **v0.8 scaffold** — all 8 modules from DATA_MODEL §2 modelled (~40
 > models), RLS multi-tenancy across every tenant table, django-ninja API with
 > session login + **authz-guarded** data routers, bcrypt + 5-fail/15-min lockout,
-> a **SQLite->Postgres ETL** (clinic + users + merged patients) + a
-> **clinical-catalog ETL** (real 57 ADA rules / 13 indicators / 18 flags / 19
-> drug classes / 5 conditions), and the **ported rule engine** producing live
-> ADA decision support (`/api/chronic/suggestions`) — verified against the real
-> 57 rules. `manage.py check` clean. Remaining: ETL long tail (per-patient
-> chronic/accounting/sms rows), SPA, production hardening.
+> a **full SQLite->Postgres ETL** (clinic + users + merged patients + per-patient
+> vitals/meds/conditions/flags/followups), a **clinical-catalog ETL** (real 57
+> ADA rules), and the **ported rule engine** producing live ADA decision support
+> (`/api/chronic/suggestions`). End-to-end verified on the **real** legacy data:
+> patient TEST0008 → 22 suggestions from real vitals. `manage.py check` clean.
+> Remaining: accounting/sms ETL, SPA, production hardening.
 
 ## Layout (modular monolith)
 
@@ -105,9 +105,15 @@ PostgreSQL target — use a `pgvector/pgvector:pg16` image to match the stack.
 ## ETL (legacy SQLite -> one tenant)
 
 `etl_import` opens `webapp/clinic_new.db` + `specialist_clinic/specialist.db`
-**read-only** and merges them into one `clinic`. v1 scope: clinic + users (both
-apps, deduped by username) + patients (webapp.patients ⋈ specialist.patient_links
-by national_id, retiring the accounting_bridge) + wallet balance.
+**read-only** and merges them into one `clinic`: users (both apps, deduped by
+username) + patients (webapp.patients ⋈ specialist.patient_links by national_id,
+retiring the accounting_bridge) + wallet balance + **per-patient chronic records**
+(vitals, medications, conditions, flags, follow-ups) linked via a
+`patient_links.id → Patient` map built during the patient pass. Run **`etl_catalog`
+first** so the global Condition/Flag/DrugClass/Indicator catalogs exist to link
+against. Legacy timestamps are Gregorian ISO (verified) — no Jalali conversion
+needed; birthdate→age is Jalali-aware in the engine. Idempotent (get_or_create
+on natural keys).
 
 `etl_catalog` ports the GLOBAL clinical catalogs from `specialist.db` (the
 authoritative 57 ADA rules + 13 indicators + 18 flags + 19 drug classes +
@@ -117,9 +123,9 @@ nothing is dropped. `etl_catalog` and `seed_catalog` are **mutually exclusive** 
 run `etl_catalog` when `specialist.db` exists, `seed_catalog` only for a fresh
 install with no legacy data.
 
-Both verified idempotent against the real DBs. **TODO (later loops):** per-patient
-chronic records, accounting rows, SMS, tariffs; proper Jalali↔Gregorian +
-Tehran→UTC conversion.
+Both verified idempotent against the real DBs. **TODO (later loops):** accounting
+rows, SMS, tariffs, allergies/labs/appointments (empty in source); Tehran→UTC
+normalisation of timestamps.
 
 ## Clinical rule engine (`apps/chronic/rule_engine.py`)
 
