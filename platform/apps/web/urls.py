@@ -23,6 +23,8 @@ urlpatterns = [
     path("invoices/<uuid:invoice_id>/pay/", views.invoice_pay, name="invoice_pay"),
     path("invoices/<uuid:invoice_id>/close/", views.invoice_close, name="invoice_close"),
     path("tariffs/", views.tariffs, name="tariffs"),
+    path("reports/", views.reports, name="reports"),
+    path("reports/export.csv", views.reports_export_csv, name="reports_export_csv"),
     # billing / subscription
     path("billing/", views.billing_home, name="billing"),
     path("billing/subscribe/<uuid:plan_id>/", views.billing_subscribe, name="billing_subscribe"),

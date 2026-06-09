@@ -12,6 +12,9 @@
 </div>
 
 <div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(160px,1fr))">
+  {% if current_app_user.role == 'clinic_manager' %}
+  <a href="{% url 'web:reports' %}" class="metric" style="border-color:var(--accent)"><div class="muted">درآمدِ امروز</div><div class="big" style="color:var(--accent)">{{ revenue_today|rial }}</div></a>
+  {% endif %}
   <a href="{% url 'web:patients' %}" class="metric"><div class="muted">بیماران</div><div class="big">{{ kpis.patients|fa_num }}</div></a>
   <a href="{% url 'web:worklist' %}" class="metric"><div class="muted">پیگیری باز</div><div class="big">{{ kpis.followups_open|fa_num }}</div></a>
   <a href="{% url 'web:worklist' %}" class="metric"><div class="muted sev-urgent">عقب‌افتاده</div><div class="big sev-urgent">{{ kpis.followups_overdue|fa_num }}</div></a>

@@ -6,11 +6,13 @@ TenantMiddleware from the session; login follows the RLS-correct ordering
 (resolve clinic by slug, then authenticate against app_user in tenant context).
 """
 
+import csv
 from functools import wraps
 
 from django.contrib import messages
 from django.db import transaction as db_transaction
 from django.db.models import Q
+from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
@@ -19,6 +21,7 @@ from apps.billing.models import Payment, Plan, Subscription
 from apps.billing.services import confirm_payment
 from apps.billing.services import subscribe as start_subscription
 
+from apps.accounting import reports as acc_reports
 from apps.accounting import services as acc
 from apps.accounting.models import InsurancePlan, Invoice, Tariff
 from apps.chronic import rule_engine
@@ -134,8 +137,10 @@ def dashboard(request):
         .select_related("plan").first()
         if user else None
     )
+    revenue_today = acc_reports.revenue_summary(today, today)["total_gross"]
     return render(request, "web/dashboard.html", {
         "kpis": kpis, "overdue_list": overdue_list, "subscription": sub,
+        "revenue_today": revenue_today,
     })
 
 
@@ -675,3 +680,60 @@ def tariffs(request):
     return render(request, "web/tariffs.html", {
         "tariffs": rows, "kinds": Tariff.KIND, "categories": Tariff.CATEGORY,
     })
+
+
+def _report_range(request):
+    """Resolve the report window from ?from=&to= (Gregorian ISO), default = this
+    month to today."""
+    today = timezone.localdate()
+    default_from = today.replace(day=1)
+
+    def _parse(s, fallback):
+        from datetime import date
+        try:
+            y, m, d = (int(x) for x in str(s).split("-"))
+            return date(y, m, d)
+        except (ValueError, AttributeError):
+            return fallback
+
+    dfrom = _parse(request.GET.get("from"), default_from)
+    dto = _parse(request.GET.get("to"), today)
+    return dfrom, dto
+
+
+@login_required_web
+@roles_required("clinic_manager")
+def reports(request):
+    """Financial reports (manager): revenue today + range, broken down by service
+    kind, shift, insurance and doctor. Revenue = visit+injection+procedure gross."""
+    today = timezone.localdate()
+    dfrom, dto = _report_range(request)
+    return render(request, "web/reports.html", {
+        "today_summary": acc_reports.revenue_summary(today, today),
+        "range_summary": acc_reports.revenue_summary(dfrom, dto),
+        "by_insurance": acc_reports.revenue_by_insurance(dfrom, dto),
+        "by_doctor": acc_reports.revenue_by_doctor(dfrom, dto),
+        "dfrom": dfrom, "dto": dto, "today": today,
+    })
+
+
+@login_required_web
+@roles_required("clinic_manager")
+def reports_export_csv(request):
+    """Export the range's invoices as CSV (UTF-8 BOM so Excel reads Persian)."""
+    dfrom, dto = _report_range(request)
+    invoices = (
+        Invoice.objects.filter(work_date__gte=dfrom, work_date__lte=dto)
+        .select_related("patient").order_by("work_date", "created_at")
+    )
+    resp = HttpResponse(content_type="text/csv; charset=utf-8")
+    resp["Content-Disposition"] = f'attachment; filename="invoices_{dfrom}_{dto}.csv"'
+    resp.write("﻿")  # BOM for Excel
+    w = csv.writer(resp)
+    w.writerow(["work_date", "shift", "patient", "national_id", "total_rial", "paid_rial", "status"])
+    for inv in invoices:
+        w.writerow([
+            inv.work_date, inv.shift, inv.patient.full_name, inv.patient.national_id or "",
+            inv.total_rial, inv.paid_rial, inv.status,
+        ])
+    return resp
