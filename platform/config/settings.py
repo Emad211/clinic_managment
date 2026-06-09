@@ -44,6 +44,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    "whitenoise.middleware.WhiteNoiseMiddleware",  # serve static in the container
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -75,8 +76,12 @@ WSGI_APPLICATION = "config.wsgi.application"
 ASGI_APPLICATION = "config.asgi.application"
 
 # PostgreSQL by default (the locked target). dj-database-url lets a single
-# DATABASE_URL env var drive it; falls back to a local postgres DSN. The DB
-# role MUST NOT have BYPASSRLS for tenant isolation to hold.
+# DATABASE_URL env var drive it; falls back to a local postgres DSN.
+#
+# CRITICAL (proven by manage.py verify_rls): the RUNTIME DATABASE_URL must use a
+# NON-superuser, NOBYPASSRLS role, or RLS is silently bypassed and tenants leak.
+# Migrations + global seeding need a privileged role instead — the entrypoint
+# runs those with the admin URL, then starts the app with the unprivileged one.
 DATABASES = {
     "default": dj_database_url.config(
         default=os.getenv(
@@ -102,4 +107,23 @@ USE_I18N = True
 USE_TZ = True
 
 STATIC_URL = "static/"
+STATIC_ROOT = BASE_DIR / "staticfiles"
+STORAGES = {
+    "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+    "staticfiles": {"BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"},
+}
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+# ── production hardening (active when DEBUG is off) ──
+CSRF_TRUSTED_ORIGINS = [
+    o for o in os.getenv("DJANGO_CSRF_TRUSTED_ORIGINS", "").split(",") if o
+]
+if not DEBUG:
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    SECURE_CONTENT_TYPE_NOSNIFF = True
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")  # behind TLS proxy
+    SECURE_SSL_REDIRECT = _env_bool("DJANGO_SSL_REDIRECT", False)
+    SECURE_HSTS_SECONDS = int(os.getenv("DJANGO_HSTS_SECONDS", "0") or 0)
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_HSTS_PRELOAD = True

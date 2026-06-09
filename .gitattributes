@@ -1,0 +1,11 @@
+# Files that run inside Linux containers MUST keep LF line endings, otherwise a
+# CRLF shebang breaks ("bad interpreter: /usr/bin/env bash^M").
+*.sh        text eol=lf
+entrypoint.sh text eol=lf
+*.sql       text eol=lf
+Dockerfile  text eol=lf
+*.yml       text eol=lf
+*.yaml      text eol=lf
+
+# Normalise Python to LF too (avoids the perpetual CRLF churn warnings on Windows).
+*.py        text eol=lf

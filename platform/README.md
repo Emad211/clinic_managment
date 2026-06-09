@@ -15,8 +15,9 @@ building it does **not** touch the running Flask apps (ports 8080 / 8090). See
 > (Snapshot / ADA suggestions+acknowledge / recall worklist), AND the
 > **e-prescription WebView-bridge workflow** (Epic 1: compose → portal → register
 > + InsurerLog audit). All verified end-to-end on **real** legacy data.
-> `manage.py check` clean. Remaining: HTMX, accounting/sms ETL, direct-API
-> e-prescription (cert track), production hardening.
+> `manage.py check` clean; **RLS isolation proven on real Postgres** (`verify_rls`);
+> **Dockerfile + compose + RLS-correct DB-role split** for deployment. Remaining:
+> HTMX, accounting/sms ETL, direct-API e-prescription (cert track).
 
 ## Layout (modular monolith)
 
@@ -137,6 +138,29 @@ install with no legacy data.
 Both verified idempotent against the real DBs. **TODO (later loops):** accounting
 rows, SMS, tariffs, allergies/labs/appointments (empty in source); Tehran→UTC
 normalisation of timestamps.
+
+## Deployment (`Dockerfile`, `docker-compose.yml`, `deploy/db-init.sql`)
+
+Production image: `python:3.13-slim` + gunicorn, static served by WhiteNoise
+(`collectstatic` at build). From inside Iran, pass mirrors (Docker Hub + PyPI are
+often blocked):
+
+```bash
+docker build \
+  --build-arg PY=docker.arvancloud.ir/python:3.13-slim \
+  --build-arg PIP_INDEX_URL=https://mirror-pypi.runflare.com/simple \
+  -t clinic-platform .
+docker compose up        # local stack: pgvector + web on :8000
+```
+
+**RLS-correct DB-role split (critical — see `verify_rls`):** the app process
+connects as `clinic_app` (NOSUPERUSER **NOBYPASSRLS**, created by
+`deploy/db-init.sql`) so RLS actually applies; migrations + global seeding run as
+the privileged `postgres` role. `entrypoint.sh` enforces this: it migrates/seeds
+with `ADMIN_DATABASE_URL`, then starts gunicorn with the unprivileged
+`DATABASE_URL`. In production use **managed Postgres** (Arvan/Liara) and create
+the two roles there. `manage.py check --deploy` is clean apart from the expected
+SECRET_KEY / TLS-redirect notes (set a strong key + `DJANGO_SSL_REDIRECT` in prod).
 
 ## Web frontend (`apps/web/`)
 
