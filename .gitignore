@@ -1,6 +1,10 @@
-# ── Python / Django platform (platform/) ──
+# ── Python venvs / caches ──
 platform/.venv/
+ai_service/.venv/
+ai_service/*.db
+ai_service/ai_service.db
 **/__pycache__/
+.pytest_cache/
 *.py[cod]
 *.egg-info/
 .pytest_cache/
