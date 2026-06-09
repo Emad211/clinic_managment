@@ -49,6 +49,7 @@
     <nav>
       {% if request.session.user_id %}
         <a href="{% url 'web:patients' %}">بیماران</a>
+        <a href="{% url 'web:worklist' %}">کارتابل پیگیری</a>
         <a href="{% url 'web:logout' %}">خروج</a>
       {% endif %}
     </nav>

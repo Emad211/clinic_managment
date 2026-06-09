@@ -6,16 +6,16 @@ building it does **not** touch the running Flask apps (ports 8080 / 8090). See
 [`../docs/TECH_STACK.md`](../docs/TECH_STACK.md) and
 [`../docs/DATA_MODEL.md`](../docs/DATA_MODEL.md) for the *why*.
 
-> Status: **v0.10 scaffold — demoable** — all 8 modules from DATA_MODEL §2
+> Status: **v0.11 scaffold — demoable** — all 8 modules from DATA_MODEL §2
 > modelled (~40 models), RLS multi-tenancy, django-ninja API (session login +
 > authz-guarded routers), bcrypt + 5-fail/15-min lockout, a **full ETL** (users +
 > merged patients + per-patient vitals/meds/conditions/flags/followups) + a
 > **clinical-catalog ETL** (real 57 ADA rules), the **ported rule engine** (live
-> decision support), a **web frontend** (login → patient list → snapshot + grouped
-> ADA suggestions), and the **accountability loop** (physician-acknowledge →
-> append-only SuggestionLog). End-to-end verified on the **real** legacy data.
-> `manage.py check` clean. Remaining: HTMX interactivity, accounting/sms ETL,
-> production hardening.
+> decision support), a **web frontend** with the three core chronic workflows —
+> One-Page **Snapshot**, ADA **suggestions** (+ acknowledge → SuggestionLog), and
+> the **recall/follow-up worklist** — all verified end-to-end on **real** legacy
+> data. `manage.py check` clean. Remaining: HTMX interactivity, accounting/sms
+> ETL, e-prescription, production hardening.
 
 ## Layout (modular monolith)
 
@@ -131,10 +131,11 @@ normalisation of timestamps.
 
 ## Web frontend (`apps/web/`)
 
-Minimal RTL, server-rendered Django templates — the demoable slice of the wedge:
-`/login/` → `/patients/` (search) → `/patients/<id>/` (One-Page Snapshot of latest
-indicators + grouped ADA suggestions with the "تأیید با پزشک" disclaimer). Login
-follows the RLS-correct ordering and reuses the same session keys as the API.
+Minimal RTL, server-rendered Django templates — the demoable wedge with all three
+core chronic workflows: `/login/` → `/patients/` (search) → `/patients/<id>/`
+(One-Page Snapshot + grouped ADA suggestions w/ "تأیید با پزشک" disclaimer), and
+`/worklist/` (recall/follow-up worklist split overdue/today/upcoming, mark-done).
+Login follows the RLS-correct ordering and reuses the same session keys as the API.
 Each suggestion has a **تأیید (acknowledge)** action: the physician confirms it
 and an append-only `SuggestionLog` row is written (rule_code, severity, message,
 acknowledged_by, acknowledged_at) — the safety/legal backbone ("suggests,

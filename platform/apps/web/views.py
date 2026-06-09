@@ -13,7 +13,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 
 from apps.chronic import rule_engine
-from apps.chronic.models import ClinicalRule, SuggestionLog, VitalReading
+from apps.chronic.models import ClinicalRule, FollowupTask, SuggestionLog, VitalReading
 from apps.common.tenant import tenant_context
 from apps.identity.models import AppUser, Clinic
 from apps.identity.services import AuthError, authenticate
@@ -109,6 +109,37 @@ def patient_detail(request, patient_id):
         "snapshot": snapshot,
         "acked": acked,
     })
+
+
+@login_required_web
+def worklist(request):
+    """Recall / follow-up worklist (Epic 3) — the chronic-disease differentiator
+    no competitor has. Lists due monitoring/screening tasks across the clinic,
+    split into overdue / due-today / upcoming."""
+    today = timezone.localdate()
+    tasks = list(
+        FollowupTask.objects.filter(status="open")
+        .select_related("patient")
+        .order_by("due_date")[:300]
+    )
+    overdue = [t for t in tasks if t.due_date and t.due_date < today]
+    due_today = [t for t in tasks if t.due_date == today]
+    upcoming = [t for t in tasks if not t.due_date or t.due_date > today]
+    return render(request, "web/worklist.html", {
+        "overdue": overdue, "due_today": due_today, "upcoming": upcoming,
+        "today": today, "total": len(tasks),
+    })
+
+
+@login_required_web
+def followup_done(request, task_id):
+    if request.method == "POST":
+        t = FollowupTask.objects.filter(id=task_id).first()
+        if t:
+            t.status = "done"
+            t.handled_at = timezone.now()
+            t.save(update_fields=["status", "handled_at", "updated_at"])
+    return redirect("web:worklist")
 
 
 @login_required_web
