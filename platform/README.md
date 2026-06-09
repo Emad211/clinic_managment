@@ -6,18 +6,19 @@ building it does **not** touch the running Flask apps (ports 8080 / 8090). See
 [`../docs/TECH_STACK.md`](../docs/TECH_STACK.md) and
 [`../docs/DATA_MODEL.md`](../docs/DATA_MODEL.md) for the *why*.
 
-> Status: **v0.3 scaffold** — all 8 modules from DATA_MODEL §2 modelled (~40
+> Status: **v0.4 scaffold** — all 8 modules from DATA_MODEL §2 modelled (~40
 > models), RLS multi-tenancy wired across every tenant table, django-ninja API
-> root + patients/chronic routers, idempotent global-catalog seed + clinic
-> bootstrap commands, `manage.py check` clean, all migrations apply.
-> Not yet runnable as a product (no auth/login flow yet, no SQLite->Postgres ETL).
+> (auth + patients + chronic routers), session **login/logout/me** with bcrypt +
+> 5-fail/15-min lockout (verified end-to-end), idempotent catalog seed + clinic
+> bootstrap commands, `manage.py check` clean.
+> Remaining for a usable product: SQLite->Postgres ETL, API authz guards, SPA.
 
 ## Layout (modular monolith)
 
 ```
 platform/
   config/            # Django project: settings, urls, ninja api root, wsgi/asgi
-    api.py           # NinjaAPI: /api/health + /api/patients + /api/chronic
+    api.py           # NinjaAPI: /api/health + /api/auth + /api/patients + /api/chronic
   apps/
     common/          # base models (UUID/Tenant/Catalog), RLS middleware + RLS migrations
     identity/        # Clinic (tenant), AppUser, UserShift
@@ -77,14 +78,21 @@ Migrations were smoke-tested end-to-end against throwaway SQLite (the RLS
 migration no-ops off PostgreSQL by design). Real RLS enforcement requires a
 PostgreSQL target — use a `pgvector/pgvector:pg16` image to match the stack.
 
-## Open scaffold decisions (resolve in upcoming loops)
+## Resolved scaffold decisions
 
-- **Auth integration:** `AppUser` is currently a plain model preserving the
-  existing bcrypt + 5-fail/15-min-lockout semantics. Decide whether to make it
-  the Django `AUTH_USER_MODEL` (subclass `AbstractBaseUser`) or keep custom
-  session auth. The middleware already reads `request.user.clinic_id` first,
-  falling back to `session['clinic_id']`.
-- **Login vs. RLS ordering:** login must resolve the clinic (by slug/subdomain)
-  and set the tenant GUC *before* querying `app_user`, since `app_user` is itself
-  RLS-protected.
+- **Auth integration → custom session auth** (`apps/identity/services.py` +
+  `apps/identity/api.py`). `AppUser` stays a plain model (NOT `AUTH_USER_MODEL`):
+  it preserves the Flask apps' bcrypt + 5-fail/15-min-lockout and legacy
+  werkzeug→bcrypt upgrade-on-login. Login stores `clinic_id`/`user_id` in the
+  session; `TenantMiddleware` reads `clinic_id` thereafter.
+- **Login vs. RLS ordering → solved.** Login resolves `Clinic` by slug (clinic
+  table is not RLS-protected), enters `tenant_context(clinic.id)`, THEN queries
+  `app_user`. `apps/common/tenant.py` no-ops the GUC off PostgreSQL so the app
+  also runs on SQLite for local dev/tests.
+
+## Open scaffold decisions
+
+- **API authz guards:** endpoints are not yet gated by login/role — add a ninja
+  auth dependency that 401s when the session has no `user_id` and enforces role.
+- **CSRF** for cookie-session POSTs (login/logout) — hardening follow-up.
 - **`drug` reference dataset** source (Epic 1) — see `docs/DATA_MODEL.md` §8.

@@ -25,12 +25,22 @@ _RESET_SQL = "SELECT set_config('app.current_clinic', '', true)"
 
 
 def set_current_clinic(clinic_id) -> None:
-    """Set the tenant GUC on the current connection (transaction-local)."""
+    """Set the tenant GUC on the current connection (transaction-local).
+
+    No-op on non-PostgreSQL backends (set_config/current_setting are Postgres
+    functions; RLS itself is Postgres-only — see the RLS migrations). This lets
+    the app run on SQLite for local dev/tests while real isolation only exists
+    on PostgreSQL.
+    """
+    if connection.vendor != "postgresql":
+        return
     with connection.cursor() as cur:
         cur.execute(_SET_SQL, [str(clinic_id) if clinic_id else ""])
 
 
 def get_current_clinic():
+    if connection.vendor != "postgresql":
+        return None
     with connection.cursor() as cur:
         cur.execute("SELECT current_setting('app.current_clinic', true)")
         row = cur.fetchone()
