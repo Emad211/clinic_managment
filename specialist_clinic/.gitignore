@@ -6,3 +6,12 @@ backups/
 build/
 dist/
 *.spec
+
+# graphify — keep shareable outputs (graph.json, GRAPH_REPORT.md, graph.html); ignore local/machine state
+graphify-out/.graphify_python
+graphify-out/.graphify_root
+graphify-out/.graphify_labels.json
+graphify-out/cache/
+graphify-out/cost.json
+graphify-out/manifest.json
+graphify-out/_*.py
