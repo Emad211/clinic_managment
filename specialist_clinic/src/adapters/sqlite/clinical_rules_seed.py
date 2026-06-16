@@ -12,6 +12,7 @@ import json
 
 # --- trigger leaf helpers ---
 DM = {"var": "condition", "op": "has", "value": "diabetes"}
+HTN = {"var": "condition", "op": "has", "value": "hypertension"}
 
 
 def ind(key, op, value, attr="latest"):
@@ -31,6 +32,25 @@ def med(value, op="has"):
 
 def age(op, value):
     return {"var": "age", "op": op, "value": value}
+
+
+# Rules that fire regardless of a single disease (e.g. a BP crisis, RAS-inhibitor
+# monitoring) belong to the shared 'all' module, not one disease.
+CROSS_DISEASE = {'T2-REDFLAG-BP', 'T2-MON-RAS-K'}
+
+
+def _condition_for(r: dict) -> str:
+    """Owning disease module for a rule. Explicit `condition_code` wins; otherwise
+    by code prefix: the legacy T2-* catalog is the diabetes module, HTN-* is
+    hypertension. Cross-disease rules map to 'all'."""
+    if r.get('condition_code'):
+        return r['condition_code']
+    code = r['code']
+    if code in CROSS_DISEASE:
+        return 'all'
+    if code.startswith('HTN-'):
+        return 'hypertension'
+    return 'diabetes'
 
 
 # Each rule: code,title,category,trigger,human_if,rec,dosage,monitoring,contra,
@@ -386,20 +406,58 @@ RULES = [
          rec="واکسیناسیون کووید-۱۹ و بوسترِ جاری طبق دستورالعمل.",
          evidence="", action="vaccine", params={"vaccine": "covid19"},
          severity="info", priority=135, source="ADA Table 4.3"),
+
+    # ================= HYPERTENSION MODULE (standalone disease pack) =================
+    # Fires for patients with the `hypertension` condition (independent of diabetes).
+    dict(code="HTN-TGT-BP-01", title="هدف فشار خون", category="target",
+         trigger={"all": [HTN]},
+         human_if="بیمار مبتلا به فشار خون",
+         rec="هدفِ <۱۳۰/۸۰ mmHg اگر بی‌خطر قابل‌دستیابی باشد؛ در سالمندِ فراژیل هدفِ شل‌تر (<۱۴۰/۹۰).",
+         evidence="", action="set_target", params={"indicator": "bp_systolic", "target": 130},
+         severity="info", priority=30, source="پروتکل فشار خون"),
+    dict(code="HTN-MED-FIRST-01", title="شروع درمان ضدفشار", category="medication",
+         trigger={"all": [HTN, {"any": [ind("bp_systolic", ">=", 140), ind("bp_diastolic", ">=", 90)]}]},
+         human_if="فشار ≥۱۴۰/۹۰ با وجود اصلاح سبک‌زندگی",
+         rec="شروع داروی ضدفشار؛ خط اول: تیازید، ACEi/ARB یا کلسیم‌بلاکر (CCB).",
+         monitoring="فشار خانگی؛ eGFR/پتاسیم پس از شروع ACEi/ARB.",
+         contraindications="ACEi/ARB در بارداری ممنوع.",
+         evidence="", action="suggest_med", params={"classes": ["thiazide", "acei", "arb", "ccb"]},
+         severity="warn", priority=40, source="پروتکل فشار خون"),
+    dict(code="HTN-MED-COMBO-01", title="درمان ترکیبی فشار", category="medication",
+         trigger={"all": [HTN, {"any": [ind("bp_systolic", ">=", 150), ind("bp_diastolic", ">=", 90)]}]},
+         human_if="فشار ≥۱۵۰/۹۰",
+         rec="شروع با ترکیبِ دو دارو (ترجیحاً ACEi/ARB + CCB یا تیازید) برای رسیدنِ سریع‌تر به هدف.",
+         evidence="", action="suggest_med", params={"classes": ["acei", "arb", "ccb", "thiazide"]},
+         severity="warn", priority=41, source="پروتکل فشار خون"),
+    dict(code="HTN-MED-RAS-01", title="ACEi/ARB در آلبومینوری", category="medication",
+         trigger={"all": [HTN, {"any": [ind("uacr", ">=", 30), flag("ckd_stage_a", "in", ["A2", "A3"])]}]},
+         human_if="فشار خون + آلبومینوری",
+         rec="ACEi یا ARB خط اول است (محافظت کلیه و کاهش آلبومینوری).",
+         monitoring="eGFR و پتاسیم ۲–۴ هفته پس از شروع/تغییر دوز.",
+         contraindications="ترکیبِ هم‌زمانِ ACEi با ARB توصیه نمی‌شود.",
+         evidence="", action="suggest_med", params={"classes": ["acei", "arb"]},
+         severity="info", priority=42, source="پروتکل فشار خون"),
+    dict(code="HTN-LIFE-01", title="سبک‌زندگی در فشار خون", category="lifestyle",
+         trigger={"all": [HTN]},
+         human_if="همهٔ بیماران فشار خون",
+         rec="کاهش سدیم (<۲۳۰۰ و در صورت امکان <۱۵۰۰ mg/روز)، الگوی غذاییِ DASH، کاهش وزن، فعالیت منظم و محدودیتِ الکل.",
+         evidence="", action="educate", severity="info", priority=120, source="پروتکل فشار خون"),
 ]
 
 
 def seed_clinical_rules(db):
-    """Idempotently insert the rule catalog (manager edits are preserved)."""
+    """Idempotently insert the rule catalog (manager edits are preserved) and tag
+    each rule's owning disease module (condition_code) — also on existing DBs."""
     for r in RULES:
+        cc = _condition_for(r)
         db.execute(
             """INSERT OR IGNORE INTO clinical_rules
-               (rule_code, title, category, trigger_json, human_if, recommendation,
+               (rule_code, title, category, condition_code, trigger_json, human_if, recommendation,
                 dosage_titration, monitoring, contraindications, evidence_level,
                 action_type, action_params_json, severity, priority, source_ref)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
-                r["code"], r["title"], r["category"],
+                r["code"], r["title"], r["category"], cc,
                 json.dumps(r["trigger"], ensure_ascii=False) if r.get("trigger") else None,
                 r.get("human_if"), r.get("rec"), r.get("dosage_titration"),
                 r.get("monitoring"), r.get("contraindications"), r.get("evidence"),
@@ -408,4 +466,10 @@ def seed_clinical_rules(db):
                 r.get("severity", "info"), r.get("priority", 100), r.get("source"),
             ),
         )
+        # Backfill the module tag on rows created before this column existed,
+        # without clobbering an intentional non-default override.
+        db.execute(
+            "UPDATE clinical_rules SET condition_code=? "
+            "WHERE rule_code=? AND (condition_code IS NULL OR condition_code='all')",
+            (cc, r["code"]))
     db.commit()

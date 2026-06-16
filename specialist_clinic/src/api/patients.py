@@ -348,8 +348,8 @@ def generate_followups(pid):
     """Generate due ADA monitoring/screening/vaccine follow-ups for this patient."""
     from src.services.followup_engine import generate_for_patient
     n = generate_for_patient(pid)
-    log_activity("followup_generate", f"تولید {n} پیگیری ADA", patient_link_id=pid)
-    flash(f"{n} پیگیری ADA ساخته شد" if n else "پیگیری جدیدِ سررسیده‌ای نبود", "success")
+    log_activity("followup_generate", f"تولید {n} پیگیری", patient_link_id=pid)
+    flash(f"{n} پیگیری ساخته شد" if n else "پیگیری جدیدِ سررسیده‌ای نبود", "success")
     return redirect(url_for("patients.detail", pid=pid) + "#cockpit")
 
 

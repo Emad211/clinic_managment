@@ -145,3 +145,48 @@ class RevenueService:
             'credit_distributed': credit_distributed,
             'window_days': ATTRIBUTION_WINDOW_DAYS,
         }
+
+    def campaign_incrementality(self, campaign_id: int) -> dict | None:
+        """Causal lift for a campaign that used a holdout/control group.
+
+        Compares per-recipient COLLECTED revenue (within the attribution window)
+        of the treated group vs the held-out control group — the gold-standard
+        way to separate the campaign's true effect from revenue that would have
+        happened anyway. Returns None if no holdout audience was recorded.
+        """
+        db = get_db()
+        aud = db.execute(
+            "SELECT accounting_patient_id aid, grp, assigned_at FROM campaign_audience WHERE campaign_id=?",
+            (campaign_id,)).fetchall()
+        if not aud:
+            return None
+
+        def _triples(grp):
+            out = []
+            for a in aud:
+                if a['grp'] != grp or not a['aid']:
+                    continue
+                since = str(a['assigned_at'])[:10]
+                try:
+                    until = (datetime.strptime(since, '%Y-%m-%d')
+                             + timedelta(days=ATTRIBUTION_WINDOW_DAYS)).strftime('%Y-%m-%d')
+                except ValueError:
+                    continue
+                out.append((a['aid'], since, until))
+            return out
+
+        tr, ct = _triples('treated'), _triples('control')
+        rev_tr = accounting_bridge.revenue_windowed(tr)['collected'] if tr else 0
+        rev_ct = accounting_bridge.revenue_windowed(ct)['collected'] if ct else 0
+        pc_tr = (rev_tr / len(tr)) if tr else 0.0   # per linked recipient
+        pc_ct = (rev_ct / len(ct)) if ct else 0.0
+        return {
+            'treated': sum(1 for a in aud if a['grp'] == 'treated'),
+            'control': sum(1 for a in aud if a['grp'] == 'control'),
+            'treated_linked': len(tr), 'control_linked': len(ct),
+            'rev_treated': rev_tr, 'rev_control': rev_ct,
+            'pc_treated': round(pc_tr), 'pc_control': round(pc_ct),
+            'incremental': round((pc_tr - pc_ct) * len(tr)) if tr else 0,
+            'lift': round((pc_tr - pc_ct) / pc_ct * 100) if pc_ct else None,
+            'window_days': ATTRIBUTION_WINDOW_DAYS,
+        }

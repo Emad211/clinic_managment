@@ -1,6 +1,8 @@
 """Segment resolution + campaign sending."""
 from __future__ import annotations
 
+import random
+
 from src.adapters.sqlite.core import get_db
 from src.adapters.sqlite.sms_repo import SmsRepository
 from src.adapters.sqlite.wallet_repo import WalletRepository
@@ -21,7 +23,7 @@ SEGMENTS = {
 def resolve_segment(segment: str) -> list[dict]:
     """Return [{id, full_name, phone_number}] for a segment (only with a phone number)."""
     db = get_db()
-    base = "SELECT DISTINCT p.id, p.full_name, p.phone_number FROM patient_links p"
+    base = "SELECT DISTINCT p.id, p.full_name, p.phone_number, p.accounting_patient_id FROM patient_links p"
     where = "p.is_active=1 AND p.phone_number IS NOT NULL AND p.phone_number != ''"
 
     if segment == 'all':
@@ -88,7 +90,23 @@ def run_campaign(campaign_id: int) -> dict:
         return {'error': 'campaign not found'}
 
     recipients = resolve_segment(campaign['segment'])
-    repo.update_campaign_status(campaign_id, 'sending', total_recipients=len(recipients))
+
+    # Holdout / control split for incrementality (only when holdout_percent > 0).
+    # The control group is NOT sent and NOT credited; the full split is recorded so
+    # the campaign's causal lift can be measured later (treated vs control revenue).
+    holdout_pct = int(campaign.get('holdout_percent') or 0)
+    control_ids = set()
+    if holdout_pct > 0 and len(recipients) >= 2:
+        n_control = max(1, round(len(recipients) * holdout_pct / 100.0))
+        n_control = min(n_control, len(recipients) - 1)  # always keep at least one treated
+        for r in random.sample(recipients, n_control):
+            control_ids.add(r['id'])
+        repo.record_audience(campaign_id, [
+            (r['id'], r.get('accounting_patient_id'),
+             'control' if r['id'] in control_ids else 'treated') for r in recipients])
+
+    treated = [r for r in recipients if r['id'] not in control_ids]
+    repo.update_campaign_status(campaign_id, 'sending', total_recipients=len(treated))
 
     is_credit = campaign.get('campaign_type') == 'wallet_credit'
     credit_amount = int(campaign.get('credit_amount') or 0)
@@ -108,7 +126,7 @@ def run_campaign(campaign_id: int) -> dict:
     wallet = WalletRepository()
     provider = get_provider()
     sent = failed = 0
-    for r in recipients:
+    for r in treated:
         balance = 0
         if is_credit and credit_amount > 0:
             balance = wallet.adjust(
@@ -130,8 +148,8 @@ def run_campaign(campaign_id: int) -> dict:
             repo.mark_message(msg_id, 'failed', error=result.error)
 
     repo.update_campaign_status(campaign_id, 'done',
-                                total_recipients=len(recipients), sent_count=sent, failed_count=failed)
-    return {'total': len(recipients), 'sent': sent, 'failed': failed}
+                                total_recipients=len(treated), sent_count=sent, failed_count=failed)
+    return {'total': len(treated), 'sent': sent, 'failed': failed, 'control': len(control_ids)}
 
 
 def send_single(patient_link_id: int, recipient: str, body: str, campaign_id: int = None,

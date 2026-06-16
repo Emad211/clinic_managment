@@ -547,5 +547,6 @@ input[type=checkbox],input[type=radio]{width:auto;accent-color:var(--primary);}
 .nav-tile .nt-ic.t-violet{background:var(--violet-soft);color:var(--violet-fg);}
 .nav-tile .nt-ic.t-ok{background:var(--ok-soft);color:var(--ok-fg);}
 .nav-tile .nt-ic.t-warn{background:var(--warn-soft);color:var(--warn-fg);}
+.nav-tile .nt-ic.t-danger{background:var(--danger-soft);color:var(--danger-fg);}
 .nav-tile b{color:var(--text);font-weight:700;display:block;}
 .nav-tile small{color:var(--muted);font-size:11.5px;}

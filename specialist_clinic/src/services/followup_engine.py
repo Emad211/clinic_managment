@@ -48,15 +48,26 @@ def _months_since(date_str):
     return (now.year - d.year) * 12 + (now.month - d.month)
 
 
-def generate_for_patient(pid: int) -> int:
-    """Create due monitoring/screening/vaccine follow-ups for one patient."""
+def due_clinical_events(pid: int) -> list[dict]:
+    """Clinically-DUE monitoring/screening/vaccine/red-flag items for a patient,
+    as plain data with NO side effects. Shared by the worklist generator and the
+    engagement dispatcher (services/engagement_service.py).
+
+    'Due' = the recall interval has elapsed or the item was never done. It does
+    NOT dedupe against prior tasks/sends — each caller applies its own dedup (the
+    worklist via recently_handled_source, the dispatcher via the engagement ledger).
+    Each item: {action, rule_code, title, item, months}.
+    """
     eng = RuleEngine()
     fired = eng.evaluate(pid)
     flags = eng.flags.get_flags(pid)
-    repo = FollowupRepository()
-    created = 0
+    out = []
     for r in fired:
         act = r.get('action_type')
+        if act == 'redflag':
+            out.append({'action': 'redflag', 'rule_code': r['rule_code'],
+                        'title': r['title'], 'item': r['rule_code'], 'months': None})
+            continue
         if act not in REASON_BY_ACTION:
             continue
         params = r.get('params') or {}
@@ -66,13 +77,25 @@ def generate_for_patient(pid: int) -> int:
             months = ITEM_DEFAULT_MONTHS.get(item)
         if months == 0:  # "every visit" → handled by the panel, not the worklist
             continue
-        if repo.recently_handled_source(pid, r['rule_code'], months):
-            continue
         last = _last_done(pid, item, flags)
         if last and months and (_months_since(last) or 0) < months:
-            continue  # done recently outside the task system → not due
-        repo.create(pid, reason=REASON_BY_ACTION[act], detail=r['title'],
-                    due_date=today_str(), source_rule=r['rule_code'])
+            continue  # done recently → not due
+        out.append({'action': act, 'rule_code': r['rule_code'], 'title': r['title'],
+                    'item': item, 'months': months})
+    return out
+
+
+def generate_for_patient(pid: int) -> int:
+    """Create due monitoring/screening/vaccine follow-ups for one patient (worklist)."""
+    repo = FollowupRepository()
+    created = 0
+    for ev in due_clinical_events(pid):
+        if ev['action'] == 'redflag':
+            continue  # red-flags surface in the patient panel, not the worklist
+        if repo.recently_handled_source(pid, ev['rule_code'], ev['months']):
+            continue
+        repo.create(pid, reason=REASON_BY_ACTION[ev['action']], detail=ev['title'],
+                    due_date=today_str(), source_rule=ev['rule_code'])
         created += 1
     return created
 

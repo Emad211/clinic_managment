@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}یادآوری و پیگیریِ خودکار{% endblock %}
+{% set catlabel = {'operational':'عملیاتی','clinical':'بالینی','marketing':'بازاریابی'} %}
+{% set chanbadge = {'sms':'badge-info','worklist':'badge-warn','both':'badge-violet','off':'badge-muted'} %}
+{% block content %}
+<div class="crumb"><a href="{{ url_for('manager.index') }}">مدیریت</a> / یادآوری و پیگیریِ خودکار</div>
+<div class="topbar">
+    <h1><svg class="icon icon-lg"><use href="#i-megaphone"></use></svg> یادآوری و پیگیریِ خودکار</h1>
+    <a class="btn btn-ghost" href="{{ url_for('sms.campaigns') }}"><svg class="icon"><use href="#i-megaphone"></use></svg> کمپین‌های پیامکی</a>
+</div>
+<p class="page-intro">
+    برای هر «رویداد» (یادآوری نوبت، تجدید دارو، سررسید غربالگری/واکسن/پایش، بی‌مراجعه، کنترل‌نشده، هشدار فوری)
+    تعیین می‌کنید به کدام کانال برود: <b>پیامکِ خودکار</b>، <b>ورک‌لیستِ تماس</b>، <b>هر دو</b>، یا <b>خاموش</b>.
+    سامانه هر رویدادِ سررسیده را طبق همین جدول و با رعایتِ گاردریل‌ها به بیمار یا تیم می‌رساند. اقلامِ هم‌دسته در یک پیام جمع می‌شوند.
+</p>
+
+<!-- GUARDRAILS -->
+<div class="card">
+    <div class="section-title"><svg class="icon"><use href="#i-shield"></use></svg> گاردریل‌های پیامکِ خودکار</div>
+    <form method="post" action="{{ url_for('manager.engagement_settings') }}">
+        <div class="grid grid-4" style="align-items:flex-end;">
+            <div class="fld"><label>شروع ساعتِ مجاز</label><input type="text" name="quiet_start" value="{{ settings.quiet_start }}" placeholder="08:00"></div>
+            <div class="fld"><label>پایان ساعتِ مجاز</label><input type="text" name="quiet_end" value="{{ settings.quiet_end }}" placeholder="21:00"></div>
+            <div class="fld"><label>سقفِ پیامک در روز (هر بیمار)</label><input type="number" name="daily_cap" min="1" max="10" value="{{ settings.daily_cap }}"></div>
+            <button class="btn" type="submit"><svg class="icon"><use href="#i-save"></use></svg> ذخیرهٔ گاردریل‌ها</button>
+        </div>
+        <div class="help" style="margin-top:var(--s2);">
+            <svg class="icon icon-sm"><use href="#i-info"></use></svg>
+            خارج از ساعتِ مجاز، پیامک‌ها تا ورود به بازه به تعویق می‌افتند. بیمارانی که انصراف داده‌اند هرگز پیامکِ خودکار نمی‌گیرند.
+        </div>
+    </form>
+</div>
+
+<!-- EVENT -> CHANNEL TABLE -->
+<div class="card">
+    <div class="section-title"><svg class="icon"><use href="#i-list-checks"></use></svg> رویدادها و کانال‌ها
+        <span class="section-sub">— «چند روز زودتر» = فاصله تا سررسید · «فاصلهٔ تکرار» = حداقل فاصلهٔ دو پیامکِ هم‌نوع برای یک بیمار</span></div>
+    <div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(360px,1fr));">
+    {% for e in events %}
+    <form id="ev-{{ e.id }}" method="post" action="{{ url_for('manager.engagement_update') }}" class="rule-card"{% if not e.is_active %} style="opacity:.55;"{% endif %}>
+        <input type="hidden" name="event_id" value="{{ e.id }}">
+        <div class="rule-head"><div style="flex:1;">
+            <strong>{{ e.label }}</strong>
+            <span class="badge {{ chanbadge.get(e.channel,'badge-muted') }} text-xs">{{ channels.get(e.channel, e.channel) }}</span>
+            <span class="badge badge-muted text-xs">{{ catlabel.get(e.category, e.category) }}</span>
+            {% if e.source_action %}<span class="badge badge-info text-xs">از قاعده</span>{% endif %}
+            <div class="key" style="margin-top:var(--s2);"><code>{{ e.event_key }}</code></div>
+        </div></div>
+
+        <div class="fld"><label>کانال</label>
+            <select name="channel">
+                {% for k, v in channels.items() %}<option value="{{ k }}" {% if e.channel==k %}selected{% endif %}>{{ v }}</option>{% endfor %}
+            </select>
+        </div>
+
+        <div class="fld"><label>متنِ پیامک <span class="muted text-xs">— متغیر: {name} · فقط برای کانال‌های شاملِ پیامک</span></label>
+            <textarea name="sms_template" rows="2" placeholder="سلام {name} عزیز، ...">{{ e.sms_template or '' }}</textarea>
+        </div>
+
+        <div class="fgrid c2">
+            <div class="fld"><label>چند روز زودتر</label><input type="number" name="lead_days" min="0" value="{{ e.lead_days }}"></div>
+            <div class="fld"><label>فاصلهٔ تکرار (روز)</label><input type="number" name="cooldown_days" min="0" value="{{ e.cooldown_days }}"></div>
+        </div>
+
+        <div class="rule-foot">
+            <label class="switch-row" style="margin:0;cursor:pointer;"><span class="switch"><input type="checkbox" name="is_active" {% if e.is_active %}checked{% endif %}><span class="sl"></span></span> فعال</label>
+            <button class="btn btn-sm" type="submit"><svg class="icon icon-sm"><use href="#i-save"></use></svg> ذخیره</button>
+        </div>
+    </form>
+    {% endfor %}
+    </div>
+</div>
+{% endblock %}

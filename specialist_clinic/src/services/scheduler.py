@@ -52,43 +52,29 @@ class Scheduler:
         now = iran_now()
         today = now.strftime('%Y-%m-%d')
 
-        # 1) Appointment reminders (within next 24h)
-        self._send_appointment_reminders()
+        # 1) Engagement engine: collect every due reminder + follow-up and dispatch
+        #    it to SMS and/or the worklist per the editable engagement_events table.
+        #    This REPLACES the old appointment-reminder and follow-up-generation
+        #    passes. Safe to run every tick — the dispatch ledger + cooldown + daily
+        #    cap make it idempotent, and SMS deferred during quiet hours is retried
+        #    on a later tick once inside the allowed window.
+        self._run_engagement()
 
-        # 2) Due scheduled campaigns
+        # 2) Due scheduled campaigns (manual broadcasts)
         self._run_due_campaigns()
 
-        # 3) Follow-up generation once per day
-        if self._last_followup_day != today:
-            try:
-                from src.services.followup_service import FollowupService
-                FollowupService().generate()
-                self._last_followup_day = today
-            except Exception as e:
-                print(f"[scheduler] followup gen error: {e}")
-
-        # 4) Weekly backup (Saturday ~3 AM)
+        # 3) Weekly backup (Saturday ~3 AM)
         if now.weekday() == 5 and now.hour == 3 and self._last_backup_day != today:
             self._backup()
             self._last_backup_day = today
 
-    def _send_appointment_reminders(self):
+    def _run_engagement(self):
+        """Run the unified engagement engine: due reminders + follow-ups -> SMS/worklist."""
         try:
-            from src.adapters.sqlite.appointments_repo import AppointmentRepository
-            from src.services.sms.campaign_service import send_single
-            from src.adapters.sqlite.sms_repo import SmsRepository
-            repo = AppointmentRepository()
-            tmpl = SmsRepository().get_setting('reminder_template',
-                'سلام {name} عزیز، یادآوری نوبت شما در کلینیک تخصصی. لطفاً در زمان مقرر مراجعه فرمایید.')
-            for appt in repo.due_reminders(within_hours=24):
-                phone = appt.get('phone_number')
-                if not phone:
-                    continue
-                body = tmpl.replace('{name}', appt.get('patient_name') or 'بیمار')
-                if send_single(appt['patient_link_id'], phone, body):
-                    repo.mark_reminder_sent(appt['id'])
+            from src.services.engagement_service import EngagementService
+            EngagementService().run_all()
         except Exception as e:
-            print(f"[scheduler] reminder error: {e}")
+            print(f"[scheduler] engagement error: {e}")
 
     def _run_due_campaigns(self):
         try:

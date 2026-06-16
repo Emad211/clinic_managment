@@ -72,6 +72,7 @@ def new_campaign():
     campaign_type = request.form.get("campaign_type", "info")
     credit_amount = request.form.get("credit_amount", type=int) or 0
     credit_expires_days = request.form.get("credit_expires_days", type=int) or None
+    holdout_percent = min(max(request.form.get("holdout_percent", type=int) or 0, 0), 50)
 
     if not name or not body or segment not in SEGMENTS:
         flash("نام، متن و گروه هدف الزامی است")
@@ -85,6 +86,7 @@ def new_campaign():
     cid = repo.create_campaign(name=name, body=body, segment=segment,
                                campaign_type=campaign_type, credit_amount=credit_amount,
                                credit_expires_days=credit_expires_days,
+                               holdout_percent=holdout_percent,
                                scheduled_at=scheduled_at, created_by=g.user["username"])
     log_activity("campaign_create", f"ساخت کمپین: {name}")
     flash("کمپین ساخته شد" + (" و زمان‌بندی شد" if scheduled_at else ""), "success")
@@ -102,9 +104,12 @@ def campaign_detail(cid):
     messages = repo.list_messages(cid)
     recipients = resolve_segment(campaign['segment'])
     total_credit = (campaign.get('credit_amount') or 0) * len(recipients) if campaign.get('campaign_type') == 'wallet_credit' else 0
+    from src.services.revenue_service import RevenueService
+    incrementality = RevenueService().campaign_incrementality(cid)
     return render_template("sms/campaign_detail.html", campaign=campaign, messages=messages,
                            segments=SEGMENTS, campaign_types=CAMPAIGN_TYPES,
                            recipients_count=len(recipients), total_credit=total_credit,
+                           incrementality=incrementality,
                            provider_ready=bool(repo.get_setting('mediana_api_key')),
                            active_page='sms')
 

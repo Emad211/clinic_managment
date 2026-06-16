@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}پروتکل بیماری‌ها{% endblock %}
+{% block content %}
+<div class="crumb"><a href="{{ url_for('manager.index') }}">مدیریت</a> / پروتکل بیماری‌ها</div>
+<div class="topbar">
+    <h1><svg class="icon icon-lg"><use href="#i-stethoscope"></use></svg> پروتکل بیماری‌ها</h1>
+    <a class="btn btn-ghost" href="{{ url_for('manager.index') }}"><svg class="icon"><use href="#i-arrow-left"></use></svg> بازگشت به مدیریت</a>
+</div>
+<p class="page-intro">
+    موتورِ بالینی برای هر بیماری جداگانه تنظیم می‌شود. روی هر بیماری بزنید تا شاخص‌ها و اهداف، قواعد تصمیم،
+    و برنامهٔ پایشِ همان بیماری را در یک صفحه ببینید و ویرایش کنید. تنظیماتِ هر بیماری فقط روی پروندهٔ
+    بیمارانِ مبتلا به همان بیماری اعمال می‌شود.
+</p>
+<div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(290px,1fr));">
+    {% for m in modules %}
+    <a class="card nav-tile" href="{{ url_for('manager.disease_detail', code=m.code) }}" style="flex-direction:column;align-items:stretch;gap:var(--s3);">
+        <div class="flex items-center gap-2">
+            <div class="nt-ic t-{{ m.color or 'info' }}"><svg class="icon"><use href="#{{ m.icon or 'i-activity' }}"></use></svg></div>
+            <div style="flex:1;">
+                <b>{{ m.name }}</b>
+                <div class="muted text-xs">{{ m.pat_count|fa_num }} بیمار مبتلا</div>
+            </div>
+            <svg class="icon icon-sm muted"><use href="#i-chevron-left"></use></svg>
+        </div>
+        <div class="muted text-sm" style="min-height:38px;line-height:1.7;">{{ m.description or '—' }}</div>
+        <div class="legend">
+            <span class="chip"><svg class="icon icon-sm"><use href="#i-sigma"></use></svg> {{ m.ind_count|fa_num }} شاخص</span>
+            <span class="chip"><svg class="icon icon-sm"><use href="#i-clipboard"></use></svg> {{ m.rule_count|fa_num }} قاعده</span>
+        </div>
+    </a>
+    {% else %}
+    <div class="empty"><svg class="icon"><use href="#i-stethoscope"></use></svg><div>بیماری مزمنی تعریف نشده است.</div></div>
+    {% endfor %}
+</div>
+
+<div class="card card-soft" style="margin-top:var(--s4);">
+    <div class="muted text-sm flex items-center gap-2 wrap">
+        <svg class="icon icon-sm"><use href="#i-settings"></use></svg> نمای پیشرفته (همهٔ موارد یک‌جا):
+        <a class="btn btn-sm btn-ghost" href="{{ url_for('manager.rules') }}">همهٔ شاخص‌ها + افزودنِ شاخصِ جدید</a>
+        <a class="btn btn-sm btn-ghost" href="{{ url_for('manager.decision_rules') }}">همهٔ قواعد تصمیم</a>
+    </div>
+</div>
+{% endblock %}

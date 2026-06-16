@@ -1,15 +1,15 @@
 {% extends "base.html" %}
-{% block title %}قواعد تصمیم بالینی (ADA){% endblock %}
+{% block title %}قواعد تصمیم بالینی{% endblock %}
 {% set sevlabel = {'urgent':'فوری','warn':'هشدار','info':'اطلاعاتی'} %}
 {% set sevbadge = {'urgent':'badge-danger','warn':'badge-warn','info':'badge-info'} %}
 {% block content %}
-<div class="crumb"><a href="{{ url_for('manager.index') }}">مدیریت</a> / قواعد تصمیم (ADA)</div>
+<div class="crumb"><a href="{{ url_for('manager.index') }}">مدیریت</a> / قواعد تصمیم بالینی</div>
 <div class="topbar">
-    <h1><svg class="icon icon-lg"><use href="#i-clipboard"></use></svg> قواعد تصمیم بالینی — ADA دیابت نوع ۲</h1>
+    <h1><svg class="icon icon-lg"><use href="#i-clipboard"></use></svg> قواعد تصمیم بالینی — دیابت نوع ۲</h1>
     <a class="btn btn-ghost" href="{{ url_for('manager.rules') }}"><svg class="icon"><use href="#i-line-chart"></use></svg> شاخص‌ها و اهداف</a>
 </div>
 <p class="page-intro">
-    کلِ قواعدِ استخراج‌شده از سند ADA (تشخیص، اهداف، انتخاب دارو، ایمنی، انسولین، پایش، غربالگری، هشدارهای فوری، سبک‌زندگی و واکسیناسیون).
+    مجموعهٔ قواعدِ بالینیِ دیابت نوع ۲ (تشخیص، اهداف، انتخاب دارو، ایمنی، انسولین، پایش، غربالگری، هشدارهای فوری، سبک‌زندگی و واکسیناسیون).
     موتورِ پشتیبان بالینی همین قواعد را روی هر بیمار اجرا می‌کند. متن پیشنهاد، سطح شواهد، شدت و فعال‌بودنِ هر قاعده را می‌توانید ویرایش کنید.
     <span class="chip"><span class="dot dot-ok"></span><b>{{ active|fa_num }}</b> از <b>{{ total|fa_num }}</b> قاعده فعال</span>
     <span class="help">خروجی سیستم پیشنهادی است؛ تجویز با پزشک.</span>

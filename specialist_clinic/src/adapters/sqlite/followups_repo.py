@@ -6,12 +6,13 @@ from src.common.utils import iran_now
 class FollowupRepository:
 
     def create(self, pid: int, *, reason, detail=None, due_date=None, assigned_to=None,
-               source_rule=None) -> int:
+               source_rule=None, source_event=None) -> int:
         db = get_db()
         cur = db.execute(
-            """INSERT INTO followup_tasks (patient_link_id, reason, detail, due_date, assigned_to, source_rule)
-               VALUES (?, ?, ?, ?, ?, ?)""",
-            (pid, reason, detail, due_date, assigned_to, source_rule),
+            """INSERT INTO followup_tasks
+                 (patient_link_id, reason, detail, due_date, assigned_to, source_rule, source_event)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (pid, reason, detail, due_date, assigned_to, source_rule, source_event),
         )
         db.commit()
         return cur.lastrowid

@@ -40,16 +40,16 @@ class SmsRepository:
     # ---- campaigns ----
     def create_campaign(self, *, name, body, segment, template_id=None, scheduled_at=None,
                         campaign_type='info', credit_amount=0, credit_expires_days=None,
-                        created_by=None) -> int:
+                        holdout_percent=0, created_by=None) -> int:
         db = get_db()
         cur = db.execute(
             """INSERT INTO sms_campaigns
                (name, body, segment, template_id, scheduled_at, status,
-                campaign_type, credit_amount, credit_expires_days, created_by)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                campaign_type, credit_amount, credit_expires_days, holdout_percent, created_by)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (name, body, segment, template_id, scheduled_at,
              'scheduled' if scheduled_at else 'draft',
-             campaign_type, credit_amount or 0, credit_expires_days, created_by),
+             campaign_type, credit_amount or 0, credit_expires_days, holdout_percent or 0, created_by),
         )
         db.commit()
         return cur.lastrowid
@@ -81,6 +81,22 @@ class SmsRepository:
             """SELECT * FROM sms_campaigns
                WHERE status='scheduled' AND scheduled_at <= datetime('now','+3 hours','+30 minutes')
                ORDER BY scheduled_at ASC""").fetchall()]
+
+    # ---- campaign audience (incrementality / holdout split) ----
+    def record_audience(self, campaign_id: int, rows: list[tuple]):
+        """rows = [(patient_link_id, accounting_patient_id, grp), ...]."""
+        db = get_db()
+        db.executemany(
+            """INSERT INTO campaign_audience (campaign_id, patient_link_id, accounting_patient_id, grp)
+               VALUES (?, ?, ?, ?)""",
+            [(campaign_id, plid, aid, grp) for (plid, aid, grp) in rows])
+        db.commit()
+
+    def get_audience(self, campaign_id: int) -> list[dict]:
+        db = get_db()
+        return [dict(r) for r in db.execute(
+            """SELECT patient_link_id, accounting_patient_id, grp, assigned_at
+               FROM campaign_audience WHERE campaign_id=?""", (campaign_id,)).fetchall()]
 
     # ---- messages (log) ----
     def add_message(self, *, campaign_id, patient_link_id, recipient, body, status='pending') -> int:

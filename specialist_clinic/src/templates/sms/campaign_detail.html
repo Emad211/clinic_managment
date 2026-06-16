@@ -69,6 +69,26 @@
     {% endif %}
 </div>
 
+{% if incrementality %}
+<div class="card">
+    <div class="section-title"><svg class="icon"><use href="#i-sigma"></use></svg> سنجشِ اثرِ علّی (Incrementality)
+        <span class="section-sub">مقایسهٔ گروهِ دریافت‌کننده با گروهِ کنترلِ نگه‌داشته‌شده، در پنجرهٔ {{ incrementality.window_days|fa_num }} روز</span>
+    </div>
+    <div class="grid grid-4">
+        <div class="mini"><div class="m-num c-ok">{{ incrementality.incremental|fa_num }}</div><div class="m-lbl">درآمدِ افزایشیِ علّی (تومان)</div></div>
+        <div class="mini"><div class="m-num">{% if incrementality.lift is not none %}{{ incrementality.lift|fa_num }}٪{% else %}—{% endif %}</div><div class="m-lbl">Lift (افزایشِ سرانهٔ درآمد)</div></div>
+        <div class="mini"><div class="m-num">{{ incrementality.pc_treated|fa_num }}</div><div class="m-lbl">سرانهٔ دریافت‌کننده</div></div>
+        <div class="mini"><div class="m-num">{{ incrementality.pc_control|fa_num }}</div><div class="m-lbl">سرانهٔ کنترل</div></div>
+    </div>
+    <div class="legend" style="margin-top:var(--s3);">
+        <span class="chip"><span class="dot dot-ok"></span> دریافت‌کننده: {{ incrementality.treated|fa_num }} نفر ({{ incrementality.treated_linked|fa_num }} متصل به حسابداری)</span>
+        <span class="chip"><span class="dot dot-warn"></span> کنترل: {{ incrementality.control|fa_num }} نفر ({{ incrementality.control_linked|fa_num }} متصل)</span>
+        <span class="chip">درآمدِ وصول‌شده — دریافت‌کننده: {{ incrementality.rev_treated|fa_num }} · کنترل: {{ incrementality.rev_control|fa_num }}</span>
+    </div>
+    <div class="muted help" style="margin-top:var(--s3);">«درآمدِ افزایشی» = (سرانهٔ درآمدِ دریافت‌کننده − سرانهٔ کنترل) × تعدادِ دریافت‌کننده — سنجهٔ <b>علّیِ</b> واقعیِ اثرِ کمپین (برخلافِ «درآمد منتسب» که هم‌بستگی است). با گروهِ کوچک، عدم‌قطعیتِ آماری بالاست.</div>
+</div>
+{% endif %}
+
 <div class="card">
     <div class="section-title"><svg class="icon"><use href="#i-list-checks"></use></svg> لاگ ارسال</div>
     {% if messages %}

@@ -63,6 +63,11 @@
                 <div class="muted text-xs nums" style="margin-top:var(--s2);" id="meta"></div>
             </div>
 
+            <div class="fld">
+                <label>گروه کنترل (Holdout) <span class="muted text-xs">— درصدی که پیامک دریافت نمی‌کنند، تا اثرِ واقعیِ کمپین (نه هم‌بستگی) سنجیده شود · ۰ = همه دریافت می‌کنند</span></label>
+                <input type="number" name="holdout_percent" value="0" min="0" max="50" step="5">
+            </div>
+
             <div class="row" style="margin-top:var(--s3);">
                 <div class="field"><label>زمان‌بندی - تاریخ (خالی = فوری)</label><input type="text" class="jdate" name="scheduled_date"></div>
                 <div class="field"><label>ساعت</label><input type="text" name="scheduled_time" value="09:00"></div>

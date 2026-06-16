@@ -4,8 +4,7 @@
 <div class="topbar">
     <h1>داشبورد مدیریتی</h1>
     <div class="row">
-        <a class="btn btn-violet" href="{{ url_for('manager.decision_rules') }}"><svg class="icon"><use href="#i-activity"></use></svg> قواعد تصمیم (ADA)</a>
-        <a class="btn btn-ghost" href="{{ url_for('manager.rules') }}"><svg class="icon"><use href="#i-sigma"></use></svg> شاخص‌ها و اهداف</a>
+        <a class="btn btn-violet" href="{{ url_for('manager.diseases') }}"><svg class="icon"><use href="#i-stethoscope"></use></svg> پروتکل بیماری‌ها</a>
         <a class="btn btn-ghost" href="{{ url_for('manager.protocols') }}"><svg class="icon"><use href="#i-clipboard"></use></svg> پروتکل‌های بالینی</a>
         <a class="btn btn-ghost" href="{{ url_for('manager.users') }}"><svg class="icon"><use href="#i-key"></use></svg> کاربران</a>
         <a class="btn btn-ghost" href="{{ url_for('manager.settings') }}"><svg class="icon"><use href="#i-settings"></use></svg> تنظیمات</a>
@@ -75,13 +74,13 @@
             <div class="nt-ic"><svg class="icon"><use href="#i-settings"></use></svg></div>
             <div><b>تنظیمات</b><small>پیامک، کلیدها و پیکربندی سامانه</small></div>
         </a>
-        <a class="card card-soft nav-tile" href="{{ url_for('manager.rules') }}">
-            <div class="nt-ic t-info"><svg class="icon"><use href="#i-sigma"></use></svg></div>
-            <div><b>شاخص‌ها و اهداف</b><small>آستانه‌ها و اهداف بالینی</small></div>
+        <a class="card card-soft nav-tile" href="{{ url_for('manager.diseases') }}">
+            <div class="nt-ic t-violet"><svg class="icon"><use href="#i-stethoscope"></use></svg></div>
+            <div><b>پروتکل بیماری‌ها</b><small>شاخص‌ها، اهداف و قواعدِ هر بیماری</small></div>
         </a>
-        <a class="card card-soft nav-tile" href="{{ url_for('manager.decision_rules') }}">
-            <div class="nt-ic t-violet"><svg class="icon"><use href="#i-activity"></use></svg></div>
-            <div><b>قواعد تصمیم (ADA)</b><small>موتور پشتیبان تصمیم بالینی</small></div>
+        <a class="card card-soft nav-tile" href="{{ url_for('manager.engagement') }}">
+            <div class="nt-ic t-info"><svg class="icon"><use href="#i-megaphone"></use></svg></div>
+            <div><b>یادآوری و پیگیریِ خودکار</b><small>رویداد ← کانال (پیامک / ورک‌لیست)</small></div>
         </a>
         <a class="card card-soft nav-tile" href="{{ url_for('manager.protocols') }}">
             <div class="nt-ic t-ok"><svg class="icon"><use href="#i-clipboard"></use></svg></div>

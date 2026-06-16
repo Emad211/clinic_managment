@@ -152,7 +152,8 @@ def rules_update():
     ClinicalRulesRepository().update(indicator_id, fields)
     log_activity("rules_update", f"ویرایش قاعده‌ی بالینی #{indicator_id}")
     flash("قاعده به‌روزرسانی شد", "success")
-    return redirect(url_for("manager.rules"))
+    # Return to wherever the edit came from (per-disease page or the all-indicators page)
+    return redirect(request.referrer or url_for("manager.rules"))
 
 
 _RULE_CAT_LABELS = {
@@ -210,7 +211,84 @@ def decision_rules_update():
     get_db().commit()
     log_activity("decision_rule_update", f"ویرایش قاعدهٔ تصمیم #{rule_id}")
     flash("قاعده به‌روزرسانی شد", "success")
-    return redirect(url_for("manager.decision_rules") + f"#rule-{rule_id}")
+    base = (request.referrer or url_for("manager.decision_rules")).split('#')[0]
+    return redirect(base + f"#rule-{rule_id}")
+
+
+@bp.route("/diseases")
+@manager_required
+def diseases():
+    """Per-disease module hub — each chronic condition is its own protocol page."""
+    from src.adapters.sqlite.clinical_rules_repo import ClinicalRulesRepository
+    db = get_db()
+    repo = ClinicalRulesRepository()
+    active_inds = repo.all_indicators(active_only=True)
+    rows = db.execute(
+        "SELECT * FROM conditions WHERE is_active=1 AND COALESCE(is_chronic,1)=1 "
+        "ORDER BY display_order, id").fetchall()
+    modules = []
+    for c in rows:
+        c = dict(c)
+        code = c.get('code')
+        c['ind_count'] = sum(1 for i in active_inds if _indicator_applies(i, code))
+        c['rule_count'] = db.execute(
+            "SELECT COUNT(*) n FROM clinical_rules WHERE condition_code IN (?, 'all')",
+            (code,)).fetchone()['n']
+        c['pat_count'] = db.execute(
+            "SELECT COUNT(DISTINCT pc.patient_link_id) n FROM patient_conditions pc "
+            "JOIN patient_links p ON p.id=pc.patient_link_id AND p.is_active=1 "
+            "WHERE pc.is_active=1 AND pc.condition_id=?", (c['id'],)).fetchone()['n']
+        modules.append(c)
+    return render_template("manager/diseases.html", active_page='manager', modules=modules)
+
+
+def _indicator_applies(ind: dict, code: str) -> bool:
+    """True if an indicator's `conditions` field ('all' or a CSV of codes) covers `code`."""
+    conds = (ind.get('conditions') or 'all').strip()
+    if conds == 'all':
+        return True
+    return code in [x.strip() for x in conds.split(',') if x.strip()]
+
+
+@bp.route("/diseases/<code>")
+@manager_required
+def disease_detail(code):
+    """One disease in one page: its indicators/targets + decision rules + monitoring."""
+    from src.adapters.sqlite.clinical_rules_repo import ClinicalRulesRepository, CATEGORY_LABELS
+    db = get_db()
+    cond = db.execute("SELECT * FROM conditions WHERE code=?", (code,)).fetchone()
+    if not cond:
+        flash("بیماری یافت نشد")
+        return redirect(url_for("manager.diseases"))
+    repo = ClinicalRulesRepository()
+
+    # Indicators (active + inactive) that apply to this disease, grouped by category
+    inds = [i for i in repo.all_indicators(active_only=False) if _indicator_applies(i, code)]
+    ig = {}
+    for i in inds:
+        ig.setdefault(i['category'], []).append(i)
+    ind_groups = [(cc, CATEGORY_LABELS.get(cc, cc), ig[cc])
+                  for cc in ['glycemic', 'bp', 'lipid', 'kidney', 'anthro', 'other'] if cc in ig]
+
+    # Decision rules for this module (+ cross-disease 'all'), grouped by category
+    rules = [dict(r) for r in db.execute(
+        "SELECT * FROM clinical_rules WHERE condition_code IN (?, 'all') ORDER BY priority, id",
+        (code,)).fetchall()]
+    rg = {}
+    for r in rules:
+        rg.setdefault(r['category'], []).append(r)
+    rule_groups = [(cc, _RULE_CAT_LABELS.get(cc, cc), rg[cc]) for cc in _RULE_CAT_ORDER if cc in rg]
+    rule_groups += [(cc, _RULE_CAT_LABELS.get(cc, cc), g) for cc, g in rg.items() if cc not in _RULE_CAT_ORDER]
+
+    # Monitoring schedule (care protocols) for this condition
+    protocols = [dict(p) for p in db.execute(
+        "SELECT * FROM care_protocols WHERE condition_id=? AND is_active=1 ORDER BY interval_months",
+        (cond['id'],)).fetchall()]
+
+    return render_template(
+        "manager/disease_detail.html", active_page='manager', cond=dict(cond),
+        ind_groups=ind_groups, rule_groups=rule_groups, protocols=protocols,
+        rules_active=sum(1 for r in rules if r['is_active']), rules_total=len(rules))
 
 
 @bp.route("/rules/add", methods=["POST"])
@@ -265,3 +343,52 @@ def protocol_followup():
             created += 1
     flash(f"{created} پیگیری برای «{target['name']}» ساخته شد", "success")
     return redirect(url_for("manager.protocols"))
+
+
+# ============================== Engagement engine ==============================
+@bp.route("/engagement")
+@manager_required
+def engagement():
+    """View & edit the event->channel routing table + automated-SMS guardrails."""
+    from src.adapters.sqlite.engagement_repo import EngagementRepository, CHANNELS
+    repo = EngagementRepository()
+    sms = SmsRepository()
+    settings = {
+        'quiet_start': sms.get_setting('engagement_quiet_start', '08:00'),
+        'quiet_end': sms.get_setting('engagement_quiet_end', '21:00'),
+        'daily_cap': sms.get_setting('engagement_daily_cap', '1'),
+    }
+    return render_template("manager/engagement.html", active_page='manager',
+                           events=repo.all_events(), channels=CHANNELS, settings=settings)
+
+
+@bp.route("/engagement/update", methods=["POST"])
+@manager_required
+def engagement_update():
+    from src.adapters.sqlite.engagement_repo import EngagementRepository
+    event_id = request.form.get("event_id", type=int)
+    if not event_id:
+        flash("شناسه نامعتبر")
+        return redirect(url_for("manager.engagement"))
+    fields = {
+        'channel': request.form.get("channel", "off"),
+        'sms_template': request.form.get("sms_template", "").strip() or None,
+        'lead_days': request.form.get("lead_days", type=int) or 0,
+        'cooldown_days': request.form.get("cooldown_days", type=int) or 0,
+        'is_active': 1 if request.form.get("is_active") == "on" else 0,
+    }
+    EngagementRepository().update_event(event_id, fields)
+    log_activity("engagement_update", f"ویرایش رویداد تعامل #{event_id}")
+    flash("رویداد به‌روزرسانی شد", "success")
+    return redirect(url_for("manager.engagement") + f"#ev-{event_id}")
+
+
+@bp.route("/engagement/settings", methods=["POST"])
+@manager_required
+def engagement_settings():
+    sms = SmsRepository()
+    sms.set_setting('engagement_quiet_start', request.form.get("quiet_start", "08:00").strip() or "08:00")
+    sms.set_setting('engagement_quiet_end', request.form.get("quiet_end", "21:00").strip() or "21:00")
+    sms.set_setting('engagement_daily_cap', str(request.form.get("daily_cap", type=int) or 1))
+    flash("تنظیمات گاردریل ذخیره شد", "success")
+    return redirect(url_for("manager.engagement"))

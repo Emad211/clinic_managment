@@ -8,9 +8,9 @@ REASON_LABELS = {
     'uncontrolled': 'کنترل‌نشده',
     'lapsed': 'بدون مراجعه اخیر',
     'visit_due': 'موعد ویزیت',
-    'monitoring': 'پایش (ADA)',
-    'screening': 'غربالگری (ADA)',
-    'vaccine': 'واکسیناسیون (ADA)',
+    'monitoring': 'پایش',
+    'screening': 'غربالگری',
+    'vaccine': 'واکسیناسیون',
     'manual': 'دستی',
 }
 

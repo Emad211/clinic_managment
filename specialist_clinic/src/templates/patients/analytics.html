@@ -71,7 +71,7 @@
 {% if clinical_support and clinical_support.count %}
 <div class="card">
     <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:var(--s2);">
-        <div class="section-title" style="margin:0;"><svg class="icon"><use href="#i-activity"></use></svg> پشتیبان بالینی ADA <span class="section-sub">{{ clinical_support.count|fa_num }} توصیه بر پایهٔ استانداردهای دیابت آمریکا</span></div>
+        <div class="section-title" style="margin:0;"><svg class="icon"><use href="#i-activity"></use></svg> پشتیبان بالینی <span class="section-sub">{{ clinical_support.count|fa_num }} توصیه بر پایهٔ استانداردهای بالینی</span></div>
         <form method="post" action="{{ url_for('patients.generate_followups', pid=patient.id) }}" style="margin:0;">
             <button class="btn btn-sm" type="submit"><svg class="icon icon-sm"><use href="#i-list-checks"></use></svg> تولید پیگیری‌های سررسیده</button>
         </form>
@@ -229,7 +229,7 @@
 <!-- INSULIN TITRATION CALCULATOR (ADA §6.4) -->
 {% set wt = (indicators | selectattr('key','equalto','weight') | first) %}
 <div class="card">
-    <div class="section-title"><svg class="icon"><use href="#i-syringe"></use></svg> ماشین‌حساب انسولین (ADA) <span class="section-sub">مرجع شروع و تیتراسیون — تأیید و تجویز با پزشک</span></div>
+    <div class="section-title"><svg class="icon"><use href="#i-syringe"></use></svg> ماشین‌حساب انسولین <span class="section-sub">مرجع شروع و تیتراسیون — تأیید و تجویز با پزشک</span></div>
     <div class="grid grid-4" style="align-items:flex-end;">
         <div class="fld"><label>وزن (kg)</label><input type="number" id="insWeight" value="{{ wt.latest if wt and wt.latest is not none else '' }}"></div>
         <div class="fld"><label>دوز فعلی basal (واحد)</label><input type="number" id="insBasal"></div>

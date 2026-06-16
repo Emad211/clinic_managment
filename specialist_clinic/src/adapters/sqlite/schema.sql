@@ -27,6 +27,7 @@ CREATE TABLE IF NOT EXISTS patient_links (
     address TEXT,
     notes TEXT,
     wallet_balance INTEGER NOT NULL DEFAULT 0,   -- credit balance (Toman)
+    sms_opt_out INTEGER NOT NULL DEFAULT 0,      -- patient opted out of automated SMS (engagement guardrail)
     is_active INTEGER NOT NULL DEFAULT 1,
     enrolled_by TEXT,
     enrolled_at TIMESTAMP DEFAULT (datetime('now', '+3 hours', '+30 minutes')),
@@ -54,7 +55,12 @@ CREATE TABLE IF NOT EXISTS conditions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT UNIQUE NOT NULL,
     code TEXT,
-    is_active INTEGER DEFAULT 1
+    is_active INTEGER DEFAULT 1,
+    is_chronic INTEGER NOT NULL DEFAULT 1,    -- shows as a managed disease module
+    display_order INTEGER NOT NULL DEFAULT 100,
+    description TEXT,                          -- plain-language summary for the per-disease manager page
+    icon TEXT,                                -- svg sprite id (e.g. 'i-heart')
+    color TEXT                                -- accent token (info|warn|danger|ok|violet)
 );
 
 -- Patient conditions (diagnoses)
@@ -185,6 +191,7 @@ CREATE TABLE IF NOT EXISTS sms_campaigns (
     campaign_type TEXT NOT NULL DEFAULT 'info',  -- 'info','wallet_credit','reminder'
     credit_amount INTEGER DEFAULT 0,             -- wallet credit granted per recipient (Toman)
     credit_expires_days INTEGER,                 -- optional credit expiry
+    holdout_percent INTEGER NOT NULL DEFAULT 0,  -- % randomly held out as control group (incrementality)
     status TEXT NOT NULL DEFAULT 'draft',  -- draft, scheduled, sending, done, cancelled
     scheduled_at TIMESTAMP,
     total_recipients INTEGER DEFAULT 0,
@@ -211,6 +218,69 @@ CREATE TABLE IF NOT EXISTS sms_messages (
     FOREIGN KEY (campaign_id) REFERENCES sms_campaigns(id),
     FOREIGN KEY (patient_link_id) REFERENCES patient_links(id)
 );
+
+-- Campaign audience split (for incrementality / lift): who was treated vs held out.
+-- Recorded at send time only when a campaign has holdout_percent > 0.
+CREATE TABLE IF NOT EXISTS campaign_audience (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    campaign_id INTEGER NOT NULL,
+    patient_link_id INTEGER NOT NULL,
+    accounting_patient_id INTEGER,          -- snapshot of the link, for revenue measurement
+    grp TEXT NOT NULL DEFAULT 'treated',    -- 'treated' (sent) | 'control' (held out, not sent)
+    assigned_at TIMESTAMP DEFAULT (datetime('now', '+3 hours', '+30 minutes')),
+    FOREIGN KEY (campaign_id) REFERENCES sms_campaigns(id),
+    FOREIGN KEY (patient_link_id) REFERENCES patient_links(id)
+);
+CREATE INDEX IF NOT EXISTS idx_campaign_audience ON campaign_audience (campaign_id, grp);
+
+-- ============================================================================
+-- Engagement engine (event -> channel): unifies automated reminders, follow-ups
+-- and campaigns into one configurable layer. `engagement_events` is the
+-- manager-editable routing table — each due event is dispatched to SMS and/or
+-- the staff worklist per its `channel`. `engagement_dispatch` is the
+-- idempotency/cooldown ledger so nothing is sent twice in a period.
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS engagement_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_key TEXT UNIQUE NOT NULL,
+    label TEXT NOT NULL,
+    category TEXT NOT NULL DEFAULT 'clinical',   -- operational | clinical | marketing
+    channel TEXT NOT NULL DEFAULT 'worklist',    -- sms | worklist | both | off
+    sms_template TEXT,                           -- {name} placeholder; used when channel includes sms
+    lead_days INTEGER NOT NULL DEFAULT 0,        -- fire this many days before the due date
+    cooldown_days INTEGER NOT NULL DEFAULT 30,   -- min days between repeats of this event per patient
+    source_action TEXT,                          -- rule action_type that feeds this event (NULL = time-based/manual)
+    priority INTEGER NOT NULL DEFAULT 100,
+    is_active INTEGER NOT NULL DEFAULT 1,
+    notes TEXT
+);
+
+CREATE TABLE IF NOT EXISTS engagement_dispatch (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    patient_link_id INTEGER NOT NULL,
+    event_key TEXT NOT NULL,
+    period_key TEXT NOT NULL,                    -- dedupe bucket (due date / month) — fire once per period
+    channel TEXT NOT NULL,                       -- sms | worklist
+    ref_id INTEGER,                              -- sms_messages.id or followup_tasks.id
+    status TEXT NOT NULL DEFAULT 'done',
+    created_at TIMESTAMP DEFAULT (datetime('now','+3 hours','+30 minutes')),
+    UNIQUE (patient_link_id, event_key, period_key, channel),
+    FOREIGN KEY (patient_link_id) REFERENCES patient_links(id)
+);
+CREATE INDEX IF NOT EXISTS idx_engagement_dispatch ON engagement_dispatch (patient_link_id, event_key);
+
+-- Seed the default event -> channel routing (manager-editable afterwards).
+-- Routine outreach -> SMS; lapsed -> SMS + worklist; uncontrolled / red-flag -> worklist (phone call).
+INSERT OR IGNORE INTO engagement_events
+  (event_key, label, category, channel, sms_template, lead_days, cooldown_days, source_action, priority) VALUES
+  ('appointment_reminder','یادآوری نوبت','operational','sms','سلام {name} عزیز، یادآوری نوبت شما در کلینیک تخصصی. لطفاً در زمان مقرر مراجعه فرمایید.',1,1,NULL,10),
+  ('refill_due','یادآوری تجدید دارو','operational','sms','سلام {name} عزیز، داروی شما رو به اتمام است. جهت تمدید نسخه با کلینیک تماس بگیرید.',7,25,NULL,20),
+  ('monitoring_due','سررسید آزمایش پایش','clinical','sms','سلام {name} عزیز، زمان آزمایشِ پایشِ دوره‌ای شما فرارسیده است. لطفاً نوبت بگیرید.',0,60,'create_followup',30),
+  ('screening_due','سررسید غربالگری','clinical','sms','سلام {name} عزیز، زمان غربالگریِ دوره‌ای شما فرارسیده است. برای حفظ سلامتی نوبت بگیرید.',0,180,'schedule_screening',40),
+  ('vaccine_due','سررسید واکسن','clinical','sms','سلام {name} عزیز، یک واکسنِ توصیه‌شده برای شما سررسید شده است. لطفاً با کلینیک هماهنگ کنید.',0,180,'vaccine',50),
+  ('lapsed','بدون مراجعه اخیر','clinical','both','سلام {name} عزیز، مدتی است شما را در کلینیک ندیده‌ایم. برای ادامهٔ مراقبت نوبت بگیرید.',0,60,NULL,60),
+  ('uncontrolled','کنترل‌نشده','clinical','worklist',NULL,0,14,NULL,70),
+  ('red_flag','هشدار فوری بالینی','clinical','worklist',NULL,0,1,'redflag',80);
 
 -- Settings (key/value: mediana api key + sending number + message type, thresholds, clinic info)
 CREATE TABLE IF NOT EXISTS settings (
@@ -242,11 +312,12 @@ CREATE INDEX IF NOT EXISTS idx_followup_status ON followup_tasks (status, due_da
 CREATE INDEX IF NOT EXISTS idx_sms_campaign ON sms_messages (campaign_id);
 
 -- Seed conditions
-INSERT OR IGNORE INTO conditions (id, name, code) VALUES (1, 'دیابت', 'diabetes');
-INSERT OR IGNORE INTO conditions (id, name, code) VALUES (2, 'فشار خون', 'hypertension');
-INSERT OR IGNORE INTO conditions (id, name, code) VALUES (3, 'چربی خون', 'hyperlipidemia');
-INSERT OR IGNORE INTO conditions (id, name, code) VALUES (4, 'بیماری کلیوی مزمن', 'ckd');
-INSERT OR IGNORE INTO conditions (id, name, code) VALUES (5, 'تیروئید', 'thyroid');
+INSERT OR IGNORE INTO conditions (id, name, code, is_chronic, display_order, description, icon, color) VALUES
+ (1, 'دیابت', 'diabetes', 1, 10, 'پایش قند، اهداف فردی، انتخاب دارو، غربالگری عوارض و واکسیناسیون.', 'i-activity', 'info'),
+ (2, 'فشار خون', 'hypertension', 1, 20, 'کنترل فشار خون، انتخاب داروی ضدفشار، پایش کلیه/پتاسیم و هشدار بحران فشار.', 'i-heart', 'danger'),
+ (3, 'چربی خون', 'hyperlipidemia', 1, 30, 'اهداف LDL، استاتین‌درمانی و پایش لیپید.', 'i-sigma', 'warn'),
+ (4, 'بیماری کلیوی مزمن', 'ckd', 1, 40, 'مرحله‌بندی eGFR/آلبومینوری، داروهای محافظ کلیه و پایش.', 'i-clipboard', 'violet'),
+ (5, 'تیروئید', 'thyroid', 1, 50, 'پایش TSH و تنظیم درمان تیروئید.', 'i-stethoscope', 'ok');
 
 -- Seed care protocols (diabetes + hypertension standard periodic checks)
 INSERT OR IGNORE INTO care_protocols (id, condition_id, name, interval_months) VALUES (1, 1, 'آزمایش HbA1c', 3);
@@ -395,6 +466,7 @@ CREATE TABLE IF NOT EXISTS clinical_rules (
     title TEXT NOT NULL,
     category TEXT NOT NULL,        -- diagnosis|target|medication|drug_safety|insulin|
                                    -- monitoring|screening|redflag|hypo|lifestyle|vaccination|bp_rx|lipid_rx
+    condition_code TEXT NOT NULL DEFAULT 'all',  -- owning disease module: a conditions.code, or 'all' (cross-disease)
     trigger_json TEXT,             -- machine-evaluable condition tree (NULL = informational/manual)
     human_if TEXT,
     recommendation TEXT,           -- the "Then" shown to the clinician
