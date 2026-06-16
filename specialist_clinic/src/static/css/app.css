@@ -539,3 +539,13 @@ input[type=checkbox],input[type=radio]{width:auto;accent-color:var(--primary);}
 .med-card.inactive{opacity:.6;}
 .med-actions{display:flex;flex-wrap:wrap;gap:var(--s5);margin-top:var(--s3);padding-top:var(--s3);border-top:1px solid var(--line);}
 .row-sep{display:flex;align-items:center;justify-content:space-between;gap:var(--s2);padding:var(--s2) 0;border-bottom:1px solid var(--line);}
+
+/* config / navigation tiles (manager hub) */
+.nav-tile{display:flex;align-items:center;gap:var(--s3);}
+.nav-tile .nt-ic{width:38px;height:38px;border-radius:11px;display:grid;place-items:center;flex:none;background:var(--primary-soft);color:var(--primary);}
+.nav-tile .nt-ic.t-info{background:var(--info-soft);color:var(--info-fg);}
+.nav-tile .nt-ic.t-violet{background:var(--violet-soft);color:var(--violet-fg);}
+.nav-tile .nt-ic.t-ok{background:var(--ok-soft);color:var(--ok-fg);}
+.nav-tile .nt-ic.t-warn{background:var(--warn-soft);color:var(--warn-fg);}
+.nav-tile b{color:var(--text);font-weight:700;display:block;}
+.nav-tile small{color:var(--muted);font-size:11.5px;}
