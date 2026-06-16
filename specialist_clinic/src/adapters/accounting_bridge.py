@@ -223,6 +223,111 @@ def daily_revenue_for_accounting_ids(ids: list[int], date_from: str, date_to: st
         conn.close()
 
 
+def revenue_for_enrolled(pairs: list[tuple[int, str | None]], floor: str | None = None,
+                         until: str | None = None) -> dict[str, int]:
+    """Specialist-office revenue, counting each patient only from their enrollment date.
+
+    `pairs` = [(accounting_patient_id, since 'YYYY-MM-DD' | None), ...]. For every
+    patient, only closed-invoice revenue on/after that patient's `since` (their
+    specialist enrollment date) is summed — so visits made earlier in the general
+    clinic (درمانگاه), before the patient joined the specialist office, are excluded.
+    `floor`/`until` are optional global work_date bounds (e.g. start of the month).
+    Revenue definition is unchanged (visits.price + injections.total_price +
+    procedures.price; closed invoices; attributed by invoices.work_date).
+    """
+    out = {'visits': 0, 'injections': 0, 'procedures': 0, 'total': 0, 'collected': 0, 'invoices': 0}
+    pairs = [(int(a), s) for a, s in pairs if a]
+    if not pairs:
+        return out
+    conn = _connect_ro()
+    if conn is None:
+        return out
+    try:
+        for chunk in _chunks(pairs):
+            values_sql = ",".join(["(?,?)"] * len(chunk))
+            flat: list[Any] = []
+            for a, s in chunk:
+                flat.extend([a, s])
+            bounds = " AND (e.since IS NULL OR i.work_date >= e.since)"
+            tail: list[Any] = []
+            if floor:
+                bounds += " AND i.work_date >= ?"
+                tail.append(floor)
+            if until:
+                bounds += " AND i.work_date <= ?"
+                tail.append(until)
+
+            def _billed_collected(table, col, item_type):
+                # billed = closed-invoice item price; collected = items actually marked paid
+                # (invoice_item_payments.is_paid=1) — mirrors the accounting app's "paid amount".
+                r = conn.execute(
+                    f"""WITH enr(pid, since) AS (VALUES {values_sql})
+                        SELECT COALESCE(SUM(t.{col}),0) billed,
+                               COALESCE(SUM(CASE WHEN iip.is_paid=1 THEN t.{col} ELSE 0 END),0) collected
+                        FROM {table} t
+                        JOIN invoices i ON i.id = t.invoice_id AND i.status='closed'
+                        JOIN enr e ON e.pid = t.patient_id
+                        LEFT JOIN invoice_item_payments iip
+                          ON iip.invoice_id = t.invoice_id AND iip.item_type = ? AND iip.item_id = t.id
+                        WHERE 1=1{bounds}""",
+                    (*flat, item_type, *tail)).fetchone()
+                return int(r['billed'] or 0), int(r['collected'] or 0)
+
+            for _tbl, _col, _it, _key in (('visits', 'price', 'visit', 'visits'),
+                                          ('injections', 'total_price', 'injection', 'injections'),
+                                          ('procedures', 'price', 'procedure', 'procedures')):
+                _b, _c = _billed_collected(_tbl, _col, _it)
+                out[_key] += _b
+                out['collected'] += _c
+            inv = conn.execute(
+                f"""WITH enr(pid, since) AS (VALUES {values_sql})
+                    SELECT COUNT(*) c FROM invoices i JOIN enr e ON e.pid = i.patient_id
+                    WHERE i.status='closed'{bounds}""",
+                (*flat, *tail)).fetchone()['c']
+            out['invoices'] += int(inv or 0)
+        out['total'] = out['visits'] + out['injections'] + out['procedures']
+        return out
+    except Exception:
+        return out
+    finally:
+        conn.close()
+
+
+def daily_revenue_for_enrolled(pairs: list[tuple[int, str | None]], date_from: str,
+                               date_to: str) -> dict[str, int]:
+    """Per-day specialist revenue for a trend chart, bounded per-patient by enrollment."""
+    totals: dict[str, int] = {}
+    pairs = [(int(a), s) for a, s in pairs if a]
+    if not pairs:
+        return totals
+    conn = _connect_ro()
+    if conn is None:
+        return totals
+    try:
+        for chunk in _chunks(pairs):
+            values_sql = ",".join(["(?,?)"] * len(chunk))
+            flat: list[Any] = []
+            for a, s in chunk:
+                flat.extend([a, s])
+            for table, col in (("visits", "price"), ("injections", "total_price"), ("procedures", "price")):
+                rows = conn.execute(
+                    f"""WITH enr(pid, since) AS (VALUES {values_sql})
+                        SELECT i.work_date d, COALESCE(SUM(t.{col}),0) s
+                        FROM {table} t JOIN invoices i ON i.id = t.invoice_id AND i.status='closed'
+                        JOIN enr e ON e.pid = t.patient_id
+                        WHERE i.work_date BETWEEN ? AND ? AND (e.since IS NULL OR i.work_date >= e.since)
+                        GROUP BY i.work_date""",
+                    (*flat, date_from, date_to)).fetchall()
+                for r in rows:
+                    if r['d']:
+                        totals[r['d']] = totals.get(r['d'], 0) + int(r['s'] or 0)
+        return totals
+    except Exception:
+        return totals
+    finally:
+        conn.close()
+
+
 def get_visit_history(accounting_patient_id: int, limit: int = 30) -> list[dict[str, Any]]:
     """Return recent visits for a patient from the accounting DB (real-time)."""
     if not accounting_patient_id:

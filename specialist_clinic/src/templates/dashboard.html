@@ -158,39 +158,41 @@
 </div>
 
 {% if revenue.available %}
+{% set crate = ((revenue.total.collected / revenue.total.total * 100)|round|int) if revenue.total.total else 0 %}
 <div class="card">
     <div class="section-title">
         <svg class="icon"><use href="#i-banknote"></use></svg> درآمد بیماران مطب تخصصی
-        <span class="section-sub">— از سامانه حسابداری (فاکتورهای بسته: ویزیت + تزریق + کار عملی)</span>
+        <span class="section-sub">— از سامانه حسابداری؛ «وصول‌شده» = آیتم‌های پرداخت‌شده، «صورتحساب» = کل مبلغِ فاکتورهای بسته</span>
     </div>
     <div class="grid grid-4">
         <div class="card kpi kpi-ok" style="margin:0;">
             <div class="ic"><svg class="icon"><use href="#i-trending-up"></use></svg></div>
-            <div class="num c-ok">{{ revenue.month.total|fa_num }}</div>
-            <div class="label">درآمد این ماه (تومان)</div>
+            <div class="num c-ok">{{ revenue.month.collected|fa_num }}</div>
+            <div class="label">وصول‌شدهٔ این ماه <span class="muted">/ {{ revenue.month.total|fa_num }} صورتحساب</span></div>
         </div>
         <div class="card kpi" style="margin:0;">
             <div class="ic"><svg class="icon"><use href="#i-sigma"></use></svg></div>
-            <div class="num">{{ revenue.total.total|fa_num }}</div>
-            <div class="label">درآمد کل (تومان)</div>
+            <div class="num">{{ revenue.total.collected|fa_num }}</div>
+            <div class="label">وصول‌شدهٔ کل <span class="muted">/ {{ revenue.total.total|fa_num }} صورتحساب</span></div>
+        </div>
+        <div class="card kpi {% if crate >= 90 %}kpi-ok{% else %}kpi-warn{% endif %}" style="margin:0;">
+            <div class="ic"><svg class="icon"><use href="#i-sigma"></use></svg></div>
+            <div class="num">{{ crate|fa_num }}٪</div>
+            <div class="label">نرخ وصول <span class="muted">(وصول‌شده ÷ صورتحساب)</span></div>
         </div>
         <div class="card kpi kpi-violet" style="margin:0;">
             <div class="ic"><svg class="icon"><use href="#i-megaphone"></use></svg></div>
             <div class="num c-violet">{{ revenue.campaigns.attributed_total|fa_num }}</div>
             <div class="label">درآمد منتسب به کمپین‌ها (تومان)</div>
         </div>
-        <div class="card kpi kpi-warn" style="margin:0;">
-            <div class="ic"><svg class="icon"><use href="#i-gift"></use></svg></div>
-            <div class="num c-warn">{{ revenue.campaigns.credit_distributed|fa_num }}</div>
-            <div class="label">اعتبار توزیع‌شده در کمپین‌ها</div>
-        </div>
     </div>
 
     <div class="row wrap" style="margin-top:var(--s4);font-size:13px;">
-        <span class="muted">ترکیب درآمد کل:</span>
+        <span class="muted">ترکیب صورتحساب:</span>
         <span class="badge badge-info">ویزیت: {{ revenue.total.visits|fa_num }}</span>
         <span class="badge badge-info">تزریق: {{ revenue.total.injections|fa_num }}</span>
         <span class="badge badge-info">کار عملی: {{ revenue.total.procedures|fa_num }}</span>
+        <span class="badge {% if crate >= 90 %}badge-ok{% else %}badge-warn{% endif %}">وصول‌شده: {{ revenue.total.collected|fa_num }} ({{ crate|fa_num }}٪)</span>
         <span class="badge badge-muted">{{ revenue.total.invoices|fa_num }} فاکتور بسته · {{ revenue.enrolled|fa_num }} بیمار متصل</span>
     </div>
 

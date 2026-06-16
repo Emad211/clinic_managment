@@ -28,20 +28,40 @@ class RevenueService:
         ).fetchall()
         return [r['accounting_patient_id'] for r in rows]
 
+    def _enrolled_pairs(self) -> list[tuple[int, str | None]]:
+        """(accounting_patient_id, enrollment_date 'YYYY-MM-DD') for active linked patients.
+
+        The enrollment date bounds specialist-office revenue: only accounting
+        revenue on/after a patient joined the specialist office counts (earlier
+        general-clinic visits are excluded).
+        """
+        db = get_db()
+        rows = db.execute(
+            "SELECT accounting_patient_id, enrolled_at FROM patient_links "
+            "WHERE is_active=1 AND accounting_patient_id IS NOT NULL"
+        ).fetchall()
+        return [(r['accounting_patient_id'], (str(r['enrolled_at'])[:10] if r['enrolled_at'] else None))
+                for r in rows]
+
     def dashboard(self) -> dict:
-        """Top-level revenue numbers + 30-day trend for enrolled patients."""
+        """Top-level revenue + 30-day trend for enrolled patients.
+
+        Specialist-office revenue counts each patient's accounting revenue only
+        from their specialist enrollment date (`enrolled_at`) onward — visits made
+        earlier in the general clinic (درمانگاه) are excluded.
+        """
         if not accounting_bridge.is_available():
             return {'available': False}
 
-        ids = self._enrolled_accounting_ids()
-        total = accounting_bridge.revenue_for_accounting_ids(ids)
-        month = accounting_bridge.revenue_for_accounting_ids(ids, since=_jalali_month_start_gregorian())
+        pairs = self._enrolled_pairs()
+        total = accounting_bridge.revenue_for_enrolled(pairs)
+        month = accounting_bridge.revenue_for_enrolled(pairs, floor=_jalali_month_start_gregorian())
 
-        # 30-day trend
+        # 30-day trend (also bounded per-patient by enrollment date)
         today = iran_now().date()
         start = today - timedelta(days=29)
-        daily = accounting_bridge.daily_revenue_for_accounting_ids(
-            ids, start.strftime('%Y-%m-%d'), today.strftime('%Y-%m-%d'))
+        daily = accounting_bridge.daily_revenue_for_enrolled(
+            pairs, start.strftime('%Y-%m-%d'), today.strftime('%Y-%m-%d'))
         labels, values = [], []
         for i in range(30):
             d = start + timedelta(days=i)
@@ -49,11 +69,11 @@ class RevenueService:
             labels.append(format_jalali_date(key))
             values.append(daily.get(key, 0))
 
-        campaigns = self.campaign_revenue(ids_hint=ids)
+        campaigns = self.campaign_revenue()
 
         return {
             'available': True,
-            'enrolled': len(ids),
+            'enrolled': len(pairs),
             'total': total,
             'month': month,
             'trend': {'labels': labels, 'values': values},
