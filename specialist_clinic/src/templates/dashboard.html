@@ -224,7 +224,7 @@
         </tbody>
     </table>
     </div>
-    <div class="muted help" style="margin-top:var(--s3);">«درآمد منتسب» = درآمد ثبت‌شده‌ی گیرندگانِ متصل به حسابداری، از تاریخ ارسال کمپین به بعد.</div>
+    <div class="muted help" style="margin-top:var(--s3);">«درآمد منتسب» = درآمدِ <b>وصول‌شدهٔ</b> گیرندگانِ متصل به حسابداری، تا <b>{{ revenue.campaigns.window_days|fa_num }} روز</b> پس از ارسال کمپین. این یک تخمینِ هم‌بستگی است (نه علّی)؛ برای سنجشِ واقعیِ اثر، گروهِ کنترل (holdout) لازم است.</div>
     {% else %}<div class="empty"><svg class="icon"><use href="#i-megaphone"></use></svg><div>هنوز کمپینی ارسال نشده</div></div>{% endif %}
 </div>
 {% endif %}

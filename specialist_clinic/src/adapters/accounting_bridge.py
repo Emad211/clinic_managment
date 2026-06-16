@@ -328,6 +328,62 @@ def daily_revenue_for_enrolled(pairs: list[tuple[int, str | None]], date_from: s
         conn.close()
 
 
+def revenue_windowed(triples: list[tuple[int, str, str]]) -> dict[str, int]:
+    """Closed-invoice revenue inside a per-patient [since, until] window.
+
+    `triples` = [(accounting_patient_id, since 'YYYY-MM-DD', until 'YYYY-MM-DD'), ...].
+    Used for campaign attribution: a recipient's revenue counts only if its invoice
+    work_date falls within `attribution_window` days *after* that recipient's SMS —
+    not "forever after the send". Returns {'billed','collected','invoices'} where
+    collected = items actually marked paid (invoice_item_payments.is_paid=1).
+    """
+    out = {'billed': 0, 'collected': 0, 'invoices': 0}
+    triples = [(int(a), s, u) for a, s, u in triples if a and s and u]
+    if not triples:
+        return out
+    conn = _connect_ro()
+    if conn is None:
+        return out
+    try:
+        for chunk in _chunks(triples):
+            values_sql = ",".join(["(?,?,?)"] * len(chunk))
+            flat: list[Any] = []
+            for a, s, u in chunk:
+                flat.extend([a, s, u])
+
+            def _bc(table, col, item_type):
+                r = conn.execute(
+                    f"""WITH win(pid, since, until) AS (VALUES {values_sql})
+                        SELECT COALESCE(SUM(t.{col}),0) billed,
+                               COALESCE(SUM(CASE WHEN iip.is_paid=1 THEN t.{col} ELSE 0 END),0) collected
+                        FROM {table} t
+                        JOIN invoices i ON i.id = t.invoice_id AND i.status='closed'
+                        JOIN win w ON w.pid = t.patient_id
+                        LEFT JOIN invoice_item_payments iip
+                          ON iip.invoice_id = t.invoice_id AND iip.item_type = ? AND iip.item_id = t.id
+                        WHERE i.work_date >= w.since AND i.work_date <= w.until""",
+                    (*flat, item_type)).fetchone()
+                return int(r['billed'] or 0), int(r['collected'] or 0)
+
+            for _tbl, _col, _it in (('visits', 'price', 'visit'),
+                                    ('injections', 'total_price', 'injection'),
+                                    ('procedures', 'price', 'procedure')):
+                _b, _c = _bc(_tbl, _col, _it)
+                out['billed'] += _b
+                out['collected'] += _c
+            inv = conn.execute(
+                f"""WITH win(pid, since, until) AS (VALUES {values_sql})
+                    SELECT COUNT(*) c FROM invoices i JOIN win w ON w.pid = i.patient_id
+                    WHERE i.status='closed' AND i.work_date >= w.since AND i.work_date <= w.until""",
+                (*flat,)).fetchone()['c']
+            out['invoices'] += int(inv or 0)
+        return out
+    except Exception:
+        return out
+    finally:
+        conn.close()
+
+
 def get_visit_history(accounting_patient_id: int, limit: int = 30) -> list[dict[str, Any]]:
     """Return recent visits for a patient from the accounting DB (real-time)."""
     if not accounting_patient_id:

@@ -2,7 +2,7 @@
 (read-only bridge). Revenue definition mirrors the accounting app exactly:
 visits + injections + procedures from CLOSED invoices (consumables excluded).
 """
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 import jdatetime
 
@@ -16,6 +16,12 @@ def _jalali_month_start_gregorian() -> str:
     j_today = jdatetime.date.fromgregorian(date=iran_now().date())
     g = jdatetime.date(j_today.year, j_today.month, 1).togregorian()
     return g.strftime('%Y-%m-%d')
+
+
+# Campaign attribution window: a recipient's revenue is credited to a campaign only
+# within this many days after their SMS (not "forever after send"). Bounds the
+# last-touch over-attribution; could later become a manager-editable setting.
+ATTRIBUTION_WINDOW_DAYS = 60
 
 
 class RevenueService:
@@ -81,8 +87,11 @@ class RevenueService:
         }
 
     def campaign_revenue(self, ids_hint: list[int] | None = None) -> dict:
-        """Revenue attributed to each campaign = revenue from its recipients
-        (in the accounting DB) on/after the campaign send date.
+        """Revenue attributed to each campaign = COLLECTED revenue from its
+        accounting-linked recipients within ATTRIBUTION_WINDOW_DAYS after each
+        recipient's SMS. This is a bounded last-touch correlation estimate (not a
+        causal one — true lift needs a holdout/control group); the time window
+        keeps it from ballooning as old, unrelated visits accumulate.
         """
         db = get_db()
         campaigns = db.execute(
@@ -94,19 +103,29 @@ class RevenueService:
         credit_distributed = 0
         for c in campaigns:
             cid = c['id']
-            # recipients of this campaign that are linked to accounting + send date
+            # each accounting-linked recipient + when they were first sent this campaign
+            # (GROUP BY per recipient — a bare MIN() without it collapsed to a single row)
             recs = db.execute(
-                """SELECT DISTINCT pl.accounting_patient_id AS aid, MIN(m.sent_at) AS first_sent
+                """SELECT pl.accounting_patient_id AS aid, MIN(m.sent_at) AS first_sent
                    FROM sms_messages m JOIN patient_links pl ON pl.id = m.patient_link_id
-                   WHERE m.campaign_id = ? AND m.status='sent' AND pl.accounting_patient_id IS NOT NULL""",
+                   WHERE m.campaign_id = ? AND m.status='sent' AND pl.accounting_patient_id IS NOT NULL
+                   GROUP BY pl.accounting_patient_id""",
                 (cid,)).fetchall()
-            aids = [r['aid'] for r in recs if r['aid']]
-            send_dates = [r['first_sent'] for r in recs if r['first_sent']]
-            since = min(send_dates)[:10] if send_dates else None
+            triples = []
+            for r in recs:
+                if not r['aid'] or not r['first_sent']:
+                    continue
+                since = str(r['first_sent'])[:10]
+                try:
+                    until = (datetime.strptime(since, '%Y-%m-%d')
+                             + timedelta(days=ATTRIBUTION_WINDOW_DAYS)).strftime('%Y-%m-%d')
+                except ValueError:
+                    continue
+                triples.append((r['aid'], since, until))
 
-            rev = accounting_bridge.revenue_for_accounting_ids(aids, since=since) if aids else \
-                {'total': 0, 'invoices': 0}
-            attributed_total += rev['total']
+            rev = accounting_bridge.revenue_windowed(triples) if triples else \
+                {'billed': 0, 'collected': 0, 'invoices': 0}
+            attributed_total += rev['collected']
 
             credit = db.execute(
                 "SELECT COALESCE(SUM(amount),0) s FROM wallet_transactions WHERE reason='campaign' AND campaign_id=? AND amount>0",
@@ -115,8 +134,8 @@ class RevenueService:
 
             rows_out.append({
                 'id': cid, 'name': c['name'], 'type': c['campaign_type'],
-                'recipients': len(aids), 'sent': c['sent_count'],
-                'revenue': rev['total'], 'invoices': rev.get('invoices', 0),
+                'recipients': len(triples), 'sent': c['sent_count'],
+                'revenue': rev['collected'], 'invoices': rev['invoices'],
                 'credit': int(credit or 0),
             })
 
@@ -124,4 +143,5 @@ class RevenueService:
             'rows': rows_out,
             'attributed_total': attributed_total,
             'credit_distributed': credit_distributed,
+            'window_days': ATTRIBUTION_WINDOW_DAYS,
         }
