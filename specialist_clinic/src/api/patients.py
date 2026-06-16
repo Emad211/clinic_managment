@@ -9,7 +9,7 @@ from src.services.vitals_service import VitalsService, evaluate_reading
 from src.services.analytics_service import AnalyticsService, TARGETS
 from src.adapters.sqlite.wallet_repo import WalletRepository
 from src.services.activity_logger import log_activity
-from src.common.utils import jalali_to_gregorian_str
+from src.common.utils import jalali_to_gregorian_str, format_jalali_date
 
 bp = Blueprint("patients", __name__, url_prefix="/patients")
 
@@ -17,9 +17,71 @@ bp = Blueprint("patients", __name__, url_prefix="/patients")
 @bp.route("/")
 @login_required
 def list_patients():
+    """Patient list enriched with control status, conditions and latest key vitals;
+    quick filters + uncontrolled-first ordering (physician-first)."""
+    from src.adapters.sqlite.core import get_db
     q = request.args.get("q", "").strip()
-    patients = PatientRepository().list_patients(q)
-    return render_template("patients/list.html", patients=patients, q=q, active_page='patients')
+    flt = request.args.get("filter", "").strip()
+    db = get_db()
+
+    where = "p.is_active=1"
+    params = []
+    if q:
+        like = f"%{q}%"
+        where += " AND (p.full_name LIKE ? OR COALESCE(p.national_id,'') LIKE ? OR COALESCE(p.phone_number,'') LIKE ?)"
+        params += [like, like, like]
+    rows = db.execute(
+        f"""
+        SELECT p.id, p.full_name, p.national_id, p.phone_number, p.accounting_patient_id,
+          (SELECT v.value FROM vital_readings v WHERE v.patient_link_id=p.id AND v.type='hba1c'       ORDER BY v.measured_at DESC LIMIT 1) AS hba1c,
+          (SELECT v.value FROM vital_readings v WHERE v.patient_link_id=p.id AND v.type='bp_systolic' ORDER BY v.measured_at DESC LIMIT 1) AS sys,
+          (SELECT v.value FROM vital_readings v WHERE v.patient_link_id=p.id AND v.type='fbs'         ORDER BY v.measured_at DESC LIMIT 1) AS fbs,
+          (SELECT MAX(v.measured_at) FROM vital_readings v WHERE v.patient_link_id=p.id) AS last_vital,
+          (SELECT GROUP_CONCAT(c.code) FROM patient_conditions pc JOIN conditions c ON c.id=pc.condition_id WHERE pc.patient_link_id=p.id AND pc.is_active=1) AS cond_codes,
+          (SELECT GROUP_CONCAT(c.name) FROM patient_conditions pc JOIN conditions c ON c.id=pc.condition_id WHERE pc.patient_link_id=p.id AND pc.is_active=1) AS cond_names
+        FROM patient_links p WHERE {where} ORDER BY p.id DESC LIMIT 500
+        """, params).fetchall()
+
+    def _lvl(v, warn, high):
+        if v is None:
+            return -1
+        return 2 if v >= high else (1 if v >= warn else 0)
+
+    def control_of(hba1c, sys, fbs):
+        levels = [_lvl(hba1c, 7, 8), _lvl(sys, 130, 140), _lvl(fbs, 130, 180)]
+        if max(levels) < 0:
+            return 'unknown'
+        worst = max(levels)
+        return {2: 'uncontrolled', 1: 'borderline', 0: 'controlled'}[worst]
+
+    patients = []
+    for r in rows:
+        d = dict(r)
+        d['control'] = control_of(d['hba1c'], d['sys'], d['fbs'])
+        d['cond_list'] = [c for c in (d['cond_names'] or '').split(',') if c]
+        d['codes'] = set(c for c in (d['cond_codes'] or '').split(',') if c)
+        d['last_fa'] = format_jalali_date(d['last_vital']) if d['last_vital'] else None
+        patients.append(d)
+
+    counts = {
+        'all': len(patients),
+        'uncontrolled': sum(1 for p in patients if p['control'] == 'uncontrolled'),
+    }
+
+    catalog = PatientRepository().list_condition_catalog()
+    known_codes = {c['code'] for c in catalog if c.get('code')}
+    if flt == 'uncontrolled':
+        patients = [p for p in patients if p['control'] == 'uncontrolled']
+    elif flt in known_codes:
+        patients = [p for p in patients if flt in p['codes']]
+
+    rank = {'uncontrolled': 0, 'borderline': 1, 'controlled': 2, 'unknown': 3}
+    patients.sort(key=lambda p: rank.get(p['control'], 3))
+
+    return render_template(
+        "patients/list.html", patients=patients, q=q, active_page='patients',
+        counts=counts, active_filter=flt, condition_catalog=catalog,
+    )
 
 
 @bp.route("/enroll", methods=["GET"])
@@ -81,13 +143,23 @@ def detail(pid):
         flash("بیمار یافت نشد")
         return redirect(url_for("patients.list_patients"))
 
-    vitals_service = VitalsService()
-    control = vitals_service.control_status(pid)
-    vitals_repo = VitalsRepository()
-
-    # Per-disease indicators (drives quick-entry inputs + value labels)
+    from src.services.analytics_service import AnalyticsService
+    from src.services.rule_engine import RuleEngine
     from src.adapters.sqlite.clinical_rules_repo import ClinicalRulesRepository
     from src.adapters.sqlite.flags_repo import ClinicalFlagsRepository
+    from src.adapters.sqlite.core import get_db
+
+    # Clinical analytics powers the cockpit (indicators, per-disease panels, risk, charts, med events)
+    adata = AnalyticsService().patient_analytics(pid)
+    control = adata['control']
+
+    # ADA decision support (suggestion-only) + physician action log
+    clinical_support = RuleEngine().grouped(pid)
+    _rows = get_db().execute(
+        "SELECT rule_code, status, acted_by FROM suggestion_log WHERE patient_link_id=?", (pid,)).fetchall()
+    suggestion_status = {r['rule_code']: dict(r) for r in _rows}
+
+    vitals_repo = VitalsRepository()
     rules_repo = ClinicalRulesRepository()
     flags_repo = ClinicalFlagsRepository()
     condition_codes = [c.get('condition_code') for c in profile['conditions'] if c.get('condition_code')]
@@ -101,9 +173,6 @@ def detail(pid):
     drug_class_map = flags_repo.drug_class_map()
 
     # Trend charts for the key chronic vitals
-    chart_types = ['hba1c', 'fbs', 'bp_systolic', 'bp_diastolic']
-    charts = {vt: vitals_service.chart_series(pid, vt) for vt in chart_types}
-
     recent_vitals = vitals_repo.get_readings(pid, limit=30)
     for r in recent_vitals:
         r['level'] = evaluate_reading(r['type'], r['value'])
@@ -141,7 +210,7 @@ def detail(pid):
         allergies=profile['allergies'],
         visit_history=profile['visit_history'],
         control=control,
-        charts=charts,
+        charts=adata['charts'],
         targets=TARGETS,
         vital_types=VITAL_TYPES,
         recent_vitals=recent_vitals,
@@ -158,26 +227,24 @@ def detail(pid):
         medication_events=PatientRepository().get_medication_events(pid),
         wallet_balance=wallet_balance,
         wallet_tx=wallet_tx,
+        indicators=adata['indicators'],
+        by_category=adata['by_category'],
+        med_events=adata['med_events'],
+        risk=adata['risk'],
+        refill_due=adata['refill_due'],
+        appt_summary=adata['appointments'],
+        visits_count=adata['visits_count'],
+        last_visit=adata['last_visit'],
+        clinical_support=clinical_support,
+        suggestion_status=suggestion_status,
     )
 
 
 @bp.route("/<int:pid>/analytics")
 @login_required
 def analytics(pid):
-    data = AnalyticsService().patient_analytics(pid)
-    if not data['patient']:
-        flash("بیمار یافت نشد")
-        return redirect(url_for("patients.list_patients"))
-    # ADA rule-engine clinical support (suggestion-only)
-    from src.services.rule_engine import RuleEngine
-    from src.adapters.sqlite.flags_repo import ClinicalFlagsRepository
-    from src.adapters.sqlite.core import get_db
-    data['clinical_support'] = RuleEngine().grouped(pid)
-    data['drug_class_map'] = ClinicalFlagsRepository().drug_class_map()
-    rows = get_db().execute(
-        "SELECT rule_code, status, acted_by FROM suggestion_log WHERE patient_link_id=?", (pid,)).fetchall()
-    data['suggestion_status'] = {r['rule_code']: dict(r) for r in rows}
-    return render_template("patients/analytics.html", active_page='patients', **data)
+    """Merged into the unified patient cockpit; kept as a stable deep-link to the trends tab."""
+    return redirect(url_for("patients.detail", pid=pid) + "#trends")
 
 
 @bp.route("/<int:pid>/wallet/adjust", methods=["POST"])
@@ -283,7 +350,7 @@ def generate_followups(pid):
     n = generate_for_patient(pid)
     log_activity("followup_generate", f"تولید {n} پیگیری ADA", patient_link_id=pid)
     flash(f"{n} پیگیری ADA ساخته شد" if n else "پیگیری جدیدِ سررسیده‌ای نبود", "success")
-    return redirect(url_for("patients.analytics", pid=pid))
+    return redirect(url_for("patients.detail", pid=pid) + "#cockpit")
 
 
 @bp.route("/<int:pid>/suggestion/action", methods=["POST"])
@@ -307,7 +374,7 @@ def suggestion_action(pid):
         )
         db.commit()
         log_activity("suggestion_action", f"{status} پیشنهاد {rule_code}", patient_link_id=pid)
-    return redirect(url_for("patients.analytics", pid=pid))
+    return redirect(url_for("patients.detail", pid=pid) + "#cockpit")
 
 
 @bp.route("/<int:pid>/flags", methods=["POST"])

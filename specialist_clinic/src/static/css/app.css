@@ -452,3 +452,90 @@ input[type=checkbox],input[type=radio]{width:auto;accent-color:var(--primary);}
 .datepicker-plot-area .table-days td span:hover,.datepicker-plot-area .month-item:hover,.datepicker-plot-area .year-item:hover{background:var(--primary-soft)!important;color:#fff!important;}
 .datepicker-plot-area .table-days td span.selected,.datepicker-plot-area .selected{background:var(--primary)!important;color:#fff!important;}
 .datepicker-plot-area .table-days td.disabled span,.datepicker-plot-area .other-month{color:var(--faint)!important;}
+
+/* ========================================================================== */
+/*  PATIENT COCKPIT — header · tabs · vital stats · prioritized suggestions    */
+/*  (added for the physician "one-screen" redesign)                            */
+/* ========================================================================== */
+
+/* --- patient header --- */
+.pt-head{display:flex;justify-content:space-between;align-items:flex-start;gap:var(--s4);flex-wrap:wrap;margin-bottom:var(--s4);}
+.pt-id h1{font-size:23px;font-weight:800;display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+.pt-meta{display:flex;align-items:center;gap:9px;flex-wrap:wrap;color:var(--muted);font-size:12.5px;margin-top:6px;}
+.pt-meta .sep{color:var(--faint);}
+.pt-actions{display:flex;gap:var(--s2);flex-wrap:wrap;align-items:center;}
+
+/* --- sticky tab bar --- */
+.tabbar{position:sticky;top:0;z-index:20;display:flex;gap:2px;flex-wrap:wrap;
+    background:rgba(10,15,28,.82);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
+    border-bottom:1px solid var(--line);margin:0 calc(-1 * var(--s8)) var(--s5);padding:0 var(--s8);}
+@media(max-width:900px){.tabbar{margin:0 calc(-1 * var(--s4)) var(--s4);padding:0 var(--s4);}}
+.tabbar button{appearance:none;background:transparent;border:none;border-bottom:2.5px solid transparent;
+    color:var(--muted);font-family:inherit;font-size:14px;font-weight:600;cursor:pointer;
+    padding:13px 15px;display:inline-flex;align-items:center;gap:8px;line-height:1.2;
+    transition:color var(--t) var(--ease),border-color var(--t) var(--ease);}
+.tabbar button .icon{width:17px;height:17px;}
+.tabbar button:hover{color:var(--text);}
+.tabbar button.active{color:#fff;border-bottom-color:var(--primary);}
+.tabbar .pill{min-width:18px;height:18px;padding:0 5px;border-radius:9px;font-size:10.5px;font-weight:700;
+    display:inline-grid;place-items:center;background:var(--panel2);color:var(--muted);}
+.tabbar button.active .pill{background:var(--primary-soft);color:#bfdbfe;}
+.tabbar .pill.pill-danger{background:var(--danger-soft);color:var(--danger-fg);}
+.tab-pane[hidden]{display:none;}
+
+/* --- vital stat tiles (cockpit glance) --- */
+.vital-row{display:grid;grid-template-columns:repeat(auto-fill,minmax(168px,1fr));gap:var(--s3);}
+.vital-stat{background:var(--bg2);border:1px solid var(--line);border-radius:var(--r);padding:var(--s4) var(--s4) var(--s3);
+    position:relative;overflow:hidden;display:flex;flex-direction:column;gap:2px;min-height:118px;}
+.vital-stat::before{content:"";position:absolute;inset-block:0;inset-inline-start:0;width:3px;background:var(--line-strong);}
+.vital-stat.lvl-danger::before{background:var(--danger);} .vital-stat.lvl-warn::before{background:var(--warn);}
+.vital-stat.lvl-ok::before{background:var(--ok);} .vital-stat.lvl-none{opacity:.7;}
+.vital-stat .vs-label{display:flex;align-items:center;gap:6px;color:var(--muted);font-size:12px;font-weight:600;}
+.vital-stat .vs-val{font-size:27px;font-weight:800;line-height:1.05;letter-spacing:-.02em;color:#fff;margin-top:3px;}
+.vital-stat .vs-val small{font-size:12px;font-weight:500;color:var(--muted);}
+.vital-stat.lvl-danger .vs-val{color:var(--danger-fg);} .vital-stat.lvl-warn .vs-val{color:var(--warn-fg);} .vital-stat.lvl-ok .vs-val{color:var(--ok-fg);}
+.vital-stat .vs-meta{font-size:11px;color:var(--faint);margin-top:auto;display:flex;align-items:center;gap:6px;flex-wrap:wrap;}
+.vital-stat .vs-delta{font-weight:700;}
+.vital-stat .vs-spark{position:absolute;inset-block-end:0;inset-inline:0;height:30px;opacity:.5;pointer-events:none;}
+.vital-stat .vs-spark canvas{width:100%!important;height:30px!important;}
+
+/* --- prioritized ADA suggestion list --- */
+.sugg-summary{display:flex;align-items:center;gap:var(--s3);flex-wrap:wrap;font-size:13px;color:var(--muted);margin-bottom:var(--s2);}
+.sugg-group-title{font-weight:700;font-size:13px;color:var(--text);margin:var(--s4) 0 var(--s2);display:flex;align-items:center;gap:7px;}
+.sugg-group-title .icon{width:16px;height:16px;}
+
+.suggestion{border:1px solid var(--line);border-radius:var(--r-sm);padding:var(--s3) var(--s4);margin-bottom:var(--s2);
+    background:var(--bg2);border-inline-start:3px solid var(--info);transition:opacity var(--t) var(--ease);}
+.suggestion.sev-urgent{border-inline-start-color:var(--danger);}
+.suggestion.sev-warn{border-inline-start-color:var(--warn);}
+.suggestion.sev-info{border-inline-start-color:var(--info);}
+.suggestion .s-top{display:flex;justify-content:space-between;gap:var(--s2);flex-wrap:wrap;align-items:flex-start;}
+.suggestion .s-title{font-weight:700;font-size:13.5px;}
+.suggestion .s-codes{white-space:nowrap;display:flex;gap:4px;align-items:center;}
+.suggestion .s-body{font-size:13px;margin-top:var(--s2);line-height:1.7;}
+.suggestion .s-note{font-size:11.5px;margin-top:var(--s2);display:flex;align-items:flex-start;gap:5px;color:var(--muted);}
+.suggestion .s-note.danger{color:var(--danger-fg);}
+.suggestion .s-actions{margin-top:var(--s3);display:flex;gap:var(--s2);align-items:center;flex-wrap:wrap;}
+.suggestion.is-acted{opacity:.55;}
+.suggestion.is-acted .s-body{display:none;}
+
+/* dominant red-flag card */
+.redflag-card{border:1px solid rgba(239,68,68,.4);background:linear-gradient(180deg,var(--danger-soft),transparent);
+    border-radius:var(--r);padding:var(--s4) var(--s5);margin-bottom:var(--s5);}
+.redflag-card .rf-head{display:flex;align-items:center;gap:9px;font-weight:800;font-size:15px;color:var(--danger-fg);margin-bottom:var(--s2);}
+.redflag-card .rf-head .icon{width:22px;height:22px;}
+.redflag-card .rf-item{font-size:13.5px;padding:7px 0;border-top:1px solid rgba(239,68,68,.18);line-height:1.7;}
+.redflag-card .rf-item:first-of-type{border-top:none;}
+
+/* collapsible block (informational suggestions) */
+.collapse-toggle{cursor:pointer;user-select:none;color:var(--primary);font-weight:600;font-size:12.5px;
+    display:inline-flex;align-items:center;gap:6px;margin-top:var(--s3);}
+.collapse-toggle .icon{width:15px;height:15px;transition:transform var(--t) var(--ease);}
+.collapse-toggle.open .icon{transform:rotate(180deg);}
+[data-collapse][hidden]{display:none;}
+
+/* medication card + inline-row helpers (replace repeated inline styles) */
+.med-card{border:1px solid var(--line);border-radius:var(--radius);padding:var(--s3) var(--s4);margin-bottom:var(--s3);background:var(--bg2);}
+.med-card.inactive{opacity:.6;}
+.med-actions{display:flex;flex-wrap:wrap;gap:var(--s5);margin-top:var(--s3);padding-top:var(--s3);border-top:1px solid var(--line);}
+.row-sep{display:flex;align-items:center;justify-content:space-between;gap:var(--s2);padding:var(--s2) 0;border-bottom:1px solid var(--line);}

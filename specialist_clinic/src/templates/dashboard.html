@@ -6,9 +6,126 @@
     <h1><svg class="icon icon-lg"><use href="#i-dashboard"></use></svg> داشبورد</h1>
     <div class="row">
         <a class="btn" href="{{ url_for('patients.enroll') }}"><svg class="icon"><use href="#i-plus"></use></svg> ثبت‌نام بیمار</a>
-        <a class="btn btn-ghost" href="{{ url_for('sms.campaigns') }}"><svg class="icon"><use href="#i-megaphone"></use></svg> کمپین</a>
+        <a class="btn btn-ghost" href="{{ url_for('followups.worklist') }}"><svg class="icon"><use href="#i-list-checks"></use></svg> پیگیری</a>
     </div>
 </div>
+
+<!-- ============ CLINICAL: today's priorities (physician-first) ============ -->
+<div class="grid grid-4">
+    <a class="card kpi {% if stats.uncontrolled %}kpi-warn{% else %}kpi-ok{% endif %}" href="#attention">
+        <div class="ic"><svg class="icon"><use href="#i-activity"></use></svg></div>
+        <div class="num">{{ stats.uncontrolled|fa_num }}</div>
+        <div class="label">بیماران کنترل‌نشده</div>
+    </a>
+    <a class="card kpi kpi-info" href="{{ url_for('followups.worklist') }}">
+        <div class="ic"><svg class="icon"><use href="#i-bell"></use></svg></div>
+        <div class="num">{{ stats.followups_today|fa_num }}</div>
+        <div class="label">پیگیری‌های امروز و سررسیده</div>
+    </a>
+    <div class="card kpi kpi-ok">
+        <div class="ic"><svg class="icon"><use href="#i-trending-up"></use></svg></div>
+        <div class="num">{{ stats.control_rate|fa_num }}٪</div>
+        <div class="label">نرخ کنترل بیماری <span class="muted">({{ stats.controlled|fa_num }}/{{ stats.measured|fa_num }})</span></div>
+    </div>
+    <div class="card kpi kpi-violet">
+        <div class="ic"><svg class="icon"><use href="#i-clipboard"></use></svg></div>
+        <div class="num">{{ stats.lapsed|fa_num }}</div>
+        <div class="label">بدون مراجعهٔ اخیر (۴ ماه)</div>
+    </div>
+</div>
+
+<!-- بیمارانِ نیازمندِ توجه (the physician's first stop) -->
+<div class="card" id="attention">
+    <div class="section-title"><svg class="icon"><use href="#i-stethoscope"></use></svg> بیمارانِ نیازمندِ توجه
+        <span class="section-sub">آخرین شاخص‌های خارج از کنترل — مرتب بر اساس تعداد مورد</span>
+    </div>
+    {% if attention %}
+    <div class="table-wrap">
+    <table>
+        <thead><tr><th>بیمار</th><th>موارد خارج از کنترل</th><th>آخرین ثبت</th><th>موبایل</th><th></th></tr></thead>
+        <tbody>
+        {% for a in attention %}
+            <tr>
+                <td><a class="flex items-center gap-2" href="{{ url_for('patients.detail', pid=a.id) }}"><svg class="icon icon-sm"><use href="#i-user"></use></svg> {{ a.name }}</a></td>
+                <td>
+                    <div class="tag-list">
+                    {% for i in a.issues %}<span class="badge badge-danger">{{ i.label }} {{ i.value|fa_num }}{{ i.unit }}</span>{% endfor %}
+                    </div>
+                </td>
+                <td class="muted nums">{{ a.last_fa }}</td>
+                <td class="muted nums">{{ a.phone or '—' }}</td>
+                <td><a class="btn btn-sm btn-ghost" href="{{ url_for('patients.detail', pid=a.id) }}">پرونده <svg class="icon icon-sm"><use href="#i-chevron-left"></use></svg></a></td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    </div>
+    {% if attention_total > attention|length %}
+    <div class="muted help" style="margin-top:var(--s3);">{{ (attention_total - attention|length)|fa_num }} بیمارِ کنترل‌نشدهٔ دیگر — <a href="{{ url_for('patients.list_patients') }}">فهرست کامل بیماران</a></div>
+    {% endif %}
+    {% else %}
+    <div class="empty"><svg class="icon"><use href="#i-check"></use></svg><div>همهٔ بیمارانِ دارای شاخص، در محدودهٔ کنترل هستند.</div></div>
+    {% endif %}
+</div>
+
+<!-- today's follow-ups + upcoming appointments -->
+<div class="grid grid-2">
+    <div class="card">
+        <div class="section-title"><svg class="icon"><use href="#i-bell"></use></svg> پیگیری‌های امروز
+            <span class="section-sub">سررسید تا امروز</span>
+        </div>
+        {% if today_followups %}
+        <div class="table-wrap">
+        <table><tbody>
+        {% for t in today_followups %}
+            <tr>
+                <td><a href="{{ url_for('patients.detail', pid=t.pid) }}">{{ t.full_name }}</a></td>
+                <td><span class="badge badge-warn">{{ t.reason_fa }}</span></td>
+                <td class="muted">{{ t.detail or '—' }}</td>
+                <td class="muted nums">{{ t.due_fa }}</td>
+            </tr>
+        {% endfor %}
+        </tbody></table>
+        </div>
+        <a class="btn btn-sm btn-ghost" href="{{ url_for('followups.worklist') }}" style="margin-top:var(--s3);"><svg class="icon icon-sm"><use href="#i-list-checks"></use></svg> لیست کامل پیگیری</a>
+        {% else %}<div class="empty"><svg class="icon"><use href="#i-check"></use></svg><div>پیگیریِ سررسیده‌ای برای امروز نیست.</div></div>{% endif %}
+    </div>
+    <div class="card">
+        <div class="section-title"><svg class="icon"><use href="#i-calendar"></use></svg> نوبت‌های پیش‌رو</div>
+        {% if upcoming %}
+        <div class="table-wrap">
+        <table><tbody>
+        {% for a in upcoming %}
+            <tr>
+                <td><a href="{{ url_for('patients.detail', pid=a.patient_link_id) }}">{{ a.patient_name }}</a></td>
+                <td class="muted">{{ a.scheduled_fa }}</td>
+                <td class="muted nums">{{ a.phone_number or '—' }}</td>
+            </tr>
+        {% endfor %}
+        </tbody></table>
+        </div>
+        {% else %}<div class="empty"><svg class="icon"><use href="#i-calendar"></use></svg><div>نوبت پیش‌رویی نیست</div></div>{% endif %}
+    </div>
+</div>
+
+<!-- clinical mix -->
+<div class="card">
+    <div class="section-title"><svg class="icon"><use href="#i-sigma"></use></svg> ترکیب بیماران <span class="section-sub">{{ stats.patients|fa_num }} بیمارِ فعال</span></div>
+    <div class="legend">
+        {% for c in by_condition %}<span class="chip">{{ c.name }} <b>{{ c.c|fa_num }}</b></span>{% else %}<span class="muted">بیماری ثبت نشده</span>{% endfor %}
+    </div>
+    <div style="margin-top:var(--s4);">
+        <div class="flex items-center justify-between" style="font-size:12.5px;margin-bottom:6px;">
+            <span class="muted">نرخ کنترل بیماری</span>
+            <span class="c-ok" style="font-weight:700;">{{ stats.control_rate|fa_num }}٪</span>
+        </div>
+        <div class="t-bar" style="height:9px;"><span style="width:{{ stats.control_rate }}%;background:var(--ok);"></span></div>
+    </div>
+</div>
+
+<!-- ============ BUSINESS ============ -->
+<div class="divider"></div>
+<div class="section-title" style="font-size:14px;color:var(--muted);"><svg class="icon"><use href="#i-banknote"></use></svg> کسب‌وکار و درآمد</div>
 
 {% if not bridge_ok %}
 <div class="alert-banner alert-warn">
@@ -17,24 +134,23 @@
 </div>
 {% endif %}
 
-<!-- OPERATIONAL KPIs -->
 <div class="grid grid-4">
-    <div class="card kpi">
+    <div class="card kpi" style="margin-bottom:var(--s5);">
         <div class="ic"><svg class="icon"><use href="#i-users"></use></svg></div>
         <div class="num">{{ stats.patients|fa_num }}</div>
         <div class="label">بیماران مزمن</div>
     </div>
-    <div class="card kpi kpi-info">
+    <div class="card kpi kpi-info" style="margin-bottom:var(--s5);">
         <div class="ic"><svg class="icon"><use href="#i-calendar"></use></svg></div>
         <div class="num">{{ stats.appointments_open|fa_num }}</div>
         <div class="label">نوبت‌های پیش‌رو</div>
     </div>
-    <div class="card kpi kpi-warn">
-        <div class="ic"><svg class="icon"><use href="#i-bell"></use></svg></div>
-        <div class="num">{{ stats.followups_open|fa_num }}</div>
-        <div class="label">پیگیری‌های باز</div>
+    <div class="card kpi kpi-warn" style="margin-bottom:var(--s5);">
+        <div class="ic"><svg class="icon"><use href="#i-pill"></use></svg></div>
+        <div class="num">{{ stats.refills_due|fa_num }}</div>
+        <div class="label">داروی نیازمند تجدید نسخه</div>
     </div>
-    <div class="card kpi kpi-violet">
+    <div class="card kpi kpi-violet" style="margin-bottom:var(--s5);">
         <div class="ic"><svg class="icon"><use href="#i-wallet"></use></svg></div>
         <div class="num">{{ wallet_outstanding|fa_num }}</div>
         <div class="label">اعتبار کیف پول در گردش (تومان)</div>
@@ -42,11 +158,9 @@
 </div>
 
 {% if revenue.available %}
-<!-- REVENUE -->
 <div class="card">
     <div class="section-title">
-        <svg class="icon"><use href="#i-banknote"></use></svg>
-        درآمد بیماران مطب تخصصی
+        <svg class="icon"><use href="#i-banknote"></use></svg> درآمد بیماران مطب تخصصی
         <span class="section-sub">— از سامانه حسابداری (فاکتورهای بسته: ویزیت + تزریق + کار عملی)</span>
     </div>
     <div class="grid grid-4">
@@ -82,14 +196,12 @@
 
     <div style="margin-top:var(--s5);">
         <div class="muted flex items-center gap-2" style="font-size:13px;margin-bottom:var(--s2);">
-            <svg class="icon icon-sm"><use href="#i-bar-chart"></use></svg>
-            روند درآمد ۳۰ روز اخیر (تومان)
+            <svg class="icon icon-sm"><use href="#i-bar-chart"></use></svg> روند درآمد ۳۰ روز اخیر (تومان)
         </div>
         <canvas id="revChart" height="80"></canvas>
     </div>
 </div>
 
-<!-- CAMPAIGN PERFORMANCE -->
 <div class="card">
     <div class="section-title"><svg class="icon"><use href="#i-megaphone"></use></svg> عملکرد کمپین‌ها</div>
     {% if revenue.campaigns.rows %}
@@ -114,46 +226,6 @@
     {% else %}<div class="empty"><svg class="icon"><use href="#i-megaphone"></use></svg><div>هنوز کمپینی ارسال نشده</div></div>{% endif %}
 </div>
 {% endif %}
-
-<!-- UPCOMING + RECENT -->
-<div class="grid grid-2">
-    <div class="card">
-        <div class="section-title"><svg class="icon"><use href="#i-calendar"></use></svg> نوبت‌های پیش‌رو</div>
-        {% if upcoming %}
-        <div class="table-wrap">
-        <table>
-            <tbody>
-            {% for a in upcoming %}
-                <tr>
-                    <td><a href="{{ url_for('patients.detail', pid=a.patient_link_id) }}">{{ a.patient_name }}</a></td>
-                    <td class="muted">{{ a.scheduled_fa }}</td>
-                    <td class="muted">{{ a.phone_number or '—' }}</td>
-                </tr>
-            {% endfor %}
-            </tbody>
-        </table>
-        </div>
-        {% else %}<div class="empty"><svg class="icon"><use href="#i-calendar"></use></svg><div>نوبت پیش‌رویی نیست</div></div>{% endif %}
-    </div>
-    <div class="card">
-        <div class="section-title"><svg class="icon"><use href="#i-user"></use></svg> بیماران اخیر</div>
-        {% if recent_patients %}
-        <div class="table-wrap">
-        <table>
-            <tbody>
-            {% for p in recent_patients %}
-                <tr>
-                    <td><a href="{{ url_for('patients.detail', pid=p.id) }}">{{ p.full_name }}</a></td>
-                    <td class="muted">{{ p.phone_number or '—' }}</td>
-                    <td class="muted">{{ p.enrolled_at|jalali_date }}</td>
-                </tr>
-            {% endfor %}
-            </tbody>
-        </table>
-        </div>
-        {% else %}<div class="empty"><svg class="icon"><use href="#i-users"></use></svg><div>بیماری ثبت نشده</div></div>{% endif %}
-    </div>
-</div>
 
 {% if revenue.available %}
 <script>

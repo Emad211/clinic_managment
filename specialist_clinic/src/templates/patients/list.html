@@ -1,35 +1,64 @@
 {% extends "base.html" %}
 {% block title %}بیماران{% endblock %}
+{% set ctl = {'uncontrolled':['badge-danger','کنترل‌نشده'],'borderline':['badge-warn','مرزی'],'controlled':['badge-ok','کنترل‌شده'],'unknown':['badge-muted','بدون داده']} %}
 {% block content %}
 <div class="topbar">
-    <h1><svg class="icon"><use href="#i-users"></use></svg> بیماران مزمن</h1>
+    <h1><svg class="icon icon-lg"><use href="#i-users"></use></svg> بیماران مزمن</h1>
     <a class="btn" href="{{ url_for('patients.enroll') }}"><svg class="icon"><use href="#i-plus"></use></svg> ثبت‌نام بیمار</a>
 </div>
 
-<div class="card">
-    <div class="section-title"><svg class="icon"><use href="#i-search"></use></svg> جستجوی بیمار</div>
+<!-- search + quick filters -->
+<div class="card card-soft">
     <form class="row" method="get">
+        <input type="hidden" name="filter" value="{{ active_filter }}">
         <div class="field" style="flex:1;">
             <input type="text" name="q" value="{{ q }}" placeholder="جستجو بر اساس نام، کدملی یا موبایل...">
         </div>
         <button class="btn" type="submit"><svg class="icon"><use href="#i-search"></use></svg> جستجو</button>
+        {% if q or active_filter %}<a class="btn btn-ghost" href="{{ url_for('patients.list_patients') }}">پاک‌کردن</a>{% endif %}
     </form>
+    <div class="flex items-center gap-2 wrap" style="margin-top:var(--s3);">
+        <span class="muted text-xs">فیلتر:</span>
+        <a class="btn btn-sm {% if not active_filter %}btn{% else %}btn-ghost{% endif %}" href="{{ url_for('patients.list_patients', q=q) }}">همه <span class="badge badge-muted">{{ counts.all|fa_num }}</span></a>
+        <a class="btn btn-sm {% if active_filter=='uncontrolled' %}btn-danger{% else %}btn-ghost{% endif %}" href="{{ url_for('patients.list_patients', q=q, filter='uncontrolled') }}">کنترل‌نشده {% if counts.uncontrolled %}<span class="badge badge-danger">{{ counts.uncontrolled|fa_num }}</span>{% endif %}</a>
+        {% for c in condition_catalog %}{% if c.code %}
+        <a class="btn btn-sm {% if active_filter==c.code %}btn{% else %}btn-ghost{% endif %}" href="{{ url_for('patients.list_patients', q=q, filter=c.code) }}">{{ c.name }}</a>
+        {% endif %}{% endfor %}
+    </div>
 </div>
 
 <div class="card">
-    <div class="section-title"><svg class="icon"><use href="#i-list-checks"></use></svg> فهرست بیماران</div>
+    <div class="section-title"><svg class="icon"><use href="#i-list-checks"></use></svg> فهرست بیماران
+        <span class="section-sub">کنترل‌نشده‌ها ابتدا — برای ورود به پرونده روی نام بزنید</span>
+    </div>
     {% if patients %}
     <div class="table-wrap">
     <table>
-        <thead><tr><th>نام</th><th>کدملی</th><th>موبایل</th><th>وضعیت لینک</th><th></th></tr></thead>
+        <thead><tr><th>بیمار</th><th>وضعیت کنترل</th><th>آخرین شاخص‌ها</th><th>آخرین ثبت</th><th>موبایل</th><th></th></tr></thead>
         <tbody>
         {% for p in patients %}
             <tr>
-                <td>{{ p.full_name }}</td>
-                <td class="nums">{{ p.national_id or '—' }}</td>
-                <td class="nums">{{ p.phone_number or '—' }}</td>
-                <td>{% if p.accounting_patient_id %}<span class="badge badge-ok">متصل به حسابداری</span>{% else %}<span class="badge badge-muted">مستقل</span>{% endif %}</td>
-                <td><a class="btn btn-sm btn-ghost" href="{{ url_for('patients.detail', pid=p.id) }}"><svg class="icon icon-sm"><use href="#i-user"></use></svg> پرونده</a></td>
+                <td>
+                    <a class="flex items-center gap-2" href="{{ url_for('patients.detail', pid=p.id) }}" style="font-weight:600;">
+                        <svg class="icon icon-sm"><use href="#i-user"></use></svg> {{ p.full_name }}
+                    </a>
+                    <div class="tag-list" style="margin-top:5px;">
+                        {% for cn in p.cond_list %}<span class="badge badge-info" style="font-size:10px;">{{ cn }}</span>{% else %}<span class="muted text-xs">بدون تشخیص</span>{% endfor %}
+                        {% if p.accounting_patient_id %}<span class="badge badge-muted" style="font-size:10px;"><svg class="icon icon-sm"><use href="#i-building"></use></svg> حسابداری</span>{% endif %}
+                    </div>
+                </td>
+                <td><span class="badge {{ ctl.get(p.control)[0] }}">{{ ctl.get(p.control)[1] }}</span></td>
+                <td>
+                    <div class="flex items-center gap-2 wrap nums" style="font-size:12px;">
+                        {% if p.hba1c is not none %}<span>A1c <b class="{% if p.hba1c>8 %}c-danger{% elif p.hba1c>7 %}c-warn{% else %}c-ok{% endif %}">{{ p.hba1c|fa_num }}</b></span>{% endif %}
+                        {% if p.sys is not none %}<span class="muted">·</span><span>فشار <b class="{% if p.sys>=140 %}c-danger{% elif p.sys>=130 %}c-warn{% else %}c-ok{% endif %}">{{ p.sys|fa_num }}</b></span>{% endif %}
+                        {% if p.fbs is not none %}<span class="muted">·</span><span>قند <b class="{% if p.fbs>=180 %}c-danger{% elif p.fbs>=130 %}c-warn{% else %}c-ok{% endif %}">{{ p.fbs|fa_num }}</b></span>{% endif %}
+                        {% if p.hba1c is none and p.sys is none and p.fbs is none %}<span class="muted">—</span>{% endif %}
+                    </div>
+                </td>
+                <td class="muted nums">{{ p.last_fa or 'بدون ثبت' }}</td>
+                <td class="muted nums">{{ p.phone_number or '—' }}</td>
+                <td><a class="btn btn-sm btn-ghost" href="{{ url_for('patients.detail', pid=p.id) }}">پرونده <svg class="icon icon-sm"><use href="#i-chevron-left"></use></svg></a></td>
             </tr>
         {% endfor %}
         </tbody>
@@ -38,7 +67,7 @@
     {% else %}
     <div class="empty">
         <svg class="icon"><use href="#i-users"></use></svg>
-        <div>بیماری یافت نشد. برای شروع، یک بیمار ثبت‌نام کنید.</div>
+        <div>{% if q or active_filter %}بیماری با این فیلتر یافت نشد.{% else %}بیماری یافت نشد. برای شروع، یک بیمار ثبت‌نام کنید.{% endif %}</div>
     </div>
     {% endif %}
 </div>

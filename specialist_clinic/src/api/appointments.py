@@ -22,12 +22,21 @@ def list_appointments():
     dt = jalali_to_gregorian_str(request.args.get("to", "")) or (iran_now() + timedelta(days=30)).strftime('%Y-%m-%d')
     status = request.args.get("status") or None
     appts = AppointmentRepository().list_range(df, dt, status)
+    today = iran_now().strftime('%Y-%m-%d')
     for a in appts:
         a['type_fa'] = APPT_TYPES.get(a.get('appt_type'), a.get('appt_type') or '—')
         a['status_fa'] = STATUS_FA.get(a.get('status'), a.get('status'))
         a['scheduled_fa'] = format_jalali_datetime(a['scheduled_at'])
+        a['is_today'] = str(a['scheduled_at'])[:10] == today
+    summary = {
+        'today': sum(1 for a in appts if a['is_today']),
+        'scheduled': sum(1 for a in appts if a['status'] == 'scheduled'),
+        'done': sum(1 for a in appts if a['status'] == 'done'),
+        'no_show': sum(1 for a in appts if a['status'] == 'no_show'),
+        'total': len(appts),
+    }
     return render_template("appointments/list.html", appointments=appts, status_fa=STATUS_FA,
-                           active_page='appointments')
+                           active_page='appointments', summary=summary, active_status=status or '')
 
 
 @bp.route("/new", methods=["GET", "POST"])

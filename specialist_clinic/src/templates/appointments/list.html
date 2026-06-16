@@ -6,30 +6,33 @@
     <a class="btn" href="{{ url_for('appointments.new_appointment') }}"><svg class="icon"><use href="#i-plus"></use></svg> نوبت جدید</a>
 </div>
 
-<div class="card">
-    <div class="section-title"><svg class="icon"><use href="#i-filter"></use></svg> فیلتر نوبت‌ها</div>
+<!-- summary -->
+<div class="grid grid-4">
+    <div class="card kpi"><div class="ic"><svg class="icon"><use href="#i-calendar"></use></svg></div><div class="num">{{ summary.today|fa_num }}</div><div class="label">نوبت امروز</div></div>
+    <div class="card kpi kpi-warn"><div class="ic"><svg class="icon"><use href="#i-bell"></use></svg></div><div class="num">{{ summary.scheduled|fa_num }}</div><div class="label">برنامه‌ریزی‌شده در بازه</div></div>
+    <div class="card kpi kpi-ok"><div class="ic"><svg class="icon"><use href="#i-check"></use></svg></div><div class="num">{{ summary.done|fa_num }}</div><div class="label">انجام‌شده</div></div>
+    <div class="card kpi"><div class="ic"><svg class="icon"><use href="#i-user"></use></svg></div><div class="num {% if summary.no_show %}c-danger{% endif %}">{{ summary.no_show|fa_num }}</div><div class="label">غیبت</div></div>
+</div>
+
+<!-- filters -->
+<div class="card card-soft">
     <form class="row" method="get">
-        <div class="fld">
-            <label>از تاریخ</label>
-            <input type="text" class="jdate" name="from" value="{{ request.args.get('from','') }}" placeholder="انتخاب تاریخ">
-        </div>
-        <div class="fld">
-            <label>تا تاریخ</label>
-            <input type="text" class="jdate" name="to" value="{{ request.args.get('to','') }}" placeholder="انتخاب تاریخ">
-        </div>
-        <div class="fld">
-            <label>وضعیت</label>
-            <select name="status">
-                <option value="">همه</option>
-                {% for k, v in status_fa.items() %}<option value="{{ k }}" {% if request.args.get('status')==k %}selected{% endif %}>{{ v }}</option>{% endfor %}
-            </select>
-        </div>
-        <button class="btn" type="submit"><svg class="icon"><use href="#i-filter"></use></svg> فیلتر</button>
+        <div class="fld"><label>از تاریخ</label><input type="text" class="jdate" name="from" value="{{ request.args.get('from','') }}" placeholder="انتخاب تاریخ"></div>
+        <div class="fld"><label>تا تاریخ</label><input type="text" class="jdate" name="to" value="{{ request.args.get('to','') }}" placeholder="انتخاب تاریخ"></div>
+        <input type="hidden" name="status" value="{{ active_status }}">
+        <button class="btn" type="submit"><svg class="icon"><use href="#i-filter"></use></svg> اعمال بازه</button>
     </form>
+    <div class="flex items-center gap-2 wrap" style="margin-top:var(--s3);">
+        <span class="muted text-xs">وضعیت:</span>
+        <a class="btn btn-sm {% if not active_status %}btn{% else %}btn-ghost{% endif %}" href="{{ url_for('appointments.list_appointments', **{'from':request.args.get('from',''),'to':request.args.get('to','')}) }}">همه</a>
+        {% for k, v in status_fa.items() %}
+        <a class="btn btn-sm {% if active_status==k %}btn{% else %}btn-ghost{% endif %}" href="{{ url_for('appointments.list_appointments', status=k, **{'from':request.args.get('from',''),'to':request.args.get('to','')}) }}">{{ v }}</a>
+        {% endfor %}
+    </div>
 </div>
 
 <div class="card">
-    <div class="section-title"><svg class="icon"><use href="#i-calendar"></use></svg> فهرست نوبت‌ها</div>
+    <div class="section-title"><svg class="icon"><use href="#i-calendar"></use></svg> فهرست نوبت‌ها <span class="section-sub">{{ summary.total|fa_num }} نوبت در بازه</span></div>
     {% if appointments %}
     <div class="table-wrap">
     <table>
@@ -37,8 +40,14 @@
         <tbody>
         {% for a in appointments %}
             <tr>
-                <td>{{ a.patient_name }}</td>
-                <td class="nums">{{ a.scheduled_fa }}{% if a.recurrence_months %} <span class="badge badge-muted">هر {{ a.recurrence_months|fa_num }} ماه</span>{% endif %}</td>
+                <td>
+                    <a class="flex items-center gap-2" href="{{ url_for('patients.detail', pid=a.patient_link_id) }}" style="font-weight:600;"><svg class="icon icon-sm"><use href="#i-user"></use></svg> {{ a.patient_name }}</a>
+                    {% if a.phone_number %}<div class="muted text-xs nums" style="margin-top:3px;">{{ a.phone_number }}</div>{% endif %}
+                </td>
+                <td class="nums">
+                    {% if a.is_today %}<span class="badge badge-info" style="font-size:10px;">امروز</span> {% endif %}{{ a.scheduled_fa }}
+                    {% if a.recurrence_months %}<span class="badge badge-muted" style="font-size:10px;">هر {{ a.recurrence_months|fa_num }} ماه</span>{% endif %}
+                </td>
                 <td>{{ a.type_fa }}</td>
                 <td>
                     {% if a.status=='scheduled' %}<span class="badge badge-warn">{{ a.status_fa }}</span>
@@ -48,11 +57,11 @@
                 <td>
                     {% if a.status=='scheduled' %}
                     <div class="flex items-center gap-2 wrap">
-                    <form method="post" action="{{ url_for('appointments.set_status', appt_id=a.id) }}">
+                    <form method="post" action="{{ url_for('appointments.set_status', appt_id=a.id) }}" style="margin:0;">
                         <input type="hidden" name="status" value="done"><button class="btn btn-sm btn-ok" type="submit"><svg class="icon icon-sm"><use href="#i-check"></use></svg> انجام شد</button></form>
-                    <form method="post" action="{{ url_for('appointments.set_status', appt_id=a.id) }}">
+                    <form method="post" action="{{ url_for('appointments.set_status', appt_id=a.id) }}" style="margin:0;">
                         <input type="hidden" name="status" value="no_show"><button class="btn btn-sm btn-ghost" type="submit"><svg class="icon icon-sm"><use href="#i-user"></use></svg> غیبت</button></form>
-                    <form method="post" action="{{ url_for('appointments.set_status', appt_id=a.id) }}">
+                    <form method="post" action="{{ url_for('appointments.set_status', appt_id=a.id) }}" style="margin:0;">
                         <input type="hidden" name="status" value="cancelled"><button class="btn btn-sm btn-danger" type="submit"><svg class="icon icon-sm"><use href="#i-x"></use></svg> لغو</button></form>
                     </div>
                     {% else %}<span class="muted">—</span>{% endif %}

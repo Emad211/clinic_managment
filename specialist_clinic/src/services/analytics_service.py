@@ -210,6 +210,25 @@ class AnalyticsService:
             cat_points['adherence'] = behav
             total += behav
 
+        # Treatment-safety flags (e.g. high hypoglycemia risk) elevate the headline
+        # risk independently of vitals control, so an insulin patient with high hypo
+        # risk is not shown as falsely reassuring "low".
+        try:
+            from src.adapters.sqlite.flags_repo import ClinicalFlagsRepository
+            flags = ClinicalFlagsRepository().get_flags(pid)
+        except Exception:
+            flags = {}
+        safety = 0
+        if (flags.get('hypo_risk') or '') == 'high':
+            safety += 2
+            behav_notes.append('ریسک بالای هیپوگلیسمی')
+        if flags.get('frailty') == 'complex':
+            safety += 1
+            behav_notes.append('سالمند فراژیل (احتیاط در تشدید درمان)')
+        if safety:
+            cat_points['safety'] = safety
+            total += safety
+
         if severe_kidney or total >= 5 or danger_count >= 2:
             level, label = 'high', 'پرخطر'
         elif total >= 3 or danger_count == 1:
@@ -220,7 +239,11 @@ class AnalyticsService:
             level, label = 'ok', 'پایدار'
 
         def cat_label(c):
-            return 'پایبندی درمان' if c == 'adherence' else CATEGORY_LABELS.get(c, c)
+            if c == 'adherence':
+                return 'پایبندی درمان'
+            if c == 'safety':
+                return 'ایمنی درمان'
+            return CATEGORY_LABELS.get(c, c)
 
         breakdown = [{'category': c, 'label': cat_label(c), 'points': round(p, 1)}
                      for c, p in sorted(cat_points.items(), key=lambda kv: -kv[1])]

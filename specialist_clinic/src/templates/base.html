@@ -131,6 +131,23 @@
             });
         }
     });
+
+    // a11y: expose section titles as level-2 headings for screen readers (page <h1> stays level 1)
+    document.querySelectorAll('.section-title').forEach(function(el){
+        if(!el.hasAttribute('role')){ el.setAttribute('role','heading'); el.setAttribute('aria-level','2'); }
+    });
+
+    // Prevent accidental double-submit: disable the submit button once a form is submitting.
+    // (The buttons carry no form data — no name attribute — so disabling now is safe.)
+    document.addEventListener('submit', function(e){
+        var f = e.target;
+        if (!f || f.tagName !== 'FORM') return;
+        var btn = f.querySelector('button[type="submit"], button:not([type]), input[type="submit"]');
+        if (btn && !btn.disabled){
+            btn.disabled = true;
+            setTimeout(function(){ if (document.contains(btn)) btn.disabled = false; }, 6000);
+        }
+    }, true);
     </script>
     {% block scripts %}{% endblock %}
 </body>
