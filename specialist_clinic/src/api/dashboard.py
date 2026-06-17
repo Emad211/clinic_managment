@@ -13,7 +13,7 @@ bp = Blueprint("dashboard", __name__)
 
 # Follow-up reason → Persian label (mirrors the worklist labels).
 REASON_FA = {
-    'refill': 'تجدید نسخه', 'uncontrolled': 'کنترل‌نشده', 'lapsed': 'بدون مراجعه',
+    'refill': 'تجدید نسخه', 'uncontrolled': 'کنترل‌نشده', 'lapsed': 'بدون مراجعه', 'recall': 'دعوتِ بازگشت',
     'visit_due': 'موعد ویزیت', 'manual': 'دستی', 'monitoring': 'پایش',
     'screening': 'غربالگری', 'vaccine': 'واکسن',
 }

@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% block title %}اتاقِ کنترل{% endblock %}
+{% set ctrl = {'uncontrolled':('badge-danger','کنترل‌نشده'),'borderline':('badge-warn','مرزی'),'controlled':('badge-ok','کنترل‌شده'),'unknown':('badge-muted','نامشخص')} %}
+{% block content %}
+<div class="topbar">
+    <h1><svg class="icon icon-lg"><use href="#i-activity"></use></svg> اتاقِ کنترل</h1>
+    <span class="muted text-sm">{{ total|fa_num }} بیمارِ نیازمندِ اقدام</span>
+</div>
+<p class="page-intro">
+    بیماران بر اساس <b>فوریتِ بالینی</b> (با چاشنیِ ارزش) رتبه‌بندی شده‌اند. روی هر گروه یک‌کلیک
+    تسکِ تماس بسازید یا پیامکِ دعوت بفرستید. امتیازِ هر بیمار با جزئیات نشان داده می‌شود تا دلیلش روشن باشد.
+    {% if not show_value %}<span class="muted">(ستونِ ارزش/درآمد فقط برای مدیر دیده می‌شود.)</span>{% endif %}
+</p>
+
+<!-- COHORTS -->
+<div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(300px,1fr));">
+{% for c in cohorts %}
+    <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:var(--s2);">
+            <strong>{{ c.label }}</strong>
+            <span class="badge {% if c.count %}badge-warn{% else %}badge-muted{% endif %}">{{ c.count|fa_num }} نفر</span>
+        </div>
+        {% if c.count %}
+        <div class="flex items-center gap-2 wrap" style="margin-top:var(--s3);">
+            <form method="post" action="{{ url_for('control_room.recall') }}" style="margin:0;"
+                  onsubmit="return confirm('ساختِ {{ c.count }} تسکِ تماس برای این گروه؟');">
+                <input type="hidden" name="cohort" value="{{ c.key }}">
+                <button class="btn btn-sm" type="submit"><svg class="icon icon-sm"><use href="#i-phone"></use></svg> ساختِ تسکِ تماس</button>
+            </form>
+            <details>
+                <summary class="btn btn-sm btn-ghost" style="display:inline-flex;list-style:none;cursor:pointer;"><svg class="icon icon-sm"><use href="#i-megaphone"></use></svg> ارسالِ پیامک</summary>
+                <form method="post" action="{{ url_for('control_room.sms') }}" style="margin-top:var(--s2);"
+                      onsubmit="return confirm('ارسالِ پیامک به این گروه؟');">
+                    <input type="hidden" name="cohort" value="{{ c.key }}">
+                    <textarea name="body" rows="2" required placeholder="سلام {name} عزیز، ..." style="width:100%;"></textarea>
+                    <div class="muted text-xs" style="margin:var(--s1) 0 var(--s2);">{name} = نام بیمار · انصراف‌داده‌ها و بدون‌موبایل حذف می‌شوند</div>
+                    <button class="btn btn-sm" type="submit"><svg class="icon icon-sm"><use href="#i-zap"></use></svg> ارسال</button>
+                </form>
+            </details>
+        </div>
+        {% else %}<div class="muted text-sm" style="margin-top:var(--s2);">کسی در این گروه نیست.</div>{% endif %}
+    </div>
+{% endfor %}
+</div>
+
+<!-- RANKED TABLE -->
+<div class="card">
+    <div class="section-title"><svg class="icon"><use href="#i-list-checks"></use></svg> فهرستِ اولویت‌بندی‌شده
+        <span class="section-sub">— روی امتیاز نگه دارید تا جزئیاتش را ببینید</span></div>
+    {% if patients %}
+    <div class="table-wrap">
+    <table>
+        <thead><tr>
+            <th>امتیاز</th><th>بیمار</th><th>کنترل</th><th>خارج از محدوده</th>
+            <th>آخرین مراجعه</th><th>پیگیریِ باز</th>{% if show_value %}<th>ارزش (تومان)</th>{% endif %}<th></th>
+        </tr></thead>
+        <tbody>
+        {% for p in patients %}
+            <tr>
+                <td><span class="badge {% if p.score>=8 %}badge-danger{% elif p.score>=4 %}badge-warn{% else %}badge-muted{% endif %}" title="{% for l,pts in p.breakdown %}{{ l }}: {{ pts }}{% if not loop.last %} · {% endif %}{% endfor %}">{{ p.score|fa_num }}</span></td>
+                <td>
+                    <a href="{{ url_for('patients.detail', pid=p.id) }}"><b>{{ p.name }}</b></a>
+                    <div class="muted text-xs">{{ p.conditions|join('، ') }}{% if p.opt_out %} · <span class="c-warn">انصرافِ پیامک</span>{% endif %}{% if p.upcoming %} · <span class="c-ok">نوبتِ پیش‌رو</span>{% endif %}</div>
+                </td>
+                <td><span class="badge {{ ctrl[p.control][0] }}">{{ ctrl[p.control][1] }}</span></td>
+                <td class="text-xs">
+                    {% for f in p.flags %}<span class="badge badge-danger">{{ f.label }} {{ f.value|fa_num }}</span> {% endfor %}
+                    {% for w in p.warns %}<span class="badge badge-warn">{{ w.label }} {{ w.value|fa_num }}</span> {% endfor %}
+                    {% if not p.flags and not p.warns %}<span class="muted">—</span>{% endif %}
+                </td>
+                <td class="muted nums">{{ p.last_fa }}{% if p.lapsed %} <span class="badge badge-muted">بی‌مراجعه</span>{% endif %}</td>
+                <td class="nums">{{ p.open_fu|fa_num if p.open_fu else '—' }}</td>
+                {% if show_value %}<td class="nums">{{ p.value|fa_num if p.value else '—' }}</td>{% endif %}
+                <td><a class="btn btn-sm btn-ghost" href="{{ url_for('patients.detail', pid=p.id) }}"><svg class="icon icon-sm"><use href="#i-chevron-left"></use></svg> پرونده</a></td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    </div>
+    {% else %}<div class="empty"><svg class="icon"><use href="#i-check"></use></svg><div>هیچ بیمارِ نیازمندِ اقدامی نیست — همه‌چیز پایدار است.</div></div>{% endif %}
+</div>
+{% endblock %}

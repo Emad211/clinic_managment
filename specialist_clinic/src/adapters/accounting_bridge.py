@@ -293,6 +293,53 @@ def revenue_for_enrolled(pairs: list[tuple[int, str | None]], floor: str | None 
         conn.close()
 
 
+def revenue_by_patient(pairs: list[tuple[int, str | None]]) -> dict[int, int]:
+    """Per-patient COLLECTED specialist revenue (enrollment-bounded), keyed by
+    accounting_patient_id — the "value" dimension for the Control Room.
+
+    `pairs` = [(accounting_patient_id, since 'YYYY-MM-DD' | None), ...]. Mirrors
+    revenue_for_enrolled's definition (closed invoices; items marked paid via
+    invoice_item_payments.is_paid=1; on/after each patient's enrollment date) but
+    GROUPed per patient. Returns {accounting_patient_id: collected}.
+    """
+    out: dict[int, int] = {}
+    pairs = [(int(a), s) for a, s in pairs if a]
+    if not pairs:
+        return out
+    conn = _connect_ro()
+    if conn is None:
+        return out
+    try:
+        for chunk in _chunks(pairs):
+            values_sql = ",".join(["(?,?)"] * len(chunk))
+            flat: list[Any] = []
+            for a, s in chunk:
+                flat.extend([a, s])
+            for table, col, item_type in (('visits', 'price', 'visit'),
+                                          ('injections', 'total_price', 'injection'),
+                                          ('procedures', 'price', 'procedure')):
+                rows = conn.execute(
+                    f"""WITH enr(pid, since) AS (VALUES {values_sql})
+                        SELECT t.patient_id pid,
+                               COALESCE(SUM(CASE WHEN iip.is_paid=1 THEN t.{col} ELSE 0 END),0) collected
+                        FROM {table} t
+                        JOIN invoices i ON i.id = t.invoice_id AND i.status='closed'
+                        JOIN enr e ON e.pid = t.patient_id
+                        LEFT JOIN invoice_item_payments iip
+                          ON iip.invoice_id = t.invoice_id AND iip.item_type = ? AND iip.item_id = t.id
+                        WHERE (e.since IS NULL OR i.work_date >= e.since)
+                        GROUP BY t.patient_id""",
+                    (*flat, item_type)).fetchall()
+                for r in rows:
+                    if r['pid'] is not None:
+                        out[int(r['pid'])] = out.get(int(r['pid']), 0) + int(r['collected'] or 0)
+        return out
+    except Exception:
+        return out
+    finally:
+        conn.close()
+
+
 def daily_revenue_for_enrolled(pairs: list[tuple[int, str | None]], date_from: str,
                                date_to: str) -> dict[str, int]:
     """Per-day specialist revenue for a trend chart, bounded per-patient by enrollment."""

@@ -8,6 +8,7 @@ REASON_LABELS = {
     'uncontrolled': 'کنترل‌نشده',
     'lapsed': 'بدون مراجعه اخیر',
     'visit_due': 'موعد ویزیت',
+    'recall': 'دعوتِ بازگشت',
     'monitoring': 'پایش',
     'screening': 'غربالگری',
     'vaccine': 'واکسیناسیون',

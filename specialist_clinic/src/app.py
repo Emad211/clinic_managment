@@ -54,6 +54,7 @@ def create_app(test_config=None):
     from src.api.followups import bp as followups_bp
     from src.api.sms import bp as sms_bp
     from src.api.manager import bp as manager_bp
+    from src.api.control_room import bp as control_room_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(dashboard_bp)
@@ -63,6 +64,7 @@ def create_app(test_config=None):
     app.register_blueprint(followups_bp)
     app.register_blueprint(sms_bp)
     app.register_blueprint(manager_bp)
+    app.register_blueprint(control_room_bp)
 
     # ---- Jinja filters ----
     @app.template_filter("jalali")
