@@ -372,7 +372,8 @@ INSERT OR IGNORE INTO clinical_indicators
   ('egfr',         'eGFR (عملکرد کلیه)', 'mL/min',     'kidney',   'low',  60,   30,   NULL, 60,   NULL, 'diabetes,hypertension,ckd',        3, 80, 'هرچه بالاتر بهتر؛ <۳۰ پرخطر'),
   ('uacr',         'UACR (آلبومین ادرار)','mg/g',      'kidney',   'high', 30,   300,  30,   NULL, NULL, 'diabetes,hypertension,ckd',        2, 90, '۳۰–۲۹۹ میکرو، ≥۳۰۰ ماکروآلبومینوری'),
   ('weight',       'وزن',                'kg',         'anthro',   'high', NULL, NULL, NULL, NULL, NULL, 'all',                              0, 100,'پایش روند'),
-  ('bmi',          'BMI',                '',           'anthro',   'high', 25,   30,   NULL, NULL, 25,   'all',                              1, 105,'اضافه‌وزن ≥۲۵، چاقی ≥۳۰');
+  ('bmi',          'BMI',                '',           'anthro',   'high', 25,   30,   NULL, NULL, 25,   'all',                              1, 105,'اضافه‌وزن ≥۲۵، چاقی ≥۳۰'),
+  ('tsh',          'TSH (تیروئید)',      'mIU/L',      'other',    'high', 4.5,  10,   2.5,  0.4,  4.0,  'thyroid',                          1, 115,'بالا=کم‌کاری؛ پایین (<۰.۴)=پرکاری');
 
 -- ============================================================================
 -- Medication events: objective timeline of start / stop / dose changes.

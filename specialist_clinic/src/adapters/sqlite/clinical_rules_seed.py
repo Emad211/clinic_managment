@@ -13,6 +13,9 @@ import json
 # --- trigger leaf helpers ---
 DM = {"var": "condition", "op": "has", "value": "diabetes"}
 HTN = {"var": "condition", "op": "has", "value": "hypertension"}
+HLD = {"var": "condition", "op": "has", "value": "hyperlipidemia"}
+CKD = {"var": "condition", "op": "has", "value": "ckd"}
+THY = {"var": "condition", "op": "has", "value": "thyroid"}
 
 
 def ind(key, op, value, attr="latest"):
@@ -36,20 +39,24 @@ def age(op, value):
 
 # Rules that fire regardless of a single disease (e.g. a BP crisis, RAS-inhibitor
 # monitoring) belong to the shared 'all' module, not one disease.
-CROSS_DISEASE = {'T2-REDFLAG-BP', 'T2-MON-RAS-K'}
+CROSS_DISEASE = {'T2-REDFLAG-BP', 'T2-MON-RAS-K', 'T2-MON-STATIN-LIPID'}
+
+_PREFIX_CONDITION = {'HTN-': 'hypertension', 'HLD-': 'hyperlipidemia',
+                     'CKD-': 'ckd', 'THY-': 'thyroid'}
 
 
 def _condition_for(r: dict) -> str:
     """Owning disease module for a rule. Explicit `condition_code` wins; otherwise
-    by code prefix: the legacy T2-* catalog is the diabetes module, HTN-* is
-    hypertension. Cross-disease rules map to 'all'."""
+    by code prefix (HTN-/HLD-/CKD-/THY-); the legacy T2-* catalog is the diabetes
+    module. Cross-disease rules map to 'all'."""
     if r.get('condition_code'):
         return r['condition_code']
     code = r['code']
     if code in CROSS_DISEASE:
         return 'all'
-    if code.startswith('HTN-'):
-        return 'hypertension'
+    for pfx, cond in _PREFIX_CONDITION.items():
+        if code.startswith(pfx):
+            return cond
     return 'diabetes'
 
 
@@ -442,6 +449,97 @@ RULES = [
          human_if="همهٔ بیماران فشار خون",
          rec="کاهش سدیم (<۲۳۰۰ و در صورت امکان <۱۵۰۰ mg/روز)، الگوی غذاییِ DASH، کاهش وزن، فعالیت منظم و محدودیتِ الکل.",
          evidence="", action="educate", severity="info", priority=120, source="پروتکل فشار خون"),
+
+    # ============ HYPERLIPIDEMIA MODULE (drug rules gated to non-diabetics so they
+    # don't duplicate the diabetes lipid rules; the diabetic's lipid care lives in
+    # the diabetes module) ============
+    dict(code="HLD-TGT-LDL-01", title="هدف LDL", category="target",
+         trigger={"all": [HLD, {"not": DM}]},
+         human_if="دیس‌لیپیدمی (بدون دیابت)",
+         rec="هدفِ LDL فردی: عمومی <۱۰۰، پرخطر <۷۰، و در ASCVD مستقر <۵۵ mg/dL.",
+         evidence="", action="set_target", params={"indicator": "ldl", "target": 100},
+         severity="info", priority=30, source="پروتکل چربی خون"),
+    dict(code="HLD-TGT-LDL-02", title="هدف LDL در پرخطر", category="target",
+         trigger={"all": [HLD, {"not": DM}, {"any": [flag("ascvd"), flag("cvd_high_risk")]}]},
+         human_if="دیس‌لیپیدمی + ریسک بالای قلبی-عروقی",
+         rec="هدفِ LDL <۷۰ (و در ASCVD مستقر <۵۵)؛ استاتین پرقدرت.",
+         evidence="", action="set_target", params={"indicator": "ldl", "target": 70},
+         severity="info", priority=31, source="پروتکل چربی خون"),
+    dict(code="HLD-RX-STATIN-01", title="استاتین‌درمانی", category="medication",
+         trigger={"all": [HLD, {"not": DM}, ind("ldl", ">=", 100)]},
+         human_if="LDL ≥۱۰۰ با وجود اصلاح سبک‌زندگی",
+         rec="استاتینِ متوسط تا پرقدرت بر اساس ریسک؛ هدفِ کاهشِ ≥۵۰٪ در پرخطر.",
+         monitoring="پروفایل لیپید ۴–۱۲ هفته پس از شروع/تغییر، سپس سالانه.",
+         evidence="", action="suggest_med", params={"classes": ["statin"]},
+         severity="warn", priority=40, source="پروتکل چربی خون"),
+    dict(code="HLD-RX-INTENSIFY-01", title="تشدید درمانِ لیپید", category="medication",
+         trigger={"all": [HLD, {"not": DM}, med("statin"), ind("ldl", ">=", 70)]},
+         human_if="روی استاتین ولی LDL خارج از هدف",
+         rec="افزودنِ ازتیمایب؛ در صورت نرسیدن به هدف، مهارکنندهٔ PCSK9.",
+         evidence="", action="suggest_med", params={"classes": ["ezetimibe"]},
+         severity="info", priority=41, source="پروتکل چربی خون"),
+    dict(code="HLD-TG-SEVERE-01", title="تری‌گلیسریدِ شدید", category="drug_safety",
+         trigger={"any": [ind("triglyceride", ">=", 500)]},
+         human_if="تری‌گلیسرید ≥۵۰۰ mg/dL",
+         rec="ریسکِ پانکراتیت؛ کاهش چربی/الکل/قند، کنترلِ علتِ ثانویه، و در صورت لزوم فیبرات/ایکوزاپنت.",
+         evidence="", action="safety_alert", severity="warn", priority=42, source="پروتکل چربی خون"),
+    dict(code="HLD-LIFE-01", title="سبک‌زندگی در چربی خون", category="lifestyle",
+         trigger={"all": [HLD, {"not": DM}]},
+         human_if="همهٔ بیماران دیس‌لیپیدمی",
+         rec="کاهش چربیِ اشباع و ترانس، افزایش فیبر، فعالیت منظم، کاهش وزن و ترکِ دخانیات.",
+         evidence="", action="educate", severity="info", priority=120, source="پروتکل چربی خون"),
+
+    # ============ CKD MODULE (drug rules gated to non-diabetics so they don't
+    # duplicate the diabetes CKD rules) ============
+    dict(code="CKD-RAS-01", title="ACEi/ARB در آلبومینوری", category="medication",
+         trigger={"all": [CKD, {"not": DM}, {"any": [ind("uacr", ">=", 30), flag("ckd_stage_a", "in", ["A2", "A3"])]}]},
+         human_if="CKD + آلبومینوری (بدون دیابت)",
+         rec="ACEi یا ARB خط اول برای کاهش آلبومینوری و کند کردن پیشرفت.",
+         monitoring="eGFR و پتاسیم ۲–۴ هفته پس از شروع/تغییر دوز.",
+         contraindications="ترکیبِ ACEi با ARB توصیه نمی‌شود؛ در بارداری ممنوع.",
+         evidence="", action="suggest_med", params={"classes": ["acei", "arb"]},
+         severity="warn", priority=43, source="پروتکل کلیه"),
+    dict(code="CKD-SGLT2-01", title="SGLT2i در CKD", category="medication",
+         trigger={"all": [CKD, {"not": DM}, ind("egfr", ">=", 20), {"any": [ind("uacr", ">=", 30), flag("ckd_stage_a", "in", ["A2", "A3"])]}]},
+         human_if="CKD + آلبومینوری، eGFR ≥۲۰ (بدون دیابت)",
+         rec="مهارکنندهٔ SGLT2 برای کند کردن پیشرفتِ CKD و کاهشِ رخدادِ قلبی-عروقی.",
+         evidence="", action="suggest_med", params={"classes": ["sglt2i"]},
+         severity="warn", priority=44, source="پروتکل کلیه"),
+    dict(code="CKD-FINERENONE-01", title="افزودنِ فینرنون", category="medication",
+         trigger={"all": [CKD, {"not": DM}, ind("egfr", ">=", 25), {"any": [ind("uacr", ">=", 30), flag("ckd_stage_a", "in", ["A2", "A3"])]}, {"any": [med("acei"), med("arb")]}]},
+         human_if="CKD + آلبومینوری روی ACEi/ARB، eGFR ≥۲۵ (بدون دیابت)",
+         rec="افزودنِ nsMRA (فینرنون) برای کاهشِ پیشرفتِ CKD.",
+         monitoring="پتاسیم را ۱ ماه پس از شروع چک کنید.",
+         evidence="", action="suggest_med", params={"classes": ["finerenone"]},
+         severity="info", priority=45, source="پروتکل کلیه"),
+    dict(code="CKD-REFER-01", title="ارجاع به نفرولوژی", category="screening",
+         trigger={"all": [CKD, ind("egfr", "<", 30)]},
+         human_if="eGFR <۳۰",
+         rec="ارجاع به نفرولوژی؛ ارزیابیِ آماده‌سازیِ درمانِ جایگزینِ کلیه و عللِ برگشت‌پذیر.",
+         evidence="", action="safety_alert", severity="warn", priority=46, source="پروتکل کلیه"),
+    dict(code="CKD-LIFE-01", title="سبک‌زندگی و پرهیز در CKD", category="lifestyle",
+         trigger={"all": [CKD]},
+         human_if="همهٔ بیماران CKD",
+         rec="محدودیتِ سدیم (<۲۳۰۰ mg)، پرهیز از NSAIDها و موادِ نفروتوکسیک، و پروتئینِ متعادل طبق نظرِ پزشک.",
+         evidence="", action="educate", severity="info", priority=121, source="پروتکل کلیه"),
+
+    # ============ THYROID MODULE ============
+    dict(code="THY-TSH-HIGH-01", title="TSH بالا (کم‌کاری)", category="target",
+         trigger={"all": [THY, ind("tsh", ">=", 4.5)]},
+         human_if="TSH ≥۴.۵ mIU/L",
+         rec="کم‌کاریِ تیروئید محتمل است؛ بررسیِ T4 و در صورت تأیید شروع/تنظیمِ لووتیروکسین با نظرِ پزشک.",
+         evidence="", action="suggest_med", severity="warn", priority=50, source="پروتکل تیروئید"),
+    dict(code="THY-TSH-LOW-01", title="TSH پایین (پرکاری)", category="target",
+         trigger={"all": [THY, ind("tsh", "<=", 0.4)]},
+         human_if="TSH ≤۰.۴ mIU/L",
+         rec="پرکاریِ تیروئید محتمل است؛ بررسیِ T4/T3 و ارزیابیِ علت با نظرِ پزشک.",
+         evidence="", action="safety_alert", severity="warn", priority=51, source="پروتکل تیروئید"),
+    dict(code="THY-MON-01", title="پایش TSH", category="monitoring",
+         trigger={"all": [THY]},
+         human_if="بیمارِ تیروئیدی",
+         rec="TSH هر ۶–۱۲ ماه (یا ۶ هفته پس از تغییرِ دوز).",
+         evidence="", action="create_followup", params={"item": "tsh", "interval_months": 12},
+         severity="info", priority=90, source="پروتکل تیروئید"),
 ]
 
 
@@ -472,4 +570,8 @@ def seed_clinical_rules(db):
             "UPDATE clinical_rules SET condition_code=? "
             "WHERE rule_code=? AND (condition_code IS NULL OR condition_code='all')",
             (cc, r["code"]))
+    # Cross-disease rules are code-defined (not manager edits); force them to the
+    # shared 'all' module even if a prior run tagged them to a specific disease.
+    for _code in CROSS_DISEASE:
+        db.execute("UPDATE clinical_rules SET condition_code='all' WHERE rule_code=? AND condition_code!='all'", (_code,))
     db.commit()

@@ -20,10 +20,11 @@ ITEM_DEFAULT_MONTHS = {
     'a1c': 6, 'renal': 12, 'lipid': 12, 'eye': 12, 'foot': 12,
     'neuropathy': 12, 'masld': 12, 'renal_function': 12, 'potassium': None,
     'influenza': 12, 'tdap': 120, 'zoster': None, 'pneumococcal': None,
-    'rsv': None, 'covid19': None,
+    'rsv': None, 'covid19': None, 'tsh': 12,
 }
 # Where the "last done" date comes from (vitals readings or a patient flag).
-ITEM_VITALS = {'a1c': ['hba1c'], 'renal': ['egfr', 'uacr'], 'lipid': ['ldl'], 'renal_function': ['egfr']}
+ITEM_VITALS = {'a1c': ['hba1c'], 'renal': ['egfr', 'uacr'], 'lipid': ['ldl'],
+               'renal_function': ['egfr'], 'tsh': ['tsh']}
 ITEM_FLAGS = {'eye': 'eye_exam_date', 'foot': 'foot_exam_date'}
 
 
