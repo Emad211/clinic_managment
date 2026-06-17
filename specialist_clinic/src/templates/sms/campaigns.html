@@ -1,6 +1,8 @@
 {% extends "base.html" %}
 {% block title %}کمپین پیامکی{% endblock %}
 {% block content %}
+{% set hub_tab = 'campaigns' %}
+{% include "sms/_hub_tabs.html" %}
 <div class="topbar">
     <h1><svg class="icon icon-lg"><use href="#i-megaphone"></use></svg> کمپین‌های پیامکی</h1>
 </div>

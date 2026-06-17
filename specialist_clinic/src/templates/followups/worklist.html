@@ -1,6 +1,8 @@
 {% extends "base.html" %}
 {% block title %}پیگیری‌ها{% endblock %}
 {% block content %}
+{% set hub_tab = 'worklist' %}
+{% include "sms/_hub_tabs.html" %}
 <div class="topbar">
     <h1><svg class="icon"><use href="#i-list-checks"></use></svg> لیست پیگیری</h1>
     <form method="post" action="{{ url_for('followups.generate') }}" style="margin:0;">

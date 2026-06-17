@@ -1,0 +1,13 @@
+{# Shared "messaging hub" tab bar. Including template sets `hub_tab` to one of
+   'campaigns' | 'engagement' | 'worklist'. The engagement (config) tab is shown
+   to managers only — staff still see campaigns + worklist. #}
+<div class="card card-soft" style="margin-bottom:var(--s3);">
+    <div class="flex items-center gap-2 wrap">
+        <span class="muted text-sm" style="margin-inline-end:var(--s2);"><svg class="icon icon-sm"><use href="#i-megaphone"></use></svg> هابِ پیام</span>
+        <a class="btn btn-sm {% if hub_tab=='campaigns' %}btn{% else %}btn-ghost{% endif %}" href="{{ url_for('sms.campaigns') }}"><svg class="icon icon-sm"><use href="#i-megaphone"></use></svg> کمپین‌ها</a>
+        {% if g.user and g.user['role']=='manager' %}
+        <a class="btn btn-sm {% if hub_tab=='engagement' %}btn{% else %}btn-ghost{% endif %}" href="{{ url_for('manager.engagement') }}"><svg class="icon icon-sm"><use href="#i-zap"></use></svg> یادآوری و پیگیریِ خودکار</a>
+        {% endif %}
+        <a class="btn btn-sm {% if hub_tab=='worklist' %}btn{% else %}btn-ghost{% endif %}" href="{{ url_for('followups.worklist') }}"><svg class="icon icon-sm"><use href="#i-list-checks"></use></svg> ورک‌لیستِ تماس</a>
+    </div>
+</div>

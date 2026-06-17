@@ -3,10 +3,11 @@
 {% set catlabel = {'operational':'عملیاتی','clinical':'بالینی','marketing':'بازاریابی'} %}
 {% set chanbadge = {'sms':'badge-info','worklist':'badge-warn','both':'badge-violet','off':'badge-muted'} %}
 {% block content %}
+{% set hub_tab = 'engagement' %}
+{% include "sms/_hub_tabs.html" %}
 <div class="crumb"><a href="{{ url_for('manager.index') }}">مدیریت</a> / یادآوری و پیگیریِ خودکار</div>
 <div class="topbar">
     <h1><svg class="icon icon-lg"><use href="#i-megaphone"></use></svg> یادآوری و پیگیریِ خودکار</h1>
-    <a class="btn btn-ghost" href="{{ url_for('sms.campaigns') }}"><svg class="icon"><use href="#i-megaphone"></use></svg> کمپین‌های پیامکی</a>
 </div>
 <p class="page-intro">
     برای هر «رویداد» (یادآوری نوبت، تجدید دارو، سررسید غربالگری/واکسن/پایش، بی‌مراجعه، کنترل‌نشده، هشدار فوری)
