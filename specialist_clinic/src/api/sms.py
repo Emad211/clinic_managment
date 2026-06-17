@@ -121,7 +121,10 @@ def send_campaign(cid):
     if 'error' in result:
         flash("خطا در ارسال کمپین")
     else:
-        flash(f"ارسال شد — موفق: {result['sent']}، ناموفق: {result['failed']} از {result['total']}", "success")
+        msg = f"ارسال شد — موفق: {result['sent']}"
+        if result.get('pending'):
+            msg += f"، در انتظار تأیید پنل: {result['pending']}"
+        flash(msg + f"، ناموفق: {result['failed']} از {result['total']}", "success")
     log_activity("campaign_send", f"ارسال کمپین #{cid}")
     return redirect(url_for("sms.campaign_detail", cid=cid))
 

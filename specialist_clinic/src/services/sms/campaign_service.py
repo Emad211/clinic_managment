@@ -125,7 +125,7 @@ def run_campaign(campaign_id: int) -> dict:
 
     wallet = WalletRepository()
     provider = get_provider()
-    sent = failed = 0
+    sent = failed = pending = 0
     for r in treated:
         balance = 0
         if is_credit and credit_amount > 0:
@@ -143,13 +143,18 @@ def run_campaign(campaign_id: int) -> dict:
         if result.ok:
             sent += 1
             repo.mark_message(msg_id, 'sent', provider_msgid=result.provider_msgid)
+        elif getattr(result, 'pending', False):
+            # Slow/absent panel response — likely sent; log as pending, not failed.
+            pending += 1
+            repo.mark_message(msg_id, 'pending', error=result.error)
         else:
             failed += 1
             repo.mark_message(msg_id, 'failed', error=result.error)
 
     repo.update_campaign_status(campaign_id, 'done',
                                 total_recipients=len(treated), sent_count=sent, failed_count=failed)
-    return {'total': len(treated), 'sent': sent, 'failed': failed, 'control': len(control_ids)}
+    return {'total': len(treated), 'sent': sent, 'failed': failed, 'pending': pending,
+            'control': len(control_ids)}
 
 
 def send_single(patient_link_id: int, recipient: str, body: str, campaign_id: int = None,
@@ -164,6 +169,8 @@ def send_single(patient_link_id: int, recipient: str, body: str, campaign_id: in
     result = get_provider().send(recipient, body, message_type=message_type)
     if result.ok:
         repo.mark_message(msg_id, 'sent', provider_msgid=result.provider_msgid)
+    elif getattr(result, 'pending', False):
+        repo.mark_message(msg_id, 'pending', error=result.error)
     else:
         repo.mark_message(msg_id, 'failed', error=result.error)
     return result.ok

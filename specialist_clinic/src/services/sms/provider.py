@@ -13,6 +13,8 @@ class SendResult:
     ok: bool
     provider_msgid: Optional[str] = None
     error: Optional[str] = None
+    pending: bool = False   # submitted, but the panel's response timed out / was unclear
+                            # (likely sent) — callers should log it as pending, NOT failed
 
 
 class SmsProvider:
@@ -40,10 +42,15 @@ def get_provider() -> SmsProvider:
         api_key = repo.get_setting('mediana_api_key')
         if api_key:
             from src.services.sms.mediana_provider import MedianaProvider
+            try:
+                timeout = int(repo.get_setting('mediana_timeout', '45') or 45)
+            except (TypeError, ValueError):
+                timeout = 45
             return MedianaProvider(
                 api_key=api_key,
                 sending_number=repo.get_setting('mediana_sending_number'),
                 default_type=repo.get_setting('mediana_message_type', 'PromotionalToCustomers'),
+                timeout=timeout,
             )
     except Exception as e:
         print(f"[sms] provider init failed, falling back to Null: {e}")

@@ -10,6 +10,7 @@ Uses only the Python stdlib (urllib) so the packaged .exe needs no extra deps.
 from __future__ import annotations
 
 import json
+import socket
 import urllib.request
 import urllib.error
 
@@ -40,7 +41,7 @@ VALID_TYPES = {"Informational", "PromotionalToCustomers", "PromotionalAll"}
 
 class MedianaProvider(SmsProvider):
     def __init__(self, api_key: str, sending_number: str | None = None,
-                 default_type: str = "PromotionalToCustomers", timeout: int = 20):
+                 default_type: str = "PromotionalToCustomers", timeout: int = 45):
         self.api_key = api_key
         self.sending_number = (sending_number or "").strip() or None
         self.default_type = default_type if default_type in VALID_TYPES else "PromotionalToCustomers"
@@ -104,6 +105,20 @@ class MedianaProvider(SmsProvider):
 
         try:
             status, result = self._post(SEND_SMS_PATH, payload)
+        except (socket.timeout, TimeoutError):
+            # Mediana frequently ACCEPTS the SMS but answers slowly. A timeout here
+            # means we never saw the response — the message was most likely sent, so
+            # report PENDING (not failed) and do NOT retry (a retry would double-send).
+            return SendResult(ok=False, pending=True,
+                              error=f"پاسخِ پنل در مهلت {self.timeout} ثانیه نرسید؛ پیام احتمالاً ارسال شده است (در انتظار تأیید).")
+        except urllib.error.URLError as e:
+            reason = getattr(e, "reason", None)
+            if isinstance(reason, (socket.timeout, TimeoutError)):
+                return SendResult(ok=False, pending=True,
+                                  error="پاسخِ پنل با تأخیر دریافت نشد (timeout)؛ پیام احتمالاً ارسال شده است (در انتظار تأیید).")
+            # A real connection failure (refused/DNS/unreachable) — the request never
+            # reached the panel, so this is a genuine failure.
+            return SendResult(ok=False, error=f"خطای ارتباط با مدیانا: {reason or e}")
         except Exception as e:
             return SendResult(ok=False, error=f"خطای ارتباط با مدیانا: {e}")
 

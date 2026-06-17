@@ -59,6 +59,7 @@ def settings():
         repo.set_setting('mediana_api_key', request.form.get('mediana_api_key', '').strip())
         repo.set_setting('mediana_sending_number', request.form.get('mediana_sending_number', '').strip())
         repo.set_setting('mediana_message_type', request.form.get('mediana_message_type', 'PromotionalToCustomers').strip())
+        repo.set_setting('mediana_timeout', str(min(max(request.form.get('mediana_timeout', type=int) or 45, 10), 120)))
         repo.set_setting('reminder_template', request.form.get('reminder_template', '').strip())
         flash("تنظیمات ذخیره شد", "success")
         return redirect(url_for("manager.settings"))
@@ -66,6 +67,7 @@ def settings():
         'mediana_api_key': repo.get_setting('mediana_api_key', ''),
         'mediana_sending_number': repo.get_setting('mediana_sending_number', ''),
         'mediana_message_type': repo.get_setting('mediana_message_type', 'PromotionalToCustomers'),
+        'mediana_timeout': repo.get_setting('mediana_timeout', '45'),
         'reminder_template': repo.get_setting('reminder_template',
             'سلام {name} عزیز، یادآوری نوبت شما در کلینیک تخصصی. لطفاً در زمان مقرر مراجعه فرمایید.'),
     }

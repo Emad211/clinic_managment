@@ -100,7 +100,7 @@
             <tr>
                 <td>{{ m.recipient }}</td>
                 <td class="muted text-xs">{{ m.body[:60] }}…</td>
-                <td>{% if m.status=='sent' %}<span class="badge badge-ok">ارسال شد</span>{% elif m.status=='failed' %}<span class="badge badge-danger">ناموفق</span>{% else %}<span class="badge badge-muted">در صف</span>{% endif %}</td>
+                <td>{% if m.status=='sent' %}<span class="badge badge-ok">ارسال شد</span>{% elif m.status=='failed' %}<span class="badge badge-danger">ناموفق</span>{% elif m.status=='pending' %}<span class="badge badge-warn" title="پاسخِ پنل با تأخیر؛ احتمالاً ارسال شده">در انتظار تأیید</span>{% else %}<span class="badge badge-muted">در صف</span>{% endif %}</td>
                 <td class="muted text-xs">{{ m.provider_msgid or m.error or '—' }}</td>
                 <td class="muted">{{ m.sent_at|jalali if m.sent_at else '—' }}</td>
             </tr>

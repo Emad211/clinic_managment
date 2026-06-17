@@ -36,6 +36,12 @@
         </div>
 
         <div class="fld">
+            <label><svg class="icon icon-sm"><use href="#i-settings"></use></svg> مهلتِ انتظارِ پاسخِ پنل <span class="muted">(ثانیه)</span></label>
+            <input type="number" name="mediana_timeout" min="10" max="120" value="{{ data.mediana_timeout }}" placeholder="45">
+            <div class="help">اگر پنلِ مدیانا دیر پاسخ دهد تا این مدت منتظر می‌مانیم. در صورت عبور از این مهلت، پیام «در انتظار تأیید» ثبت می‌شود (نه «ناموفق») چون معمولاً ارسال شده است. پیشنهاد: ۴۵ ثانیه.</div>
+        </div>
+
+        <div class="fld">
             <label><svg class="icon icon-sm"><use href="#i-bell"></use></svg> متن یادآوری نوبت <span class="muted">({name} = نام بیمار)</span></label>
             <textarea name="reminder_template" rows="3">{{ data.reminder_template }}</textarea>
             <div class="help">از <span class="nums">{name}</span> برای درج خودکار نام بیمار در متن پیام استفاده کنید.</div>
