@@ -360,8 +360,13 @@ def engagement():
         'quiet_end': sms.get_setting('engagement_quiet_end', '21:00'),
         'daily_cap': sms.get_setting('engagement_daily_cap', '1'),
     }
+    preview = None
+    if request.args.get('preview'):
+        from src.services.engagement_service import EngagementService
+        preview = EngagementService().preview()
     return render_template("manager/engagement.html", active_page='manager',
-                           events=repo.all_events(), channels=CHANNELS, settings=settings)
+                           events=repo.all_events(), channels=CHANNELS, settings=settings,
+                           preview=preview)
 
 
 @bp.route("/engagement/update", methods=["POST"])

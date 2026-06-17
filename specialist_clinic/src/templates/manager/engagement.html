@@ -32,6 +32,49 @@
     </form>
 </div>
 
+<!-- DRY-RUN PREVIEW -->
+<div class="card">
+    <div class="section-title"><svg class="icon"><use href="#i-zap"></use></svg> اجرای آزمایشی
+        <span class="section-sub">— ببین همین حالا چه کسی چه چیزی می‌گیرد و از چه کانالی، بدون هیچ ارسالِ واقعی</span></div>
+    <a class="btn" href="{{ url_for('manager.engagement', preview=1) }}"><svg class="icon"><use href="#i-zap"></use></svg> اجرای آزمایشی همین حالا</a>
+    {% if preview is not none %}
+    <div class="legend" style="margin-top:var(--s4);">
+        <span class="chip">پیامکِ آمادهٔ ارسال: <b class="c-ok">{{ preview.agg.sms|fa_num }}</b></span>
+        <span class="chip">تسکِ ورک‌لیست: <b class="c-warn">{{ preview.agg.worklist|fa_num }}</b></span>
+        <span class="chip">موکول‌شده (گاردریل): <b>{{ preview.agg.deferred|fa_num }}</b></span>
+        <span class="chip">{{ preview.total_patients|fa_num }} بیمارِ دارای رویداد</span>
+        <span class="chip">ساعت آرام: {% if preview.quiet %}<b class="c-warn">فعال (پیامک‌ها موکول)</b>{% else %}<b class="c-ok">غیرفعال</b>{% endif %} · سقفِ روزانه {{ preview.cap|fa_num }}</span>
+    </div>
+    {% if preview.patients %}
+    <div class="table-wrap" style="margin-top:var(--s3);">
+        <table>
+            <thead><tr><th>بیمار</th><th>رویدادهای سررسیده و مسیر</th></tr></thead>
+            <tbody>
+            {% for p in preview.patients %}
+                <tr>
+                    <td>{{ p.name }}</td>
+                    <td><div class="flex items-center gap-2 wrap">
+                        {% for it in p.events %}
+                        <span class="chip">{{ it.label }}
+                            {% for r in it.routes %}
+                                {% if r.kind=='sms' %}<span class="badge badge-info">پیامک</span>
+                                {% elif r.kind=='worklist' %}<span class="badge badge-warn">ورک‌لیست</span>
+                                {% else %}<span class="badge badge-muted">موکول: {{ r.why }}</span>{% endif %}
+                            {% endfor %}
+                        </span>
+                        {% endfor %}
+                    </div></td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="empty" style="margin-top:var(--s3);"><svg class="icon"><use href="#i-check"></use></svg><div>هیچ رویدادِ سررسیده‌ای نیست — همه‌چیز به‌روز است.</div></div>
+    {% endif %}
+    {% endif %}
+</div>
+
 <!-- EVENT -> CHANNEL TABLE -->
 <div class="card">
     <div class="section-title"><svg class="icon"><use href="#i-list-checks"></use></svg> رویدادها و کانال‌ها

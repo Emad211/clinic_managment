@@ -200,3 +200,65 @@ class EngagementService:
                 agg[k] += res[k]
             agg['patients'] += 1
         return agg
+
+    # ------------------------------------------------------------- preview
+    SKIP_LABEL = {'opt_out': 'انصراف بیمار', 'no_phone': 'بدون موبایل',
+                  'quiet': 'ساعت آرام', 'cap': 'سقف روزانه',
+                  'already': 'قبلاً ارسال‌شده', 'cooldown': 'فاصلهٔ تکرار'}
+
+    def preview(self, limit: int = 80) -> dict:
+        """Dry-run snapshot: exactly what the engine would do right now, per patient,
+        with NO sending and NO ledger writes. Powers the manager's "اجرای آزمایشی"."""
+        db = get_db()
+        rows = db.execute(
+            "SELECT id, full_name, phone_number, sms_opt_out FROM patient_links "
+            "WHERE is_active=1 ORDER BY full_name").fetchall()
+        quiet = self._quiet_now()
+        cap = self._daily_cap()
+        patients = []
+        agg = {'sms': 0, 'worklist': 0, 'deferred': 0}
+        for p in rows:
+            events, cfg = self.collect_due_events(p['id'])
+            if not events:
+                continue
+            sent_today = self.repo.sms_count_today(p['id'])
+            n_sms = 0
+            items = []
+            for ev in events:
+                conf = cfg[ev['event_key']]
+                ch = conf['channel']
+                if ch == 'off':
+                    continue
+                routes = []
+                if ch in ('worklist', 'both') and not self.repo.already_dispatched(
+                        p['id'], ev['event_key'], ev['period_key'], 'worklist'):
+                    routes.append({'kind': 'worklist'})
+                    agg['worklist'] += 1
+                if ch in ('sms', 'both'):
+                    reason = None
+                    if p['sms_opt_out']:
+                        reason = 'opt_out'
+                    elif not p['phone_number']:
+                        reason = 'no_phone'
+                    elif quiet:
+                        reason = 'quiet'
+                    elif (sent_today + n_sms) >= cap:
+                        reason = 'cap'
+                    elif self.repo.already_dispatched(p['id'], ev['event_key'], ev['period_key'], 'sms'):
+                        reason = 'already'
+                    elif self.repo.in_cooldown(p['id'], ev['event_key'], conf.get('cooldown_days') or 0):
+                        reason = 'cooldown'
+                    if reason:
+                        routes.append({'kind': 'deferred', 'why': self.SKIP_LABEL.get(reason, reason)})
+                        if reason != 'already':
+                            agg['deferred'] += 1
+                    else:
+                        routes.append({'kind': 'sms'})
+                        n_sms += 1
+                        agg['sms'] += 1
+                if routes:
+                    items.append({'label': conf['label'], 'detail': ev['detail'], 'routes': routes})
+            if items:
+                patients.append({'name': p['full_name'], 'events': items})
+        return {'patients': patients[:limit], 'agg': agg, 'quiet': quiet, 'cap': cap,
+                'total_patients': len(patients)}
