@@ -5,6 +5,8 @@ from src.adapters.sqlite.patients_repo import PatientRepository
 from src.adapters.sqlite.vitals_repo import VitalsRepository, VITAL_TYPES
 from src.adapters.sqlite.appointments_repo import AppointmentRepository
 from src.adapters.sqlite.followups_repo import FollowupRepository
+from src.adapters.sqlite.record_repo import RecordRepository
+from src.adapters.sqlite.lab_catalog_repo import LabCatalogRepository
 from src.services.vitals_service import VitalsService, evaluate_reading
 from src.services.analytics_service import AnalyticsService, TARGETS
 from src.adapters.sqlite.wallet_repo import WalletRepository
@@ -197,6 +199,19 @@ def detail(pid):
     followups = FollowupRepository().list_for_patient(pid)
     condition_catalog = PatientRepository().list_condition_catalog()
 
+    # Record-tab data (Phase 2): flags bucketed by record_section + the
+    # descriptive record aggregates (surgery/history/notes) + lab catalog.
+    record_repo = RecordRepository()
+    lab_catalog_repo = LabCatalogRepository()
+    flags_by_section = flags_repo.catalog_by_record_section()
+    surgeries = record_repo.list_surgeries(pid)
+    medical_history = record_repo.list_history(pid)
+    notes_symptom = record_repo.list_notes(pid, 'symptom')
+    notes_exam = record_repo.list_notes(pid, 'exam')
+    notes_lifestyle = record_repo.list_notes(pid, 'lifestyle')
+    lab_catalog = lab_catalog_repo.all()
+    suggested_labs = lab_catalog_repo.for_conditions(condition_codes)
+
     wallet_repo = WalletRepository()
     wallet_balance = wallet_repo.get_balance(pid)
     wallet_tx = wallet_repo.transactions(pid, limit=20)
@@ -221,9 +236,17 @@ def detail(pid):
         entry_indicators=entry_indicators,
         snapshot=snapshot,
         flag_groups=flag_groups,
+        flags_by_section=flags_by_section,
         patient_flags=patient_flags,
         drug_class_options=drug_class_options,
         drug_class_map=drug_class_map,
+        surgeries=surgeries,
+        medical_history=medical_history,
+        notes_symptom=notes_symptom,
+        notes_exam=notes_exam,
+        notes_lifestyle=notes_lifestyle,
+        lab_catalog=lab_catalog,
+        suggested_labs=suggested_labs,
         medication_events=PatientRepository().get_medication_events(pid),
         wallet_balance=wallet_balance,
         wallet_tx=wallet_tx,
@@ -380,22 +403,42 @@ def suggestion_action(pid):
 @bp.route("/<int:pid>/flags", methods=["POST"])
 @login_required
 def save_flags(pid):
-    """Save the patient's clinical decision inputs (ADA flags)."""
+    """Save the patient's clinical decision inputs (ADA flags).
+
+    PARTIAL-SAFE: a per-section record form sends a hidden `flag_keys` field
+    (comma-separated keys it manages); only those keys are updated, leaving
+    flags from other sections untouched. If `flag_keys` is absent we fall back
+    to the legacy whole-catalog behavior (backward compat).
+    """
     from src.adapters.sqlite.flags_repo import ClinicalFlagsRepository
     repo = ClinicalFlagsRepository()
+    catalog_by_key = {f['flag_key']: f for f in repo.catalog()}
+
+    raw_keys = request.form.get("flag_keys")
+    if raw_keys is not None:
+        managed = [k.strip() for k in raw_keys.split(",") if k.strip()]
+        flags = [catalog_by_key[k] for k in managed if k in catalog_by_key]
+    else:
+        flags = list(catalog_by_key.values())
+
     values = {}
-    for f in repo.catalog():
+    for f in flags:
         key, ftype = f['flag_key'], f['flag_type']
         if ftype == 'bool':
             values[key] = '1' if request.form.get(key) == 'on' else ''
         elif ftype == 'date':
-            values[key] = jalali_to_gregorian_str(request.form.get(key, "")) or ''
+            # The date input re-renders empty (the stored value shows in the placeholder),
+            # so a blank submission must NOT wipe a stored date — only update when a new
+            # date is actually entered.
+            greg = jalali_to_gregorian_str(request.form.get(key, ""))
+            if greg:
+                values[key] = greg
         else:  # enum / text
             values[key] = request.form.get(key, "").strip()
     repo.set_flags(pid, values, recorded_by=g.user["username"])
     log_activity("flags_update", "ثبت وضعیت بالینی بیمار", patient_link_id=pid)
     flash("وضعیت بالینی ذخیره شد", "success")
-    return redirect(url_for("patients.detail", pid=pid) + "#flags")
+    return redirect(url_for("patients.detail", pid=pid) + "#record")
 
 
 @bp.route("/<int:pid>/allergy/add", methods=["POST"])
@@ -416,6 +459,70 @@ def add_allergy(pid):
 def delete_allergy(pid, allergy_id):
     PatientRepository().delete_allergy(allergy_id)
     return redirect(url_for("patients.detail", pid=pid))
+
+
+# ---- record tab: surgery / medical history / clinical notes ----
+@bp.route("/<int:pid>/record/surgery/add", methods=["POST"])
+@login_required
+def record_surgery_add(pid):
+    title = request.form.get("title", "").strip()
+    if title:
+        RecordRepository().add_surgery(
+            pid, title,
+            performed_on=jalali_to_gregorian_str(request.form.get("performed_on", "")) or None,
+            note=request.form.get("note", "").strip() or None,
+        )
+        log_activity("surgery_add", f"افزودن سابقهٔ جراحی: {title}", patient_link_id=pid)
+    return redirect(url_for("patients.detail", pid=pid) + "#record")
+
+
+@bp.route("/<int:pid>/record/surgery/<int:sid>/delete", methods=["POST"])
+@login_required
+def record_surgery_delete(pid, sid):
+    RecordRepository().delete_surgery(sid)
+    log_activity("surgery_delete", "حذف سابقهٔ جراحی", patient_link_id=pid)
+    return redirect(url_for("patients.detail", pid=pid) + "#record")
+
+
+@bp.route("/<int:pid>/record/history/add", methods=["POST"])
+@login_required
+def record_history_add(pid):
+    title = request.form.get("title", "").strip()
+    if title:
+        RecordRepository().add_history(
+            pid, title,
+            note=request.form.get("note", "").strip() or None,
+            since=jalali_to_gregorian_str(request.form.get("since", "")) or None,
+        )
+        log_activity("history_add", f"افزودن سابقهٔ پزشکی: {title}", patient_link_id=pid)
+    return redirect(url_for("patients.detail", pid=pid) + "#record")
+
+
+@bp.route("/<int:pid>/record/history/<int:hid>/delete", methods=["POST"])
+@login_required
+def record_history_delete(pid, hid):
+    RecordRepository().delete_history(hid)
+    log_activity("history_delete", "حذف سابقهٔ پزشکی", patient_link_id=pid)
+    return redirect(url_for("patients.detail", pid=pid) + "#record")
+
+
+@bp.route("/<int:pid>/record/note/add", methods=["POST"])
+@login_required
+def record_note_add(pid):
+    kind = request.form.get("kind", "").strip()
+    body = request.form.get("body", "").strip()
+    if kind in ("symptom", "exam", "lifestyle") and body:
+        RecordRepository().add_note(pid, kind, body, recorded_by=g.user["username"])
+        log_activity("note_add", f"افزودن یادداشت ({kind})", patient_link_id=pid)
+    return redirect(url_for("patients.detail", pid=pid) + "#record")
+
+
+@bp.route("/<int:pid>/record/note/<int:nid>/delete", methods=["POST"])
+@login_required
+def record_note_delete(pid, nid):
+    RecordRepository().delete_note(nid)
+    log_activity("note_delete", "حذف یادداشت", patient_link_id=pid)
+    return redirect(url_for("patients.detail", pid=pid) + "#record")
 
 
 @bp.route("/<int:pid>/contact", methods=["POST"])

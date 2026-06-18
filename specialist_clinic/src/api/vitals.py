@@ -45,31 +45,77 @@ def delete_reading(pid, reading_id):
     return redirect(url_for("patients.detail", pid=pid) + "#vitals")
 
 
+def _to_float(raw):
+    raw = (raw or "").strip()
+    try:
+        return float(raw)
+    except (TypeError, ValueError):
+        return None
+
+
 @bp.route("/<int:pid>/lab/add", methods=["POST"])
 @login_required
 def add_lab(pid):
+    """Batch + catalog-aware lab entry.
+
+    The redesigned record form posts parallel arrays (one row per chosen test):
+    test_name[], test_key[], value[], unit[], ref_low[], ref_high[] + a single
+    taken_date. Each row with a non-empty test_name AND value is inserted.
+    Falls back to the legacy single-row fields if the arrays aren't present.
+    """
+    repo = VitalsRepository()
+    taken = jalali_to_gregorian_str(request.form.get("taken_date", ""))
+    taken_at = f"{taken} 12:00:00" if taken else None
+
+    names = request.form.getlist("test_name[]")
+    if names:
+        values = request.form.getlist("value[]")
+        units = request.form.getlist("unit[]")
+        ref_lows = request.form.getlist("ref_low[]")
+        ref_highs = request.form.getlist("ref_high[]")
+
+        def at(arr, i):
+            return arr[i] if i < len(arr) else ""
+
+        added = 0
+        for i, raw_name in enumerate(names):
+            name = (raw_name or "").strip()
+            value = _to_float(at(values, i))
+            if not name or value is None:
+                continue
+            repo.add_lab(
+                pid, test_name=name, value=value,
+                unit=(at(units, i) or "").strip() or None,
+                ref_low=_to_float(at(ref_lows, i)),
+                ref_high=_to_float(at(ref_highs, i)),
+                taken_at=taken_at,
+                recorded_by=g.user["username"],
+            )
+            added += 1
+        if added:
+            log_activity("lab_add", f"ثبت {added} آزمایش", patient_link_id=pid)
+            flash(f"{added} آزمایش ثبت شد", "success")
+        else:
+            flash("هیچ آزمایشی ثبت نشد")
+        return redirect(url_for("patients.detail", pid=pid) + "#record")
+
+    # ---- legacy single-row fallback ----
     name = request.form.get("test_name", "").strip()
     if not name:
         flash("نام آزمایش الزامی است")
-        return redirect(url_for("patients.detail", pid=pid) + "#labs")
-    def fnum(key):
-        v = request.form.get(key, "").strip()
-        try:
-            return float(v)
-        except ValueError:
-            return None
-    taken = jalali_to_gregorian_str(request.form.get("taken_date", ""))
-    VitalsRepository().add_lab(
-        pid, test_name=name, value=fnum("value"),
+        return redirect(url_for("patients.detail", pid=pid) + "#record")
+    repo.add_lab(
+        pid, test_name=name, value=_to_float(request.form.get("value")),
         unit=request.form.get("unit") or None,
-        ref_low=fnum("ref_low"), ref_high=fnum("ref_high"),
-        taken_at=f"{taken} 12:00:00" if taken else None,
+        ref_low=_to_float(request.form.get("ref_low")),
+        ref_high=_to_float(request.form.get("ref_high")),
+        taken_at=taken_at,
         notes=request.form.get("notes") or None,
         recorded_by=g.user["username"],
     )
     log_activity("lab_add", f"ثبت آزمایش: {name}", patient_link_id=pid)
     flash("آزمایش ثبت شد", "success")
-    return redirect(url_for("patients.detail", pid=pid) + "#labs")
+    return redirect(url_for("patients.detail", pid=pid) + "#record")
 
 
 @bp.route("/<int:pid>/lab/<int:lab_id>/delete", methods=["POST"])

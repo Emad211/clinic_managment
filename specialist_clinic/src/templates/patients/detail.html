@@ -396,89 +396,280 @@
 <!-- ============ TAB: RECORD ============ -->
 <!-- ============================================================= -->
 <section class="tab-pane" data-pane="record" role="tabpanel" hidden>
-    <!-- CLINICAL DECISION INPUTS (ADA flags) -->
-    <div class="card" id="flags">
-        <div class="section-title"><svg class="icon"><use href="#i-activity"></use></svg> وضعیت بالینی <span class="section-sub">ورودی‌های موتور تصمیم (ریسک/درمان/پیگیری) — طبق استانداردهای بالینی</span></div>
-        <form method="post" action="{{ url_for('patients.save_flags', pid=patient.id) }}">
-            {% for grp in flag_groups %}
-            <div style="margin-bottom:var(--s4);">
-                <div class="muted text-xs" style="font-weight:700;margin-bottom:var(--s2);border-bottom:1px solid var(--line);padding-bottom:var(--s1);">{{ grp.label }}</div>
-                <div class="grid grid-3">
-                    {% for f in grp.flags %}
-                        {% if f.flag_type == 'bool' %}
-                        <label class="switch-row">
-                            <span class="switch"><input type="checkbox" name="{{ f.flag_key }}" {% if patient_flags.get(f.flag_key) %}checked{% endif %}><span class="sl"></span></span>
-                            <span class="text-sm">{{ f.label }}</span>
-                        </label>
-                        {% elif f.flag_type == 'enum' %}
-                        <div class="fld">
-                            <label>{{ f.label }}</label>
-                            <select name="{{ f.flag_key }}">
-                                <option value="">—</option>
-                                {% for o in f.option_list %}<option value="{{ o.value }}" {% if patient_flags.get(f.flag_key)==o.value %}selected{% endif %}>{{ o.label }}</option>{% endfor %}
-                            </select>
-                        </div>
-                        {% elif f.flag_type == 'date' %}
-                        <div class="fld">
-                            <label>{{ f.label }}</label>
-                            <input type="text" class="jdate" name="{{ f.flag_key }}"
-                                   placeholder="{% if patient_flags.get(f.flag_key) %}ثبت‌شده: {{ patient_flags.get(f.flag_key)|jalali_date }}{% else %}انتخاب تاریخ{% endif %}">
-                        </div>
-                        {% else %}
-                        <div class="fld">
-                            <label>{{ f.label }}</label>
-                            <input type="text" name="{{ f.flag_key }}" value="{{ patient_flags.get(f.flag_key) or '' }}">
-                        </div>
-                        {% endif %}
-                    {% endfor %}
-                </div>
+
+    {# ============ reusable flag-field renderer (pf = patient_flags, passed in: macros don't see render context) ============ #}
+    {% macro flag_field(f, pf) %}
+        {% if f.flag_type == 'bool' %}
+        <label class="switch-row">
+            <span class="switch"><input type="checkbox" name="{{ f.flag_key }}" {% if pf.get(f.flag_key) %}checked{% endif %}><span class="sl"></span></span>
+            <span class="text-sm">{{ f.label }}</span>
+        </label>
+        {% elif f.flag_type == 'enum' %}
+        <div class="fld">
+            <label>{{ f.label }}</label>
+            <select name="{{ f.flag_key }}">
+                <option value="">—</option>
+                {% for o in f.option_list %}<option value="{{ o.value }}" {% if pf.get(f.flag_key)==o.value %}selected{% endif %}>{{ o.label }}</option>{% endfor %}
+            </select>
+        </div>
+        {% elif f.flag_type == 'date' %}
+        <div class="fld">
+            <label>{{ f.label }}</label>
+            <input type="text" class="jdate" name="{{ f.flag_key }}"
+                   placeholder="{% if pf.get(f.flag_key) %}ثبت‌شده: {{ pf.get(f.flag_key)|jalali_date }}{% else %}انتخاب تاریخ{% endif %}">
+        </div>
+        {% else %}
+        <div class="fld">
+            <label>{{ f.label }}</label>
+            <input type="text" name="{{ f.flag_key }}" value="{{ pf.get(f.flag_key) or '' }}">
+        </div>
+        {% endif %}
+    {% endmacro %}
+
+    {# ============ reusable clinical-note block (pid passed in: macros don't see render context) ============ #}
+    {% macro note_block(notes, kind, label, placeholder, pid) %}
+        <div class="muted text-xs" style="font-weight:700;margin-bottom:var(--s2);">{{ label }}</div>
+        {% for n in notes %}
+        <div class="flex items-start justify-between gap-2" style="padding:var(--s2) 0;border-bottom:1px solid var(--line);">
+            <span class="text-sm" style="white-space:pre-wrap;">{{ n.body }}
+                <span class="muted text-xs" style="margin-inline-start:6px;">{{ n.recorded_at|jalali }}</span>
+            </span>
+            <form method="post" action="{{ url_for('patients.record_note_delete', pid=pid, nid=n.id) }}" style="margin:0;"><button class="btn btn-sm btn-danger btn-icon" type="submit"><svg class="icon icon-sm"><use href="#i-trash"></use></svg></button></form>
+        </div>
+        {% else %}<div class="empty-mini">ثبت نشده</div>{% endfor %}
+        <form method="post" action="{{ url_for('patients.record_note_add', pid=pid) }}" class="row" style="margin-top:var(--s2);align-items:flex-end;">
+            <input type="hidden" name="kind" value="{{ kind }}">
+            <div class="fld" style="flex:1;"><input type="text" name="body" placeholder="{{ placeholder }}" required></div>
+            <button class="btn btn-sm" type="submit"><svg class="icon icon-sm"><use href="#i-plus"></use></svg> افزودن</button>
+        </form>
+    {% endmacro %}
+
+    {# ============ 1) HEALTH SUMMARY (read-only) ============ #}
+    <div class="card">
+        <div class="section-title"><svg class="icon"><use href="#i-clipboard"></use></svg> وضعیت سلامت کلی <span class="section-sub">نمای فشرده — جزئیات در بخش‌های پایین</span></div>
+        <div class="flex items-center wrap gap-2" style="margin-bottom:var(--s3);">
+            {% for c in conditions %}<span class="badge badge-info">{{ c.condition_name }}{% if c.stage %} ({{ c.stage }}){% endif %}</span>
+            {% else %}<span class="empty-mini" style="display:inline-block;">بیماری مزمنی ثبت نشده</span>{% endfor %}
+        </div>
+        <div class="grid grid-4">
+            <div class="mini"><div class="m-num">
+                {% if control.status=='controlled' %}<span class="c-ok">کنترل‌شده</span>
+                {% elif control.status=='borderline' %}<span class="c-warn">مرزی</span>
+                {% elif control.status=='uncontrolled' %}<span class="c-danger">کنترل‌نشده</span>
+                {% else %}—{% endif %}</div><div class="m-lbl">وضعیت کنترل</div></div>
+            <div class="mini"><div class="m-num {% if allergies %}c-warn{% endif %}">{{ allergies|length|fa_num }}</div><div class="m-lbl">حساسیت ثبت‌شده</div></div>
+            <div class="mini"><div class="m-num {% if followups %}c-warn{% endif %}">{{ followups|length|fa_num }}</div><div class="m-lbl">پیگیری باز</div></div>
+            <div class="mini"><div class="m-num" style="font-size:15px;font-weight:600;">{% if visit_history %}{{ visit_history[0].visit_date|jalali_date }}{% else %}—{% endif %}</div><div class="m-lbl">آخرین ویزیت</div></div>
+        </div>
+    </div>
+
+    {# ============ 2) CHRONIC CONDITIONS (the disease gate) ============ #}
+    <div class="card">
+        <div class="section-title"><svg class="icon"><use href="#i-stethoscope"></use></svg> بیماری‌های مزمن <span class="section-sub">هر بیماری ماژول داده و شاخص‌های خود را به پرونده اضافه می‌کند</span></div>
+        {% for c in conditions %}
+            <div class="flex items-center justify-between" style="padding:var(--s2) 0;border-bottom:1px solid var(--line);">
+                <span>{{ c.condition_name }}{% if c.stage %} <span class="muted">({{ c.stage }})</span>{% endif %}</span>
+                <form method="post" action="{{ url_for('patients.remove_condition', pid=patient.id, pc_id=c.id) }}" style="margin:0;"><button class="btn btn-sm btn-danger btn-icon" type="submit"><svg class="icon icon-sm"><use href="#i-trash"></use></svg></button></form>
             </div>
-            {% endfor %}
-            <button class="btn" type="submit"><svg class="icon"><use href="#i-save"></use></svg> ذخیره وضعیت بالینی</button>
+        {% else %}<div class="empty-mini">ثبت نشده — برای فعال‌شدن شاخص‌ها و موتور تصمیمِ این بیماری، تشخیص را اضافه کنید.</div>{% endfor %}
+        <form method="post" action="{{ url_for('patients.add_condition', pid=patient.id) }}" class="row" style="margin-top:var(--s3);align-items:flex-end;flex-wrap:wrap;">
+            <div class="fld" style="min-width:180px;">
+                <label>افزودن بیماری</label>
+                <select name="condition_id" required>
+                    <option value="">— انتخاب بیماری —</option>
+                    {% for c in condition_catalog %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}
+                </select>
+            </div>
+            <div class="fld" style="max-width:140px;"><label>مرحله</label><input type="text" name="stage" placeholder="مرحله"></div>
+            <div class="fld" style="max-width:160px;"><label>تاریخ شروع</label><input type="text" class="jdate" name="onset_date" placeholder="انتخاب تاریخ"></div>
+            <button class="btn btn-sm" type="submit"><svg class="icon icon-sm"><use href="#i-plus"></use></svg> افزودن</button>
         </form>
     </div>
 
-    <div class="grid grid-3">
-        <div class="card">
-            <div class="section-title"><svg class="icon"><use href="#i-stethoscope"></use></svg> بیماری‌ها</div>
-            {% for c in conditions %}
-                <div class="flex items-center justify-between" style="padding:var(--s2) 0;border-bottom:1px solid var(--line);">
-                    <span>{{ c.condition_name }}{% if c.stage %} <span class="muted">({{ c.stage }})</span>{% endif %}</span>
-                    <form method="post" action="{{ url_for('patients.remove_condition', pid=patient.id, pc_id=c.id) }}" style="margin:0;"><button class="btn btn-sm btn-danger btn-icon" type="submit"><svg class="icon icon-sm"><use href="#i-trash"></use></svg></button></form>
+    {# ============ 3) MEDICAL & SURGICAL HISTORY + COMORBIDITY FLAGS ============ #}
+    <div class="card">
+        <div class="section-title"><svg class="icon"><use href="#i-heart"></use></svg> سابقهٔ پزشکی و جراحی</div>
+        <div class="grid grid-2">
+            {# --- medical history --- #}
+            <div>
+                <div class="muted text-xs" style="font-weight:700;margin-bottom:var(--s2);">سابقهٔ بیماری / کوموربیدیتی</div>
+                {% for h in medical_history %}
+                <div class="flex items-start justify-between gap-2" style="padding:var(--s2) 0;border-bottom:1px solid var(--line);">
+                    <span class="text-sm"><b>{{ h.title }}</b>{% if h.since %} <span class="muted text-xs">از {{ h.since|jalali_date }}</span>{% endif %}{% if h.note %}<div class="muted text-xs">{{ h.note }}</div>{% endif %}</span>
+                    <form method="post" action="{{ url_for('patients.record_history_delete', pid=patient.id, hid=h.id) }}" style="margin:0;"><button class="btn btn-sm btn-danger btn-icon" type="submit"><svg class="icon icon-sm"><use href="#i-trash"></use></svg></button></form>
                 </div>
-            {% else %}<div class="empty-mini">ثبت نشده</div>{% endfor %}
-            <form method="post" action="{{ url_for('patients.add_condition', pid=patient.id) }}" style="margin-top:var(--s3);">
-                <select name="condition_id" required>
-                    <option value="">+ افزودن بیماری</option>
-                    {% for c in condition_catalog %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}
-                </select>
-                <div class="row" style="margin-top:var(--s2);">
-                    <input type="text" name="stage" placeholder="مرحله">
-                    <input type="text" class="jdate" name="onset_date" placeholder="تاریخ شروع">
-                    <button class="btn btn-sm" type="submit"><svg class="icon icon-sm"><use href="#i-plus"></use></svg> افزودن</button>
+                {% else %}<div class="empty-mini">ثبت نشده</div>{% endfor %}
+                <form method="post" action="{{ url_for('patients.record_history_add', pid=patient.id) }}" style="margin-top:var(--s2);">
+                    <div class="fld"><input type="text" name="title" placeholder="عنوان بیماری/سابقه" required></div>
+                    <div class="row" style="margin-top:var(--s2);align-items:flex-end;">
+                        <div class="fld" style="max-width:150px;"><input type="text" class="jdate" name="since" placeholder="از تاریخ"></div>
+                        <div class="fld" style="flex:1;"><input type="text" name="note" placeholder="توضیح (اختیاری)"></div>
+                        <button class="btn btn-sm" type="submit"><svg class="icon icon-sm"><use href="#i-plus"></use></svg> افزودن</button>
+                    </div>
+                </form>
+            </div>
+            {# --- surgery history --- #}
+            <div>
+                <div class="muted text-xs" style="font-weight:700;margin-bottom:var(--s2);">سابقهٔ جراحی</div>
+                {% for s in surgeries %}
+                <div class="flex items-start justify-between gap-2" style="padding:var(--s2) 0;border-bottom:1px solid var(--line);">
+                    <span class="text-sm"><b>{{ s.title }}</b>{% if s.performed_on %} <span class="muted text-xs">{{ s.performed_on|jalali_date }}</span>{% endif %}{% if s.note %}<div class="muted text-xs">{{ s.note }}</div>{% endif %}</span>
+                    <form method="post" action="{{ url_for('patients.record_surgery_delete', pid=patient.id, sid=s.id) }}" style="margin:0;"><button class="btn btn-sm btn-danger btn-icon" type="submit"><svg class="icon icon-sm"><use href="#i-trash"></use></svg></button></form>
                 </div>
+                {% else %}<div class="empty-mini">ثبت نشده</div>{% endfor %}
+                <form method="post" action="{{ url_for('patients.record_surgery_add', pid=patient.id) }}" style="margin-top:var(--s2);">
+                    <div class="fld"><input type="text" name="title" placeholder="عنوان جراحی" required></div>
+                    <div class="row" style="margin-top:var(--s2);align-items:flex-end;">
+                        <div class="fld" style="max-width:150px;"><input type="text" class="jdate" name="performed_on" placeholder="تاریخ جراحی"></div>
+                        <div class="fld" style="flex:1;"><input type="text" name="note" placeholder="توضیح (اختیاری)"></div>
+                        <button class="btn btn-sm" type="submit"><svg class="icon icon-sm"><use href="#i-plus"></use></svg> افزودن</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        {# --- comorbidity flags (disease + general) in one save_flags form --- #}
+        {% set comorb_flags = (flags_by_section.disease or []) + (flags_by_section.general or []) %}
+        {% if comorb_flags %}
+        <div class="divider-dashed" style="margin-top:var(--s4);padding-top:var(--s4);">
+            <div class="muted text-xs" style="font-weight:700;margin-bottom:var(--s3);">شرایط همراه (ورودی‌های موتور تصمیم)</div>
+            <form method="post" action="{{ url_for('patients.save_flags', pid=patient.id) }}">
+                <input type="hidden" name="flag_keys" value="{{ comorb_flags|map(attribute='flag_key')|join(',') }}">
+                <div class="grid grid-3">
+                    {% for f in comorb_flags %}{{ flag_field(f, patient_flags) }}{% endfor %}
+                </div>
+                <button class="btn btn-sm" type="submit" style="margin-top:var(--s3);"><svg class="icon icon-sm"><use href="#i-save"></use></svg> ذخیرهٔ شرایط همراه</button>
             </form>
         </div>
+        {% endif %}
+    </div>
 
-        <div class="card">
-            <div class="section-title"><svg class="icon"><use href="#i-alert"></use></svg> آلرژی‌ها</div>
-            {% for a in allergies %}
-                <div class="flex items-center justify-between" style="padding:var(--s2) 0;border-bottom:1px solid var(--line);">
-                    <span>{{ a.substance }} {% if a.severity %}<span class="badge badge-warn">{{ a.severity }}</span>{% endif %}</span>
-                    <form method="post" action="{{ url_for('patients.delete_allergy', pid=patient.id, allergy_id=a.id) }}" style="margin:0;"><button class="btn btn-sm btn-danger btn-icon" type="submit"><svg class="icon icon-sm"><use href="#i-trash"></use></svg></button></form>
-                </div>
-            {% else %}<div class="empty-mini">ثبت نشده</div>{% endfor %}
-            <form method="post" action="{{ url_for('patients.add_allergy', pid=patient.id) }}" style="margin-top:var(--s3);">
-                <input type="text" name="substance" placeholder="ماده حساسیت‌زا" required>
-                <div class="row" style="margin-top:var(--s2);">
-                    <input type="text" name="severity" placeholder="شدت">
-                    <button class="btn btn-sm" type="submit"><svg class="icon icon-sm"><use href="#i-plus"></use></svg> افزودن</button>
-                </div>
-            </form>
+    {# ============ 4) LIFESTYLE ============ #}
+    <div class="card">
+        <div class="section-title"><svg class="icon"><use href="#i-activity"></use></svg> سبک زندگی</div>
+        {% if flags_by_section.lifestyle %}
+        <form method="post" action="{{ url_for('patients.save_flags', pid=patient.id) }}" style="margin-bottom:var(--s4);">
+            <input type="hidden" name="flag_keys" value="{{ flags_by_section.lifestyle|map(attribute='flag_key')|join(',') }}">
+            <div class="grid grid-3">
+                {% for f in flags_by_section.lifestyle %}{{ flag_field(f, patient_flags) }}{% endfor %}
+            </div>
+            <button class="btn btn-sm" type="submit" style="margin-top:var(--s3);"><svg class="icon icon-sm"><use href="#i-save"></use></svg> ذخیرهٔ سبک زندگی</button>
+        </form>
+        {% endif %}
+        <div class="divider-dashed" style="padding-top:var(--s4);">
+            {{ note_block(notes_lifestyle, 'lifestyle', 'یادداشت‌های سبک زندگی', 'مثلاً ورزش ۳ بار در هفته…', patient.id) }}
         </div>
     </div>
 
-    <!-- VITALS TABLE -->
+    {# ============ 5) ALLERGIES ============ #}
+    <div class="card">
+        <div class="section-title"><svg class="icon"><use href="#i-alert"></use></svg> حساسیت‌ها</div>
+        {% for a in allergies %}
+            <div class="flex items-center justify-between" style="padding:var(--s2) 0;border-bottom:1px solid var(--line);">
+                <span>{{ a.substance }} {% if a.severity %}<span class="badge badge-warn">{{ a.severity }}</span>{% endif %}</span>
+                <form method="post" action="{{ url_for('patients.delete_allergy', pid=patient.id, allergy_id=a.id) }}" style="margin:0;"><button class="btn btn-sm btn-danger btn-icon" type="submit"><svg class="icon icon-sm"><use href="#i-trash"></use></svg></button></form>
+            </div>
+        {% else %}<div class="empty-mini">ثبت نشده</div>{% endfor %}
+        <form method="post" action="{{ url_for('patients.add_allergy', pid=patient.id) }}" class="row" style="margin-top:var(--s3);align-items:flex-end;flex-wrap:wrap;">
+            <div class="fld" style="min-width:180px;"><label>ماده حساسیت‌زا</label><input type="text" name="substance" placeholder="ماده حساسیت‌زا" required></div>
+            <div class="fld" style="max-width:150px;"><label>شدت</label><input type="text" name="severity" placeholder="شدت"></div>
+            <button class="btn btn-sm" type="submit"><svg class="icon icon-sm"><use href="#i-plus"></use></svg> افزودن</button>
+        </form>
+    </div>
+
+    {# ============ 6) SYMPTOMS & EXAMINATION ============ #}
+    <div class="card">
+        <div class="section-title"><svg class="icon"><use href="#i-stethoscope"></use></svg> علائم و معاینات</div>
+        {% if flags_by_section.exam %}
+        <form method="post" action="{{ url_for('patients.save_flags', pid=patient.id) }}" style="margin-bottom:var(--s4);">
+            <input type="hidden" name="flag_keys" value="{{ flags_by_section.exam|map(attribute='flag_key')|join(',') }}">
+            <div class="grid grid-3">
+                {% for f in flags_by_section.exam %}{{ flag_field(f, patient_flags) }}{% endfor %}
+            </div>
+            <button class="btn btn-sm" type="submit" style="margin-top:var(--s3);"><svg class="icon icon-sm"><use href="#i-save"></use></svg> ذخیرهٔ یافته‌های معاینه</button>
+        </form>
+        {% endif %}
+        <div class="grid grid-2 divider-dashed" style="padding-top:var(--s4);">
+            <div>{{ note_block(notes_symptom, 'symptom', 'علائم بیمار', 'مثلاً تشنگی و پرنوشی…', patient.id) }}</div>
+            <div>{{ note_block(notes_exam, 'exam', 'یافته‌های معاینه', 'مثلاً معاینهٔ پا طبیعی…', patient.id) }}</div>
+        </div>
+    </div>
+
+    {# ============ 7) LABS ============ #}
+    <div class="card" id="labs">
+        <div class="section-title"><svg class="icon"><use href="#i-flask"></use></svg> آزمایشات</div>
+
+        <details class="card" id="labEntry" style="margin-bottom:var(--s4);">
+            <summary class="section-title" style="cursor:pointer;margin:0;list-style:none;">
+                <svg class="icon"><use href="#i-plus"></use></svg> ثبت آزمایش
+                <span class="section-sub">دراپ‌داون آزمایش → واحد و محدودهٔ مرجع خودکار پر می‌شود</span>
+            </summary>
+
+            <form method="post" action="{{ url_for('vitals.add_lab', pid=patient.id) }}" id="labForm" style="margin-top:var(--s3);">
+                {% if suggested_labs %}
+                <div class="muted text-xs" style="font-weight:700;margin-bottom:var(--s2);">آزمایش‌های پیشنهادی برای بیماری‌های این بیمار — برای افزودن کلیک کنید</div>
+                <div class="legend" id="labChips" style="margin-bottom:var(--s4);">
+                    {% for s in suggested_labs %}
+                    <span class="chip lab-chip" role="button" tabindex="0"
+                          data-key="{{ s.test_key }}" data-name="{{ s.name_fa }}"
+                          data-unit="{{ s.unit or '' }}"
+                          data-low="{{ s.ref_low if s.ref_low is not none else '' }}"
+                          data-high="{{ s.ref_high if s.ref_high is not none else '' }}">
+                        <svg class="icon icon-sm"><use href="#i-plus"></use></svg> {{ s.name_fa }}
+                    </span>
+                    {% endfor %}
+                </div>
+                {% endif %}
+
+                <div class="table-wrap">
+                <table id="labGrid">
+                    <thead><tr><th style="min-width:180px;">آزمایش</th><th>مقدار</th><th>واحد</th><th>حد پایین</th><th>حد بالا</th><th></th></tr></thead>
+                    <tbody>
+                        {# one blank starter row #}
+                        <tr class="lab-row">
+                            <td>
+                                <input type="hidden" name="test_name[]" class="lab-name">
+                                <select class="lab-select" name="test_key[]">
+                                    <option value="">— انتخاب آزمایش —</option>
+                                    {% for t in lab_catalog %}<option value="{{ t.test_key }}">{{ t.name_fa }}</option>{% endfor %}
+                                </select>
+                            </td>
+                            <td><input type="number" step="any" name="value[]" class="lab-value" style="max-width:110px;"></td>
+                            <td><input type="text" name="unit[]" class="lab-unit" style="max-width:90px;"></td>
+                            <td><input type="number" step="any" name="ref_low[]" class="lab-low" style="max-width:90px;"></td>
+                            <td><input type="number" step="any" name="ref_high[]" class="lab-high" style="max-width:90px;"></td>
+                            <td><button type="button" class="btn btn-sm btn-danger btn-icon lab-remove"><svg class="icon icon-sm"><use href="#i-x"></use></svg></button></td>
+                        </tr>
+                    </tbody>
+                </table>
+                </div>
+
+                <div class="row" style="margin-top:var(--s3);align-items:flex-end;flex-wrap:wrap;">
+                    <button type="button" class="btn btn-sm btn-ghost" id="labAddRow"><svg class="icon icon-sm"><use href="#i-plus"></use></svg> ردیف</button>
+                    <div class="fld" style="max-width:180px;"><label>تاریخ آزمایش</label><input type="text" class="jdate" name="taken_date" placeholder="انتخاب تاریخ"></div>
+                    <button class="btn" type="submit"><svg class="icon"><use href="#i-save"></use></svg> ثبت آزمایش‌ها</button>
+                </div>
+            </form>
+        </details>
+
+        <div class="table-wrap">
+        <table>
+            <thead><tr><th>آزمایش</th><th>مقدار</th><th>محدوده مرجع</th><th>تاریخ</th><th></th></tr></thead>
+            <tbody>
+            {% for l in labs %}
+                <tr>
+                    <td>{{ l.test_name }}</td>
+                    <td><strong>{{ l.value|fa_num }}</strong> {{ l.unit or '' }}</td>
+                    <td class="muted">{{ l.ref_low|fa_num if l.ref_low is not none else '' }} - {{ l.ref_high|fa_num if l.ref_high is not none else '' }}</td>
+                    <td class="muted">{{ l.taken_at|jalali_date }}</td>
+                    <td><form method="post" action="{{ url_for('vitals.delete_lab', pid=patient.id, lab_id=l.id) }}" style="margin:0;"><button class="btn btn-sm btn-danger btn-icon" type="submit"><svg class="icon icon-sm"><use href="#i-trash"></use></svg></button></form></td>
+                </tr>
+            {% else %}<tr><td colspan="5" class="muted">آزمایشی ثبت نشده</td></tr>{% endfor %}
+            </tbody>
+        </table>
+        </div>
+    </div>
+
+    {# ============ RECENT VITALS (latest indicators) ============ #}
     <div class="card" id="vitals">
         <div class="section-title"><svg class="icon"><use href="#i-activity"></use></svg> آخرین شاخص‌ها</div>
         {% if recent_vitals %}
@@ -501,36 +692,7 @@
         {% else %}<div class="empty"><svg class="icon"><use href="#i-activity"></use></svg><div>شاخصی ثبت نشده</div></div>{% endif %}
     </div>
 
-    <!-- LABS -->
-    <div class="card" id="labs">
-        <div class="section-title"><svg class="icon"><use href="#i-flask"></use></svg> آزمایش‌ها</div>
-        <div class="table-wrap">
-        <table>
-            <thead><tr><th>آزمایش</th><th>مقدار</th><th>محدوده مرجع</th><th>تاریخ</th><th></th></tr></thead>
-            <tbody>
-            {% for l in labs %}
-                <tr>
-                    <td>{{ l.test_name }}</td>
-                    <td><strong>{{ l.value|fa_num }}</strong> {{ l.unit or '' }}</td>
-                    <td class="muted">{{ l.ref_low|fa_num if l.ref_low is not none else '' }} - {{ l.ref_high|fa_num if l.ref_high is not none else '' }}</td>
-                    <td class="muted">{{ l.taken_at|jalali_date }}</td>
-                    <td><form method="post" action="{{ url_for('vitals.delete_lab', pid=patient.id, lab_id=l.id) }}" style="margin:0;"><button class="btn btn-sm btn-danger btn-icon" type="submit"><svg class="icon icon-sm"><use href="#i-trash"></use></svg></button></form></td>
-                </tr>
-            {% else %}<tr><td colspan="5" class="muted">آزمایشی ثبت نشده</td></tr>{% endfor %}
-            </tbody>
-        </table>
-        </div>
-        <form class="row" method="post" action="{{ url_for('vitals.add_lab', pid=patient.id) }}" style="margin-top:var(--s3);">
-            <div class="field"><label>نام آزمایش</label><input type="text" name="test_name" required></div>
-            <div class="field"><label>مقدار</label><input type="number" step="any" name="value"></div>
-            <div class="field"><label>واحد</label><input type="text" name="unit"></div>
-            <div class="field"><label>حد پایین</label><input type="number" step="any" name="ref_low"></div>
-            <div class="field"><label>حد بالا</label><input type="number" step="any" name="ref_high"></div>
-            <div class="field"><label>تاریخ</label><input type="text" class="jdate" name="taken_date"></div>
-            <button class="btn" type="submit"><svg class="icon"><use href="#i-plus"></use></svg> افزودن</button>
-        </form>
-    </div>
-
+    {# ============ APPOINTMENTS + VISIT HISTORY (at the end) ============ #}
     <div class="grid grid-2">
         <div class="card">
             <div class="section-title"><svg class="icon"><use href="#i-calendar"></use></svg> نوبت‌ها <span class="section-sub">انجام {{ appt_summary.done|fa_num }} · غیبت {{ appt_summary.no_show|fa_num }} · پیش‌رو {{ appt_summary.upcoming|length|fa_num }}</span></div>
@@ -545,6 +707,9 @@
             {% else %}<div class="empty-mini">{% if patient.accounting_patient_id %}سابقه‌ای نیست{% else %}به حسابداری متصل نیست{% endif %}</div>{% endfor %}
         </div>
     </div>
+
+    {# embedded lab catalog for the lab-entry script (test_key -> {unit, low, high}) #}
+    <script type="application/json" id="labCatalogData">{{ lab_catalog|tojson }}</script>
 </section>
 
 <script>
@@ -784,6 +949,124 @@ function initTrends(){
         if(basal) h+=`<div class="mini">${ic('alert')} در هیپوگلیسمیِ بدون‌علت: کاهش ۱۰–۲۰٪ → <b>${fa(Math.round(0.8*basal))}–${fa(Math.round(0.9*basal))}</b> واحد</div>`;
         document.getElementById('insResult').innerHTML=h;
     });
+})();
+</script>
+
+<script>
+/* ===== Lab batch-entry (Record tab) — self-contained ===== */
+(function(){
+    var grid = document.getElementById('labGrid');
+    if(!grid) return;
+    var tbody = grid.querySelector('tbody');
+
+    /* embedded catalog: list of {test_key, name_fa, unit, ref_low, ref_high, category} */
+    var CATALOG = [];
+    try { CATALOG = JSON.parse(document.getElementById('labCatalogData').textContent) || []; } catch(e){ CATALOG = []; }
+    var BY_KEY = {};
+    CATALOG.forEach(function(t){ BY_KEY[t.test_key] = t; });
+
+    function strOrEmpty(v){ return (v===null || v===undefined) ? '' : String(v); }
+
+    /* fill a row's name/unit/ref from a catalog test_key */
+    function applyTest(row, key){
+        var t = BY_KEY[key];
+        row.querySelector('.lab-name').value = t ? (t.name_fa || '') : '';
+        if(t){
+            row.querySelector('.lab-unit').value = strOrEmpty(t.unit);
+            row.querySelector('.lab-low').value  = strOrEmpty(t.ref_low);
+            row.querySelector('.lab-high').value = strOrEmpty(t.ref_high);
+        }
+    }
+
+    /* wire the inputs of one row (select-change auto-fill, remove button) */
+    function wireRow(row){
+        var sel = row.querySelector('.lab-select');
+        if(sel) sel.addEventListener('change', function(){ applyTest(row, sel.value); });
+        var rm = row.querySelector('.lab-remove');
+        if(rm) rm.addEventListener('click', function(){
+            if(tbody.querySelectorAll('.lab-row').length > 1) row.remove();
+            else clearRow(row);   /* keep at least one row */
+        });
+    }
+
+    function clearRow(row){
+        row.querySelectorAll('input').forEach(function(i){ i.value=''; });
+        var sel = row.querySelector('.lab-select'); if(sel) sel.value='';
+    }
+
+    /* clone a fresh blank row from the first one */
+    function addRow(prefill){
+        var first = tbody.querySelector('.lab-row');
+        var row = first.cloneNode(true);
+        clearRow(row);
+        tbody.appendChild(row);
+        wireRow(row);
+        if(prefill){
+            var sel = row.querySelector('.lab-select');
+            if(sel) sel.value = prefill.key;
+            applyTest(row, prefill.key);
+        }
+        return row;
+    }
+
+    /* find an empty row (no test selected & no name) to reuse, else add one */
+    function rowForChip(chip){
+        var rows = Array.prototype.slice.call(tbody.querySelectorAll('.lab-row'));
+        var empty = rows.find(function(r){
+            var sel = r.querySelector('.lab-select');
+            var name = r.querySelector('.lab-name');
+            return (!sel || !sel.value) && (!name || !name.value);
+        });
+        var key = chip.getAttribute('data-key');
+        if(empty){
+            var sel = empty.querySelector('.lab-select');
+            if(sel) sel.value = key;
+            /* chip may carry per-disease unit/ref even if not in <select>; prefer catalog, fall back to chip */
+            if(BY_KEY[key]){ applyTest(empty, key); }
+            else {
+                empty.querySelector('.lab-name').value = chip.getAttribute('data-name') || '';
+                empty.querySelector('.lab-unit').value = chip.getAttribute('data-unit') || '';
+                empty.querySelector('.lab-low').value  = chip.getAttribute('data-low') || '';
+                empty.querySelector('.lab-high').value = chip.getAttribute('data-high') || '';
+            }
+            return empty;
+        }
+        return addRow({key:key});
+    }
+
+    /* chip click / keyboard -> prefilled row */
+    var chipWrap = document.getElementById('labChips');
+    if(chipWrap){
+        chipWrap.querySelectorAll('.lab-chip').forEach(function(chip){
+            function act(){
+                var det = document.getElementById('labEntry');
+                if(det && !det.open) det.open = true;   /* ensure panel visible */
+                rowForChip(chip);
+            }
+            chip.addEventListener('click', act);
+            chip.addEventListener('keydown', function(e){ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); act(); } });
+        });
+    }
+
+    /* + row button */
+    var addBtn = document.getElementById('labAddRow');
+    if(addBtn) addBtn.addEventListener('click', function(){ addRow(null); });
+
+    /* on submit, ensure free-typed names (none here) are consistent: each selected row
+       already has test_name[] mirrored from its select via applyTest. Drop fully-empty rows. */
+    var form = document.getElementById('labForm');
+    if(form){
+        form.addEventListener('submit', function(){
+            tbody.querySelectorAll('.lab-row').forEach(function(r){
+                var val = r.querySelector('.lab-value').value;
+                var name = r.querySelector('.lab-name').value;
+                if(!name && !val){ r.querySelectorAll('input,select').forEach(function(i){ i.disabled = true; }); }
+            });
+        });
+    }
+
+    /* wire the initial row */
+    tbody.querySelectorAll('.lab-row').forEach(wireRow);
 })();
 </script>
 {% endblock %}

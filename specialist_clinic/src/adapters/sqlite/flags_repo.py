@@ -64,6 +64,22 @@ class ClinicalFlagsRepository:
         return [groups[c] for c in _CATEGORY_ORDER if c in groups] + \
                [g for c, g in groups.items() if c not in _CATEGORY_ORDER]
 
+    def catalog_by_record_section(self) -> dict:
+        """Flag catalog bucketed by `flag_catalog.record_section`.
+
+        Returns `{section: [flag, ...]}` keyed by record_section (one of
+        'lifestyle'|'exam'|'disease'|'general'; see core._seed_flag_sections).
+        Each flag is the same dict shape `catalog()`/`catalog_grouped()` yield
+        (flag_key, label, flag_type, option_list, …). Display order within each
+        section is preserved (the catalog is already ordered). Flags with a NULL
+        record_section fall back to 'general'.
+        """
+        sections: dict[str, list] = {}
+        for f in self.catalog():
+            section = f.get('record_section') or 'general'
+            sections.setdefault(section, []).append(f)
+        return sections
+
     # ---- per-patient values ----
     def get_flags(self, pid: int) -> dict:
         db = get_db()
