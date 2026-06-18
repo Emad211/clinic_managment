@@ -34,37 +34,19 @@
     </div>
 </div>
 
-<div class="grid grid-2">
-    <div class="card">
-        <div class="section-title"><svg class="icon"><use href="#i-stethoscope"></use></svg> بیماران به تفکیک بیماری</div>
-        <div class="table-wrap">
-            <table>
-                <tbody>
-                {% for r in by_condition %}
-                    <tr><td>{{ r.name }}</td><td style="text-align:left;"><strong class="nums">{{ r.c|fa_num }}</strong></td></tr>
-                {% else %}
-                    <tr><td colspan="2">
-                        <div class="empty-mini"><svg class="icon"><use href="#i-stethoscope"></use></svg> داده‌ای نیست</div>
-                    </td></tr>
-                {% endfor %}
-                </tbody>
-            </table>
-        </div>
+<div class="card">
+    <div class="section-title"><svg class="icon"><use href="#i-list-checks"></use></svg> پیگیری‌های باز</div>
+    <div class="table-wrap">
+        <table>
+            <tbody>
+                <tr><td><span class="chip"><svg class="icon icon-sm"><use href="#i-pill"></use></svg> تجدید دارو</span></td><td style="text-align:left;"><strong class="nums">{{ (followups.get('refill') or 0)|fa_num }}</strong></td></tr>
+                <tr><td><span class="chip"><svg class="icon icon-sm"><use href="#i-alert"></use></svg> کنترل‌نشده</span></td><td style="text-align:left;"><strong class="nums">{{ (followups.get('uncontrolled') or 0)|fa_num }}</strong></td></tr>
+                <tr><td><span class="chip"><svg class="icon icon-sm"><use href="#i-calendar"></use></svg> بدون مراجعه اخیر</span></td><td style="text-align:left;"><strong class="nums">{{ (followups.get('lapsed') or 0)|fa_num }}</strong></td></tr>
+                <tr><td><span class="chip"><svg class="icon icon-sm"><use href="#i-calendar"></use></svg> موعد ویزیت</span></td><td style="text-align:left;"><strong class="nums">{{ (followups.get('visit_due') or 0)|fa_num }}</strong></td></tr>
+            </tbody>
+        </table>
     </div>
-    <div class="card">
-        <div class="section-title"><svg class="icon"><use href="#i-list-checks"></use></svg> پیگیری‌های باز</div>
-        <div class="table-wrap">
-            <table>
-                <tbody>
-                    <tr><td><span class="chip"><svg class="icon icon-sm"><use href="#i-pill"></use></svg> تجدید دارو</span></td><td style="text-align:left;"><strong class="nums">{{ (followups.get('refill') or 0)|fa_num }}</strong></td></tr>
-                    <tr><td><span class="chip"><svg class="icon icon-sm"><use href="#i-alert"></use></svg> کنترل‌نشده</span></td><td style="text-align:left;"><strong class="nums">{{ (followups.get('uncontrolled') or 0)|fa_num }}</strong></td></tr>
-                    <tr><td><span class="chip"><svg class="icon icon-sm"><use href="#i-calendar"></use></svg> بدون مراجعه اخیر</span></td><td style="text-align:left;"><strong class="nums">{{ (followups.get('lapsed') or 0)|fa_num }}</strong></td></tr>
-                    <tr><td><span class="chip"><svg class="icon icon-sm"><use href="#i-calendar"></use></svg> موعد ویزیت</span></td><td style="text-align:left;"><strong class="nums">{{ (followups.get('visit_due') or 0)|fa_num }}</strong></td></tr>
-                </tbody>
-            </table>
-        </div>
-        <a class="btn btn-sm" href="{{ url_for('followups.worklist') }}" style="margin-top:var(--s4);"><svg class="icon icon-sm"><use href="#i-list-checks"></use></svg> مشاهده لیست پیگیری</a>
-    </div>
+    <a class="btn btn-sm" href="{{ url_for('followups.worklist') }}" style="margin-top:var(--s4);"><svg class="icon icon-sm"><use href="#i-list-checks"></use></svg> مشاهده لیست پیگیری</a>
 </div>
 
 <div class="card">

@@ -150,12 +150,7 @@
     {# ---- PRIORITIZED ADA SUPPORT ---- #}
     {% if clinical_support and clinical_support.count %}
     <div class="card">
-        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:var(--s2);">
-            <div class="section-title" style="margin:0;"><svg class="icon"><use href="#i-activity"></use></svg> پشتیبان بالینی</div>
-            <form method="post" action="{{ url_for('patients.generate_followups', pid=patient.id) }}" style="margin:0;">
-                <button class="btn btn-sm btn-ghost" type="submit"><svg class="icon icon-sm"><use href="#i-list-checks"></use></svg> تولید پیگیری‌های سررسیده</button>
-            </form>
-        </div>
+        <div class="section-title"><svg class="icon"><use href="#i-activity"></use></svg> پشتیبان بالینی</div>
         <div class="sugg-summary">
             <span class="badge badge-violet">{{ clinical_support.count|fa_num }} توصیه</span>
             {% if action_count %}<span class="chip"><span class="dot dot-danger"></span> {{ action_count|fa_num }} اقدام لازم</span>{% endif %}
@@ -395,24 +390,6 @@
             <div id="meResult" style="margin-top:var(--s4);"></div>
         </div>
     </div>
-
-    <div class="card">
-        <div class="section-title"><svg class="icon"><use href="#i-activity"></use></svg> رویدادهای دارویی</div>
-        {% if med_events %}
-        <div class="scroll-y">
-        {% for e in med_events|reverse %}
-            <div class="list-row">
-                <span>
-                {% if e.event_type=='start' %}<span class="badge badge-ok">شروع</span>
-                {% elif e.event_type=='stop' %}<span class="badge badge-danger">قطع</span>
-                {% else %}<span class="badge badge-warn">تغییر دوز</span>{% endif %}
-                {{ e.drug_name }} {% if e.dose %}<span class="muted">{{ e.dose }}</span>{% endif %}</span>
-                <span class="muted" style="font-size:11px;">{{ e.date_fa or '—' }}</span>
-            </div>
-        {% endfor %}
-        </div>
-        {% else %}<div class="empty-mini">رویدادی ثبت نشده.</div>{% endif %}
-    </div>
 </section>
 
 <!-- ============================================================= -->
@@ -498,29 +475,6 @@
                     <button class="btn btn-sm" type="submit"><svg class="icon icon-sm"><use href="#i-plus"></use></svg> افزودن</button>
                 </div>
             </form>
-        </div>
-
-        <div class="card" id="wallet">
-            <div class="section-title"><svg class="icon"><use href="#i-wallet"></use></svg> کیف پول</div>
-            <div style="text-align:center;padding:var(--s2) 0 var(--s4);">
-                <div class="num c-ok" style="font-size:30px;font-weight:800;">{{ wallet_balance|fa_num }}</div>
-                <div class="muted text-xs">تومان اعتبار</div>
-            </div>
-            <form class="row" method="post" action="{{ url_for('patients.wallet_adjust', pid=patient.id) }}">
-                <div class="field"><input type="number" name="amount" placeholder="مبلغ" required></div>
-                <select name="direction" style="width:auto;"><option value="credit">افزایش</option><option value="debit">کسر</option></select>
-                <button class="btn btn-sm" type="submit"><svg class="icon icon-sm"><use href="#i-check"></use></svg> اعمال</button>
-            </form>
-            {% if wallet_tx %}
-            <div class="scroll-y" style="margin-top:var(--s3);max-height:140px;">
-                {% for t in wallet_tx %}
-                <div class="flex items-center justify-between text-sm" style="padding:var(--s1) 0;border-bottom:1px solid var(--line);">
-                    <span class="{{ 'c-ok' if t.amount>0 else 'c-danger' }}" style="font-weight:700;">{{ t.amount|fa_num }}</span>
-                    <span class="muted">{{ t.note or t.reason }}</span>
-                </div>
-                {% endfor %}
-            </div>
-            {% endif %}
         </div>
     </div>
 

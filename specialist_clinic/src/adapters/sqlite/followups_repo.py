@@ -6,16 +6,40 @@ from src.common.utils import iran_now
 class FollowupRepository:
 
     def create(self, pid: int, *, reason, detail=None, due_date=None, assigned_to=None,
-               source_rule=None, source_event=None) -> int:
+               source_rule=None, source_event=None, appointment_id=None,
+               fulfillment='in_person') -> int:
+        """fulfillment in remote|in_person — how the task is meant to be closed.
+        appointment_id links the task to the visit that fulfills it (or None)."""
         db = get_db()
         cur = db.execute(
             """INSERT INTO followup_tasks
-                 (patient_link_id, reason, detail, due_date, assigned_to, source_rule, source_event)
-               VALUES (?, ?, ?, ?, ?, ?, ?)""",
-            (pid, reason, detail, due_date, assigned_to, source_rule, source_event),
+                 (patient_link_id, reason, detail, due_date, assigned_to, source_rule,
+                  source_event, appointment_id, fulfillment)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (pid, reason, detail, due_date, assigned_to, source_rule, source_event,
+             appointment_id, fulfillment),
         )
         db.commit()
         return cur.lastrowid
+
+    def set_appointment(self, task_id: int, appointment_id):
+        """Link an open task to the visit that will fulfill it."""
+        db = get_db()
+        db.execute("UPDATE followup_tasks SET appointment_id=? WHERE id=?",
+                   (appointment_id, task_id))
+        db.commit()
+
+    def assign_appointment_bulk(self, task_ids: list, appointment_id):
+        """Attach several open tasks to a single visit (merge same-due follow-ups)."""
+        if not task_ids:
+            return
+        db = get_db()
+        placeholders = ",".join("?" for _ in task_ids)
+        db.execute(
+            f"UPDATE followup_tasks SET appointment_id=? WHERE id IN ({placeholders})",
+            [appointment_id, *task_ids],
+        )
+        db.commit()
 
     def exists_open(self, pid: int, reason: str) -> bool:
         db = get_db()
@@ -58,6 +82,18 @@ class FollowupRepository:
             params.append(reason)
         sql += " ORDER BY f.due_date IS NULL, f.due_date ASC, f.id DESC"
         return [dict(r) for r in db.execute(sql, params).fetchall()]
+
+    def search_open(self, q: str) -> list[dict]:
+        """Open tasks whose patient matches `q` by national_id OR full_name OR
+        phone_number (LIKE). Returns rows enriched with patient fields."""
+        db = get_db()
+        like = f"%{(q or '').strip()}%"
+        sql = """SELECT f.*, p.full_name AS patient_name, p.phone_number, p.national_id
+                 FROM followup_tasks f JOIN patient_links p ON p.id=f.patient_link_id
+                 WHERE f.status='open'
+                   AND (p.national_id LIKE ? OR p.full_name LIKE ? OR p.phone_number LIKE ?)
+                 ORDER BY f.due_date IS NULL, f.due_date ASC, f.id DESC"""
+        return [dict(r) for r in db.execute(sql, (like, like, like)).fetchall()]
 
     def list_for_patient(self, pid: int) -> list[dict]:
         db = get_db()

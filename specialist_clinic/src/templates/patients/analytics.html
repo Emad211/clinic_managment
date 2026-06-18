@@ -70,12 +70,7 @@
 <!-- ADA CLINICAL SUPPORT (rule engine, suggestion-only) -->
 {% if clinical_support and clinical_support.count %}
 <div class="card">
-    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:var(--s2);">
-        <div class="section-title" style="margin:0;"><svg class="icon"><use href="#i-activity"></use></svg> پشتیبان بالینی <span class="section-sub">{{ clinical_support.count|fa_num }} توصیه بر پایهٔ استانداردهای بالینی</span></div>
-        <form method="post" action="{{ url_for('patients.generate_followups', pid=patient.id) }}" style="margin:0;">
-            <button class="btn btn-sm" type="submit"><svg class="icon icon-sm"><use href="#i-list-checks"></use></svg> تولید پیگیری‌های سررسیده</button>
-        </form>
-    </div>
+    <div class="section-title"><svg class="icon"><use href="#i-activity"></use></svg> پشتیبان بالینی <span class="section-sub">{{ clinical_support.count|fa_num }} توصیه بر پایهٔ استانداردهای بالینی</span></div>
     <div class="alert-banner" style="background:var(--info-soft);border-color:var(--info);color:var(--info-fg);margin-top:var(--s3);">
         <svg class="icon"><use href="#i-info"></use></svg> این موارد <b>پیشنهادِ سیستم</b> هستند و جایگزین قضاوت و تجویزِ پزشک نیستند.
     </div>

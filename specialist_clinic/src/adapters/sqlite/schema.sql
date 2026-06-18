@@ -523,4 +523,123 @@ INSERT OR IGNORE INTO drug_classes (class_key, label, glucose_lowering, display_
  ('ezetimibe', 'ازتیمایب', 0, 160),
  ('finerenone', 'فینرنون (nsMRA)', 0, 170),
  ('aspirin', 'آسپرین', 0, 180),
+ ('beta_blocker', 'بتابلاکر', 0, 190),
+ ('loop_diuretic', 'دیورتیک لوپ', 0, 200),
+ ('fibrate', 'فیبرات', 0, 210),
+ ('mra', 'آنتاگونیست گیرنده مینرالوکورتیکوئید', 0, 220),
+ ('thyroid_agent', 'داروی تیروئید/لووتیروکسین', 0, 230),
+ ('antithyroid', 'ضدتیروئید', 0, 240),
  ('other', 'سایر', 0, 999);
+
+-- ============================================================================
+-- Record redesign / care-loop foundation (Phase 1 — docs/record_redesign_plan.md §2)
+-- Lab/drug catalogs, per-disease lab mapping, the structured patient record
+-- (surgery / medical history / clinical notes / prescriptions) and the
+-- per-patient engagement approval queue. Catalog rows are seeded idempotently
+-- from lab_catalog_seed.py / drug_catalog_seed.py at bootstrap.
+-- ============================================================================
+
+-- lab_test_catalog: editable catalog of lab tests (unit + reference range);
+-- drives the record's lab-entry dropdown (name → unit / ref-range auto-fill).
+CREATE TABLE IF NOT EXISTS lab_test_catalog (
+    test_key TEXT PRIMARY KEY,
+    name_fa TEXT NOT NULL,
+    unit TEXT,
+    ref_low REAL,
+    ref_high REAL,
+    category TEXT,
+    display_order INTEGER DEFAULT 100,
+    is_active INTEGER DEFAULT 1
+);
+
+-- condition_lab_tests: per-disease frequently-ordered tests (chips in the record).
+CREATE TABLE IF NOT EXISTS condition_lab_tests (
+    condition_code TEXT NOT NULL,
+    lab_test_key TEXT NOT NULL,
+    display_order INTEGER DEFAULT 100,
+    PRIMARY KEY (condition_code, lab_test_key)
+);
+
+-- drug_catalog: drug names filtered by pharmacologic class + standard doses.
+CREATE TABLE IF NOT EXISTS drug_catalog (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    generic_fa TEXT NOT NULL,
+    drug_class_key TEXT,
+    standard_doses TEXT,
+    is_active INTEGER DEFAULT 1
+);
+
+-- surgery_history: per-patient surgical history.
+CREATE TABLE IF NOT EXISTS surgery_history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    patient_link_id INTEGER NOT NULL,
+    title TEXT NOT NULL,
+    performed_on TEXT,
+    note TEXT,
+    created_at TEXT DEFAULT (datetime('now','+3 hours','+30 minutes'))
+    , FOREIGN KEY (patient_link_id) REFERENCES patient_links(id)
+);
+CREATE INDEX IF NOT EXISTS idx_surgery_history_patient ON surgery_history(patient_link_id);
+
+-- medical_history: per-patient past medical history / comorbidities.
+CREATE TABLE IF NOT EXISTS medical_history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    patient_link_id INTEGER NOT NULL,
+    title TEXT NOT NULL,
+    note TEXT,
+    since TEXT,
+    created_at TEXT DEFAULT (datetime('now','+3 hours','+30 minutes'))
+    , FOREIGN KEY (patient_link_id) REFERENCES patient_links(id)
+);
+CREATE INDEX IF NOT EXISTS idx_medical_history_patient ON medical_history(patient_link_id);
+
+-- clinical_notes: free-text record notes; kind ∈ symptom|exam|lifestyle|general.
+CREATE TABLE IF NOT EXISTS clinical_notes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    patient_link_id INTEGER NOT NULL,
+    kind TEXT NOT NULL,
+    body TEXT,
+    recorded_at TEXT DEFAULT (datetime('now','+3 hours','+30 minutes')),
+    recorded_by TEXT
+    , FOREIGN KEY (patient_link_id) REFERENCES patient_links(id)
+);
+CREATE INDEX IF NOT EXISTS idx_clinical_notes_patient ON clinical_notes(patient_link_id);
+
+-- prescriptions: prescription log; mode ∈ free|insurance. portal_rx_id/insurer
+-- carry the insurance-portal fields used by the prescribing bridge (Phase 6).
+CREATE TABLE IF NOT EXISTS prescriptions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    patient_link_id INTEGER NOT NULL,
+    kind TEXT NOT NULL,
+    items TEXT,
+    mode TEXT DEFAULT 'free',
+    insurer TEXT,
+    portal_rx_id TEXT,
+    prescriber_user_id INTEGER,
+    followup_task_id INTEGER,
+    issued_at TEXT DEFAULT (datetime('now','+3 hours','+30 minutes'))
+    , FOREIGN KEY (patient_link_id) REFERENCES patient_links(id)
+);
+CREATE INDEX IF NOT EXISTS idx_prescriptions_patient ON prescriptions(patient_link_id);
+
+-- engagement_approvals: per-patient physician approval queue (SMS only sent after
+-- approval). period_key dedupes per cycle; offer is reserved for Phase 8 pricing.
+CREATE TABLE IF NOT EXISTS engagement_approvals (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    patient_link_id INTEGER NOT NULL,
+    event_key TEXT NOT NULL,
+    channel TEXT,
+    due_date TEXT,
+    message TEXT,
+    offer TEXT,
+    status TEXT DEFAULT 'pending',
+    period_key TEXT,
+    appointment_id INTEGER,
+    decided_by TEXT,
+    decided_at TEXT,
+    sent_at TEXT,
+    created_at TEXT DEFAULT (datetime('now','+3 hours','+30 minutes')),
+    UNIQUE(patient_link_id, event_key, period_key)
+    , FOREIGN KEY (patient_link_id) REFERENCES patient_links(id)
+);
+CREATE INDEX IF NOT EXISTS idx_engagement_approvals_patient ON engagement_approvals(patient_link_id);

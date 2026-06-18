@@ -79,6 +79,59 @@ def _seed_condition_meta(db):
         pass
 
 
+def _seed_flag_sections(db):
+    """Backfill `flag_catalog.record_section` from each flag's existing category
+    (idempotent; only fills rows where record_section IS NULL, so manager edits
+    are preserved). Section ∈ lifestyle|exam|disease|general — the buckets used by
+    the redesigned patient record (docs/record_redesign_plan.md §2).
+
+    Mapping from the seeded `category`:
+      cardiac|renal|hepatic|risk|repro -> disease  (clinical condition attributes)
+      lifestyle                        -> lifestyle (smoking/vape, ...)
+      exam                             -> exam      (monofilament, eye/foot exam)
+      functional|history|other|else    -> general
+
+    Per-flag overrides (win over the category mapping): metabolic_surgery is a
+    clinical comorbidity/decision-input, not a generic note, so it goes to disease.
+    """
+    category_to_section = {
+        'cardiac': 'disease',
+        'renal': 'disease',
+        'hepatic': 'disease',
+        'risk': 'disease',
+        'repro': 'disease',
+        'lifestyle': 'lifestyle',
+        'exam': 'exam',
+        'functional': 'general',
+        'history': 'general',
+        'other': 'general',
+    }
+    # Specific flags whose record_section differs from their category mapping.
+    flag_overrides = {
+        'metabolic_surgery': 'disease',
+    }
+    try:
+        # Per-flag overrides FIRST so they win over the category mapping; still
+        # guarded by IS NULL so manager edits are preserved.
+        for flag_key, section in flag_overrides.items():
+            db.execute(
+                "UPDATE flag_catalog SET record_section = ? "
+                "WHERE record_section IS NULL AND flag_key = ?",
+                (section, flag_key))
+        # Then map known categories; anything still unmapped falls back to 'general'.
+        for category, section in category_to_section.items():
+            db.execute(
+                "UPDATE flag_catalog SET record_section = ? "
+                "WHERE record_section IS NULL AND category = ?",
+                (section, category))
+        db.execute(
+            "UPDATE flag_catalog SET record_section = 'general' "
+            "WHERE record_section IS NULL")
+        db.commit()
+    except Exception:
+        pass
+
+
 def _run_migrations(db):
     """Additive migrations for existing DBs (new tables come from schema IF NOT EXISTS)."""
     _ensure_column(db, "patient_links", "wallet_balance", "INTEGER NOT NULL DEFAULT 0")
@@ -104,11 +157,32 @@ def _run_migrations(db):
     _ensure_column(db, "conditions", "icon", "TEXT")
     _ensure_column(db, "conditions", "color", "TEXT")
     _seed_condition_meta(db)
+    # Record redesign / care-loop foundation (Phase 1 — docs/record_redesign_plan.md §2):
+    # additive columns on existing tables (new tables come from schema IF NOT EXISTS).
+    _ensure_column(db, "flag_catalog", "record_section", "TEXT")
+    _ensure_column(db, "followup_tasks", "appointment_id", "INTEGER")
+    _ensure_column(db, "followup_tasks", "fulfillment", "TEXT DEFAULT 'in_person'")
+    _ensure_column(db, "engagement_events", "event_type", "TEXT")
+    _ensure_column(db, "engagement_events", "is_custom", "INTEGER DEFAULT 0")
+    _ensure_column(db, "users", "api_token", "TEXT")
+    _seed_flag_sections(db)
     # Seed the clinical decision-rule catalog (idempotent; manager edits preserved).
     # Also tags each rule's owning disease module (condition_code) on existing DBs.
     try:
         from src.adapters.sqlite.clinical_rules_seed import seed_clinical_rules
         seed_clinical_rules(db)
+    except Exception:
+        pass
+    # Seed the lab-test and drug catalogs (idempotent; wrapped so a missing seed
+    # module or any failure never breaks startup).
+    try:
+        from src.adapters.sqlite.lab_catalog_seed import seed_lab_catalog
+        seed_lab_catalog(db)
+    except Exception:
+        pass
+    try:
+        from src.adapters.sqlite.drug_catalog_seed import seed_drug_catalog
+        seed_drug_catalog(db)
     except Exception:
         pass
 

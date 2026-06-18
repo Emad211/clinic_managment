@@ -19,7 +19,7 @@ def worklist():
     counts = repo.counts_by_reason()
     return render_template("followups/worklist.html", tasks=tasks, counts=counts,
                            reason_labels=REASON_LABELS, active_reason=reason,
-                           active_page='followups')
+                           show_worklist_tab=True, active_page='followups')
 
 
 @bp.route("/generate", methods=["POST"])

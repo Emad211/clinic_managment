@@ -18,12 +18,6 @@ def index():
 
     total = db.execute("SELECT COUNT(*) c FROM patient_links WHERE is_active=1").fetchone()['c']
 
-    by_condition = db.execute(
-        """SELECT c.name, COUNT(DISTINCT pc.patient_link_id) c
-           FROM patient_conditions pc JOIN conditions c ON c.id=pc.condition_id
-           JOIN patient_links p ON p.id=pc.patient_link_id AND p.is_active=1
-           WHERE pc.is_active=1 GROUP BY c.id ORDER BY c DESC""").fetchall()
-
     # Control rate: patients whose latest hba1c<=7 and latest systolic<140 among those with readings
     measured = db.execute(
         """SELECT COUNT(DISTINCT patient_link_id) c FROM vital_readings""").fetchone()['c']
@@ -45,7 +39,7 @@ def index():
 
     return render_template(
         "manager/index.html", active_page='manager',
-        total=total, by_condition=[dict(r) for r in by_condition],
+        total=total,
         measured=measured, controlled=controlled, uncontrolled=uncontrolled, control_rate=control_rate,
         campaign_stats=dict(campaign_stats), followups=followups,
     )
