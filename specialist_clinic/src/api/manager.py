@@ -56,6 +56,14 @@ def index():
 def settings():
     repo = SmsRepository()
     if request.method == "POST":
+        # Active panel selector (kavenegar | mediana).
+        prov = (request.form.get('sms_provider', 'kavenegar') or 'kavenegar').strip().lower()
+        repo.set_setting('sms_provider', prov if prov in ('kavenegar', 'mediana') else 'kavenegar')
+        # Kavenegar (primary panel).
+        repo.set_setting('kavenegar_api_key', request.form.get('kavenegar_api_key', '').strip())
+        repo.set_setting('kavenegar_sender', request.form.get('kavenegar_sender', '').strip())
+        repo.set_setting('kavenegar_timeout', str(min(max(request.form.get('kavenegar_timeout', type=int) or 45, 10), 120)))
+        # Mediana (legacy/fallback panel).
         repo.set_setting('mediana_api_key', request.form.get('mediana_api_key', '').strip())
         repo.set_setting('mediana_sending_number', request.form.get('mediana_sending_number', '').strip())
         repo.set_setting('mediana_message_type', request.form.get('mediana_message_type', 'PromotionalToCustomers').strip())
@@ -64,6 +72,10 @@ def settings():
         flash("تنظیمات ذخیره شد", "success")
         return redirect(url_for("manager.settings"))
     data = {
+        'sms_provider': repo.get_setting('sms_provider', 'kavenegar'),
+        'kavenegar_api_key': repo.get_setting('kavenegar_api_key', ''),
+        'kavenegar_sender': repo.get_setting('kavenegar_sender', ''),
+        'kavenegar_timeout': repo.get_setting('kavenegar_timeout', '45'),
         'mediana_api_key': repo.get_setting('mediana_api_key', ''),
         'mediana_sending_number': repo.get_setting('mediana_sending_number', ''),
         'mediana_message_type': repo.get_setting('mediana_message_type', 'PromotionalToCustomers'),

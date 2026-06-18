@@ -21,6 +21,11 @@ class SmsRepository:
         )
         db.commit()
 
+    def provider_configured(self) -> bool:
+        """True if any SMS panel (Kavenegar or Mediana) has an API key set."""
+        return bool((self.get_setting('kavenegar_api_key') or '').strip()
+                    or (self.get_setting('mediana_api_key') or '').strip())
+
     # ---- templates ----
     def list_templates(self) -> list[dict]:
         db = get_db()

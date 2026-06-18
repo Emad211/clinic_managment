@@ -35,23 +35,53 @@ class NullProvider(SmsProvider):
 
 
 def get_provider() -> SmsProvider:
-    """Return the configured provider (Mediana if API key present, else Null)."""
+    """Return the configured SMS provider.
+
+    Honors the ``sms_provider`` setting ('kavenegar' | 'mediana'). If the selected
+    panel has no API key, falls back to whichever panel *does* have a key, and
+    finally to the Null (simulation) provider. Kavenegar is the project's primary panel.
+    """
     try:
         from src.adapters.sqlite.sms_repo import SmsRepository
         repo = SmsRepository()
-        api_key = repo.get_setting('mediana_api_key')
-        if api_key:
-            from src.services.sms.mediana_provider import MedianaProvider
+        kav_key = (repo.get_setting('kavenegar_api_key') or '').strip()
+        med_key = (repo.get_setting('mediana_api_key') or '').strip()
+        pref = (repo.get_setting('sms_provider') or '').strip().lower()
+        if pref not in ('kavenegar', 'mediana'):
+            pref = 'kavenegar' if kav_key else ('mediana' if med_key else '')
+
+        def _timeout(key: str) -> int:
             try:
-                timeout = int(repo.get_setting('mediana_timeout', '45') or 45)
+                return int(repo.get_setting(key, '45') or 45)
             except (TypeError, ValueError):
-                timeout = 45
+                return 45
+
+        def _kavenegar() -> SmsProvider:
+            from src.services.sms.kavenegar_provider import KavenegarProvider
+            return KavenegarProvider(
+                api_key=kav_key,
+                sender=repo.get_setting('kavenegar_sender'),
+                timeout=_timeout('kavenegar_timeout'),
+            )
+
+        def _mediana() -> SmsProvider:
+            from src.services.sms.mediana_provider import MedianaProvider
             return MedianaProvider(
-                api_key=api_key,
+                api_key=med_key,
                 sending_number=repo.get_setting('mediana_sending_number'),
                 default_type=repo.get_setting('mediana_message_type', 'PromotionalToCustomers'),
-                timeout=timeout,
+                timeout=_timeout('mediana_timeout'),
             )
+
+        if pref == 'kavenegar' and kav_key:
+            return _kavenegar()
+        if pref == 'mediana' and med_key:
+            return _mediana()
+        # Selected panel isn't configured → use whichever has a key.
+        if kav_key:
+            return _kavenegar()
+        if med_key:
+            return _mediana()
     except Exception as e:
         print(f"[sms] provider init failed, falling back to Null: {e}")
     return NullProvider()

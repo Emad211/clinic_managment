@@ -2,28 +2,71 @@
 {% block title %}تنظیمات{% endblock %}
 {% block content %}
 <div class="topbar">
-    <h1><svg class="icon icon-lg"><use href="#i-settings"></use></svg> تنظیمات</h1>
+    <h1><svg class="icon icon-lg"><use href="#i-settings"></use></svg> تنظیمات پیامک</h1>
 </div>
-<div class="page-intro">پیکربندی پنل پیامک مدیانا و قالب پیام یادآوری نوبت.</div>
+<div class="page-intro">انتخابِ پنلِ پیامک، کلیدها و قالبِ پیامِ یادآوری نوبت. پنلِ فعالِ پروژه: <b>کاوه‌نگار</b>.</div>
 
-<div class="card" style="max-width:680px;">
-    <div class="section-title">
-        <svg class="icon"><use href="#i-megaphone"></use></svg>
-        <span>پنل پیامک مدیانا (Mediana)</span>
-        <span class="section-sub">کلیدها و تنظیمات ارسال پیامک</span>
+<form method="post" style="max-width:680px;">
+
+    <!-- پنلِ فعال -->
+    <div class="card">
+        <div class="section-title">
+            <svg class="icon"><use href="#i-list-checks"></use></svg>
+            <span>پنلِ پیامکِ فعال</span>
+            <span class="section-sub">کدام سرویس پیام‌ها را ارسال کند</span>
+        </div>
+        <div class="fld">
+            <select name="sms_provider">
+                <option value="kavenegar" {% if data.sms_provider=='kavenegar' %}selected{% endif %}>کاوه‌نگار (Kavenegar)</option>
+                <option value="mediana" {% if data.sms_provider=='mediana' %}selected{% endif %}>مدیانا (Mediana)</option>
+            </select>
+            <div class="help">پیام‌ها از این پنل ارسال می‌شوند. اگر کلیدِ پنلِ انتخاب‌شده خالی باشد، از پنلِ دیگر (در صورت داشتن کلید) و در نهایت از حالتِ شبیه‌سازی استفاده می‌شود.</div>
+        </div>
     </div>
 
-    <form method="post">
+    <!-- کاوه‌نگار -->
+    <div class="card" style="margin-top:var(--s4);">
+        <div class="section-title">
+            <svg class="icon"><use href="#i-megaphone"></use></svg>
+            <span>پنل پیامک کاوه‌نگار (Kavenegar)</span>
+            <span class="section-sub">پنلِ اصلیِ پروژه</span>
+        </div>
+
         <div class="fld">
+            <label><svg class="icon icon-sm"><use href="#i-key"></use></svg> API Key کاوه‌نگار</label>
+            <input type="text" name="kavenegar_api_key" value="{{ data.kavenegar_api_key }}" placeholder="کلید API پنل کاوه‌نگار (در مسیرِ URL ارسال می‌شود)">
+            <div class="help">کلیدِ دسترسیِ پنل کاوه‌نگار. در کاوه‌نگار کلید بخشی از مسیرِ آدرس است (نه هدر). در حالتِ شبیه‌سازی خالی بگذارید.</div>
+        </div>
+
+        <div class="fld">
+            <label><svg class="icon icon-sm"><use href="#i-phone"></use></svg> خطِ ارسال (Sender) <span class="muted">— اختیاری</span></label>
+            <input type="text" name="kavenegar_sender" value="{{ data.kavenegar_sender }}" placeholder="مثلاً 10004346 — خالی = خطِ پیش‌فرضِ حساب">
+            <div class="help">اگر خالی بماند، کاوه‌نگار از خطِ پیش‌فرضِ تنظیم‌شده در پنل استفاده می‌کند. برای یادآوری‌های درمانی، خطِ خدماتی توصیه می‌شود.</div>
+        </div>
+
+        <div class="fld">
+            <label><svg class="icon icon-sm"><use href="#i-settings"></use></svg> مهلتِ انتظارِ پاسخِ پنل <span class="muted">(ثانیه)</span></label>
+            <input type="number" name="kavenegar_timeout" min="10" max="120" value="{{ data.kavenegar_timeout }}" placeholder="45">
+            <div class="help">اگر پنل دیر پاسخ دهد تا این مدت منتظر می‌مانیم. در صورتِ عبور از مهلت، پیام «در انتظار تأیید» ثبت می‌شود (نه «ناموفق») چون معمولاً ارسال شده است. پیشنهاد: ۴۵ ثانیه.</div>
+        </div>
+    </div>
+
+    <!-- مدیانا (جایگزین/قدیمی) -->
+    <details class="card" style="margin-top:var(--s4);" {% if data.sms_provider=='mediana' %}open{% endif %}>
+        <summary class="section-title" style="cursor:pointer;list-style:none;">
+            <svg class="icon"><use href="#i-megaphone"></use></svg>
+            <span>پنل پیامک مدیانا (Mediana)</span>
+            <span class="section-sub">پنلِ جایگزین — برای فعال‌سازی، «پنلِ فعال» را مدیانا کنید</span>
+        </summary>
+
+        <div class="fld" style="margin-top:var(--s3);">
             <label><svg class="icon icon-sm"><use href="#i-key"></use></svg> API Key مدیانا</label>
             <input type="text" name="mediana_api_key" value="{{ data.mediana_api_key }}" placeholder="کلید API پنل مدیانا (هدر X-API-KEY)">
-            <div class="help">کلید دسترسی پنل مدیانا که در هدر <span class="nums">X-API-KEY</span> ارسال می‌شود.</div>
         </div>
 
         <div class="fld">
             <label><svg class="icon icon-sm"><use href="#i-phone"></use></svg> شماره ارسال اختصاصی <span class="muted">— اختیاری</span></label>
             <input type="text" name="mediana_sending_number" value="{{ data.mediana_sending_number }}" placeholder="مثلاً 100090000 (در صورت داشتن خط اختصاصی)">
-            <div class="help">اگر خط اختصاصی وارد شود، همه پیام‌ها از همان خط ارسال می‌شوند و «نوع پیام» نادیده گرفته می‌شود.</div>
         </div>
 
         <div class="fld">
@@ -38,25 +81,34 @@
         <div class="fld">
             <label><svg class="icon icon-sm"><use href="#i-settings"></use></svg> مهلتِ انتظارِ پاسخِ پنل <span class="muted">(ثانیه)</span></label>
             <input type="number" name="mediana_timeout" min="10" max="120" value="{{ data.mediana_timeout }}" placeholder="45">
-            <div class="help">اگر پنلِ مدیانا دیر پاسخ دهد تا این مدت منتظر می‌مانیم. در صورت عبور از این مهلت، پیام «در انتظار تأیید» ثبت می‌شود (نه «ناموفق») چون معمولاً ارسال شده است. پیشنهاد: ۴۵ ثانیه.</div>
         </div>
+    </details>
 
+    <!-- متنِ یادآوری -->
+    <div class="card" style="margin-top:var(--s4);">
+        <div class="section-title">
+            <svg class="icon"><use href="#i-bell"></use></svg>
+            <span>متنِ یادآوریِ نوبت</span>
+            <span class="section-sub">{name} = نام بیمار</span>
+        </div>
         <div class="fld">
-            <label><svg class="icon icon-sm"><use href="#i-bell"></use></svg> متن یادآوری نوبت <span class="muted">({name} = نام بیمار)</span></label>
             <textarea name="reminder_template" rows="3">{{ data.reminder_template }}</textarea>
-            <div class="help">از <span class="nums">{name}</span> برای درج خودکار نام بیمار در متن پیام استفاده کنید.</div>
+            <div class="help">از <span class="nums">{name}</span> برای درجِ خودکارِ نامِ بیمار در متنِ پیام استفاده کنید.</div>
         </div>
+    </div>
 
-        <button class="btn" type="submit" style="margin-top:var(--s4);">
-            <svg class="icon"><use href="#i-save"></use></svg> ذخیره تنظیمات
-        </button>
-    </form>
+    <button class="btn" type="submit" style="margin-top:var(--s4);">
+        <svg class="icon"><use href="#i-save"></use></svg> ذخیره تنظیمات
+    </button>
+</form>
 
-    <div class="alert-banner alert-warn" style="margin-top:var(--s5);">
+<div class="card" style="max-width:680px;margin-top:var(--s4);">
+    <div class="alert-banner alert-warn">
         <svg class="icon"><use href="#i-info"></use></svg>
         <div>
-            تا زمانی که API Key وارد نشود، پیامک‌ها در حالت شبیه‌سازی ثبت می‌شوند (ارسال واقعی انجام نمی‌شود).
-            یادآوری نوبت به‌صورت «اطلاع‌رسانی» و کمپین‌های پیشنهادی به‌صورت «تبلیغاتی به مشتریان» ارسال می‌شوند.
+            تا زمانی که کلیدِ API پنلِ فعال وارد نشود، پیامک‌ها در حالتِ شبیه‌سازی ثبت می‌شوند (ارسالِ واقعی انجام نمی‌شود).
+            یادآوری‌ها به‌صورتِ خدماتی و کمپین‌ها به‌صورتِ تبلیغاتی در نظر گرفته می‌شوند؛ راهنمای کاملِ کاوه‌نگار در
+            <span class="nums">docs/kavenegar_reference.md</span>.
         </div>
     </div>
 </div>

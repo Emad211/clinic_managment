@@ -28,7 +28,7 @@ def campaigns():
     seg_sizes = {key: len(resolve_segment(key)) for key in SEGMENTS}
     return render_template("sms/campaigns.html", campaigns=campaigns, templates=templates,
                            segments=SEGMENTS, seg_sizes=seg_sizes, campaign_types=CAMPAIGN_TYPES,
-                           provider_ready=bool(repo.get_setting('mediana_api_key')),
+                           provider_ready=repo.provider_configured(),
                            active_page='sms')
 
 
@@ -110,7 +110,7 @@ def campaign_detail(cid):
                            segments=SEGMENTS, campaign_types=CAMPAIGN_TYPES,
                            recipients_count=len(recipients), total_credit=total_credit,
                            incrementality=incrementality,
-                           provider_ready=bool(repo.get_setting('mediana_api_key')),
+                           provider_ready=repo.provider_configured(),
                            active_page='sms')
 
 
