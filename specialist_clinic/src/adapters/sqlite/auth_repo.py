@@ -71,3 +71,19 @@ class AuthRepository:
         except Exception as e:
             print(f"Error updating password: {e}")
             return False
+
+    def set_api_token(self, user_id: int, token: str):
+        """Store the (rotated) extension API token for a user."""
+        db = get_db()
+        db.execute("UPDATE users SET api_token=? WHERE id=?", (token, user_id))
+        db.commit()
+
+    def get_user_by_token(self, token: str) -> Optional[Dict]:
+        """Look up an active user by their extension API token, or None."""
+        if not token:
+            return None
+        db = get_db()
+        r = db.execute(
+            "SELECT * FROM users WHERE api_token=? AND is_active=1", (token,)
+        ).fetchone()
+        return dict(r) if r else None

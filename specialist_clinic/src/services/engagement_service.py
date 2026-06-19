@@ -140,15 +140,12 @@ class EngagementService:
         patient = db.execute(
             "SELECT id, full_name, phone_number, sms_opt_out FROM patient_links WHERE id=?",
             (pid,)).fetchone()
-        res = {'sms': 0, 'worklist': 0, 'skipped': 0}
+        res = {'sms': 0, 'worklist': 0, 'skipped': 0, 'queued': 0}
         if not patient:
             return res
         events, cfg = self.collect_due_events(pid)
         opted_out = bool(patient['sms_opt_out'])
         has_phone = bool(patient['phone_number'])
-        quiet = self._quiet_now()
-        cap = self._daily_cap()
-        sent_today = self.repo.sms_count_today(pid)
 
         for ev in events:
             conf = cfg[ev['event_key']]
@@ -168,13 +165,9 @@ class EngagementService:
                     self.repo.record_dispatch(pid, ev['event_key'], pk, 'worklist', tid)
                 res['worklist'] += 1
 
-            # --- sms channel ---
+            # --- sms channel --- (enqueue for physician approval; SMS is sent at approve time)
             if not worklist_only and channel in ('sms', 'both'):
                 if opted_out or not has_phone:
-                    res['skipped'] += 1
-                elif quiet:
-                    res['skipped'] += 1  # deferred until inside the quiet window
-                elif sent_today >= cap:
                     res['skipped'] += 1
                 elif self.repo.already_dispatched(pid, ev['event_key'], pk, 'sms'):
                     pass  # already sent for this period
@@ -184,22 +177,62 @@ class EngagementService:
                     body = sanitize(personalize(conf.get('sms_template') or '', name=patient['full_name']))
                     if body.strip():
                         if not dry_run:
-                            send_single(pid, patient['phone_number'], body, message_type='Informational')
-                            self.repo.record_dispatch(pid, ev['event_key'], pk, 'sms', None)
-                        sent_today += 1
-                        res['sms'] += 1
+                            self.repo.enqueue_approval(pid, ev['event_key'], 'sms', ev.get('due_date'), body, pk)
+                        res['queued'] += 1
         return res
 
     def run_all(self, dry_run: bool = False, worklist_only: bool = False) -> dict:
         db = get_db()
         rows = db.execute("SELECT id FROM patient_links WHERE is_active=1").fetchall()
-        agg = {'sms': 0, 'worklist': 0, 'skipped': 0, 'patients': 0}
+        agg = {'sms': 0, 'worklist': 0, 'skipped': 0, 'queued': 0, 'patients': 0}
         for r in rows:
             res = self.dispatch_patient(r['id'], dry_run=dry_run, worklist_only=worklist_only)
-            for k in ('sms', 'worklist', 'skipped'):
+            for k in ('sms', 'worklist', 'skipped', 'queued'):
                 agg[k] += res[k]
             agg['patients'] += 1
         return agg
+
+    # ------------------------------------------------------- approval / invite
+    def approve(self, approval_id: int, decided_by: str, message: str | None = None) -> dict:
+        """Physician confirms a queued message; only NOW does the SMS actually go out.
+        Re-checks opt-out/phone at approve time (auto-rejects if the patient opted out)."""
+        db = get_db()
+        ap = self.repo.get_approval(approval_id)
+        if not ap or ap.get('status') != 'pending':
+            return {'ok': False, 'reason': 'not_pending'}
+        p = db.execute(
+            "SELECT id, full_name, phone_number, sms_opt_out FROM patient_links WHERE id=?",
+            (ap['patient_link_id'],)).fetchone()
+        if not p or not p['phone_number'] or p['sms_opt_out']:
+            self.repo.set_status(approval_id, 'rejected', decided_by)
+            return {'ok': False, 'reason': 'opt_out'}
+        body = sanitize(message.strip()) if (message and message.strip()) else (ap['message'] or '')
+        if not body.strip():
+            return {'ok': False, 'reason': 'empty'}
+        send_single(ap['patient_link_id'], p['phone_number'], body, message_type='Informational')
+        self.repo.record_dispatch(ap['patient_link_id'], ap['event_key'], ap['period_key'] or '', 'sms', None)
+        self.repo.set_status(approval_id, 'approved', decided_by)
+        self.repo.mark_sent(approval_id)
+        return {'ok': True}
+
+    def reject(self, approval_id: int, decided_by: str) -> None:
+        self.repo.set_status(approval_id, 'rejected', decided_by)
+
+    def enqueue_invite(self, pid: int, message: str | None = None) -> int | None:
+        """Queue a visit-invite SMS for physician approval (one per patient per day).
+        Returns the new approval id, or None if opted-out / no phone / already queued today."""
+        db = get_db()
+        p = db.execute(
+            "SELECT id, full_name, phone_number, sms_opt_out FROM patient_links WHERE id=?",
+            (pid,)).fetchone()
+        if not p or p['sms_opt_out'] or not p['phone_number']:
+            return None
+        ev = self.repo.get_event('visit_invite') or {}
+        tmpl = message or ev.get('sms_template') or (
+            'سلام {name} عزیز، برای ادامهٔ روند درمان لطفاً جهت تعیینِ نوبتِ ویزیت با کلینیک تماس بگیرید.')
+        body = sanitize(personalize(tmpl, name=p['full_name']))
+        pk = f"invite:{today_str()}"
+        return self.repo.enqueue_approval(pid, 'visit_invite', 'sms', today_str(), body, pk)
 
     # ------------------------------------------------------------- preview
     SKIP_LABEL = {'opt_out': 'انصراف بیمار', 'no_phone': 'بدون موبایل',

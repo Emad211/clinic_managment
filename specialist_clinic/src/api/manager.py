@@ -63,6 +63,13 @@ def settings():
         repo.set_setting('mediana_message_type', request.form.get('mediana_message_type', 'PromotionalToCustomers').strip())
         repo.set_setting('mediana_timeout', str(min(max(request.form.get('mediana_timeout', type=int) or 45, 10), 120)))
         repo.set_setting('reminder_template', request.form.get('reminder_template', '').strip())
+        # Free-prescription header / stamp settings (printed on app-issued non-insurance scripts).
+        repo.set_setting('clinic_name', request.form.get('clinic_name', '').strip())
+        repo.set_setting('clinic_phone', request.form.get('clinic_phone', '').strip())
+        repo.set_setting('clinic_address', request.form.get('clinic_address', '').strip())
+        repo.set_setting('prescriber_name', request.form.get('prescriber_name', '').strip())
+        repo.set_setting('prescriber_license', request.form.get('prescriber_license', '').strip())
+        repo.set_setting('rx_disclaimer', request.form.get('rx_disclaimer', '').strip())
         flash("تنظیمات ذخیره شد", "success")
         return redirect(url_for("manager.settings"))
     data = {
@@ -76,6 +83,14 @@ def settings():
         'mediana_timeout': repo.get_setting('mediana_timeout', '45'),
         'reminder_template': repo.get_setting('reminder_template',
             'سلام {name} عزیز، یادآوری نوبت شما در کلینیک تخصصی. لطفاً در زمان مقرر مراجعه فرمایید.'),
+        # Free-prescription header / stamp.
+        'clinic_name': repo.get_setting('clinic_name', 'کلینیک تخصصی'),
+        'clinic_phone': repo.get_setting('clinic_phone', ''),
+        'clinic_address': repo.get_setting('clinic_address', ''),
+        'prescriber_name': repo.get_setting('prescriber_name', ''),
+        'prescriber_license': repo.get_setting('prescriber_license', ''),
+        'rx_disclaimer': repo.get_setting('rx_disclaimer',
+            'این نسخه غیربیمه‌ای (آزاد/نقدی) است و توسط سامانهٔ کلینیک صادر شده است.'),
     }
     return render_template("manager/settings.html", data=data, active_page='manager')
 
@@ -99,6 +114,16 @@ def users():
         return redirect(url_for("manager.users"))
     all_users = service.repo.get_all_users()
     return render_template("manager/users.html", users=all_users, active_page='manager')
+
+
+@bp.route("/users/<int:uid>/token", methods=["POST"])
+@manager_required
+def user_token(uid):
+    """(Re)issue the extension API token for a user — shown once after issuing."""
+    token = AuthService().rotate_api_token(uid)
+    flash(f'توکنِ اکستنشن صادر شد (یک‌بار نمایش): {token}', 'success')
+    log_activity('user_token', f'صدور توکن برای کاربر #{uid}')
+    return redirect(url_for('manager.users'))
 
 
 @bp.route("/protocols")
@@ -405,3 +430,30 @@ def engagement_settings():
     sms.set_setting('engagement_daily_cap', str(request.form.get("daily_cap", type=int) or 1))
     flash("تنظیمات گاردریل ذخیره شد", "success")
     return redirect(url_for("manager.engagement"))
+
+
+@bp.route("/engagement/create", methods=["POST"])
+@manager_required
+def engagement_create():
+    """Create a NEW manager-defined engagement event (constrained custom vocabulary)."""
+    from src.adapters.sqlite.engagement_repo import EngagementRepository, CUSTOM_EVENT_TYPES
+    import re
+    key = (request.form.get('event_key', '').strip().lower())
+    key = re.sub(r'[^a-z0-9_]', '_', key)
+    label = request.form.get('label', '').strip()
+    channel = request.form.get('channel', 'worklist')
+    etype = request.form.get('event_type', 'custom_date_reminder')
+    if etype not in CUSTOM_EVENT_TYPES:
+        etype = 'custom_date_reminder'
+    if not key or not label:
+        flash('کلید و عنوان رویداد الزامی است')
+        return redirect(url_for('manager.engagement'))
+    rid = EngagementRepository().create_event(
+        key, channel, label=label, event_type=etype,
+        sms_template=request.form.get('sms_template', '').strip() or None,
+        lead_days=request.form.get('lead_days', type=int) or 0,
+        cooldown_days=request.form.get('cooldown_days', type=int) or 30)
+    flash('رویداد ساخته شد' if rid else 'رویدادی با این کلید از قبل وجود دارد',
+          'success' if rid else '')
+    log_activity('engagement_create', f'ساخت رویداد سفارشی {key}')
+    return redirect(url_for('manager.engagement'))

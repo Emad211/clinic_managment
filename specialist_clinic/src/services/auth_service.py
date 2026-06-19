@@ -85,3 +85,11 @@ class AuthService:
             return False
         password_hash = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt())
         return self.repo.create_user(username, password_hash, role, full_name)
+
+    def rotate_api_token(self, user_id: int) -> str:
+        """Issue a fresh extension API token for a user (invalidates the old one)
+        and return it once. The token authenticates the browser-extension bridge."""
+        import secrets
+        token = secrets.token_urlsafe(24)
+        self.repo.set_api_token(user_id, token)
+        return token

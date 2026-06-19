@@ -8,6 +8,7 @@ from src.adapters.sqlite.followups_repo import FollowupRepository
 from src.adapters.sqlite.record_repo import RecordRepository
 from src.adapters.sqlite.lab_catalog_repo import LabCatalogRepository
 from src.adapters.sqlite.drug_catalog_repo import DrugCatalogRepository
+from src.adapters.sqlite.sms_repo import SmsRepository
 from src.services.vitals_service import VitalsService, evaluate_reading
 from src.services.analytics_service import AnalyticsService, TARGETS
 from src.adapters.sqlite.wallet_repo import WalletRepository
@@ -233,6 +234,18 @@ def detail(pid):
     wallet_balance = wallet_repo.get_balance(pid)
     wallet_tx = wallet_repo.transactions(pid, limit=20)
 
+    # Past prescriptions (free / insurance) for the meds tab. The `items`
+    # column is a JSON string; expose a simple count for the list (no template
+    # JSON parsing needed).
+    import json as _json
+    prescriptions = record_repo.list_prescriptions(pid)
+    for _rx in prescriptions:
+        try:
+            _parsed = _json.loads(_rx.get('items') or '[]')
+            _rx['item_count'] = len(_parsed) if isinstance(_parsed, (list, dict)) else 0
+        except (ValueError, TypeError):
+            _rx['item_count'] = 0
+
     return render_template(
         "patients/detail.html",
         active_page='patients',
@@ -281,6 +294,7 @@ def detail(pid):
         last_visit=adata['last_visit'],
         clinical_support=clinical_support,
         suggestion_status=suggestion_status,
+        prescriptions=prescriptions,
     )
 
 
@@ -353,6 +367,75 @@ def add_medication(pid):
         )
         log_activity("medication_add", f"افزودن دارو: {name}", patient_link_id=pid)
     return redirect(url_for("patients.detail", pid=pid) + "#meds")
+
+
+@bp.route("/<int:pid>/invite", methods=["POST"])
+@login_required
+def invite_patient(pid):
+    """Manually enqueue an SMS invite-to-appointment for physician approval.
+
+    The actual send happens only after a physician approves it in the approval
+    queue; enqueue_invite returns None if the patient opted out, has no phone,
+    or one was already queued today.
+    """
+    from src.services.engagement_service import EngagementService
+    qid = EngagementService().enqueue_invite(pid)
+    flash(
+        "دعوت به صفِ تأیید پیام اضافه شد؛ پس از تأییدِ پزشک ارسال می‌شود." if qid
+        else "امکان دعوت نبود (انصراف از پیامک، نبودِ موبایل، یا قبلاً امروز اضافه شده).",
+        "success" if qid else "",
+    )
+    log_activity("patient_invite", "دعوت پیامکی به نوبت", patient_link_id=pid)
+    return redirect(url_for("patients.detail", pid=pid) + "#meds")
+
+
+@bp.route("/<int:pid>/prescription/free", methods=["GET", "POST"])
+@login_required
+def prescription_free(pid):
+    """Generate (and on POST log) a printable free, non-insurance prescription.
+
+    Items are the patient's currently-active medications. On POST the script is
+    recorded in the prescription log (mode=free); an optional followup_task_id
+    closes the originating worklist task. Renders the print-optimized page for
+    both GET (preview) and POST.
+    """
+    profile = PatientService().get_full_profile(pid)
+    if not profile:
+        flash("بیمار یافت نشد")
+        return redirect(url_for("patients.list_patients"))
+
+    items = [
+        {'drug_name': m['drug_name'], 'dose': m.get('dose'), 'schedule': m.get('schedule')}
+        for m in profile['medications'] if m.get('is_active')
+    ]
+
+    if request.method == "POST":
+        tid = request.form.get("followup_task_id", type=int)
+        RecordRepository().add_prescription(
+            pid, kind='free_rx', items=items, mode='free',
+            prescriber_user_id=g.user['id'], followup_task_id=tid,
+        )
+        if tid:
+            FollowupRepository().resolve(tid, 'done', call_log='نسخهٔ آزاد صادر شد')
+        log_activity("prescription_free", "صدور نسخهٔ آزاد", patient_link_id=pid)
+
+    sms = SmsRepository()
+    settings = {
+        'clinic_name': sms.get_setting('clinic_name', 'کلینیک تخصصی'),
+        'clinic_phone': sms.get_setting('clinic_phone', ''),
+        'clinic_address': sms.get_setting('clinic_address', ''),
+        'prescriber_name': sms.get_setting('prescriber_name', ''),
+        'prescriber_license': sms.get_setting('prescriber_license', ''),
+        'rx_disclaimer': sms.get_setting(
+            'rx_disclaimer',
+            'این نسخه غیربیمه‌ای (آزاد/نقدی) است و توسط سامانهٔ کلینیک صادر شده است.'),
+    }
+    issued_jalali = format_jalali_date(iran_now().strftime('%Y-%m-%d'))
+    return render_template(
+        "patients/prescription_print.html",
+        patient=profile['patient'], items=items, settings=settings,
+        issued_jalali=issued_jalali,
+    )
 
 
 @bp.route("/<int:pid>/medication/<int:med_id>/stop", methods=["POST"])

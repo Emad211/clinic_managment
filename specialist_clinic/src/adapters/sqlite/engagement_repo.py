@@ -152,3 +152,13 @@ class EngagementRepository:
             (iran_now().strftime('%Y-%m-%d %H:%M:%S'), approval_id),
         )
         db.commit()
+
+    def get_approval(self, approval_id: int) -> dict | None:
+        db = get_db()
+        r = db.execute("SELECT * FROM engagement_approvals WHERE id=?", (approval_id,)).fetchone()
+        return dict(r) if r else None
+
+    def count_pending(self) -> int:
+        db = get_db()
+        return db.execute(
+            "SELECT COUNT(*) c FROM engagement_approvals WHERE status='pending'").fetchone()['c']

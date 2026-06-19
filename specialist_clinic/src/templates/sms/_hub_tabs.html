@@ -7,6 +7,7 @@
     <div class="flex items-center gap-2 wrap">
         <span class="muted text-sm" style="margin-inline-end:var(--s2);"><svg class="icon icon-sm"><use href="#i-megaphone"></use></svg> هابِ پیام</span>
         <a class="btn btn-sm {% if hub_tab=='campaigns' %}btn{% else %}btn-ghost{% endif %}" href="{{ url_for('sms.campaigns') }}"><svg class="icon icon-sm"><use href="#i-megaphone"></use></svg> کمپین‌ها</a>
+        <a class="btn btn-sm {% if hub_tab=='approvals' %}btn{% else %}btn-ghost{% endif %}" href="{{ url_for('sms.approvals') }}"><svg class="icon icon-sm"><use href="#i-check"></use></svg> صفِ تأیید پیام{% if hub_pending %} <span class="pill pill-danger">{{ hub_pending|fa_num }}</span>{% endif %}</a>
         {% if g.user and g.user['role']=='manager' %}
         <a class="btn btn-sm {% if hub_tab=='engagement' %}btn{% else %}btn-ghost{% endif %}" href="{{ url_for('manager.engagement') }}"><svg class="icon icon-sm"><use href="#i-zap"></use></svg> یادآوری و پیگیریِ خودکار</a>
         {% endif %}

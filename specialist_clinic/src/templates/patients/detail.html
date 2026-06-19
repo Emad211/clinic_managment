@@ -470,6 +470,42 @@
         </div>
     </div>
 
+    {# ---- PRESCRIPTIONS & INVITE ---- #}
+    <div class="card">
+        <div class="section-title"><svg class="icon"><use href="#i-clipboard"></use></svg> نسخه‌ها و دعوت <span class="section-sub">نسخهٔ آزادِ چاپی از داروهای فعال + دعوتِ پیامکی به نوبت</span></div>
+        <div class="row" style="flex-wrap:wrap;gap:var(--s2);">
+            <form method="post" action="{{ url_for('patients.prescription_free', pid=patient.id) }}" target="_blank" style="margin:0;">
+                <button class="btn" type="submit"><svg class="icon"><use href="#i-clipboard"></use></svg> صدور نسخهٔ آزاد (چاپی)</button>
+            </form>
+            <form method="post" action="{{ url_for('patients.invite_patient', pid=patient.id) }}" style="margin:0;">
+                <button class="btn btn-ghost" type="submit"><svg class="icon"><use href="#i-bell"></use></svg> دعوت پیامکی به نوبت</button>
+            </form>
+        </div>
+
+        {% if prescriptions %}
+        <div class="table-wrap" style="margin-top:var(--s3);">
+            <table>
+                <thead><tr><th>تاریخ</th><th>نوع</th><th>حالت</th><th>اقلام</th></tr></thead>
+                <tbody>
+                    {% for rx in prescriptions %}
+                    <tr>
+                        <td>{{ rx.issued_at|jalali_date }}</td>
+                        <td>{{ rx.kind }}</td>
+                        <td>
+                            {% if rx.mode == 'insurance' %}<span class="badge badge-info">بیمه‌ای</span>
+                            {% else %}<span class="badge badge-ok">آزاد</span>{% endif %}
+                        </td>
+                        <td class="muted text-sm">{{ rx.item_count|fa_num }} قلم</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="empty-mini" style="margin-top:var(--s3);">نسخه‌ای ثبت نشده</div>
+        {% endif %}
+    </div>
+
     {# ============ MODALS (lightweight overlays toggled by the meds IIFE) ============ #}
     {% if is_diabetic %}
     <div class="med-modal" data-modal="insulinModal" hidden role="dialog" aria-modal="true">

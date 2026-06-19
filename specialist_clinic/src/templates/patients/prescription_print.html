@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% block title %}نسخهٔ آزاد — {{ patient.full_name }}{% endblock %}
+
+{% block head %}
+<style>
+    /* Screen: sit on a centered card; print: black-on-white, no app chrome. */
+    .rx-wrap { max-width: 760px; margin: 0 auto; }
+    .rx-actions { display:flex; gap:var(--s2); align-items:center; margin-bottom:var(--s3); }
+    .rx-print .rx-head { display:flex; align-items:baseline; justify-content:space-between; gap:var(--s3); flex-wrap:wrap; }
+    .rx-print .rx-clinic { font-size:22px; font-weight:800; }
+    .rx-print .rx-contact { color:var(--muted); font-size:13px; }
+    .rx-print .rx-divider { border:0; border-top:1px solid var(--line); margin:var(--s3) 0; }
+    .rx-print .rx-meta { display:flex; gap:var(--s4); flex-wrap:wrap; font-size:14px; margin-bottom:var(--s3); }
+    .rx-print .rx-meta b { font-weight:700; }
+    .rx-print .rx-meta .muted { color:var(--muted); }
+    .rx-print table.rx-items { width:100%; border-collapse:collapse; margin-top:var(--s2); }
+    .rx-print table.rx-items th, .rx-print table.rx-items td { text-align:right; padding:8px 10px; border-bottom:1px solid var(--line); font-size:14px; }
+    .rx-print table.rx-items th { color:var(--muted); font-weight:700; }
+    .rx-print .rx-sign { display:flex; justify-content:space-between; align-items:flex-end; gap:var(--s4); margin-top:var(--s4); flex-wrap:wrap; }
+    .rx-print .rx-prescriber b { font-size:15px; }
+    .rx-print .rx-stamp { width:180px; height:80px; border:1px dashed var(--line-strong); border-radius:var(--radius); display:flex; align-items:center; justify-content:center; color:var(--muted); font-size:13px; }
+    .rx-print .rx-disclaimer { color:var(--muted); font-size:12px; margin-top:var(--s3); }
+
+    @media print {
+        .sidebar, .flash, .no-print { display:none !important; }
+        body { background:#fff !important; color:#000 !important; }
+        .main { margin:0 !important; padding:0 !important; }
+        .rx-wrap { max-width:100% !important; }
+        .rx-print { background:#fff !important; color:#000 !important; border:0 !important; box-shadow:none !important; padding:0 !important; }
+        .rx-print .rx-contact, .rx-print .rx-meta .muted, .rx-print table.rx-items th,
+        .rx-print .rx-stamp, .rx-print .rx-disclaimer { color:#333 !important; }
+        .rx-print .rx-divider, .rx-print table.rx-items th, .rx-print table.rx-items td { border-color:#999 !important; }
+        .rx-print .rx-stamp { border-color:#999 !important; }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="rx-wrap">
+    <div class="rx-actions no-print">
+        <button class="btn" type="button" onclick="window.print()"><svg class="icon"><use href="#i-download"></use></svg> چاپ</button>
+        <a class="btn btn-ghost" href="{{ url_for('patients.detail', pid=patient.id) }}#meds"><svg class="icon"><use href="#i-arrow-left"></use></svg> بازگشت به پرونده</a>
+    </div>
+
+    <div class="card rx-print">
+        <div class="rx-head">
+            <div>
+                <div class="rx-clinic">{{ settings.clinic_name }}</div>
+                <div class="rx-contact">
+                    {% if settings.clinic_phone %}تلفن: {{ settings.clinic_phone|fa_num }}{% endif %}
+                    {% if settings.clinic_address %}{% if settings.clinic_phone %} · {% endif %}{{ settings.clinic_address }}{% endif %}
+                </div>
+            </div>
+            <div class="rx-contact"><b>نسخهٔ آزاد (غیربیمه‌ای)</b></div>
+        </div>
+
+        <hr class="rx-divider">
+
+        <div class="rx-meta">
+            <div><span class="muted">نام بیمار:</span> <b>{{ patient.full_name }}</b></div>
+            {% if patient.national_id %}<div><span class="muted">کدملی:</span> {{ patient.national_id|fa_num }}</div>{% endif %}
+            {% if patient.gender %}<div><span class="muted">جنسیت:</span> {{ 'مرد' if patient.gender=='male' else ('زن' if patient.gender=='female' else patient.gender) }}</div>{% endif %}
+            {% if patient.birthdate %}<div><span class="muted">تاریخ تولد:</span> {{ patient.birthdate|jalali_date }}</div>{% endif %}
+            <div><span class="muted">تاریخ صدور:</span> {{ issued_jalali|fa_num }}</div>
+        </div>
+
+        <table class="rx-items">
+            <thead>
+                <tr><th style="width:36px;">#</th><th>دارو</th><th style="width:140px;">دوز</th><th style="width:160px;">برنامهٔ مصرف</th></tr>
+            </thead>
+            <tbody>
+                {% for it in items %}
+                <tr>
+                    <td>{{ loop.index|fa_num }}</td>
+                    <td>{{ it.drug_name }}</td>
+                    <td>{{ it.dose or '—' }}</td>
+                    <td>{{ it.schedule or '—' }}</td>
+                </tr>
+                {% else %}
+                <tr><td colspan="4" class="muted">داروی فعالی برای این بیمار ثبت نشده است.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+
+        <div class="rx-sign">
+            <div class="rx-prescriber">
+                {% if settings.prescriber_name %}<b>{{ settings.prescriber_name }}</b><br>{% endif %}
+                {% if settings.prescriber_license %}<span class="muted">نظام پزشکی: {{ settings.prescriber_license|fa_num }}</span>{% endif %}
+            </div>
+            <div class="rx-stamp">مهر و امضا</div>
+        </div>
+
+        {% if settings.rx_disclaimer %}
+        <div class="rx-disclaimer">{{ settings.rx_disclaimer }}</div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

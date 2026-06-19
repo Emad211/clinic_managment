@@ -129,6 +129,45 @@ def send_campaign(cid):
     return redirect(url_for("sms.campaign_detail", cid=cid))
 
 
+@bp.route("/approvals")
+@login_required
+def approvals():
+    from src.adapters.sqlite.engagement_repo import EngagementRepository
+    repo = EngagementRepository()
+    pending = repo.list_pending()
+    return render_template("sms/approvals.html", pending=pending, hub_pending=len(pending),
+                           provider_ready=SmsRepository().provider_configured(),
+                           active_page='sms')
+
+
+@bp.route("/approvals/<int:aid>/approve", methods=["POST"])
+@login_required
+def approval_approve(aid):
+    from src.services.engagement_service import EngagementService
+    msg = request.form.get("message", "").strip() or None
+    r = EngagementService().approve(aid, g.user["username"], message=msg)
+    if r.get('ok'):
+        flash("پیام تأیید و ارسال شد", "success")
+    else:
+        flash("ارسال نشد: " + {
+            'not_pending': 'قبلاً تعیین‌تکلیف شده',
+            'opt_out': 'بیمار انصراف داده یا موبایل ندارد',
+            'empty': 'متن خالی است',
+        }.get(r.get('reason'), 'خطا'))
+    log_activity("approval_approve", f"تأیید پیام #{aid}")
+    return redirect(url_for("sms.approvals"))
+
+
+@bp.route("/approvals/<int:aid>/reject", methods=["POST"])
+@login_required
+def approval_reject(aid):
+    from src.services.engagement_service import EngagementService
+    EngagementService().reject(aid, g.user["username"])
+    flash("پیام رد شد", "success")
+    log_activity("approval_reject", f"رد پیام #{aid}")
+    return redirect(url_for("sms.approvals"))
+
+
 @bp.route("/templates/add", methods=["POST"])
 @login_required
 def add_template():

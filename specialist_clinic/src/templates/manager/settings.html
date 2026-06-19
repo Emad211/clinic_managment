@@ -97,6 +97,46 @@
         </div>
     </div>
 
+    <!-- نسخهٔ آزاد — سربرگ و مهر/امضا -->
+    <div class="card" style="margin-top:var(--s4);">
+        <div class="section-title">
+            <svg class="icon"><use href="#i-clipboard"></use></svg>
+            <span>نسخهٔ آزاد — سربرگ و مهر/امضا</span>
+            <span class="section-sub">روی نسخه‌های غیربیمه‌ای که خودِ سامانه چاپ می‌کند درج می‌شود</span>
+        </div>
+
+        <div class="fld">
+            <label>نامِ کلینیک</label>
+            <input type="text" name="clinic_name" value="{{ data.clinic_name }}" placeholder="کلینیک تخصصی">
+        </div>
+
+        <div class="fld">
+            <label><svg class="icon icon-sm"><use href="#i-phone"></use></svg> تلفنِ کلینیک</label>
+            <input type="text" name="clinic_phone" value="{{ data.clinic_phone }}" placeholder="مثلاً ۰۲۱-…">
+        </div>
+
+        <div class="fld">
+            <label>نشانیِ کلینیک</label>
+            <input type="text" name="clinic_address" value="{{ data.clinic_address }}" placeholder="نشانیِ کاملِ کلینیک">
+        </div>
+
+        <div class="fld">
+            <label>نامِ پزشک</label>
+            <input type="text" name="prescriber_name" value="{{ data.prescriber_name }}" placeholder="نامِ پزشکِ صادرکننده">
+        </div>
+
+        <div class="fld">
+            <label>شمارهٔ نظامِ پزشکی</label>
+            <input type="text" name="prescriber_license" value="{{ data.prescriber_license }}" placeholder="کدِ نظامِ پزشکی">
+        </div>
+
+        <div class="fld">
+            <label>متنِ ابلاغیه (پاورقیِ نسخه)</label>
+            <textarea name="rx_disclaimer" rows="2">{{ data.rx_disclaimer }}</textarea>
+            <div class="help">در پای نسخهٔ آزاد چاپ می‌شود تا ماهیتِ غیربیمه‌ای آن روشن باشد.</div>
+        </div>
+    </div>
+
     <button class="btn" type="submit" style="margin-top:var(--s4);">
         <svg class="icon"><use href="#i-save"></use></svg> ذخیره تنظیمات
     </button>

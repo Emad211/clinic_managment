@@ -19,7 +19,7 @@
         {% if users %}
         <div class="table-wrap">
             <table>
-                <thead><tr><th>نام کاربری</th><th>نام</th><th>نقش</th><th>وضعیت</th></tr></thead>
+                <thead><tr><th>نام کاربری</th><th>نام</th><th>نقش</th><th>وضعیت</th><th>توکنِ اکستنشن</th></tr></thead>
                 <tbody>
                 {% for u in users %}
                     <tr>
@@ -35,6 +35,12 @@
                             {% endif %}
                         </td>
                         <td>{% if u.is_active %}<span class="badge badge-ok">فعال</span>{% else %}<span class="badge badge-muted">غیرفعال</span>{% endif %}</td>
+                        <td>
+                            <span class="flex items-center gap-2 wrap">
+                                {% if u.api_token %}<span class="badge badge-ok">دارد</span>{% else %}<span class="badge badge-muted">ندارد</span>{% endif %}
+                                <form method="post" action="{{ url_for('manager.user_token', uid=u.id) }}" onsubmit="return confirm('توکن جدید صادر شود؟ توکن قبلی باطل می‌شود.');"><button class="btn btn-sm btn-ghost">توکنِ اکستنشن</button></form>
+                            </span>
+                        </td>
                     </tr>
                 {% endfor %}
                 </tbody>

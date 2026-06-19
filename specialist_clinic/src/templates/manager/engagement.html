@@ -75,6 +75,43 @@
     {% endif %}
 </div>
 
+<!-- ADD CUSTOM EVENT -->
+<div class="card">
+    <div class="section-title"><svg class="icon"><use href="#i-plus"></use></svg> افزودن رویداد سفارشی
+        <span class="section-sub">— رویدادِ تازهٔ خودتان را بسازید (یادآوریِ تاریخ‌محور یا فقط ورک‌لیست)</span></div>
+    <form method="post" action="{{ url_for('manager.engagement_create') }}">
+        <div class="grid grid-4" style="align-items:flex-end;">
+            <div class="fld"><label>کلیدِ رویداد <span class="req">*</span></label>
+                <input type="text" name="event_key" placeholder="مثلاً winter_checkup" required>
+                <div class="help">فقط حروف لاتین کوچک/عدد/زیرخط — سایر کاراکترها به «_» تبدیل می‌شوند.</div>
+            </div>
+            <div class="fld"><label>عنوان <span class="req">*</span></label>
+                <input type="text" name="label" placeholder="عنوانِ نمایشی رویداد" required></div>
+            <div class="fld"><label>کانال</label>
+                <select name="channel">
+                    {% for k, v in channels.items() %}<option value="{{ k }}">{{ v }}</option>{% endfor %}
+                </select></div>
+            <div class="fld"><label>نوعِ رویداد</label>
+                <select name="event_type">
+                    <option value="custom_date_reminder">یادآوریِ تاریخ‌محورِ سفارشی</option>
+                    <option value="worklist_only">فقط ورک‌لیست</option>
+                </select></div>
+        </div>
+        <div class="fld"><label>متنِ پیامک <span class="muted text-xs">— متغیر: {name} · فقط برای کانال‌های شاملِ پیامک</span></label>
+            <textarea name="sms_template" rows="2" placeholder="سلام {name} عزیز، ..."></textarea>
+        </div>
+        <div class="grid grid-4" style="align-items:flex-end;">
+            <div class="fld"><label>چند روز زودتر</label><input type="number" name="lead_days" min="0" value="0"></div>
+            <div class="fld"><label>فاصلهٔ تکرار (روز)</label><input type="number" name="cooldown_days" min="0" value="30"></div>
+            <button class="btn" type="submit"><svg class="icon"><use href="#i-plus"></use></svg> ساخت رویداد</button>
+        </div>
+        <div class="help" style="margin-top:var(--s2);">
+            <svg class="icon icon-sm"><use href="#i-info"></use></svg>
+            رویدادهای سفارشی از یک واژگانِ محدود استفاده می‌کنند و فقط بر پایهٔ زمان/تاریخ یا به‌صورتِ دستی فعال می‌شوند (نه از قواعدِ بالینی).
+        </div>
+    </form>
+</div>
+
 <!-- EVENT -> CHANNEL TABLE -->
 <div class="card">
     <div class="section-title"><svg class="icon"><use href="#i-list-checks"></use></svg> رویدادها و کانال‌ها

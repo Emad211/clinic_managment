@@ -280,7 +280,8 @@ INSERT OR IGNORE INTO engagement_events
   ('vaccine_due','سررسید واکسن','clinical','sms','سلام {name} عزیز، یک واکسنِ توصیه‌شده برای شما سررسید شده است. لطفاً با کلینیک هماهنگ کنید.',0,180,'vaccine',50),
   ('lapsed','بدون مراجعه اخیر','clinical','both','سلام {name} عزیز، مدتی است شما را در کلینیک ندیده‌ایم. برای ادامهٔ مراقبت نوبت بگیرید.',0,60,NULL,60),
   ('uncontrolled','کنترل‌نشده','clinical','worklist',NULL,0,14,NULL,70),
-  ('red_flag','هشدار فوری بالینی','clinical','worklist',NULL,0,1,'redflag',80);
+  ('red_flag','هشدار فوری بالینی','clinical','worklist',NULL,0,1,'redflag',80),
+  ('visit_invite','دعوت به نوبت (پیامکی)','operational','sms','سلام {name} عزیز، برای ادامهٔ روند درمان لطفاً جهت تعیینِ نوبتِ ویزیت با کلینیک تماس بگیرید.',0,7,NULL,15);
 
 -- Settings (key/value: mediana api key + sending number + message type, thresholds, clinic info)
 CREATE TABLE IF NOT EXISTS settings (
