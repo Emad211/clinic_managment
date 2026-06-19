@@ -11,9 +11,11 @@ def iran_now() -> datetime:
 
     The DB stores timestamps as Tehran local time (via SQLite
     `datetime('now', '+3 hours', '+30 minutes')` or via Python).
-    Using `utcnow() + offset` avoids dependence on the OS timezone.
+    Using `now(utc) + offset` avoids dependence on the OS timezone.
     """
-    return datetime.utcnow() + IRAN_UTC_OFFSET
+    # timezone-aware UTC (datetime.utcnow() is deprecated in 3.12+), then drop
+    # tzinfo to keep returning a naive Tehran-local datetime as before.
+    return datetime.now(timezone.utc).replace(tzinfo=None) + IRAN_UTC_OFFSET
 
 
 def parse_datetime(dt):
