@@ -17,6 +17,7 @@
         <span class="badge badge-muted" style="font-size:10px;">{{ r.rule_code }}</span>
       </span>
     </div>
+    {% set rx_class = (r.params.classes[0] if r.params and r.params.classes else '') %}
     <div class="s-body">{{ r.recommendation }}
       {% if r.params and r.params.classes %}
       <div class="legend" style="margin-top:var(--s2);">
@@ -24,8 +25,15 @@
       </div>
       {% endif %}
       {% if r.dosage_titration %}<div class="s-note"><svg class="icon icon-sm"><use href="#i-syringe"></use></svg> {{ r.dosage_titration }}</div>{% endif %}
+      {% if r.action_type=='suggest_med' and (r.contraindications or r.monitoring) %}
+      <div class="sugg-safety">
+        {% if r.contraindications %}<div class="s-note danger"><svg class="icon icon-sm"><use href="#i-alert"></use></svg> <b>منع/احتیاط:</b> {{ r.contraindications }}</div>{% endif %}
+        {% if r.monitoring %}<div class="s-note"><svg class="icon icon-sm"><use href="#i-line-chart"></use></svg> <b>پایش:</b> {{ r.monitoring }}</div>{% endif %}
+      </div>
+      {% else %}
       {% if r.monitoring %}<div class="s-note"><svg class="icon icon-sm"><use href="#i-line-chart"></use></svg> پایش: {{ r.monitoring }}</div>{% endif %}
       {% if r.contraindications %}<div class="s-note danger"><svg class="icon icon-sm"><use href="#i-alert"></use></svg> {{ r.contraindications }}</div>{% endif %}
+      {% endif %}
     </div>
     {% if r.action_type in ['suggest_med','safety_alert'] or st %}
     <div class="s-actions">
@@ -36,6 +44,7 @@
         <input type="hidden" name="rule_code" value="{{ r.rule_code }}">
         <input type="hidden" name="suggestion_text" value="{{ r.recommendation }}">
         <input type="hidden" name="evidence_level" value="{{ r.evidence_level }}">
+        {% if r.action_type=='suggest_med' and rx_class %}<input type="hidden" name="rx_class" value="{{ rx_class }}">{% endif %}
         <input type="hidden" name="status" value="accepted">
         <button class="btn btn-sm btn-ok" type="submit"><svg class="icon icon-sm"><use href="#i-check"></use></svg> اعمال شد</button>
       </form>
@@ -53,8 +62,11 @@
 {% block content %}
 {% set redflag_secs = clinical_support.sections|selectattr('key','equalto','redflags')|list if clinical_support else [] %}
 {% set action_secs = clinical_support.sections|selectattr('key','in',['safety','treatment'])|list if clinical_support else [] %}
-{% set info_secs = clinical_support.sections|rejectattr('key','in',['redflags','safety','treatment'])|list if clinical_support else [] %}
+{# monitoring + screening + vaccination collapse into one compact table; the rest (risk/assessment/lifestyle) stay as cards #}
+{% set sched_secs = clinical_support.sections|selectattr('key','in',['monitoring','vaccination'])|list if clinical_support else [] %}
+{% set info_secs = clinical_support.sections|rejectattr('key','in',['redflags','safety','treatment','monitoring','vaccination'])|list if clinical_support else [] %}
 {% set action_count = action_secs|map(attribute='rules')|map('length')|sum %}
+{% set sched_count = sched_secs|map(attribute='rules')|map('length')|sum %}
 {% set info_count = info_secs|map(attribute='rules')|map('length')|sum %}
 
 <!-- ============ PATIENT HEADER (persistent) ============ -->
@@ -105,31 +117,43 @@
     </div>
     {% endfor %}
 
-    {# ---- KEY VITALS (glance) ---- #}
+    {# ---- KEY VITALS — grouped per disease (one block per condition) ---- #}
     <div class="card">
-        <div class="section-title"><svg class="icon"><use href="#i-activity"></use></svg> شاخص‌های کلیدی <span class="section-sub">آخرین مقدار · روند · هدف</span></div>
-        {% set shown = [] %}
-        {% set has_vital = indicators|selectattr('latest','ne',None)|list %}
-        {% if has_vital %}
-        <div class="vital-row">
-            {% for i in indicators if i.latest is not none and shown|length < 6 %}
-            {% set _ = shown.append(i.key) %}
-            <div class="vital-stat lvl-{{ i.level }}">
-                <div class="vs-label">{{ i.label }}</div>
-                <div class="vs-val">{{ i.latest|fa_num }} <small>{{ i.unit }}</small></div>
-                <div class="vs-meta">
-                    {% if i.target is not none %}<span>هدف {% if i.direction=='low' %}&gt;{% else %}&lt;{% endif %}{{ i.target|fa_num }}</span>{% endif %}
-                    {% if i.delta is not none and i.delta != 0 %}{% set improved = (i.delta > 0) if i.direction=='low' else (i.delta < 0) %}<span class="vs-delta {{ 'c-ok' if improved else 'c-danger' }}">{% if i.delta > 0 %}▲{% else %}▼{% endif %}{{ (i.delta if i.delta>0 else 0-i.delta)|fa_num }}</span>{% endif %}
-                </div>
-                <div class="vs-spark"><canvas id="vs-{{ i.key }}"></canvas></div>
+        <div class="section-title"><svg class="icon"><use href="#i-activity"></use></svg> شاخص‌های کلیدی <span class="section-sub">به تفکیک بیماری · آخرین مقدار · روند · هدف</span></div>
+        {% if per_disease %}
+        {% for d in per_disease %}
+        <div class="disease-block{% if not loop.first %} divider-dashed{% endif %}"{% if not loop.first %} style="margin-top:var(--s4);padding-top:var(--s4);"{% endif %}>
+            <div class="flex items-center wrap gap-2" style="margin-bottom:var(--s3);">
+                <span style="font-weight:700;">{{ d.condition_name }}</span>
+                <span class="badge {{ 'badge-danger' if d.status=='danger' else 'badge-warn' if d.status=='warn' else 'badge-ok' if d.status=='ok' else 'badge-muted' }}">
+                    {% if d.status=='danger' %}کنترل‌نشده{% elif d.status=='warn' %}مرزی{% elif d.status=='ok' %}کنترل‌شده{% else %}بدون داده{% endif %}
+                </span>
+                <span class="badge {{ 'badge-danger' if d.risk_level=='high' else 'badge-warn' if d.risk_level in ['medium','low'] else 'badge-ok' }}">ریسک: {{ d.risk_label }}</span>
             </div>
-            {% endfor %}
+            {% if d.indicators %}
+            <div class="vital-row">
+                {% for i in d.indicators %}
+                <div class="vital-stat lvl-{{ i.level }}">
+                    <div class="vs-label">{{ i.label }}</div>
+                    <div class="vs-val">{{ i.latest|fa_num }} <small>{{ i.unit }}</small></div>
+                    <div class="vs-meta">
+                        {% if i.target is not none %}<span>هدف {% if i.direction=='low' %}&gt;{% else %}&lt;{% endif %}{{ i.target|fa_num }}</span>{% endif %}
+                        {% if i.delta is not none and i.delta != 0 %}{% set improved = (i.delta > 0) if i.direction=='low' else (i.delta < 0) %}<span class="vs-delta {{ 'c-ok' if improved else 'c-danger' }}">{% if i.delta > 0 %}▲{% else %}▼{% endif %}{{ (i.delta if i.delta>0 else 0-i.delta)|fa_num }}</span>{% endif %}
+                    </div>
+                    <div class="vs-spark"><canvas class="vs-spark-c" data-key="{{ i.key }}" id="vs-{{ d.condition_code }}-{{ i.key }}"></canvas></div>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="empty-mini">بدون داده — در تب «پرونده» شاخص‌های این بیماری را ثبت کنید.</div>
+            {% endif %}
         </div>
+        {% endfor %}
         {% else %}
-        <div class="empty-mini">هنوز شاخصی ثبت نشده — در همین کاکپیت پایین، یا تب «پرونده» ثبت کنید.</div>
+        <div class="empty-mini">بیماری مزمنی ثبت نشده — در تب «پرونده» تشخیص بیماری را اضافه کنید تا شاخص‌های همان بیماری اینجا بیایند.</div>
         {% endif %}
 
-        {# control / risk / tasks compact strip #}
+        {# control / risk / tasks compact strip (overall aggregate — kept as-is) #}
         <div class="grid grid-4" style="margin-top:var(--s4);">
             <div class="mini"><div class="m-num">
                 {% if control.status=='controlled' %}<span class="c-ok">کنترل‌شده</span>
@@ -154,7 +178,7 @@
         <div class="sugg-summary">
             <span class="badge badge-violet">{{ clinical_support.count|fa_num }} توصیه</span>
             {% if action_count %}<span class="chip"><span class="dot dot-danger"></span> {{ action_count|fa_num }} اقدام لازم</span>{% endif %}
-            {% if info_count %}<span class="chip"><span class="dot dot-ok"></span> {{ info_count|fa_num }} اطلاعاتی</span>{% endif %}
+            {% if (sched_count + info_count) %}<span class="chip"><span class="dot dot-ok"></span> {{ (sched_count + info_count)|fa_num }} اطلاعاتی</span>{% endif %}
             <span class="muted text-xs ms-auto"><svg class="icon icon-sm"><use href="#i-info"></use></svg> پیشنهادِ سیستم — تأیید و تجویز با پزشک</span>
         </div>
 
@@ -164,10 +188,36 @@
         {% for r in sec.rules %}{{ sugg_card(r, suggestion_status, drug_class_map, patient.id) }}{% endfor %}
         {% endfor %}
 
-        {# informational, collapsed #}
-        {% if info_secs %}
-        <div class="collapse-toggle" data-collapse-toggle="adaInfo"><svg class="icon"><use href="#i-chevron-left"></use></svg> نمایش {{ info_count|fa_num }} توصیهٔ اطلاعاتی (ریسک، اهداف، پایش، واکسن، سبک زندگی)</div>
+        {# informational, collapsed: compact monitoring/screening/vaccination table + the rest as cards #}
+        {% if sched_secs or info_secs %}
+        <div class="collapse-toggle" data-collapse-toggle="adaInfo"><svg class="icon"><use href="#i-chevron-left"></use></svg> نمایش {{ (sched_count + info_count)|fa_num }} توصیهٔ اطلاعاتی (پایش، غربالگری، واکسن، ریسک، اهداف، سبک زندگی)</div>
         <div data-collapse="adaInfo" hidden>
+            {# --- compact table: monitoring / screening / vaccination --- #}
+            {% if sched_secs %}
+            <div class="sugg-group-title">📅 پایش، غربالگری و واکسیناسیون</div>
+            <div class="table-wrap">
+            <table>
+                <tbody>
+                {% for sec in sched_secs %}{% for r in sec.rules %}
+                    {% set st = (suggestion_status or {}).get(r.rule_code) %}
+                    <tr>
+                        <td style="width:1%;"><svg class="icon icon-sm"><use href="#i-{{ 'syringe' if sec.key=='vaccination' else 'calendar' }}"></use></svg></td>
+                        <td><b>{{ r.title }}</b><div class="muted text-xs">{{ r.recommendation }}</div></td>
+                        <td class="muted text-xs" style="white-space:nowrap;">{{ r.monitoring or r.dosage_titration or '' }}</td>
+                        <td style="width:1%;white-space:nowrap;">
+                            {% if st and st.status=='accepted' %}<span class="badge badge-ok">انجام شد</span>
+                            {% elif st and st.status=='dismissed' %}<span class="badge badge-muted">رد‌شده</span>
+                            {% elif r.severity=='urgent' %}<span class="badge badge-danger">سررسید</span>
+                            {% elif r.severity=='warn' %}<span class="badge badge-warn">نزدیک</span>
+                            {% else %}<span class="badge badge-info">برنامه‌ریزی</span>{% endif %}
+                        </td>
+                    </tr>
+                {% endfor %}{% endfor %}
+                </tbody>
+            </table>
+            </div>
+            {% endif %}
+            {# --- remaining info sections (risk / assessment / lifestyle) as cards --- #}
             {% for sec in info_secs %}
             <div class="sugg-group-title">{{ sec.label }}</div>
             {% for r in sec.rules %}{{ sugg_card(r, suggestion_status, drug_class_map, patient.id) }}{% endfor %}
@@ -219,14 +269,18 @@
 <!-- ============ TAB: TRENDS ============ -->
 <!-- ============================================================= -->
 <section class="tab-pane" data-pane="trends" role="tabpanel" hidden>
+    {# only groups that have at least one indicator with data; empty tiles are skipped #}
+    {% set ns = namespace(any=false) %}
     {% for group in by_category %}
+    {% set live = group.indicators|selectattr('latest','ne',None)|list %}
+    {% if live %}
+    {% set ns.any = true %}
     <div class="card">
-        <div class="section-title"><svg class="icon"><use href="#i-stethoscope"></use></svg> {{ group.label }} <span class="section-sub">{{ group.indicators|length|fa_num }} شاخص</span></div>
+        <div class="section-title"><svg class="icon"><use href="#i-stethoscope"></use></svg> {{ group.label }} <span class="section-sub">{{ live|length|fa_num }} شاخص</span></div>
         <div class="tiles">
-            {% for i in group.indicators %}
+            {% for i in live %}
             <div class="tile lvl-{{ i.level }}">
                 <div class="t-label">{{ i.label }}</div>
-                {% if i.latest is not none %}
                 <div class="t-val" style="color:{{ lvlcolor.get(i.level,'var(--text)') }};">{{ i.latest|fa_num }} <small>{{ i.unit }}</small></div>
                 {% if i.delta is not none and i.delta != 0 %}
                     {% set improved = (i.delta > 0) if i.direction=='low' else (i.delta < 0) %}
@@ -238,17 +292,15 @@
                     · {{ i.count|fa_num }} ثبت
                 </div>
                 {% if i.bar_pct %}<div class="t-bar"><span style="width:{{ i.bar_pct }}%;background:{{ lvlcolor.get(i.level,'var(--primary)') }};"></span></div>{% endif %}
-                {% else %}
-                <div class="t-val muted" style="font-size:15px;font-weight:600;margin-top:10px;">بدون داده</div>
-                <div class="t-meta">{% if i.target is not none %}هدف {% if i.direction=='low' %}&gt;{% else %}&lt;{% endif %}{{ i.target|fa_num }} {{ i.unit }}{% else %}در پرونده ثبت کنید{% endif %}</div>
-                {% endif %}
             </div>
             {% endfor %}
         </div>
     </div>
-    {% else %}
-    <div class="card"><div class="empty"><svg class="icon"><use href="#i-stethoscope"></use></svg><div>بیماری مزمنی ثبت نشده — در تب «پرونده» تشخیص بیماری را اضافه کنید تا شاخص‌های تخصصیِ همان بیماری اینجا بیایند.</div></div></div>
+    {% endif %}
     {% endfor %}
+    {% if not ns.any %}
+    <div class="card"><div class="empty"><svg class="icon"><use href="#i-stethoscope"></use></svg><div>هنوز شاخصی با داده ثبت نشده — در تب «پرونده» تشخیص بیماری و شاخص‌ها را اضافه کنید تا روندِ همان بیماری اینجا بیاید.</div></div></div>
+    {% endif %}
 
     {% if charts %}
     <div class="card">
@@ -293,6 +345,28 @@
     </div>
     {% endif %}
     {% endif %}
+
+    {# ---- MEDICATION-EFFECT (moved here from Meds pane in Phase 4 — ids kept for the existing meBtn script) ---- #}
+    <div class="card">
+        <div class="section-title"><svg class="icon"><use href="#i-pill"></use></svg> سنجش اثر دارو روی شاخص <span class="section-sub">میانگین شاخص پیش و پس از شروع دارو</span></div>
+        <div class="grid grid-4" style="align-items:flex-end;">
+            <div class="fld"><label>دارو</label>
+                <select id="meMed">
+                    <option value="">— انتخاب دارو —</option>
+                    {% for m in medications %}<option value="{{ m.id }}">{{ m.drug_name }}{% if m.dose %} ({{ m.dose }}){% endif %}{% if not m.is_active %} — قطع‌شده{% endif %}</option>{% endfor %}
+                </select>
+            </div>
+            <div class="fld"><label>شاخص هدف</label>
+                <select id="meInd">
+                    <option value="">— انتخاب شاخص —</option>
+                    {% for i in indicators %}<option value="{{ i.key }}">{{ i.label }}</option>{% endfor %}
+                </select>
+            </div>
+            <div class="fld"><label>پنجره (روز)</label><input type="number" id="meWin" value="90" min="7" max="730"></div>
+            <button class="btn" id="meBtn"><svg class="icon icon-sm"><use href="#i-sigma"></use></svg> محاسبه اثر</button>
+        </div>
+        <div id="meResult" style="margin-top:var(--s4);"></div>
+    </div>
 </section>
 
 <!-- ============================================================= -->
@@ -394,28 +468,6 @@
                 </div>
             </form>
         </div>
-    </div>
-
-    {# ---- MEDICATION-EFFECT (stays here; moves to Trends in Phase 4) ---- #}
-    <div class="card">
-        <div class="section-title"><svg class="icon"><use href="#i-pill"></use></svg> سنجش اثر دارو روی شاخص <span class="section-sub">میانگین شاخص پیش و پس از شروع دارو</span></div>
-        <div class="grid grid-4" style="align-items:flex-end;">
-            <div class="fld"><label>دارو</label>
-                <select id="meMed">
-                    <option value="">— انتخاب دارو —</option>
-                    {% for m in medications %}<option value="{{ m.id }}">{{ m.drug_name }}{% if m.dose %} ({{ m.dose }}){% endif %}{% if not m.is_active %} — قطع‌شده{% endif %}</option>{% endfor %}
-                </select>
-            </div>
-            <div class="fld"><label>شاخص هدف</label>
-                <select id="meInd">
-                    <option value="">— انتخاب شاخص —</option>
-                    {% for i in indicators %}<option value="{{ i.key }}">{{ i.label }}</option>{% endfor %}
-                </select>
-            </div>
-            <div class="fld"><label>پنجره (روز)</label><input type="number" id="meWin" value="90" min="7" max="730"></div>
-            <button class="btn" id="meBtn"><svg class="icon icon-sm"><use href="#i-sigma"></use></svg> محاسبه اثر</button>
-        </div>
-        <div id="meResult" style="margin-top:var(--s4);"></div>
     </div>
 
     {# ============ MODALS (lightweight overlays toggled by the meds IIFE) ============ #}
@@ -822,9 +874,9 @@ document.querySelectorAll('[data-collapse-toggle]').forEach(t=>{
 
 /* ===== Cockpit sparklines (key vital tiles) ===== */
 (function(){
-    Object.keys(chartData||{}).forEach(k=>{
-        const el=document.getElementById('vs-'+k); if(!el) return;
-        const d=chartData[k]; if(!d||!d.values||d.values.length<2) return;
+    document.querySelectorAll('.vs-spark-c').forEach(el=>{
+        const k=el.getAttribute('data-key'); if(!k) return;
+        const d=(chartData||{})[k]; if(!d||!d.values||d.values.length<2) return;
         new Chart(el,{ type:'line',
             data:{ labels:d.values.map((_,i)=>i), datasets:[{ data:d.values,
                 borderColor:(TH.primary||'#3b82f6'), borderWidth:1.6, pointRadius:0, tension:.35, fill:false }] },
@@ -1249,6 +1301,31 @@ function initTrends(){
     document.addEventListener('keydown', function(e){
         if(e.key==='Escape') closeAll();
     });
+})();
+</script>
+
+<script>
+/* ===== Accept→prefill: ?rx_class= opens Meds tab & preselects the add-med class (Phase 4) — self-contained ===== */
+(function(){
+    var params = new URLSearchParams(location.search || '');
+    var rx = params.get('rx_class');
+    if(!rx) return;
+    /* switch to the Meds tab (the big TABS IIFE keys off the hash) */
+    var medsBtn = document.querySelector('.tabbar button[data-tab="meds"]');
+    if(medsBtn) medsBtn.click();
+    /* preselect the drug class and fire change so the Phase-3 cascade fills drug names */
+    var classSel = document.getElementById('addMedClass');
+    if(classSel){
+        var has = Array.prototype.some.call(classSel.options, function(o){ return o.value===rx; });
+        if(has){
+            classSel.value = rx;
+            classSel.dispatchEvent(new Event('change', {bubbles:true}));
+        }
+        var form = document.getElementById('addMedForm');
+        if(form){ try{ form.scrollIntoView({behavior:'smooth', block:'center'}); }catch(e){ form.scrollIntoView(); } }
+    }
+    /* tidy the URL so a refresh/back doesn't re-trigger */
+    try{ history.replaceState(null,'', location.pathname + '#meds'); }catch(e){}
 })();
 </script>
 {% endblock %}

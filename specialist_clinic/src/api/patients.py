@@ -274,6 +274,7 @@ def detail(pid):
         by_category=adata['by_category'],
         med_events=adata['med_events'],
         risk=adata['risk'],
+        per_disease=adata['per_disease'],
         refill_due=adata['refill_due'],
         appt_summary=adata['appointments'],
         visits_count=adata['visits_count'],
@@ -407,9 +408,15 @@ def generate_followups(pid):
 @bp.route("/<int:pid>/suggestion/action", methods=["POST"])
 @login_required
 def suggestion_action(pid):
-    """Record the physician's decision on an engine suggestion (accept/dismiss)."""
+    """Record the physician's decision on an engine suggestion (accept/dismiss).
+
+    On accept, if the suggestion carries a drug class (`rx_class`), bounce to
+    the meds tab with the class as a query param so the add-med form can
+    pre-fill the prescription (Phase 4 dose tool).
+    """
     from src.adapters.sqlite.core import get_db
     from src.common.utils import iran_now
+    from urllib.parse import quote
     rule_code = request.form.get("rule_code", "").strip()
     status = request.form.get("status", "").strip()
     if rule_code and status in ("accepted", "dismissed"):
@@ -425,6 +432,9 @@ def suggestion_action(pid):
         )
         db.commit()
         log_activity("suggestion_action", f"{status} پیشنهاد {rule_code}", patient_link_id=pid)
+        rx_class = request.form.get("rx_class", "").strip()
+        if status == "accepted" and rx_class:
+            return redirect(url_for("patients.detail", pid=pid) + "?rx_class=" + quote(rx_class) + "#meds")
     return redirect(url_for("patients.detail", pid=pid) + "#cockpit")
 
 

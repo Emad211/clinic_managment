@@ -37,6 +37,21 @@ def _mean(xs):
     return round(sum(xs) / len(xs), 1) if xs else None
 
 
+def _level_from(points: float, danger_count: int) -> tuple[str, str]:
+    """Map weighted risk points + danger count to a (level, fa-label) pair.
+
+    Single source of truth for the risk-tier thresholds, reused by both the
+    aggregate _risk score and the per-disease builder.
+    """
+    if points >= 5 or danger_count >= 2:
+        return 'high', 'پرخطر'
+    if points >= 3 or danger_count == 1:
+        return 'medium', 'متوسط'
+    if points >= 1:
+        return 'low', 'کم'
+    return 'ok', 'پایدار'
+
+
 class AnalyticsService:
     def __init__(self):
         self.vitals = VitalsRepository()
@@ -67,6 +82,7 @@ class AnalyticsService:
                 'key': key, 'label': ind['label'], 'unit': ind['unit'],
                 'category': ind['category'],
                 'category_label': CATEGORY_LABELS.get(ind['category'], ind['category']),
+                'conditions': ind.get('conditions'),
                 'direction': ind['direction'],
                 'latest': latest['value'] if latest else None,
                 'previous': previous['value'] if previous else None,
@@ -95,6 +111,7 @@ class AnalyticsService:
         } for e in med_events]
 
         risk = self._risk(pid, indicators)
+        per_disease = self._per_disease(conditions, indicators)
         control = self.vitals_service.control_status(pid)
 
         meds = self.patients.get_medications(pid, active_only=False)
@@ -131,6 +148,7 @@ class AnalyticsService:
             'visits_count': len(visits),
             'last_visit': format_jalali_date(visits[0]['visit_date']) if visits else None,
             'risk': risk,
+            'per_disease': per_disease,
             'followups': followups,
             'wallet_balance': WalletRepository().get_balance(pid),
         }
@@ -229,14 +247,10 @@ class AnalyticsService:
             cat_points['safety'] = safety
             total += safety
 
-        if severe_kidney or total >= 5 or danger_count >= 2:
+        if severe_kidney:
             level, label = 'high', 'پرخطر'
-        elif total >= 3 or danger_count == 1:
-            level, label = 'medium', 'متوسط'
-        elif total >= 1:
-            level, label = 'low', 'کم'
         else:
-            level, label = 'ok', 'پایدار'
+            level, label = _level_from(total, danger_count)
 
         def cat_label(c):
             if c == 'adherence':
@@ -254,6 +268,63 @@ class AnalyticsService:
             'danger_count': danger_count, 'warn_count': warn_count,
             'dominant': dominant, 'breakdown': breakdown, 'behavior_notes': behav_notes,
         }
+
+    # ---- per-disease overview (status + risk + top indicators per condition) ----
+    def _per_disease(self, conditions, indicators) -> list[dict]:
+        """One entry per chronic condition: worst status + risk tier + the top
+        (≤3) risk-weighted indicators that have data for that disease.
+
+        Pure Python over already-fetched indicators — no SQL. An indicator
+        applies to a condition when its `conditions` field is 'all' or its
+        comma-split list contains the condition code.
+        """
+        _level_rank = {'danger': 3, 'warn': 2, 'ok': 1}
+        out = []
+        for c in conditions:
+            code = c.get('condition_code')
+            if not code:
+                continue
+            mine = []  # this disease's indicators that have data
+            for i in indicators:
+                if i.get('latest') is None:
+                    continue
+                applies = i.get('conditions') or ''
+                codes = {p.strip() for p in applies.split(',') if p.strip()}
+                if applies == 'all' or code in codes:
+                    mine.append(i)
+
+            # worst status among this disease's indicators-with-data
+            status = 'none'
+            if mine:
+                worst = max(mine, key=lambda i: _level_rank.get(i.get('level'), 0))
+                status = worst.get('level') if worst.get('level') in _level_rank else 'ok'
+
+            # per-disease weighted points (mirror _risk: danger=w, warn=0.5w)
+            points, danger_count = 0.0, 0
+            for i in mine:
+                w = i.get('risk_weight') or 0
+                if i.get('level') == 'danger':
+                    points += w
+                    danger_count += 1
+                elif i.get('level') == 'warn':
+                    points += w * 0.5
+            risk_level, risk_label = _level_from(points, danger_count)
+
+            # top ≤3 risk-weighted indicators (risk_weight>0, with data), desc
+            top = sorted(
+                [i for i in mine if (i.get('risk_weight') or 0) > 0],
+                key=lambda i: -(i.get('risk_weight') or 0),
+            )[:3]
+
+            out.append({
+                'condition_code': code,
+                'condition_name': c.get('condition_name') or code,
+                'status': status,
+                'risk_level': risk_level,
+                'risk_label': risk_label,
+                'indicators': top,
+            })
+        return out
 
     # ---- on-demand medication effect (doctor-driven) ----
     def medication_effect(self, pid: int, med_id: int, indicator_key: str,
