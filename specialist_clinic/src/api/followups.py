@@ -60,12 +60,14 @@ def worklist():
 @bp.route("/generate", methods=["POST"])
 @login_required
 def generate():
-    # Worklist-only pass of the engagement engine: open the due call-tasks
-    # (lapsed / uncontrolled / red-flag, and anything the manager routed to the
-    # worklist) WITHOUT sending any SMS — a manual "refresh the worklist" action.
-    from src.services.engagement_service import EngagementService
-    res = EngagementService().run_all(worklist_only=True)
-    flash(f"{res['worklist']} پیگیری جدید ساخته شد", "success")
+    """Generate due worklist tasks (idempotent — no duplicates while open):
+    medication refills, uncontrolled, lapsed, plus rule-driven monitoring /
+    screening / vaccination. This is the staff's "refresh the worklist" action;
+    it never sends SMS (outbound messaging goes through the approval queue)."""
+    created = FollowupService().generate()
+    total = sum(created.values())
+    flash(f"{total} پیگیریِ جدید ساخته شد" if total else "پیگیریِ جدیدِ سررسیده‌ای نبود", "success")
+    log_activity("followup_generate", f"تولید {total} پیگیری از ورک‌لیست")
     return redirect(url_for("followups.worklist"))
 
 

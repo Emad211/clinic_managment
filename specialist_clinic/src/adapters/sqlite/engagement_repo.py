@@ -129,8 +129,11 @@ class EngagementRepository:
     def list_pending(self) -> list[dict]:
         db = get_db()
         return [dict(r) for r in db.execute(
-            """SELECT a.*, p.full_name AS patient_name, p.phone_number, p.national_id
-               FROM engagement_approvals a JOIN patient_links p ON p.id=a.patient_link_id
+            """SELECT a.*, p.full_name AS patient_name, p.phone_number, p.national_id,
+                      COALESCE(e.label, a.event_key) AS event_label, e.category AS event_category
+               FROM engagement_approvals a
+               JOIN patient_links p ON p.id=a.patient_link_id
+               LEFT JOIN engagement_events e ON e.event_key=a.event_key
                WHERE a.status='pending'
                ORDER BY a.due_date IS NULL, a.due_date ASC, a.id DESC""").fetchall()]
 

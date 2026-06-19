@@ -36,8 +36,9 @@
                     <div class="muted text-xs nums">{{ p.national_id|fa_num }}</div>
                 </td>
                 <td>
-                    <code>{{ p.event_key }}</code>
-                    <div class="muted text-xs">{{ p.due_date|jalali_date }}</div>
+                    <strong>{{ p.event_label }}</strong>
+                    <div class="muted text-xs"><code>{{ p.event_key }}</code></div>
+                    <div class="muted text-xs nums">{% if p.due_date %}سررسید: {{ p.due_date|jalali_date }}{% elif p.created_at %}در صف از: {{ p.created_at|jalali_date }}{% endif %}</div>
                 </td>
                 <td>
                     <form method="post" action="{{ url_for('sms.approval_approve', aid=p.id) }}">
