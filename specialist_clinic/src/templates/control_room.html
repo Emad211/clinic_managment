@@ -12,6 +12,17 @@
     {% if not show_value %}<span class="muted">(ستونِ ارزش/درآمد فقط برای مدیر دیده می‌شود.)</span>{% endif %}
 </p>
 
+<!-- CONVERSION METRIC: follow-up → visit -->
+{% if conversion and conversion.resolved %}
+<div class="grid grid-4">
+    <div class="card kpi kpi-info">
+        <div class="ic"><svg class="icon"><use href="#i-stethoscope"></use></svg></div>
+        <div class="num">{{ conversion.rate|fa_num }}٪</div>
+        <div class="label">نرخِ تبدیلِ پیگیری→ویزیت <span class="muted">({{ conversion.to_visit|fa_num }}/{{ conversion.resolved|fa_num }})</span></div>
+    </div>
+</div>
+{% endif %}
+
 <!-- COHORTS -->
 <div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(300px,1fr));">
 {% for c in cohorts %}

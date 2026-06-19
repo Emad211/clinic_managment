@@ -10,62 +10,133 @@
     </form>
 </div>
 
+<!-- SEARCH -->
+<div class="card card-soft">
+    <form class="row" method="get" action="{{ url_for('followups.worklist') }}">
+        {% if active_reason %}<input type="hidden" name="reason" value="{{ active_reason }}">{% endif %}
+        <div class="fld" style="flex:1;">
+            <label>جستجو</label>
+            <input type="text" name="q" value="{{ q or '' }}" placeholder="جستجو با کدملی، نام یا موبایل">
+        </div>
+        <button class="btn" type="submit"><svg class="icon"><use href="#i-search"></use></svg> جستجو</button>
+        {% if q %}<a class="btn btn-ghost" href="{{ url_for('followups.worklist', reason=active_reason) }}"><svg class="icon"><use href="#i-x"></use></svg> پاک‌کردن</a>{% endif %}
+    </form>
+</div>
+
+<!-- REASON FILTER -->
 <div class="card card-soft">
     <div class="flex items-center gap-2 wrap">
-        <a class="btn btn-sm {% if not active_reason %}btn{% else %}btn-ghost{% endif %}" href="{{ url_for('followups.worklist') }}">
+        <a class="btn btn-sm {% if not active_reason %}btn{% else %}btn-ghost{% endif %}" href="{{ url_for('followups.worklist', q=q) }}">
             <svg class="icon icon-sm"><use href="#i-filter"></use></svg> همه
         </a>
         {% for key, label in reason_labels.items() %}
-            <a class="btn btn-sm {% if active_reason == key %}btn{% else %}btn-ghost{% endif %}" href="{{ url_for('followups.worklist', reason=key) }}">
+            <a class="btn btn-sm {% if active_reason == key %}btn{% else %}btn-ghost{% endif %}" href="{{ url_for('followups.worklist', reason=key, q=q) }}">
                 {{ label }} {% if counts.get(key) %}<span class="badge badge-warn">{{ counts[key]|fa_num }}</span>{% endif %}
             </a>
         {% endfor %}
     </div>
 </div>
 
+<!-- WORKLIST: per-patient accordion -->
 <div class="card">
     <div class="section-title">
         <svg class="icon"><use href="#i-list-checks"></use></svg>
         <div>
             <div>پیگیری‌های باز</div>
-            <div class="section-sub">بیماران نیازمند تماس یا اقدام بعدی</div>
+            <div class="section-sub">بیماران نیازمند تماس یا اقدام بعدی — روی هر بیمار بزنید تا پیگیری‌هایش باز شود</div>
         </div>
     </div>
-    {% if tasks %}
-    <div class="table-wrap">
-        <table>
-            <thead><tr><th>بیمار</th><th>موبایل</th><th>دلیل</th><th>توضیح</th><th>سررسید</th><th>اقدام</th></tr></thead>
-            <tbody>
-            {% for t in tasks %}
-                <tr>
-                    <td>
-                        <a class="flex items-center gap-2" href="{{ url_for('patients.detail', pid=t.patient_link_id) }}">
-                            <svg class="icon icon-sm"><use href="#i-user"></use></svg> {{ t.patient_name }}
-                        </a>
-                    </td>
-                    <td class="muted nums">{{ t.phone_number or '—' }}</td>
-                    <td><span class="badge badge-warn">{{ t.reason_fa }}</span></td>
-                    <td class="muted">{{ t.detail or '—' }}</td>
-                    <td class="nums">{{ t.due_date|jalali_date if t.due_date else '—' }}</td>
-                    <td>
-                        <div class="flex items-center gap-2">
-                            <form method="post" action="{{ url_for('followups.resolve', task_id=t.id) }}" style="margin:0;">
-                                <input type="hidden" name="status" value="done"><button class="btn btn-sm btn-ok" type="submit"><svg class="icon icon-sm"><use href="#i-check"></use></svg> انجام شد</button>
-                            </form>
-                            <form method="post" action="{{ url_for('followups.resolve', task_id=t.id) }}" style="margin:0;">
-                                <input type="hidden" name="status" value="dismissed"><button class="btn btn-sm btn-ghost" type="submit"><svg class="icon icon-sm"><use href="#i-x"></use></svg> رد</button>
-                            </form>
-                        </div>
-                    </td>
-                </tr>
-            {% endfor %}
-            </tbody>
-        </table>
+    {% if patient_groups %}
+    <div class="flex" style="flex-direction:column;gap:var(--s2);">
+    {% for pg in patient_groups %}
+        <details class="card card-soft" style="margin:0;">
+            <summary class="flex items-center gap-2 wrap" style="cursor:pointer;list-style:none;justify-content:space-between;">
+                <span class="flex items-center gap-2 wrap">
+                    <svg class="icon icon-sm"><use href="#i-chevron-left"></use></svg>
+                    <a href="{{ url_for('patients.detail', pid=pg.patient_link_id) }}"><b>{{ pg.patient_name }}</b></a>
+                    <span class="badge badge-warn">{{ pg.open_count|fa_num }} پیگیریِ باز</span>
+                </span>
+                <span class="flex items-center gap-2 wrap muted text-sm">
+                    {% if pg.phone_number %}<span class="nums"><svg class="icon icon-sm"><use href="#i-phone"></use></svg> {{ pg.phone_number }}</span>{% endif %}
+                    <span class="nums"><svg class="icon icon-sm"><use href="#i-calendar"></use></svg> {{ pg.next_due|jalali_date if pg.next_due else '—' }}</span>
+                </span>
+            </summary>
+
+            <!-- tasks for this patient -->
+            <div class="table-wrap" style="margin-top:var(--s3);">
+                <table>
+                    <thead><tr><th>دلیل</th><th>نحوهٔ بستن</th><th>توضیح</th><th>سررسید</th><th>اقدام</th></tr></thead>
+                    <tbody>
+                    {% for t in pg.tasks %}
+                        <tr>
+                            <td><span class="badge badge-warn">{{ t.reason_fa }}</span></td>
+                            <td>
+                                {% if t.fulfillment == 'remote' %}
+                                    <span class="badge badge-info">از راه دور</span>
+                                {% else %}
+                                    <span class="badge badge-muted">حضوری</span>
+                                {% endif %}
+                            </td>
+                            <td class="muted">{{ t.detail or '—' }}</td>
+                            <td class="nums">{{ t.due_date|jalali_date if t.due_date else '—' }}</td>
+                            <td>
+                                <div class="flex items-center gap-2">
+                                    <form method="post" action="{{ url_for('followups.resolve', task_id=t.id) }}" style="margin:0;">
+                                        <input type="hidden" name="status" value="done"><button class="btn btn-sm btn-ok" type="submit"><svg class="icon icon-sm"><use href="#i-check"></use></svg> انجام شد</button>
+                                    </form>
+                                    <form method="post" action="{{ url_for('followups.resolve', task_id=t.id) }}" style="margin:0;">
+                                        <input type="hidden" name="status" value="dismissed"><button class="btn btn-sm btn-ghost" type="submit"><svg class="icon icon-sm"><use href="#i-x"></use></svg> رد</button>
+                                    </form>
+                                </div>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- close to visit: merge checked follow-ups into ONE visit -->
+            <form method="post" action="{{ url_for('followups.patient_to_visit', pid=pg.patient_link_id) }}"
+                  class="card card-soft" style="margin-top:var(--s3);">
+                <div class="section-title" style="margin-bottom:var(--s2);">
+                    <svg class="icon icon-sm"><use href="#i-stethoscope"></use></svg>
+                    <div>
+                        <div>ختم به ویزیت</div>
+                        <div class="section-sub">پیگیری‌های انتخاب‌شده در یک ویزیت ادغام و بسته می‌شوند</div>
+                    </div>
+                </div>
+                <div class="flex" style="flex-direction:column;gap:var(--s1);margin-bottom:var(--s2);">
+                {% for t in pg.tasks %}
+                    <label class="flex items-center gap-2">
+                        <input type="checkbox" name="task_ids" value="{{ t.id }}"{% if t.fulfillment != 'remote' %} checked{% endif %}>
+                        <span class="badge badge-warn">{{ t.reason_fa }}</span>
+                        <span class="muted text-sm">{{ t.detail or '' }}</span>
+                    </label>
+                {% endfor %}
+                </div>
+                <div class="row">
+                    <div class="fld">
+                        <label>تاریخِ ویزیت</label>
+                        <input type="text" class="jdate" name="scheduled_date" placeholder="انتخاب تاریخ" required>
+                    </div>
+                    <div class="fld">
+                        <label>ساعت</label>
+                        <input type="text" name="scheduled_time" value="09:00">
+                    </div>
+                    <div class="fld" style="align-self:flex-end;">
+                        <button class="btn btn-ok" type="submit"><svg class="icon icon-sm"><use href="#i-calendar"></use></svg> ثبت ویزیت و بستن</button>
+                    </div>
+                </div>
+            </form>
+        </details>
+    {% endfor %}
     </div>
     {% else %}
     <div class="empty">
         <svg class="icon"><use href="#i-list-checks"></use></svg>
-        <div>پیگیری بازی وجود ندارد. روی «تولید خودکار» بزنید.</div>
+        <div>
+            {% if q %}نتیجه‌ای برای «{{ q }}» یافت نشد.{% else %}پیگیری بازی وجود ندارد. روی «تولید خودکار» بزنید.{% endif %}
+        </div>
     </div>
     {% endif %}
 </div>

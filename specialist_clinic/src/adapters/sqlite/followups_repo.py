@@ -7,9 +7,15 @@ class FollowupRepository:
 
     def create(self, pid: int, *, reason, detail=None, due_date=None, assigned_to=None,
                source_rule=None, source_event=None, appointment_id=None,
-               fulfillment='in_person') -> int:
+               fulfillment=None) -> int:
         """fulfillment in remote|in_person — how the task is meant to be closed.
-        appointment_id links the task to the visit that fulfills it (or None)."""
+        appointment_id links the task to the visit that fulfills it (or None).
+
+        When fulfillment is None it is derived from the reason: refill (renewal /
+        periodic-Rx) is remote-closeable, everything else needs an in-person visit.
+        Explicit values are always respected."""
+        if fulfillment is None:
+            fulfillment = 'remote' if reason == 'refill' else 'in_person'
         db = get_db()
         cur = db.execute(
             """INSERT INTO followup_tasks

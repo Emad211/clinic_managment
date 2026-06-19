@@ -19,8 +19,11 @@ def _show_value() -> bool:
 @bp.route("/")
 @login_required
 def index():
-    data = ControlRoomService().panel(show_value=_show_value())
-    return render_template("control_room.html", active_page='control_room', **data)
+    svc = ControlRoomService()
+    data = svc.panel(show_value=_show_value())
+    conversion = svc.conversion()
+    return render_template("control_room.html", active_page='control_room',
+                           conversion=conversion, **data)
 
 
 @bp.route("/recall", methods=["POST"])

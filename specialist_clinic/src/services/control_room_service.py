@@ -165,3 +165,18 @@ class ControlRoomService:
         """Recompute a cohort's patient ids server-side (don't trust posted ids)."""
         data = self.panel(show_value=show_value)
         return next((c['ids'] for c in data['cohorts'] if c['key'] == cohort_key), [])
+
+    def conversion(self) -> dict:
+        """Follow-up → visit conversion: of all RESOLVED (status='done') follow-ups,
+        the share that ended up linked to a visit (appointment_id IS NOT NULL).
+        Measures whether the recall funnel actually lands patients in a visit."""
+        db = get_db()
+        row = db.execute(
+            """SELECT COUNT(*) AS resolved,
+                      SUM(CASE WHEN appointment_id IS NOT NULL THEN 1 ELSE 0 END) AS to_visit
+               FROM followup_tasks WHERE status='done'"""
+        ).fetchone()
+        resolved = row['resolved'] or 0
+        to_visit = row['to_visit'] or 0
+        rate = round(to_visit * 100 / resolved, 1) if resolved else 0
+        return {'resolved': resolved, 'to_visit': to_visit, 'rate': rate}
