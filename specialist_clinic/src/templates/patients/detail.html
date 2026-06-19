@@ -299,8 +299,27 @@
 <!-- ============ TAB: MEDS ============ -->
 <!-- ============================================================= -->
 <section class="tab-pane" data-pane="meds" role="tabpanel" hidden>
+    {# embedded drug catalog for the meds-cascade script (filtered by class → drug → doses) #}
+    <script type="application/json" id="drugCatalogData">{{ drug_catalog|tojson }}</script>
+
+    {# ---- DOSE TOOLS (insulin calc for diabetics + per-disease dose guidance) ---- #}
+    {% if is_diabetic or dose_guidance %}
     <div class="card">
-        <div class="section-title"><svg class="icon"><use href="#i-pill"></use></svg> داروها <span class="section-sub">شروع، تغییر دوز و قطع هر دارو با تاریخ ثبت می‌شود و روی نمودارها دیده می‌شود</span></div>
+        <div class="section-title"><svg class="icon"><use href="#i-syringe"></use></svg> ابزارهای دوز <span class="section-sub">مرجع شروع و تیتراسیون — پیشنهاد، تأیید با پزشک</span></div>
+        <div class="row" style="flex-wrap:wrap;gap:var(--s2);">
+            {% if is_diabetic %}
+            <button type="button" class="btn btn-sm" data-modal-open="insulinModal"><svg class="icon icon-sm"><use href="#i-sigma"></use></svg> ماشین‌حساب انسولین</button>
+            {% endif %}
+            {% for dg in dose_guidance %}
+            <button type="button" class="btn btn-sm btn-ghost" data-modal-open="doseModal-{{ dg.condition_code }}"><svg class="icon icon-sm"><use href="#i-pill"></use></svg> پیشنهاد دوزِ {{ dg.condition_name }}</button>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+    {# ---- CURRENT MEDICATIONS ---- #}
+    <div class="card">
+        <div class="section-title"><svg class="icon"><use href="#i-pill"></use></svg> داروها <span class="section-sub">تغییر دوز و قطع پشتِ دکمهٔ «اقدام» — هر تغییر با تاریخ ثبت و روی نمودارها دیده می‌شود</span></div>
         {% for m in medications %}
         <div class="med-card{% if not m.is_active %} inactive{% endif %}">
             <div class="flex items-center justify-between wrap gap-2">
@@ -316,9 +335,12 @@
                         {% if m.refill_due_date %} · تجدید نسخه: {{ m.refill_due_date|jalali_date }}{% endif %}
                     </div>
                 </div>
+                {% if m.is_active %}
+                <button type="button" class="btn btn-sm btn-ghost med-action-toggle"><svg class="icon icon-sm"><use href="#i-chevron-left"></use></svg> اقدام</button>
+                {% endif %}
             </div>
             {% if m.is_active %}
-            <div class="med-actions">
+            <div class="med-actions" hidden>
                 <form method="post" action="{{ url_for('patients.change_dose', pid=patient.id, med_id=m.id) }}" style="margin:0;display:flex;gap:var(--s2);align-items:flex-end;flex-wrap:wrap;">
                     <div class="fld" style="width:120px;"><label>تغییر دوز به</label><input type="text" name="dose" placeholder="مثلاً ۱۰۰۰" required></div>
                     <div class="fld" style="width:120px;"><label>تاریخ</label><input type="text" class="jdate" name="change_date"></div>
@@ -333,32 +355,78 @@
         </div>
         {% else %}<div class="empty-mini">دارویی ثبت نشده</div>{% endfor %}
 
+        {# ---- ADD-NEW-MEDICATION (cascade: class → drug name → dose) ---- #}
         <div class="divider-dashed" style="margin-top:var(--s2);padding-top:var(--s4);">
             <div class="muted text-sm" style="margin-bottom:var(--s2);font-weight:600;">افزودن داروی جدید</div>
-            <form method="post" action="{{ url_for('patients.add_medication', pid=patient.id) }}">
+            <form method="post" action="{{ url_for('patients.add_medication', pid=patient.id) }}" id="addMedForm">
                 <div class="grid grid-4">
-                    <div class="fld"><label>نام دارو</label><input type="text" name="drug_name" required></div>
                     <div class="fld"><label>کلاس دارویی</label>
-                        <select name="drug_class">
+                        <select name="drug_class" id="addMedClass">
                             <option value="">— انتخاب کلاس —</option>
                             {% for dc in drug_class_options %}<option value="{{ dc.class_key }}">{{ dc.label }}</option>{% endfor %}
                         </select>
                     </div>
-                    <div class="fld"><label>دوز</label><input type="text" name="dose"></div>
+                    <div class="fld"><label>نام دارو</label>
+                        <select id="addMedNameSelect">
+                            <option value="">— ابتدا کلاس را انتخاب کنید —</option>
+                        </select>
+                        <input type="text" name="drug_name" id="addMedNameText" placeholder="یا نام دارو را تایپ کنید" style="margin-top:var(--s2);" required>
+                    </div>
+                    <div class="fld"><label>دوز</label>
+                        <select id="addMedDoseSelect">
+                            <option value="">— دوزِ استاندارد —</option>
+                        </select>
+                        <input type="text" name="dose" id="addMedDoseText" placeholder="یا دوز را تایپ کنید" style="margin-top:var(--s2);">
+                    </div>
                     <div class="fld"><label>برنامه</label><input type="text" name="schedule" placeholder="روزی ۲ بار"></div>
                 </div>
                 <div class="row" style="margin-top:var(--s3);align-items:flex-end;">
-                    <div class="fld" style="max-width:180px;"><label>تاریخ شروع</label><input type="text" class="jdate" name="start_date"></div>
-                    <div class="fld" style="max-width:180px;"><label>تجدید نسخه</label><input type="text" class="jdate" name="refill_due_date"></div>
+                    <div class="fld" style="max-width:200px;"><label>تجدید نسخه</label>
+                        <select name="refill_interval">
+                            <option value="">بدون تجدید</option>
+                            <option value="15">۱۵ روزه</option>
+                            <option value="30">۱ ماهه</option>
+                            <option value="60">۲ ماهه</option>
+                            <option value="90">۳ ماهه</option>
+                        </select>
+                    </div>
                     <button class="btn" type="submit"><svg class="icon"><use href="#i-plus"></use></svg> افزودن دارو</button>
                 </div>
             </form>
         </div>
     </div>
 
-    <div class="grid grid-2">
-        <div class="card">
-            <div class="section-title"><svg class="icon"><use href="#i-syringe"></use></svg> ماشین‌حساب انسولین <span class="section-sub">مرجع شروع و تیتراسیون — تأیید با پزشک</span></div>
+    {# ---- MEDICATION-EFFECT (stays here; moves to Trends in Phase 4) ---- #}
+    <div class="card">
+        <div class="section-title"><svg class="icon"><use href="#i-pill"></use></svg> سنجش اثر دارو روی شاخص <span class="section-sub">میانگین شاخص پیش و پس از شروع دارو</span></div>
+        <div class="grid grid-4" style="align-items:flex-end;">
+            <div class="fld"><label>دارو</label>
+                <select id="meMed">
+                    <option value="">— انتخاب دارو —</option>
+                    {% for m in medications %}<option value="{{ m.id }}">{{ m.drug_name }}{% if m.dose %} ({{ m.dose }}){% endif %}{% if not m.is_active %} — قطع‌شده{% endif %}</option>{% endfor %}
+                </select>
+            </div>
+            <div class="fld"><label>شاخص هدف</label>
+                <select id="meInd">
+                    <option value="">— انتخاب شاخص —</option>
+                    {% for i in indicators %}<option value="{{ i.key }}">{{ i.label }}</option>{% endfor %}
+                </select>
+            </div>
+            <div class="fld"><label>پنجره (روز)</label><input type="number" id="meWin" value="90" min="7" max="730"></div>
+            <button class="btn" id="meBtn"><svg class="icon icon-sm"><use href="#i-sigma"></use></svg> محاسبه اثر</button>
+        </div>
+        <div id="meResult" style="margin-top:var(--s4);"></div>
+    </div>
+
+    {# ============ MODALS (lightweight overlays toggled by the meds IIFE) ============ #}
+    {% if is_diabetic %}
+    <div class="med-modal" data-modal="insulinModal" hidden role="dialog" aria-modal="true">
+        <div class="med-modal-backdrop" data-modal-close></div>
+        <div class="card med-modal-card">
+            <div class="section-title"><svg class="icon"><use href="#i-syringe"></use></svg> ماشین‌حساب انسولین
+                <span class="section-sub">مرجع شروع و تیتراسیون — تأیید با پزشک</span>
+                <button type="button" class="btn btn-sm btn-ghost btn-icon med-modal-x" data-modal-close style="margin-inline-start:auto;"><svg class="icon icon-sm"><use href="#i-x"></use></svg></button>
+            </div>
             <div class="grid grid-2" style="align-items:flex-end;">
                 <div class="fld"><label>وزن (kg)</label><input type="number" id="insWeight" value=""></div>
                 <div class="fld"><label>دوز فعلی basal (واحد)</label><input type="number" id="insBasal"></div>
@@ -368,28 +436,30 @@
             <button class="btn btn-sm" id="insBtn" style="margin-top:var(--s3);"><svg class="icon icon-sm"><use href="#i-sigma"></use></svg> محاسبه</button>
             <div id="insResult" style="margin-top:var(--s3);"></div>
         </div>
+    </div>
+    {% endif %}
 
-        <div class="card">
-            <div class="section-title"><svg class="icon"><use href="#i-pill"></use></svg> سنجش اثر دارو روی شاخص <span class="section-sub">میانگین شاخص پیش و پس از شروع دارو</span></div>
-            <div class="grid grid-2" style="align-items:flex-end;">
-                <div class="fld"><label>دارو</label>
-                    <select id="meMed">
-                        <option value="">— انتخاب دارو —</option>
-                        {% for m in medications %}<option value="{{ m.id }}">{{ m.drug_name }}{% if m.dose %} ({{ m.dose }}){% endif %}{% if not m.is_active %} — قطع‌شده{% endif %}</option>{% endfor %}
-                    </select>
-                </div>
-                <div class="fld"><label>شاخص هدف</label>
-                    <select id="meInd">
-                        <option value="">— انتخاب شاخص —</option>
-                        {% for i in indicators %}<option value="{{ i.key }}">{{ i.label }}</option>{% endfor %}
-                    </select>
-                </div>
-                <div class="fld"><label>پنجره (روز)</label><input type="number" id="meWin" value="90" min="7" max="730"></div>
-                <button class="btn" id="meBtn"><svg class="icon icon-sm"><use href="#i-sigma"></use></svg> محاسبه اثر</button>
+    {% for dg in dose_guidance %}
+    <div class="med-modal" data-modal="doseModal-{{ dg.condition_code }}" hidden role="dialog" aria-modal="true">
+        <div class="med-modal-backdrop" data-modal-close></div>
+        <div class="card med-modal-card">
+            <div class="section-title"><svg class="icon"><use href="#i-pill"></use></svg> پیشنهاد دوزِ {{ dg.condition_name }}
+                <span class="section-sub">مرجع تیتراسیون — تأیید با پزشک</span>
+                <button type="button" class="btn btn-sm btn-ghost btn-icon med-modal-x" data-modal-close style="margin-inline-start:auto;"><svg class="icon icon-sm"><use href="#i-x"></use></svg></button>
             </div>
-            <div id="meResult" style="margin-top:var(--s4);"></div>
+            <div class="fld" style="max-width:260px;margin-bottom:var(--s3);">
+                <label>دوزِ فعلی (اطلاعاتی)</label>
+                <input type="text" readonly placeholder="دوزِ فعلی بیمار را اینجا یادداشت کنید">
+            </div>
+            {% for it in dg['items'] %}
+            <div class="med-card">
+                <strong style="font-size:14px;">{{ it.title }}</strong>
+                {% if it.titration %}<div class="muted text-sm" style="margin-top:var(--s1);white-space:pre-wrap;">{{ it.titration }}</div>{% endif %}
+            </div>
+            {% else %}<div class="empty-mini">راهنمای دوزی ثبت نشده</div>{% endfor %}
         </div>
     </div>
+    {% endfor %}
 </section>
 
 <!-- ============================================================= -->
@@ -1067,6 +1137,118 @@ function initTrends(){
 
     /* wire the initial row */
     tbody.querySelectorAll('.lab-row').forEach(wireRow);
+})();
+</script>
+
+<style>
+/* lightweight meds modal (overlay + centered card) — built on existing tokens, no raw hex */
+.med-modal{position:fixed;inset:0;z-index:1000;display:flex;align-items:center;justify-content:center;padding:var(--s5);}
+.med-modal[hidden]{display:none;}
+.med-modal-backdrop{position:absolute;inset:0;background:rgba(0,0,0,.55);}
+.med-modal-card{position:relative;z-index:1;width:100%;max-width:520px;max-height:88vh;overflow:auto;box-shadow:var(--shadow-lg);margin:0;}
+.med-modal-x{box-shadow:none;}
+</style>
+
+<script>
+/* ===== Meds tab interactions (cascade + action toggles + modals) — self-contained ===== */
+(function(){
+    var pane = document.querySelector('.tab-pane[data-pane="meds"]');
+    if(!pane) return;
+
+    /* ---- embedded drug catalog: [{id, generic_fa, drug_class_key, doses:[...]}] ---- */
+    var CATALOG = [];
+    try { CATALOG = JSON.parse(document.getElementById('drugCatalogData').textContent) || []; } catch(e){ CATALOG = []; }
+
+    /* ---- A) «اقدام» toggles: reveal each active med-card's hidden .med-actions ---- */
+    pane.querySelectorAll('.med-action-toggle').forEach(function(btn){
+        btn.addEventListener('click', function(){
+            var card = btn.closest('.med-card');
+            if(!card) return;
+            var box = card.querySelector('.med-actions');
+            if(!box) return;
+            var open = box.hasAttribute('hidden');
+            if(open){ box.removeAttribute('hidden'); btn.classList.add('is-open'); }
+            else { box.setAttribute('hidden',''); btn.classList.remove('is-open'); }
+        });
+    });
+
+    /* ---- B) add-medication cascade: class → drug name → doses ---- */
+    var classSel = document.getElementById('addMedClass');
+    var nameSel  = document.getElementById('addMedNameSelect');
+    var nameTxt  = document.getElementById('addMedNameText');
+    var doseSel  = document.getElementById('addMedDoseSelect');
+    var doseTxt  = document.getElementById('addMedDoseText');
+
+    function opt(value, label){ var o=document.createElement('option'); o.value=value; o.textContent=label; return o; }
+
+    function fillDoses(drug){
+        if(!doseSel) return;
+        doseSel.innerHTML='';
+        doseSel.appendChild(opt('', '— دوزِ استاندارد —'));
+        var doses = (drug && drug.doses) ? drug.doses : [];
+        doses.forEach(function(d){ doseSel.appendChild(opt(d, d)); });
+    }
+
+    function fillNames(classKey){
+        if(!nameSel) return;
+        nameSel.innerHTML='';
+        nameSel.appendChild(opt('', classKey ? '— انتخاب دارو —' : '— ابتدا کلاس را انتخاب کنید —'));
+        CATALOG.filter(function(d){ return !classKey || d.drug_class_key===classKey; })
+               .forEach(function(d){ nameSel.appendChild(opt(d.generic_fa, d.generic_fa)); });
+        fillDoses(null);
+    }
+
+    if(classSel){
+        classSel.addEventListener('change', function(){
+            fillNames(classSel.value);
+            if(nameTxt) nameTxt.value='';
+            if(doseTxt) doseTxt.value='';
+        });
+        fillNames(classSel.value);   /* initial state */
+    }
+
+    /* picking a catalog drug mirrors into the free-text name field + loads its doses */
+    if(nameSel){
+        nameSel.addEventListener('change', function(){
+            if(nameSel.value){
+                if(nameTxt) nameTxt.value = nameSel.value;
+                var drug = CATALOG.find(function(d){
+                    return d.generic_fa===nameSel.value && (!classSel || !classSel.value || d.drug_class_key===classSel.value);
+                });
+                fillDoses(drug);
+                if(doseTxt) doseTxt.value='';
+            }
+        });
+    }
+    /* typing a custom name clears the catalog selection */
+    if(nameTxt){
+        nameTxt.addEventListener('input', function(){ if(nameSel) nameSel.value=''; });
+    }
+    /* picking a standard dose mirrors into the free-text dose field */
+    if(doseSel){
+        doseSel.addEventListener('change', function(){ if(doseSel.value && doseTxt) doseTxt.value=doseSel.value; });
+    }
+    if(doseTxt){
+        doseTxt.addEventListener('input', function(){ if(doseSel) doseSel.value=''; });
+    }
+
+    /* ---- C/D) modal open/close (backdrop, ✕, Esc) ---- */
+    function openModal(id){
+        var m = pane.querySelector('.med-modal[data-modal="'+id+'"]');
+        if(m) m.removeAttribute('hidden');
+    }
+    function closeAll(){
+        pane.querySelectorAll('.med-modal').forEach(function(m){ m.setAttribute('hidden',''); });
+    }
+    pane.querySelectorAll('[data-modal-open]').forEach(function(b){
+        b.addEventListener('click', function(){ openModal(b.getAttribute('data-modal-open')); });
+    });
+    pane.querySelectorAll('[data-modal-close]').forEach(function(b){
+        b.addEventListener('click', closeAll);
+    });
+    document.addEventListener('keydown', function(e){
+        if(e.key==='Escape') closeAll();
+    });
 })();
 </script>
 {% endblock %}

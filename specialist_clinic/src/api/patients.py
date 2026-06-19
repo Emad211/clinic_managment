@@ -7,11 +7,13 @@ from src.adapters.sqlite.appointments_repo import AppointmentRepository
 from src.adapters.sqlite.followups_repo import FollowupRepository
 from src.adapters.sqlite.record_repo import RecordRepository
 from src.adapters.sqlite.lab_catalog_repo import LabCatalogRepository
+from src.adapters.sqlite.drug_catalog_repo import DrugCatalogRepository
 from src.services.vitals_service import VitalsService, evaluate_reading
 from src.services.analytics_service import AnalyticsService, TARGETS
 from src.adapters.sqlite.wallet_repo import WalletRepository
 from src.services.activity_logger import log_activity
-from src.common.utils import jalali_to_gregorian_str, format_jalali_date
+from src.common.utils import jalali_to_gregorian_str, format_jalali_date, today_str, iran_now
+from datetime import timedelta
 
 bp = Blueprint("patients", __name__, url_prefix="/patients")
 
@@ -212,6 +214,21 @@ def detail(pid):
     lab_catalog = lab_catalog_repo.all()
     suggested_labs = lab_catalog_repo.for_conditions(condition_codes)
 
+    # Meds tab (Phase 3): drug catalog for the class->name->doses cascade,
+    # the diabetic gate for the insulin calculator, and per-disease dose
+    # titration guidance for the non-diabetes conditions the patient has.
+    drug_catalog = DrugCatalogRepository().all()
+    is_diabetic = 'diabetes' in condition_codes
+    condition_name_by_code = {
+        c.get('condition_code'): c.get('condition_name')
+        for c in profile['conditions'] if c.get('condition_code')
+    }
+    guidance_codes = [c for c in condition_codes if c != 'diabetes']
+    dose_guidance = rules_repo.dosage_guidance(guidance_codes)
+    for grp in dose_guidance:
+        grp['condition_name'] = condition_name_by_code.get(
+            grp['condition_code'], grp['condition_code'])
+
     wallet_repo = WalletRepository()
     wallet_balance = wallet_repo.get_balance(pid)
     wallet_tx = wallet_repo.transactions(pid, limit=20)
@@ -247,6 +264,9 @@ def detail(pid):
         notes_lifestyle=notes_lifestyle,
         lab_catalog=lab_catalog,
         suggested_labs=suggested_labs,
+        drug_catalog=drug_catalog,
+        is_diabetic=is_diabetic,
+        dose_guidance=dose_guidance,
         medication_events=PatientRepository().get_medication_events(pid),
         wallet_balance=wallet_balance,
         wallet_tx=wallet_tx,
@@ -310,20 +330,28 @@ def remove_condition(pid, pc_id):
 @bp.route("/<int:pid>/medication/add", methods=["POST"])
 @login_required
 def add_medication(pid):
+    # The frontend sends the chosen-or-typed generic name as a plain string.
     name = request.form.get("drug_name", "").strip()
     if name:
+        # Start date is implicit: today (Gregorian). No start-date input.
+        start_date = today_str()
+        # Refill interval is a preset choice in days ('' = none).
+        interval = (request.form.get("refill_interval") or "").strip()
+        refill_due_date = None
+        if interval in ("15", "30", "60", "90"):
+            refill_due_date = (iran_now() + timedelta(days=int(interval))).strftime('%Y-%m-%d')
         PatientRepository().add_medication(
             pid, drug_name=name,
             dose=request.form.get("dose") or None,
             schedule=request.form.get("schedule") or None,
-            start_date=jalali_to_gregorian_str(request.form.get("start_date", "")),
-            refill_due_date=jalali_to_gregorian_str(request.form.get("refill_due_date", "")),
+            start_date=start_date,
+            refill_due_date=refill_due_date,
             notes=request.form.get("notes") or None,
             drug_class=request.form.get("drug_class") or None,
             created_by=g.user["username"],
         )
         log_activity("medication_add", f"افزودن دارو: {name}", patient_link_id=pid)
-    return redirect(url_for("patients.detail", pid=pid))
+    return redirect(url_for("patients.detail", pid=pid) + "#meds")
 
 
 @bp.route("/<int:pid>/medication/<int:med_id>/stop", methods=["POST"])

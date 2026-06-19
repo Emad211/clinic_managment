@@ -113,3 +113,48 @@ class ClinicalRulesRepository:
                     delattr(g, k)
                 except Exception:
                     pass
+
+    # ---- decision-rule catalog (clinical_rules table) ----
+    def dosage_guidance(self, condition_codes: list[str]) -> list[dict]:
+        """Per-disease dose-titration guidance for the meds tab.
+
+        Reads the `clinical_rules` decision-rule catalog (NOT the indicators
+        table) for active rules whose `condition_code` is one of the patient's
+        conditions and that carry `dosage_titration` text. Diabetes is handled
+        by the interactive insulin calculator, so the caller excludes it.
+
+        Returns one entry per matching condition, grouped:
+            [{'condition_code', 'condition_name', 'items':
+                [{'title', 'titration'}, ...]}, ...]
+        `condition_name` is left blank here (the caller fills it from the
+        patient's own condition rows); rows are grouped by code in Python.
+        """
+        codes = [c for c in (condition_codes or []) if c]
+        if not codes:
+            return []
+        db = get_db()
+        placeholders = ", ".join("?" for _ in codes)
+        rows = db.execute(
+            f"""SELECT condition_code, title, human_if, recommendation, dosage_titration
+                FROM clinical_rules
+                WHERE is_active=1
+                  AND condition_code IN ({placeholders})
+                  AND dosage_titration IS NOT NULL
+                  AND TRIM(dosage_titration) <> ''
+                ORDER BY priority, id""",
+            codes,
+        ).fetchall()
+
+        grouped: dict[str, dict] = {}
+        for r in rows:
+            code = r['condition_code']
+            # short human label: prefer the recommendation ("Then"), then the
+            # human "If", then the rule title.
+            label = (r['recommendation'] or r['human_if'] or r['title'] or '').strip()
+            bucket = grouped.setdefault(
+                code, {'condition_code': code, 'condition_name': '', 'items': []})
+            bucket['items'].append({
+                'title': label,
+                'titration': (r['dosage_titration'] or '').strip(),
+            })
+        return list(grouped.values())
