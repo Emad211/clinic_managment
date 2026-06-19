@@ -93,12 +93,6 @@ def index():
         "SELECT COUNT(*) c FROM patient_medications WHERE is_active=1 AND refill_due_date IS NOT NULL AND refill_due_date <= ?",
         (today,)).fetchone()['c']
 
-    by_condition = db.execute(
-        """SELECT c.name, COUNT(DISTINCT pc.patient_link_id) c
-           FROM patient_conditions pc JOIN conditions c ON c.id=pc.condition_id
-           JOIN patient_links p ON p.id=pc.patient_link_id AND p.is_active=1
-           WHERE pc.is_active=1 GROUP BY c.id ORDER BY c DESC""").fetchall()
-
     stats = {
         "patients": db.execute("SELECT COUNT(*) c FROM patient_links WHERE is_active=1").fetchone()["c"],
         "appointments_open": db.execute("SELECT COUNT(*) c FROM appointments WHERE status='scheduled'").fetchone()["c"],
@@ -131,7 +125,6 @@ def index():
         attention=attention[:10],
         attention_total=uncontrolled_count,
         today_followups=today_followups,
-        by_condition=[dict(r) for r in by_condition],
         wallet_outstanding=wallet_outstanding,
         revenue=revenue,
         bridge_ok=accounting_bridge.is_available(),
