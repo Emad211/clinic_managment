@@ -644,3 +644,22 @@ CREATE TABLE IF NOT EXISTS engagement_approvals (
     , FOREIGN KEY (patient_link_id) REFERENCES patient_links(id)
 );
 CREATE INDEX IF NOT EXISTS idx_engagement_approvals_patient ON engagement_approvals(patient_link_id);
+
+-- processed_invoices: read-only invoice-sync ledger (ADR-0003 D3+). Idempotent record
+-- of accounting invoices observed as CLOSED via the read-only bridge. The accounting DB
+-- is never written. cursor lives in settings (key 'invoice_sync_last_id').
+CREATE TABLE IF NOT EXISTS processed_invoices (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    accounting_invoice_id INTEGER NOT NULL UNIQUE,   -- idempotency key
+    patient_link_id INTEGER,                          -- NULL until/unless the patient is enrolled
+    national_id TEXT,
+    full_name TEXT,
+    work_date TEXT,
+    closed_at TEXT,
+    total_amount REAL,
+    status TEXT NOT NULL DEFAULT 'applied',           -- applied | pending_link
+    processed_at TIMESTAMP DEFAULT (datetime('now','+3 hours','+30 minutes')),
+    FOREIGN KEY (patient_link_id) REFERENCES patient_links(id)
+);
+CREATE INDEX IF NOT EXISTS idx_processed_invoices_patient ON processed_invoices(patient_link_id);
+CREATE INDEX IF NOT EXISTS idx_processed_invoices_status ON processed_invoices(status);

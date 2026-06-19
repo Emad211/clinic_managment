@@ -60,6 +60,10 @@ class Scheduler:
         #    on a later tick once inside the allowed window.
         self._run_engagement()
 
+        # 1b) Read-only invoice-sync: pull recently-closed accounting invoices into the
+        #     local ledger (ADR-0003 D3+). Read-only — never writes the accounting DB.
+        self._sync_invoices()
+
         # 2) Due scheduled campaigns (manual broadcasts)
         self._run_due_campaigns()
 
@@ -75,6 +79,19 @@ class Scheduler:
             EngagementService().run_all()
         except Exception as e:
             print(f"[scheduler] engagement error: {e}")
+
+    def _sync_invoices(self):
+        """Read-only invoice-sync consumer (ADR-0003 D3+): record recently-closed
+        accounting invoices into the local ledger. Fail-loud — on error the cursor is
+        NOT advanced (the exception is logged, the tick continues)."""
+        try:
+            from src.services.invoice_sync_service import InvoiceSyncService
+            res = InvoiceSyncService().run()
+            if res.get('new'):
+                print(f"[scheduler] invoice-sync: {res['new']} new "
+                      f"({res['pending_link']} pending link), cursor={res['cursor']}")
+        except Exception as e:
+            print(f"[scheduler] invoice-sync error (cursor not advanced): {e}")
 
     def _run_due_campaigns(self):
         try:

@@ -219,6 +219,9 @@ def get_db():
         db = g._database = sqlite3.connect(db_path)
         db.row_factory = sqlite3.Row
         db.execute("PRAGMA foreign_keys = ON")
+        # Tolerate brief write contention between the request thread and the background
+        # scheduler (e.g. the read-only invoice-sync consumer writing its ledger).
+        db.execute("PRAGMA busy_timeout = 3000")
 
         # Initialize schema once per process if users table is missing.
         try:

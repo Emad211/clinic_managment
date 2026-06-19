@@ -108,6 +108,38 @@ def get_patient_by_national_id(national_id: str) -> Optional[dict[str, Any]]:
         conn.close()
 
 
+def fetch_closed_invoices(last_id: int = 0, floor_date: Optional[str] = None,
+                          limit: int = 500) -> list[dict[str, Any]]:
+    """Read-only: recently-closed accounting invoices for the invoice-sync consumer
+    (ADR-0003 D3+). Returns closed invoices whose id is past the cursor OR whose
+    `closed_at` is within the floor window (catches a late-closed, low-id invoice).
+    Joined with `patients` for national_id / name / phone.
+
+    Read-only — NEVER writes the accounting DB. Unlike the display helpers above, this
+    deliberately does NOT swallow query errors: the caller must NOT advance its cursor
+    on failure (fail-loud). Returns [] only when the accounting DB is unavailable.
+    """
+    conn = _connect_ro()
+    if conn is None:
+        return []
+    try:
+        rows = conn.execute(
+            """
+            SELECT i.id AS invoice_id, i.patient_id, i.work_date, i.closed_at,
+                   i.total_amount, p.national_id, p.full_name, p.phone_number
+            FROM invoices i JOIN patients p ON p.id = i.patient_id
+            WHERE i.status = 'closed'
+              AND (i.id > ? OR (? IS NOT NULL AND i.closed_at >= ?))
+            ORDER BY i.id ASC
+            LIMIT ?
+            """,
+            (last_id, floor_date, floor_date, limit),
+        ).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
 def get_patient_by_id(accounting_patient_id: int) -> Optional[dict[str, Any]]:
     conn = _connect_ro()
     if conn is None:
