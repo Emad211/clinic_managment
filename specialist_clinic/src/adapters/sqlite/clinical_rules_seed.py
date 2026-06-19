@@ -426,6 +426,7 @@ RULES = [
          trigger={"all": [HTN, {"any": [ind("bp_systolic", ">=", 140), ind("bp_diastolic", ">=", 90)]}]},
          human_if="فشار ≥۱۴۰/۹۰ با وجود اصلاح سبک‌زندگی",
          rec="شروع داروی ضدفشار؛ خط اول: تیازید، ACEi/ARB یا کلسیم‌بلاکر (CCB).",
+         dosage_titration="شروع با تک‌دارویِ دوزِ پایین–متوسط؛ تیتر هر ۲–۴ هفته تا هدفِ فشار. ACEi/ARB: پتاسیم و کراتینین ۱–۲ هفته پس از شروع. CCB: مراقبِ ادمِ محیطی. تیازید: پایشِ سدیم/پتاسیم. — تأیید با پزشک.",
          monitoring="فشار خانگی؛ eGFR/پتاسیم پس از شروع ACEi/ARB.",
          contraindications="ACEi/ARB در بارداری ممنوع.",
          evidence="", action="suggest_med", params={"classes": ["thiazide", "acei", "arb", "ccb"]},
@@ -434,12 +435,14 @@ RULES = [
          trigger={"all": [HTN, {"any": [ind("bp_systolic", ">=", 150), ind("bp_diastolic", ">=", 90)]}]},
          human_if="فشار ≥۱۵۰/۹۰",
          rec="شروع با ترکیبِ دو دارو (ترجیحاً ACEi/ARB + CCB یا تیازید) برای رسیدنِ سریع‌تر به هدف.",
+         dosage_titration="ترکیبِ دو دارو با دوزِ پایین، مؤثرتر و کم‌عارضه‌تر از تک‌دارویِ پردوز؛ تیتر هر ۲–۴ هفته تا هدف؛ در صورت نیاز سه‌دارویی (+ MRA). — تأیید با پزشک.",
          evidence="", action="suggest_med", params={"classes": ["acei", "arb", "ccb", "thiazide"]},
          severity="warn", priority=41, source="پروتکل فشار خون"),
     dict(code="HTN-MED-RAS-01", title="ACEi/ARB در آلبومینوری", category="medication",
          trigger={"all": [HTN, {"any": [ind("uacr", ">=", 30), flag("ckd_stage_a", "in", ["A2", "A3"])]}]},
          human_if="فشار خون + آلبومینوری",
          rec="ACEi یا ARB خط اول است (محافظت کلیه و کاهش آلبومینوری).",
+         dosage_titration="با دوزِ پایین شروع و تا بیشینهٔ قابل‌تحمل تیتر شود؛ پتاسیم و کراتینین ۲–۴ هفته پس از هر تغییر؛ افزایشِ <۳۰٪ کراتینین قابل‌قبول است. — تأیید با پزشک.",
          monitoring="eGFR و پتاسیم ۲–۴ هفته پس از شروع/تغییر دوز.",
          contraindications="ترکیبِ هم‌زمانِ ACEi با ARB توصیه نمی‌شود.",
          evidence="", action="suggest_med", params={"classes": ["acei", "arb"]},
@@ -469,6 +472,7 @@ RULES = [
          trigger={"all": [HLD, {"not": DM}, ind("ldl", ">=", 100)]},
          human_if="LDL ≥۱۰۰ با وجود اصلاح سبک‌زندگی",
          rec="استاتینِ متوسط تا پرقدرت بر اساس ریسک؛ هدفِ کاهشِ ≥۵۰٪ در پرخطر.",
+         dosage_titration="استاتینِ شدتِ متوسط–بالا متناسب با ریسک؛ هدف کاهشِ ≥۵۰٪ LDL یا رسیدن به هدف؛ پروفایلِ لیپید ۴–۱۲ هفته پس از شروع/تغییر سپس سالانه؛ در دردِ عضلانی CK بررسی شود. — تأیید با پزشک.",
          monitoring="پروفایل لیپید ۴–۱۲ هفته پس از شروع/تغییر، سپس سالانه.",
          evidence="", action="suggest_med", params={"classes": ["statin"]},
          severity="warn", priority=40, source="پروتکل چربی خون"),
@@ -476,6 +480,7 @@ RULES = [
          trigger={"all": [HLD, {"not": DM}, med("statin"), ind("ldl", ">=", 70)]},
          human_if="روی استاتین ولی LDL خارج از هدف",
          rec="افزودنِ ازتیمایب؛ در صورت نرسیدن به هدف، مهارکنندهٔ PCSK9.",
+         dosage_titration="روی حداکثر استاتینِ قابل‌تحمل اگر به هدف نرسید: ازتیمایب ۱۰mg روزانه؛ در ادامهٔ عدمِ‌کنترلِ پرخطر، مهارکنندهٔ PCSK9. — تأیید با پزشک.",
          evidence="", action="suggest_med", params={"classes": ["ezetimibe"]},
          severity="info", priority=41, source="پروتکل چربی خون"),
     dict(code="HLD-TG-SEVERE-01", title="تری‌گلیسریدِ شدید", category="drug_safety",
@@ -495,6 +500,7 @@ RULES = [
          trigger={"all": [CKD, {"not": DM}, {"any": [ind("uacr", ">=", 30), flag("ckd_stage_a", "in", ["A2", "A3"])]}]},
          human_if="CKD + آلبومینوری (بدون دیابت)",
          rec="ACEi یا ARB خط اول برای کاهش آلبومینوری و کند کردن پیشرفت.",
+         dosage_titration="دوزِ پایین شروع و تا بیشینهٔ قابل‌تحمل تیتر شود؛ پتاسیم و eGFR ۲–۴ هفته پس از هر تغییر؛ افتِ <۳۰٪ eGFR و افزایشِ خفیفِ پتاسیم قابل‌قبول و نیازمندِ پایش است. — تأیید با پزشک.",
          monitoring="eGFR و پتاسیم ۲–۴ هفته پس از شروع/تغییر دوز.",
          contraindications="ترکیبِ ACEi با ARB توصیه نمی‌شود؛ در بارداری ممنوع.",
          evidence="", action="suggest_med", params={"classes": ["acei", "arb"]},
@@ -503,12 +509,14 @@ RULES = [
          trigger={"all": [CKD, {"not": DM}, ind("egfr", ">=", 20), {"any": [ind("uacr", ">=", 30), flag("ckd_stage_a", "in", ["A2", "A3"])]}]},
          human_if="CKD + آلبومینوری، eGFR ≥۲۰ (بدون دیابت)",
          rec="مهارکنندهٔ SGLT2 برای کند کردن پیشرفتِ CKD و کاهشِ رخدادِ قلبی-عروقی.",
+         dosage_titration="با دوزِ ثابت شروع می‌شود (تیتراسیون ندارد)؛ افتِ گذرای eGFR در آغاز طبیعی است؛ در بیماریِ حاد یا روزه‌داریِ طولانی موقتاً قطع شود (ریسکِ کتواسیدوز). — تأیید با پزشک.",
          evidence="", action="suggest_med", params={"classes": ["sglt2i"]},
          severity="warn", priority=44, source="پروتکل کلیه"),
     dict(code="CKD-FINERENONE-01", title="افزودنِ فینرنون", category="medication",
          trigger={"all": [CKD, {"not": DM}, ind("egfr", ">=", 25), {"any": [ind("uacr", ">=", 30), flag("ckd_stage_a", "in", ["A2", "A3"])]}, {"any": [med("acei"), med("arb")]}]},
          human_if="CKD + آلبومینوری روی ACEi/ARB، eGFR ≥۲۵ (بدون دیابت)",
          rec="افزودنِ nsMRA (فینرنون) برای کاهشِ پیشرفتِ CKD.",
+         dosage_titration="شروع/تیترِ فینرنون بر اساسِ eGFR و پتاسیم؛ پتاسیم را ۱ ماه پس از شروع و پس از هر تغییرِ دوز چک کنید؛ در پتاسیمِ بالا شروع نکنید یا قطع کنید. — تأیید با پزشک.",
          monitoring="پتاسیم را ۱ ماه پس از شروع چک کنید.",
          evidence="", action="suggest_med", params={"classes": ["finerenone"]},
          severity="info", priority=45, source="پروتکل کلیه"),
@@ -570,6 +578,13 @@ def seed_clinical_rules(db):
             "UPDATE clinical_rules SET condition_code=? "
             "WHERE rule_code=? AND (condition_code IS NULL OR condition_code='all')",
             (cc, r["code"]))
+        # Backfill dosage_titration on rows created before it was populated — only
+        # when currently empty, so manager edits are preserved.
+        if r.get("dosage_titration"):
+            db.execute(
+                "UPDATE clinical_rules SET dosage_titration=? "
+                "WHERE rule_code=? AND (dosage_titration IS NULL OR dosage_titration='')",
+                (r["dosage_titration"], r["code"]))
     # Cross-disease rules are code-defined (not manager edits); force them to the
     # shared 'all' module even if a prior run tagged them to a specific disease.
     for _code in CROSS_DISEASE:
