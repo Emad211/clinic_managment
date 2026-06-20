@@ -9,8 +9,11 @@ Phase 1 = populate the ledger only. The thank-you SMS / procedure-invite trigger
 wired in a later phase through the `on_invoice_processed` seam (a no-op here).
 
 Guarantees: NEVER writes the accounting DB. Idempotent (UNIQUE accounting_invoice_id).
-Fail-loud — if the read fails, the exception propagates so the caller does NOT advance
-the cursor (no silent data loss).
+Fail-loud on READ — if the accounting read fails the exception propagates so the caller
+does NOT advance the cursor (no skipped invoices). Outreach (thank-you / invite) is
+DECOUPLED from the ledger via the `outreach_done` flag and retried on later passes until
+it actually succeeds, so a transient enqueue failure never silently loses the SMS
+(at-least-once; per-row guarded so one bad row blocks neither the cursor nor the rest).
 
 Cursor: `invoice_sync_last_id` in the settings table = the highest accounting invoice
 id consumed. The query also re-checks the last FLOOR_DAYS by `closed_at` to catch a
@@ -81,7 +84,19 @@ class InvoiceSyncService:
                 new += 1
                 if not plid:
                     pending += 1
-                self.on_invoice_processed(plid, r)  # seam — Phase 2 (thank-you / invite)
+            # Outreach is DECOUPLED from the ledger idempotency key: gated on
+            # `outreach_done`, not on `inserted`. A closed invoice is recorded once, but
+            # its thank-you/invite is retried on later passes until it succeeds — so a
+            # transient failure (e.g. a DB lock mid-enqueue) never silently loses the SMS.
+            # enqueue is itself idempotent (engagement period_key). Per-row guarded so one
+            # bad row blocks neither the cursor nor the other rows' outreach. (Freshly
+            # inserted rows are outreach_done=0 by definition, so skip the extra read.)
+            if plid and (inserted or not self.repo.outreach_done(inv_id)):
+                try:
+                    self.on_invoice_processed(plid, r)
+                    self.repo.mark_outreach_done(inv_id)
+                except Exception as e:  # deferred — retried next pass within the FLOOR window
+                    print(f"[invoice-sync] outreach deferred for invoice {inv_id}: {e}")
             if inv_id > max_id:
                 max_id = inv_id
 

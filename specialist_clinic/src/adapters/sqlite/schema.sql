@@ -681,6 +681,7 @@ CREATE TABLE IF NOT EXISTS processed_invoices (
     closed_at TEXT,
     total_amount REAL,
     status TEXT NOT NULL DEFAULT 'applied',           -- applied | pending_link
+    outreach_done INTEGER NOT NULL DEFAULT 0,         -- 1 once thank-you/invite enqueue succeeded; retried until then (decoupled from the idempotency key)
     processed_at TIMESTAMP DEFAULT (datetime('now','+3 hours','+30 minutes')),
     FOREIGN KEY (patient_link_id) REFERENCES patient_links(id)
 );

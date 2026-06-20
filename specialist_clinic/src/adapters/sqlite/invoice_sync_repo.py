@@ -30,6 +30,22 @@ class InvoiceSyncRepository:
         db.commit()
         return cur.rowcount > 0
 
+    def outreach_done(self, accounting_invoice_id: int) -> bool:
+        """True if invoice-triggered outreach (thank-you / invite) already completed for
+        this invoice. Lets outreach be retried independently of the ledger insert."""
+        row = get_db().execute(
+            "SELECT outreach_done FROM processed_invoices WHERE accounting_invoice_id=?",
+            (accounting_invoice_id,)).fetchone()
+        return bool(row and row["outreach_done"])
+
+    def mark_outreach_done(self, accounting_invoice_id: int) -> None:
+        """Mark outreach complete so it is not retried on the next sync pass."""
+        db = get_db()
+        db.execute(
+            "UPDATE processed_invoices SET outreach_done=1 WHERE accounting_invoice_id=?",
+            (accounting_invoice_id,))
+        db.commit()
+
     def max_processed_id(self) -> int:
         db = get_db()
         row = db.execute(
