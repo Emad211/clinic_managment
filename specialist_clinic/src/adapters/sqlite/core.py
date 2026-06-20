@@ -166,6 +166,7 @@ def _run_migrations(db):
     _ensure_column(db, "engagement_events", "is_custom", "INTEGER DEFAULT 0")
     _ensure_column(db, "users", "api_token", "TEXT")
     _ensure_column(db, "processed_invoices", "outreach_done", "INTEGER NOT NULL DEFAULT 0")
+    _ensure_column(db, "lab_results", "test_key", "TEXT")
     _seed_flag_sections(db)
     # Seed the clinical decision-rule catalog (idempotent; manager edits preserved).
     # Also tags each rule's owning disease module (condition_code) on existing DBs.

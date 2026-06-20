@@ -71,6 +71,7 @@ def add_lab(pid):
     if names:
         values = request.form.getlist("value[]")
         units = request.form.getlist("unit[]")
+        keys = request.form.getlist("test_key[]")
         ref_lows = request.form.getlist("ref_low[]")
         ref_highs = request.form.getlist("ref_high[]")
 
@@ -84,7 +85,7 @@ def add_lab(pid):
             if not name or value is None:
                 continue
             repo.add_lab(
-                pid, test_name=name, value=value,
+                pid, test_name=name, test_key=(at(keys, i) or "").strip() or None, value=value,
                 unit=(at(units, i) or "").strip() or None,
                 ref_low=_to_float(at(ref_lows, i)),
                 ref_high=_to_float(at(ref_highs, i)),
@@ -105,7 +106,8 @@ def add_lab(pid):
         flash("نام آزمایش الزامی است")
         return redirect(url_for("patients.detail", pid=pid) + "#record")
     repo.add_lab(
-        pid, test_name=name, value=_to_float(request.form.get("value")),
+        pid, test_name=name, test_key=(request.form.get("test_key") or "").strip() or None,
+        value=_to_float(request.form.get("value")),
         unit=request.form.get("unit") or None,
         ref_low=_to_float(request.form.get("ref_low")),
         ref_high=_to_float(request.form.get("ref_high")),

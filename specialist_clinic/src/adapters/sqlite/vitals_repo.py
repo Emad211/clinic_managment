@@ -47,16 +47,29 @@ class VitalsRepository:
         return [dict(r) for r in rows]
 
     def latest_by_type(self, pid: int) -> dict:
-        """Return the most recent reading per vital type."""
+        """Most recent observation per canonical key across BOTH capture channels:
+        vital_readings (by `type`) and catalog-keyed lab_results (by `test_key`). They are
+        one canonical concept on a shared vocabulary (hba1c, fbs, ldl, egfr, …), so a
+        lab-entered HbA1c counts the same as a clinic-entered one (ADR-0005). Returns
+        {key: {type, value, unit, measured_at, source}} — the latest per key wins."""
         db = get_db()
         rows = db.execute(
-            """SELECT v.* FROM vital_readings v
-               JOIN (SELECT type, MAX(measured_at) mx FROM vital_readings WHERE patient_link_id=? GROUP BY type) t
-                 ON t.type = v.type AND t.mx = v.measured_at
-               WHERE v.patient_link_id=?""",
+            """SELECT key, value, unit, measured_at, source FROM (
+                 SELECT type AS key, value, unit, measured_at, source
+                   FROM vital_readings WHERE patient_link_id=?
+                 UNION ALL
+                 SELECT test_key AS key, value, unit, taken_at AS measured_at, 'lab' AS source
+                   FROM lab_results WHERE patient_link_id=? AND test_key IS NOT NULL AND test_key <> ''
+               )
+               WHERE key IS NOT NULL
+               ORDER BY measured_at""",
             (pid, pid),
         ).fetchall()
-        return {r['type']: dict(r) for r in rows}
+        latest = {}
+        for r in rows:  # ascending measured_at -> last write per key is the most recent
+            latest[r['key']] = {'type': r['key'], 'value': r['value'], 'unit': r['unit'],
+                                'measured_at': r['measured_at'], 'source': r['source']}
+        return latest
 
     def delete_reading(self, reading_id: int):
         db = get_db()
@@ -64,16 +77,16 @@ class VitalsRepository:
         db.commit()
 
     # ---- lab results ----
-    def add_lab(self, pid: int, *, test_name, value, unit=None, ref_low=None,
+    def add_lab(self, pid: int, *, test_name, value, test_key=None, unit=None, ref_low=None,
                 ref_high=None, taken_at=None, notes=None, recorded_by=None) -> int:
         db = get_db()
         if not taken_at:
             taken_at = iran_now().strftime('%Y-%m-%d %H:%M:%S')
         cur = db.execute(
             """INSERT INTO lab_results
-               (patient_link_id, test_name, value, unit, ref_low, ref_high, taken_at, notes, recorded_by)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (pid, test_name, value, unit, ref_low, ref_high, taken_at, notes, recorded_by),
+               (patient_link_id, test_name, test_key, value, unit, ref_low, ref_high, taken_at, notes, recorded_by)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (pid, test_name, test_key, value, unit, ref_low, ref_high, taken_at, notes, recorded_by),
         )
         db.commit()
         return cur.lastrowid

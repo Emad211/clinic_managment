@@ -204,9 +204,14 @@ class AnalyticsService:
         # Behavioral / adherence factors (automation, no doctor input needed)
         behav, behav_notes = 0, []
         lapsed = db.execute(
-            """SELECT NOT EXISTS(SELECT 1 FROM vital_readings v WHERE v.patient_link_id=?
-                 AND v.measured_at >= datetime('now','+3 hours','+30 minutes','-120 days')) AS x""",
-            (pid,)).fetchone()['x']
+            """SELECT NOT EXISTS(
+                 SELECT 1 FROM vital_readings WHERE patient_link_id=?
+                   AND measured_at >= datetime('now','+3 hours','+30 minutes','-120 days')
+                 UNION ALL
+                 SELECT 1 FROM lab_results WHERE patient_link_id=?
+                   AND taken_at >= datetime('now','+3 hours','+30 minutes','-120 days')
+               ) AS x""",
+            (pid, pid)).fetchone()['x']
         if lapsed:
             behav += 2
             behav_notes.append('بیش از ۴ ماه بدون ثبت شاخص')

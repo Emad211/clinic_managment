@@ -22,19 +22,29 @@ ITEM_DEFAULT_MONTHS = {
     'influenza': 12, 'tdap': 120, 'zoster': None, 'pneumococcal': None,
     'rsv': None, 'covid19': None, 'tsh': 12,
 }
-# Where the "last done" date comes from (vitals readings or a patient flag).
+# Canonical observation keys whose "last done" date closes each item's recall — matched in
+# BOTH vital_readings.type AND lab_results.test_key (one shared vocabulary; ADR-0005).
 ITEM_VITALS = {'a1c': ['hba1c'], 'renal': ['egfr', 'uacr'], 'lipid': ['ldl'],
                'renal_function': ['egfr'], 'tsh': ['tsh']}
 ITEM_FLAGS = {'eye': 'eye_exam_date', 'foot': 'foot_exam_date'}
 
 
 def _last_done(pid: int, item: str, flags: dict):
-    vts = ITEM_VITALS.get(item)
-    if vts:
-        ph = ','.join('?' * len(vts))
+    keys = ITEM_VITALS.get(item)
+    if keys:
+        ph = ','.join('?' * len(keys))
+        # "Last done" spans BOTH capture channels (ADR-0005): a clinic-entered vital OR a
+        # catalog-keyed lab result closes the recall — otherwise a lab-entered HbA1c would
+        # never satisfy monitoring_due and the recall would re-fire forever.
         row = get_db().execute(
-            f"SELECT MAX(measured_at) m FROM vital_readings WHERE patient_link_id=? AND type IN ({ph})",
-            (pid, *vts)).fetchone()
+            f"""SELECT MAX(ts) m FROM (
+                  SELECT measured_at AS ts FROM vital_readings
+                    WHERE patient_link_id=? AND type IN ({ph})
+                  UNION ALL
+                  SELECT taken_at AS ts FROM lab_results
+                    WHERE patient_link_id=? AND test_key IN ({ph})
+                )""",
+            (pid, *keys, pid, *keys)).fetchone()
         return row['m'] if row else None
     fk = ITEM_FLAGS.get(item)
     return flags.get(fk) if fk else None

@@ -122,6 +122,7 @@ CREATE TABLE IF NOT EXISTS lab_results (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     patient_link_id INTEGER NOT NULL,
     test_name TEXT NOT NULL,
+    test_key TEXT,                                  -- canonical lab_test_catalog key; links lab results to the engine (NULL for free-text/legacy rows). ADR-0005.
     value REAL,
     unit TEXT,
     ref_low REAL,
