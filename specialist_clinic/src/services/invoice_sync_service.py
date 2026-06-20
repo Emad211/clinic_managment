@@ -28,6 +28,23 @@ CURSOR_KEY = "invoice_sync_last_id"
 FLOOR_DAYS = 30          # reconciliation window for late-closed low-id invoices
 BATCH_LIMIT = 500
 
+# Free-text accounting procedure_type → follow-up invite event (keyword match). The
+# accounting app stores procedure_type as free text, so we match by keyword; calibrate
+# against real `SELECT DISTINCT procedure_type` data over time.
+_PROCEDURE_KEYWORDS = (
+    (("گوش", "شستشو"), "ear_wash_invite"),
+    (("پانسمان", "بخیه", "دِرِسینگ", "درسینگ"), "wound_care_invite"),
+)
+
+
+def _procedure_event_key(description):
+    """Map a free-text procedure/injection description to a follow-up event_key (or None)."""
+    d = description or ""
+    for keywords, event_key in _PROCEDURE_KEYWORDS:
+        if any(k in d for k in keywords):
+            return event_key
+    return None
+
 
 class InvoiceSyncService:
     def __init__(self):
@@ -74,5 +91,23 @@ class InvoiceSyncService:
         return {"fetched": len(rows), "new": new, "pending_link": pending, "cursor": max_id}
 
     def on_invoice_processed(self, patient_link_id, invoice):
-        """Seam for Phase 2 (thank-you SMS / procedure invite). No-op in Phase 1."""
-        return
+        """Phase 2: invoice-triggered outreach via the physician approval queue.
+        Enrolled patients only (the approval queue FKs to patient_links); walk-ins
+        (patient_link_id is None) are skipped by design. Each event is enqueued once
+        (idempotent period_key) and respects opt-out / no-phone / cooldown."""
+        if not patient_link_id:
+            return
+        from src.services.engagement_service import EngagementService
+        eng = EngagementService()
+        inv_id = invoice.get("invoice_id")
+        work_date = invoice.get("work_date") or ""
+        # 1) Thank-you — once per patient per work_date (not per invoice).
+        eng.enqueue_event_for_patient(patient_link_id, "thank_you", f"thank_you:{work_date}")
+        # 2) Procedure follow-up invites — derived from the invoice's items (lazy read).
+        seen = set()
+        for it in accounting_bridge.fetch_invoice_items(inv_id):
+            ev = _procedure_event_key(it.get("description") or "")
+            if ev and ev not in seen:
+                seen.add(ev)
+                eng.enqueue_event_for_patient(
+                    patient_link_id, ev, f"{ev}:{inv_id}", detail=it.get("description"))

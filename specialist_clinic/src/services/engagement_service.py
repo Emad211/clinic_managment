@@ -218,6 +218,33 @@ class EngagementService:
     def reject(self, approval_id: int, decided_by: str) -> None:
         self.repo.set_status(approval_id, 'rejected', decided_by)
 
+    def enqueue_event_for_patient(self, pid: int, event_key: str, period_key: str,
+                                  detail: str | None = None) -> int | None:
+        """Enqueue an invoice-triggered SMS (thank-you / procedure invite) into the
+        physician approval queue (Phase 2). Enrolled patients only. Respects opt-out /
+        no-phone / once-per-period / cooldown, and fills the {detail} placeholder.
+        Returns the new approval id, or None if skipped/guardrailed."""
+        db = get_db()
+        p = db.execute(
+            "SELECT id, full_name, phone_number, sms_opt_out FROM patient_links WHERE id=?",
+            (pid,)).fetchone()
+        if not p or p['sms_opt_out'] or not p['phone_number']:
+            return None
+        conf = self.repo.get_event(event_key)
+        if not conf or not conf.get('is_active') or conf.get('channel') == 'off':
+            return None
+        if self.repo.already_dispatched(pid, event_key, period_key, 'sms'):
+            return None
+        if self.repo.in_cooldown(pid, event_key, conf.get('cooldown_days') or 0):
+            return None
+        body = personalize(conf.get('sms_template') or '', name=p['full_name'])
+        if detail:
+            body = body.replace('{detail}', detail)
+        body = sanitize(body)
+        if not body.strip():
+            return None
+        return self.repo.enqueue_approval(pid, event_key, 'sms', None, body, period_key)
+
     def enqueue_invite(self, pid: int, message: str | None = None) -> int | None:
         """Queue a visit-invite SMS for physician approval (one per patient per day).
         Returns the new approval id, or None if opted-out / no phone / already queued today."""

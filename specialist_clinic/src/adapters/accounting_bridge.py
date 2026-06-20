@@ -140,6 +140,33 @@ def fetch_closed_invoices(last_id: int = 0, floor_date: Optional[str] = None,
         conn.close()
 
 
+def fetch_invoice_items(invoice_id: int) -> list[dict[str, Any]]:
+    """Read-only: the item types of one accounting invoice (visits / injections /
+    procedures), used to route procedure follow-up invites (Phase 2). Best-effort —
+    returns [] on any error (procedure invites are non-critical; the thank-you does
+    not depend on this). NEVER writes the accounting DB.
+    """
+    conn = _connect_ro()
+    if conn is None:
+        return []
+    try:
+        rows = conn.execute(
+            """
+            SELECT 'injection' AS type, injection_type AS description FROM injections WHERE invoice_id=?
+            UNION ALL
+            SELECT 'procedure' AS type, procedure_type AS description FROM procedures WHERE invoice_id=?
+            UNION ALL
+            SELECT 'visit' AS type, 'ویزیت' AS description FROM visits WHERE invoice_id=?
+            """,
+            (invoice_id, invoice_id, invoice_id),
+        ).fetchall()
+        return [dict(r) for r in rows]
+    except Exception:
+        return []
+    finally:
+        conn.close()
+
+
 def get_patient_by_id(accounting_patient_id: int) -> Optional[dict[str, Any]]:
     conn = _connect_ro()
     if conn is None:
