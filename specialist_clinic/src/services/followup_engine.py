@@ -7,7 +7,7 @@ from datetime import datetime
 from src.adapters.sqlite.core import get_db
 from src.adapters.sqlite.followups_repo import FollowupRepository
 from src.services.rule_engine import RuleEngine
-from src.common.utils import today_str
+from src.common.utils import today_str, iran_now
 
 REASON_BY_ACTION = {
     'create_followup': 'monitoring',
@@ -55,7 +55,7 @@ def _months_since(date_str):
         d = datetime.strptime(str(date_str)[:10], '%Y-%m-%d')
     except (ValueError, TypeError):
         return None
-    now = datetime.now()
+    now = iran_now()  # Tehran local (project convention; never naive datetime.now())
     return (now.year - d.year) * 12 + (now.month - d.month)
 
 

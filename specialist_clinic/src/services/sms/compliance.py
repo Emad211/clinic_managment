@@ -12,8 +12,11 @@ import re
 # Words commonly filtered by Iranian SMS panels (promotional)
 BANNED_WORDS = [
     'رایگان', 'تخفیف', 'حراج', 'حراجی', 'جشنواره', 'قرعه', 'قرعه‌کشی', 'قرعه کشی',
-    'جایزه', 'مسابقه', 'فروش ویژه', 'مجانی', 'بلیط',
+    'جایزه', 'مسابقه', 'فروش ویژه', 'مجانی', 'بلیط', 'ارزان',
 ]
+# Note: «آزاد» is deliberately NOT banned — it collides with the app's own «نسخهٔ آزاد»
+# (free/non-insurance prescription) and would mangle legitimate messages. «هدیه» is also
+# kept allowed because «اعتبار هدیه» is the lawful wallet-credit framing (see SUGGESTIONS).
 
 # Compliant rewrites that keep the marketing intent without the banned trigger words
 SUGGESTIONS = {
@@ -31,6 +34,7 @@ SUGGESTIONS = {
     'فروش ویژه': 'شرایط ویژه',
     'مجانی ': 'با اعتبار هدیه ',
     'بلیط': 'دعوت‌نامه',
+    'ارزان': 'مقرون‌به‌صرفه',
 }
 
 
