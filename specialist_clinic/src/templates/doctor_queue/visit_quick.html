@@ -77,6 +77,14 @@
     <form method="post" action="{{ url_for('patients.prescription_free', pid=pid) }}" target="_blank" style="margin:0;">
       <button class="btn btn-ghost" type="submit"><svg class="icon"><use href="#i-clipboard"></use></svg> نسخهٔ آزاد</button>
     </form>
+    <form method="post" action="{{ url_for('doctor_queue.invite', invoice_id=invoice_id) }}" style="margin:0;">
+      <input type="hidden" name="national_id" value="{{ nid }}"><input type="hidden" name="event_key" value="lab_consult_invite">
+      <button class="btn btn-ghost" type="submit"><svg class="icon"><use href="#i-megaphone"></use></svg> دعوتِ آزمایش و مشاوره</button>
+    </form>
+    <form method="post" action="{{ url_for('doctor_queue.invite', invoice_id=invoice_id) }}" style="margin:0;">
+      <input type="hidden" name="national_id" value="{{ nid }}"><input type="hidden" name="event_key" value="bp_glucose_invite">
+      <button class="btn btn-ghost" type="submit"><svg class="icon"><use href="#i-activity"></use></svg> یادآوریِ قند و فشار</button>
+    </form>
   </div>
   <div class="help" style="margin-top:var(--s2);"><svg class="icon icon-sm"><use href="#i-info"></use></svg> «پایانِ ویزیت» فقط وضعیتِ پنلِ پزشک را ثبت می‌کند و فاکتورِ حسابداری را نمی‌بندد (کارِ پذیرش).</div>
 </div>

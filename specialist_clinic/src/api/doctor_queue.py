@@ -15,6 +15,11 @@ from src.common.utils import jalali_to_gregorian_str, today_str
 
 bp = Blueprint("doctor_queue", __name__, url_prefix="/doctor-queue")
 
+# Doctor-initiated named SMS invites the physician can fire from the visit «مرحله بعد»
+# (#3 test+consult, #7 sugar+BP). Whitelisted so a tampered form can't enqueue an
+# arbitrary event_key. Each routes through the Phase-2 guardrailed approval queue.
+VISIT_INVITE_EVENTS = {"lab_consult_invite", "bp_glucose_invite"}
+
 
 def _snapshot(invoice_id):
     """Build the doctor_visit_log snapshot from the posted queue row; resolve the local
@@ -53,6 +58,33 @@ def done(invoice_id):
                                    notes=request.form.get("notes") or None)
     log_activity("visit_done", f"پایانِ ویزیتِ فاکتور #{invoice_id}")
     return redirect(url_for("doctor_queue.index"))
+
+
+@bp.route("/<int:invoice_id>/invite", methods=["POST"])
+@login_required
+def invite(invoice_id):
+    """Doctor-initiated named SMS invite from «مرحله بعد» (#3 test+consult, #7 sugar+BP).
+    Enqueues the chosen engagement event into the physician approval queue (reusing the
+    Phase-2 guardrailed path); the SMS is only sent once the physician approves it."""
+    event_key = request.form.get("event_key") or ""
+    if event_key not in VISIT_INVITE_EVENTS:
+        flash("نوعِ دعوتِ نامعتبر است.")
+        return redirect(url_for("doctor_queue.index"))
+    nid = (request.form.get("national_id") or "").strip() or None
+    link = PatientRepository().get_by_national_id(nid) if nid else None
+    if not link:
+        flash("این بیمار در پروندهٔ تخصصی ثبت نشده است.")
+        return redirect(url_for("doctor_queue.index"))
+    from src.services.engagement_service import EngagementService
+    aid = EngagementService().enqueue_event_for_patient(
+        link["id"], event_key, period_key=f"{event_key}:{today_str()}")
+    if aid:
+        log_activity("visit_invite_event", f"دعوتِ «{event_key}» (فاکتور #{invoice_id})",
+                     patient_link_id=link["id"])
+        flash("دعوت در صفِ تأییدِ پیامک ثبت شد.", "success")
+    else:
+        flash("دعوت ثبت نشد (انصراف از پیامک، بدون موبایل، تکراری یا داخلِ فاصلهٔ مجاز).")
+    return redirect(url_for("doctor_queue.visit", invoice_id=invoice_id, nid=nid or ""))
 
 
 @bp.route("/<int:invoice_id>/visit")

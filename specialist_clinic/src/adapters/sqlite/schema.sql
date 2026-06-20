@@ -285,7 +285,11 @@ INSERT OR IGNORE INTO engagement_events
   -- Phase 2: invoice-triggered outreach (thank-you after invoice close + procedure follow-up invites). Manager-editable; gated by the approval queue.
   ('thank_you','تشکر پس از مراجعه','operational','sms','سلام {name} عزیز، از مراجعه و اعتمادِ شما به کلینیک سپاسگزاریم. سلامت و تندرست باشید.',0,1,NULL,16),
   ('ear_wash_invite','پیگیریِ شستشوی گوش','operational','sms','سلام {name} عزیز، جهتِ پیگیریِ شستشوی گوش در صورتِ نیاز با کلینیک هماهنگ کنید. اگر درد، ترشح یا کاهشِ شنوایی داشتید زودتر تماس بگیرید.',0,30,NULL,17),
-  ('wound_care_invite','دعوتِ پانسمان/کشیدن بخیه','operational','sms','سلام {name} عزیز، برای تعویضِ پانسمان یا کشیدنِ بخیه لطفاً طبقِ زمانِ توصیه‌شدهٔ پزشک مراجعه کنید. برای هماهنگیِ نوبت تماس بگیرید.',0,30,NULL,18);
+  ('wound_care_invite','دعوتِ پانسمان/کشیدن بخیه','operational','sms','سلام {name} عزیز، برای تعویضِ پانسمان یا کشیدنِ بخیه لطفاً طبقِ زمانِ توصیه‌شدهٔ پزشک مراجعه کنید. برای هماهنگیِ نوبت تماس بگیرید.',0,30,NULL,18),
+  -- Phase B (doctor-initiated visit invites): named SMS the physician triggers from the visit «مرحله بعد».
+  -- Manager-editable; approval-gated; deliberately generic wording (no clinical claims / no drug names).
+  ('lab_consult_invite','دعوتِ آزمایش و مشاوره','operational','sms','سلام {name} عزیز، طبقِ توصیهٔ پزشک برای انجامِ آزمایش و مشاورهٔ پیگیری لطفاً جهتِ تعیینِ نوبت با کلینیک تماس بگیرید.',0,14,NULL,19),
+  ('bp_glucose_invite','یادآوریِ قند و فشار','operational','sms','سلام {name} عزیز، برای اندازه‌گیریِ دوره‌ایِ قند و فشارِ خون لطفاً جهتِ هماهنگیِ نوبت با کلینیک تماس بگیرید.',0,14,NULL,19);
 
 -- Settings (key/value: mediana api key + sending number + message type, thresholds, clinic info)
 CREATE TABLE IF NOT EXISTS settings (
