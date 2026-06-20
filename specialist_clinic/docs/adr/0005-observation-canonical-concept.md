@@ -22,7 +22,7 @@
 ستونِ `lab_results.test_key` (schema + `_ensure_column`، nullable، بدونِ backfill) · سیمِ `test_key[]` از فرم در `add_lab` (route+repo) · اتحادِ کانونیک در `latest_by_type` (→ control_status/کارت/rule_engine) · `_last_done` و `_risk` lapsed اتحادِ هر دو کانال.
 
 ## خارج از scope (ثبت‌شده برای آینده)
-- نمودارهای روند (`analytics.patient_analytics` series) و `medication_effect` (on-demand؛ ناسازگاریِ خاموش تولید نمی‌کنند).
+- ~~نمودارهای روند (`analytics.patient_analytics` series) و `medication_effect`~~ **✅ انجام شد** (پاسِ بعدی): `VitalsRepository.get_readings_canonical(pid, key)` سری را روی هر دو کانال می‌دهد و `patient_analytics` + `medication_effect` از آن می‌خوانند — تناقضِ **on-page** (کنترل می‌گفت uncontrolled ولی کاشی/نمودار خالی) رفع شد. (تیم در بازبینیِ میلستون این را on-page یافت، نه on-demand.)
 - ستونِ `lab_results.source` + سیاستِ staleness (آزمایشِ ۱۱‌ماهه آیا «کنترل‌شده»؟) — **تأییدِ پزشک**.
 - گسترشِ P1 آیتم→آزمایش: `renal`+`creatinine`، `lipid`+`chol_total`، افزودنِ `potassium` — **تأییدِ پزشک**.
 - backfillِ best-effortِ `test_name`→`test_key` رکوردهای قدیمی (اختیاری).

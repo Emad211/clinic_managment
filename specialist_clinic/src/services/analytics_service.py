@@ -72,7 +72,7 @@ class AnalyticsService:
         indicators, charts = [], {}
         for ind in indicators_meta:
             key = ind['key']
-            readings = self.vitals.get_readings(pid, vtype=key, limit=200)  # ascending
+            readings = self.vitals.get_readings_canonical(pid, key, limit=200)  # both channels, ascending (ADR-0005)
             latest = readings[-1] if readings else None
             previous = readings[-2] if len(readings) > 1 else None
             delta = (latest['value'] - previous['value']) if (latest and previous) else None
@@ -344,7 +344,7 @@ class AnalyticsService:
         pre_from = start - timedelta(days=window_days)
         post_to = start + timedelta(days=window_days)
 
-        readings = self.vitals.get_readings(pid, vtype=indicator_key, limit=500)
+        readings = self.vitals.get_readings_canonical(pid, indicator_key, limit=500)  # lab-aware (ADR-0005)
         pre_vals, post_vals = [], []
         for r in readings:
             d = _parse_date(r['measured_at'])

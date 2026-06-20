@@ -46,6 +46,22 @@ class VitalsRepository:
             ).fetchall()
         return [dict(r) for r in rows]
 
+    def get_readings_canonical(self, pid: int, key: str, limit: int = 200) -> list[dict]:
+        """Time series for one canonical indicator key across BOTH capture channels
+        (vital_readings.type AND lab_results.test_key), oldest→newest (ADR-0005). Drop-in
+        for get_readings(vtype=key) but lab-aware. Each row: {value, measured_at, unit, source}."""
+        rows = get_db().execute(
+            """SELECT value, measured_at, unit, source FROM (
+                 SELECT value, measured_at, unit, source FROM vital_readings
+                   WHERE patient_link_id=? AND type=?
+                 UNION ALL
+                 SELECT value, taken_at AS measured_at, unit, 'lab' AS source FROM lab_results
+                   WHERE patient_link_id=? AND test_key=?
+               ) ORDER BY measured_at ASC LIMIT ?""",
+            (pid, key, pid, key, limit),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
     def latest_by_type(self, pid: int) -> dict:
         """Most recent observation per canonical key across BOTH capture channels:
         vital_readings (by `type`) and catalog-keyed lab_results (by `test_key`). They are

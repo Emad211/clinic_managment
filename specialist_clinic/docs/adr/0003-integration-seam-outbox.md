@@ -1,6 +1,8 @@
-# ADR-0003 — درزِ یکپارچگی: Transactional Outbox (مسیر A) + مصرف‌کنندهٔ read-only
+# ADR-0003 — درزِ یکپارچگی: مصرف‌کنندهٔ فقط‌خواندنیِ فاکتورهای بسته (D3+)
 
-- **وضعیت:** پذیرفته‌شده برای مسیر A؛ چند میکرو-تصمیمِ باز (پایین) — ۱۴۰۵/۰۳/۳۰ (۲۰۲۶-۰۶-۲۰)
+> **وضعیتِ نهایی (تجدیدنظرشده — مهم):** پیاده‌سازی **D3+** است — یک مصرف‌کنندهٔ **فقط‌خواندنی** که فاکتورهای بسته را با cursor از حسابداری poll می‌کند. **هیچ جدولِ `invoice_outbox` ساخته نشد و هیچ نوشتنی در حسابداری رخ نمی‌دهد.** عنوانِ تاریخیِ «Transactional Outbox مسیر A» صرفاً طرحِ اولیه بود (تجدیدنظرِ پیش‌از‌اجرا پایین). کدِ واقعی: `invoice_sync_service.py` + جدولِ `processed_invoices` (ledgerِ idempotent) + cursorِ `invoice_sync_last_id` در `settings`. (اگر دنبالِ جدولِ outbox می‌گردی — وجود ندارد و نباید ساخته شود.)
+
+- **وضعیت:** پذیرفته‌شده — **D3+ (مصرف‌کنندهٔ read-only، صفر نوشتنِ حسابداری)** — ۱۴۰۵/۰۳/۳۰ (۲۰۲۶-۰۶-۲۰)
 - **ورودی:** `principal-architect` + `data-architect` + `backend-dev-advisor` + `security-privacy-advisor`
 - **مرتبط:** [ADR-0002](0002-context-boundaries.md) · [Event Catalog v1](../architecture/event-catalog-v1.md)
 
