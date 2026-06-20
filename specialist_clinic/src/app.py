@@ -35,6 +35,17 @@ def create_app(test_config=None):
 
     app.teardown_appcontext(close_connection)
 
+    # ---- Logging (rotating file beside the DB for the frozen .exe + console in dev) ----
+    if not app.config.get("TESTING", False):
+        try:
+            from src.common.logging_setup import setup_app_logging
+            _db = app.config.get("DATABASE_PATH") or ""
+            _log_dir = (os.path.dirname(os.path.abspath(_db))
+                        if _db and _db != ":memory:" else app.config.get("PROJECT_ROOT", base_dir))
+            setup_app_logging(_log_dir)
+        except Exception as e:
+            print(f"[logging] not configured: {e}")
+
     # ---- Load logged-in user ----
     @app.before_request
     def load_logged_in_user():

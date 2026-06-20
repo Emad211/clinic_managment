@@ -2,6 +2,7 @@
 __pycache__/
 *.pyc
 specialist.db
+specialist_errors.log*
 backups/
 build/
 dist/
