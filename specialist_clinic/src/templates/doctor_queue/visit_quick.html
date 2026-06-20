@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% block title %}ویزیت — {{ patient.full_name }}{% endblock %}
+{% block content %}
+<div class="crumb"><a href="{{ url_for('doctor_queue.index') }}">صفِ پزشک</a> / ویزیت</div>
+<div class="topbar">
+    <h1><svg class="icon icon-lg"><use href="#i-stethoscope"></use></svg> {{ patient.full_name }}
+        <span class="muted text-sm nums">{{ patient.national_id|fa_num }}</span></h1>
+    <a class="btn btn-ghost" href="{{ url_for('patients.detail', pid=pid) }}"><svg class="icon"><use href="#i-clipboard"></use></svg> پروندهٔ کامل</a>
+</div>
+
+{% if allergies %}
+<div class="alert-banner alert-warn"><svg class="icon"><use href="#i-alert"></use></svg>
+    <span><b>حساسیت:</b> {% for a in allergies %}{{ a.substance }}{% if not loop.last %}، {% endif %}{% endfor %}</span></div>
+{% endif %}
+
+<div class="grid" style="grid-template-columns:1fr 1fr;gap:var(--s3);align-items:start;">
+  <!-- اطلاعاتِ قبلی -->
+  <div class="card">
+    <div class="section-title"><svg class="icon"><use href="#i-activity"></use></svg> خلاصهٔ پرونده</div>
+    <div class="fld"><label>بیماری‌ها</label>
+      <div class="flex items-center gap-2 wrap">
+        {% for c in conditions %}<span class="badge badge-info">{{ c.condition_name or c.name }}</span>{% else %}<span class="muted">—</span>{% endfor %}
+      </div>
+    </div>
+    <div class="fld"><label>داروهای فعال</label>
+      <div class="flex items-center gap-2 wrap">
+        {% for m in medications if m.is_active %}<span class="chip">{{ m.drug_name }}{% if m.dose %} · {{ m.dose }}{% endif %}</span>{% else %}<span class="muted">—</span>{% endfor %}
+      </div>
+    </div>
+    <div class="fld"><label>آخرین شاخص‌ها</label>
+      {% if recent_vitals %}<div class="flex items-center gap-2 wrap">
+        {% for v in recent_vitals %}<span class="chip">{{ v.type_label }}: <b>{{ v.value|fa_num }}</b> <span class="muted text-xs">{{ v.measured_at|jalali_date }}</span></span>{% endfor %}
+      </div>{% else %}<span class="muted">شاخصی ثبت نشده</span>{% endif %}
+    </div>
+    {% if last_note %}<div class="fld"><label>آخرین یادداشتِ معاینه <span class="muted text-xs">{{ last_note.recorded_at|jalali_date }}</span></label>
+      <div class="muted" style="white-space:pre-wrap;">{{ last_note.body }}</div></div>{% endif %}
+    {% if open_followups %}<div class="help"><svg class="icon icon-sm"><use href="#i-bell"></use></svg> {{ open_followups|length|fa_num }} پیگیریِ باز</div>{% endif %}
+  </div>
+
+  <!-- ورودِ امروز -->
+  <div class="card">
+    <div class="section-title"><svg class="icon"><use href="#i-zap"></use></svg> ثبتِ امروز</div>
+    <form method="post" action="{{ url_for('doctor_queue.save', invoice_id=invoice_id) }}">
+      <input type="hidden" name="pid" value="{{ pid }}"><input type="hidden" name="nid" value="{{ nid }}">
+      <div class="grid grid-2">
+        {% for i in entry_indicators %}
+        <div class="fld"><label>{{ i.label }}{% if i.target is not none %} <span class="muted">(هدف {% if i.direction=='low' %}&gt;{% else %}&lt;{% endif %}{{ i.target|fa_num }})</span>{% endif %}</label>
+          <input type="number" step="any" name="{{ i.key }}" placeholder="{{ i.unit or '' }}"></div>
+        {% else %}<div class="empty-mini" style="grid-column:1/-1;">بیماریِ ثبت‌شده‌ای برای شاخص‌های تخصصی نیست.</div>{% endfor %}
+      </div>
+      <div class="fld" style="margin-top:var(--s2);"><label>یادداشتِ معاینه / ارزیابی</label>
+        <textarea name="note" rows="3" placeholder="شکایت، معاینه، ارزیابی و طرح..."></textarea></div>
+      <div class="row" style="align-items:flex-end;">
+        <div class="fld" style="max-width:180px;"><label>تاریخ</label><input type="text" class="jdate" name="measured_date" placeholder="امروز"></div>
+        <button class="btn" type="submit"><svg class="icon"><use href="#i-save"></use></svg> ثبتِ شاخص و یادداشت</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- مرحله بعد -->
+<div class="card">
+  <div class="section-title"><svg class="icon"><use href="#i-zap"></use></svg> مرحله بعد</div>
+  <div class="flex items-center gap-2 wrap">
+    <form method="post" action="{{ url_for('doctor_queue.done', invoice_id=invoice_id) }}" style="margin:0;">
+      <input type="hidden" name="national_id" value="{{ nid }}"><input type="hidden" name="full_name" value="{{ patient.full_name }}"><input type="hidden" name="work_date" value="{{ work_date }}">
+      <button class="btn btn-ok" type="submit"><svg class="icon"><use href="#i-check"></use></svg> پایانِ ویزیت</button>
+    </form>
+    <a class="btn btn-ghost" href="{{ url_for('appointments.new_appointment', patient_link_id=pid) }}"><svg class="icon"><use href="#i-calendar"></use></svg> نوبتِ بعدی</a>
+    <form method="post" action="{{ url_for('followups.add_manual') }}" style="margin:0;">
+      <input type="hidden" name="patient_link_id" value="{{ pid }}"><input type="hidden" name="detail" value="پیگیریِ پس از ویزیت">
+      <button class="btn btn-ghost" type="submit"><svg class="icon"><use href="#i-list-checks"></use></svg> ثبتِ پیگیری</button>
+    </form>
+    <form method="post" action="{{ url_for('patients.invite_patient', pid=pid) }}" style="margin:0;">
+      <button class="btn btn-ghost" type="submit"><svg class="icon"><use href="#i-megaphone"></use></svg> دعوتِ پیامکی</button>
+    </form>
+    <form method="post" action="{{ url_for('patients.prescription_free', pid=pid) }}" target="_blank" style="margin:0;">
+      <button class="btn btn-ghost" type="submit"><svg class="icon"><use href="#i-clipboard"></use></svg> نسخهٔ آزاد</button>
+    </form>
+  </div>
+  <div class="help" style="margin-top:var(--s2);"><svg class="icon icon-sm"><use href="#i-info"></use></svg> «پایانِ ویزیت» فقط وضعیتِ پنلِ پزشک را ثبت می‌کند و فاکتورِ حسابداری را نمی‌بندد (کارِ پذیرش).</div>
+</div>
+{% endblock %}
