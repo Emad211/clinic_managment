@@ -140,6 +140,34 @@ def fetch_closed_invoices(last_id: int = 0, floor_date: Optional[str] = None,
         conn.close()
 
 
+def fetch_open_visit_invoices(work_date: Optional[str] = None,
+                              limit: int = 200) -> list[dict[str, Any]]:
+    """Read-only: OPEN invoices that include a visit item — the physician-queue source
+    (phase3). One row per invoice, FIFO by opened_at. Defaults to all open visit invoices;
+    pass work_date ('YYYY-MM-DD') to limit to one day. NEVER writes the accounting DB.
+    """
+    conn = _connect_ro()
+    if conn is None:
+        return []
+    try:
+        base = (
+            "SELECT i.id AS invoice_id, i.patient_id, i.opened_at, i.work_date, "
+            "       p.national_id, p.full_name, p.phone_number "
+            "FROM invoices i JOIN patients p ON p.id = i.patient_id "
+            "WHERE i.status='open' AND EXISTS (SELECT 1 FROM visits v WHERE v.invoice_id = i.id)"
+        )
+        if work_date:
+            rows = conn.execute(base + " AND i.work_date=? ORDER BY i.opened_at ASC LIMIT ?",
+                                (work_date, limit)).fetchall()
+        else:
+            rows = conn.execute(base + " ORDER BY i.opened_at ASC LIMIT ?", (limit,)).fetchall()
+        return [dict(r) for r in rows]
+    except Exception:
+        return []
+    finally:
+        conn.close()
+
+
 def fetch_invoice_items(invoice_id: int) -> list[dict[str, Any]]:
     """Read-only: the item types of one accounting invoice (visits / injections /
     procedures), used to route procedure follow-up invites (Phase 2). Best-effort —

@@ -667,3 +667,24 @@ CREATE TABLE IF NOT EXISTS processed_invoices (
 );
 CREATE INDEX IF NOT EXISTS idx_processed_invoices_patient ON processed_invoices(patient_link_id);
 CREATE INDEX IF NOT EXISTS idx_processed_invoices_status ON processed_invoices(status);
+
+-- doctor_visit_log: physician visit-queue state (phase3). The live queue is a read-only
+-- read of OPEN accounting invoices; this table only holds the در‌نوبت/انجام‌شده state the
+-- physician sets. status 'done' = physician pressed End Visit — it does NOT close the
+-- accounting invoice (reception does). Idempotent via UNIQUE accounting_invoice_id.
+CREATE TABLE IF NOT EXISTS doctor_visit_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    accounting_invoice_id INTEGER NOT NULL UNIQUE,
+    patient_link_id INTEGER,
+    national_id TEXT,
+    full_name TEXT NOT NULL,
+    work_date TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'waiting',   -- waiting | in_progress | done
+    started_at TIMESTAMP,
+    done_at TIMESTAMP,
+    physician_notes TEXT,
+    done_by TEXT,
+    created_at TIMESTAMP DEFAULT (datetime('now','+3 hours','+30 minutes')),
+    FOREIGN KEY (patient_link_id) REFERENCES patient_links(id)
+);
+CREATE INDEX IF NOT EXISTS idx_doctor_visit_log_workdate ON doctor_visit_log(work_date, status);
