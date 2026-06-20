@@ -133,9 +133,11 @@ def send_campaign(cid):
 @login_required
 def approvals():
     from src.adapters.sqlite.engagement_repo import EngagementRepository
+    from src.services.engagement_service import EngagementService
     repo = EngagementRepository()
     pending = repo.list_pending()
     return render_template("sms/approvals.html", pending=pending, hub_pending=len(pending),
+                           quiet_now=EngagementService()._quiet_now(),
                            provider_ready=SmsRepository().provider_configured(),
                            active_page='sms')
 
@@ -145,9 +147,13 @@ def approvals():
 def approval_approve(aid):
     from src.services.engagement_service import EngagementService
     msg = request.form.get("message", "").strip() or None
-    r = EngagementService().approve(aid, g.user["username"], message=msg)
+    override = request.form.get("override") == "1"
+    r = EngagementService().approve(aid, g.user["username"], message=msg, override=override)
     if r.get('ok'):
         flash("پیام تأیید و ارسال شد", "success")
+    elif r.get('reason') == 'quiet':
+        flash("خارج از ساعتِ مجازِ ارسال (پیش‌فرض ۸ تا ۲۱)؛ پیام در صف ماند. "
+              "برای ارسالِ فوری دکمهٔ «ارسالِ فوری» را بزنید.")
     else:
         flash("ارسال نشد: " + {
             'not_pending': 'قبلاً تعیین‌تکلیف شده',

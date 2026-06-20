@@ -193,13 +193,25 @@ class EngagementService:
         return agg
 
     # ------------------------------------------------------- approval / invite
-    def approve(self, approval_id: int, decided_by: str, message: str | None = None) -> dict:
+    def approve(self, approval_id: int, decided_by: str, message: str | None = None,
+                override: bool = False) -> dict:
         """Physician confirms a queued message; only NOW does the SMS actually go out.
-        Re-checks opt-out/phone at approve time (auto-rejects if the patient opted out)."""
+        Re-checks opt-out/phone at approve time (auto-rejects if the patient opted out).
+
+        Honors quiet hours like the dispatch/preview paths: approving OUTSIDE the
+        allowed window (default 08:00-21:00 Tehran; settings engagement_quiet_start/
+        engagement_quiet_end) is blocked with reason 'quiet' and the approval is left
+        pending, so it can be approved later. Physician authority is preserved via
+        override=True, which bypasses the gate and sends anyway."""
         db = get_db()
         ap = self.repo.get_approval(approval_id)
         if not ap or ap.get('status') != 'pending':
             return {'ok': False, 'reason': 'not_pending'}
+        # Quiet-hours guard — don't send patient SMS outside the allowed window unless
+        # the physician explicitly overrides. Leave the approval pending (no status
+        # change) so it stays in the queue to be approved later or force-sent now.
+        if self._quiet_now() and not override:
+            return {'ok': False, 'reason': 'quiet'}
         p = db.execute(
             "SELECT id, full_name, phone_number, sms_opt_out FROM patient_links WHERE id=?",
             (ap['patient_link_id'],)).fetchone()

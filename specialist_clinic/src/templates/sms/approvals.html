@@ -22,6 +22,13 @@
 </div>
 {% endif %}
 
+{% if quiet_now and pending %}
+<div class="alert-banner alert-warn">
+    <svg class="icon"><use href="#i-alert"></use></svg>
+    <span>هم‌اکنون خارج از ساعتِ مجازِ ارسال است (پیش‌فرض ۸ تا ۲۱)؛ «تأیید و ارسال» پیام را در صف نگه می‌دارد. برای ارسالِ فوری از دکمهٔ «ارسالِ فوری» استفاده کنید.</span>
+</div>
+{% endif %}
+
 <div class="card">
     <div class="section-title"><svg class="icon"><use href="#i-list-checks"></use></svg> در انتظارِ تأیید</div>
     {% if pending %}
@@ -44,6 +51,13 @@
                     <form method="post" action="{{ url_for('sms.approval_approve', aid=p.id) }}">
                         <textarea name="message" rows="2" style="width:100%;">{{ p.message }}</textarea>
                         <button class="btn btn-sm" type="submit" style="margin-top:var(--s2);"><svg class="icon icon-sm"><use href="#i-check"></use></svg> تأیید و ارسال</button>
+                        {% if quiet_now %}
+                        <button class="btn btn-sm btn-warn" type="submit" name="override" value="1"
+                                style="margin-top:var(--s2);"
+                                title="خارج از ساعتِ مجازِ ارسال؛ همین حالا بفرست">
+                            <svg class="icon icon-sm"><use href="#i-alert"></use></svg> ارسالِ فوری
+                        </button>
+                        {% endif %}
                     </form>
                     <form method="post" action="{{ url_for('sms.approval_reject', aid=p.id) }}" style="margin-top:var(--s2);">
                         <button class="btn btn-sm btn-ghost" type="submit"><svg class="icon icon-sm"><use href="#i-x"></use></svg> رد</button>

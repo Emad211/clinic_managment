@@ -51,6 +51,20 @@ def _flush_src_modules():
             del sys.modules[mod]
 
 
+def _force_quiet_off():
+    """Disable engagement quiet-hours (whole day allowed) so approve()'s wall-clock
+    quiet gate never interferes with tests that exercise the SEND / opt-out paths.
+    Mirrors the helper in test_end_to_end_loops.py; quiet-hours behaviour itself is
+    covered by test_approval_quiet_hours.py. Call inside an app/request context."""
+    try:
+        from src.adapters.sqlite.sms_repo import SmsRepository
+        sms = SmsRepository()
+        sms.set_setting("engagement_quiet_start", "00:00")
+        sms.set_setting("engagement_quiet_end", "23:59")
+    except Exception:
+        pass
+
+
 def _make_acc_db(path: str):
     """Create a minimal accounting DB with the tables accounting_bridge needs."""
     conn = sqlite3.connect(path)
@@ -470,6 +484,7 @@ class TestENoRealSend:
             pid, "bp_glucose_invite", period_key="bp_glucose_invite:2026-06-20")
         assert aid is not None
 
+        _force_quiet_off()  # assert the SEND path here, independent of wall-clock quiet hours
         out = svc.approve(aid, decided_by="admin")
         assert out.get("ok") is True, f"approve() should succeed via NullProvider, got {out}"
 
@@ -502,6 +517,7 @@ class TestENoRealSend:
         db.execute("UPDATE patient_links SET sms_opt_out=1 WHERE id=?", (pid,))
         db.commit()
 
+        _force_quiet_off()  # so opt-out — not quiet hours — is the rejection reason regardless of run time
         out = svc.approve(aid, decided_by="admin")
         assert out.get("ok") is False and out.get("reason") == "opt_out"
         assert db.execute("SELECT COUNT(*) c FROM sms_messages").fetchone()["c"] == 0, (
