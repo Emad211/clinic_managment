@@ -291,6 +291,21 @@ INSERT OR IGNORE INTO engagement_events
   ('lab_consult_invite','دعوتِ آزمایش و مشاوره','operational','sms','سلام {name} عزیز، طبقِ توصیهٔ پزشک برای انجامِ آزمایش و مشاورهٔ پیگیری لطفاً جهتِ تعیینِ نوبت با کلینیک تماس بگیرید.',0,14,NULL,19),
   ('bp_glucose_invite','یادآوریِ قند و فشار','operational','sms','سلام {name} عزیز، برای اندازه‌گیریِ دوره‌ایِ قند و فشارِ خون لطفاً جهتِ هماهنگیِ نوبت با کلینیک تماس بگیرید.',0,14,NULL,19);
 
+-- Patient public-card access tokens (ADR-0004). Per-patient, unguessable, short-lived,
+-- revocable. The PUBLIC card route only ever READS via get_by_token; issue/revoke are
+-- staff actions. national_id is NEVER stored here or emitted by the card.
+CREATE TABLE IF NOT EXISTS patient_card_tokens (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    patient_link_id INTEGER NOT NULL,
+    token TEXT UNIQUE NOT NULL,                  -- secrets.token_urlsafe(32)
+    issued_at TIMESTAMP DEFAULT (datetime('now','+3 hours','+30 minutes')),
+    expires_at TEXT NOT NULL,                    -- Tehran local 'YYYY-MM-DD HH:MM:SS'
+    revoked_at TEXT,
+    issued_by TEXT,                              -- users.username who issued it
+    FOREIGN KEY (patient_link_id) REFERENCES patient_links(id)
+);
+CREATE INDEX IF NOT EXISTS idx_patient_card_token ON patient_card_tokens(token);
+
 -- Settings (key/value: mediana api key + sending number + message type, thresholds, clinic info)
 CREATE TABLE IF NOT EXISTS settings (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

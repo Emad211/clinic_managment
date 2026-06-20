@@ -97,6 +97,20 @@
         </div>
     </div>
 
+    <!-- کارتِ بیمار (ADR-0004) -->
+    <div class="card" style="margin-top:var(--s4);">
+        <div class="section-title">
+            <svg class="icon"><use href="#i-bell"></use></svg>
+            <span>کارتِ بیمار</span>
+            <span class="section-sub">نمای فقط‌خواندنیِ توکن‌دار برای بیمار (قند/فشار + نوبتِ بعدی)؛ پیش‌فرض خاموش</span>
+        </div>
+        <label class="flex items-center gap-2" style="cursor:pointer;">
+            <input type="checkbox" name="patient_card_enabled" value="1" {% if data.patient_card_enabled == '1' %}checked{% endif %}>
+            <span>فعال‌سازیِ کارتِ بیمار (نشانیِ <code>/card/&lt;توکن&gt;</code> را در دسترس قرار می‌دهد)</span>
+        </label>
+        <div class="help"><svg class="icon icon-sm"><use href="#i-info"></use></svg> تحویلِ داخلِ درمانگاه (تبلت/QR روی شبکهٔ کلینیک) همین حالا کار می‌کند؛ ارسالِ پیامکی به موبایلِ بیمار نیازمندِ زیرساختِ اینترنتی + احراز هویتِ پنل است.</div>
+    </div>
+
     <!-- نسخهٔ آزاد — سربرگ و مهر/امضا -->
     <div class="card" style="margin-top:var(--s4);">
         <div class="section-title">

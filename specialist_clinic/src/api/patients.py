@@ -389,6 +389,45 @@ def invite_patient(pid):
     return redirect(url_for("patients.detail", pid=pid) + "#meds")
 
 
+@bp.route("/<int:pid>/card")
+@login_required
+def card_admin(pid):
+    """Staff page to issue / revoke a patient's public-card link (ADR-0004). The public
+    card surface is read-only and feature-flagged; here staff mint and revoke tokens. The
+    in-clinic delivery (QR/tablet on the LAN) works today; the SMS/internet path is gated
+    on VPS+WireGuard + Kavenegar KYC (see ADR-0004 §4)."""
+    profile = PatientService().get_full_profile(pid)
+    if not profile:
+        flash("بیمار یافت نشد")
+        return redirect(url_for("patients.list_patients"))
+    from src.adapters.sqlite.patient_card_repo import PatientCardRepository
+    active = PatientCardRepository().active_for_patient(pid)
+    card_url = url_for("patient_card.view", token=active["token"], _external=True) if active else None
+    enabled = SmsRepository().get_setting("patient_card_enabled", "0") == "1"
+    return render_template("patients/card_admin.html", patient=profile["patient"], pid=pid,
+                           active=active, card_url=card_url, enabled=enabled)
+
+
+@bp.route("/<int:pid>/card/issue", methods=["POST"])
+@login_required
+def card_issue(pid):
+    from src.adapters.sqlite.patient_card_repo import PatientCardRepository
+    PatientCardRepository().create_token(pid, issued_by=g.user["username"])
+    log_activity("card_issue", "صدور لینکِ کارتِ بیمار", patient_link_id=pid)
+    flash("لینکِ کارت صادر شد.", "success")
+    return redirect(url_for("patients.card_admin", pid=pid))
+
+
+@bp.route("/<int:pid>/card/revoke/<int:token_id>", methods=["POST"])
+@login_required
+def card_revoke(pid, token_id):
+    from src.adapters.sqlite.patient_card_repo import PatientCardRepository
+    PatientCardRepository().revoke(token_id, patient_link_id=pid)
+    log_activity("card_revoke", "ابطالِ لینکِ کارتِ بیمار", patient_link_id=pid)
+    flash("لینکِ کارت باطل شد.")
+    return redirect(url_for("patients.card_admin", pid=pid))
+
+
 @bp.route("/<int:pid>/prescription/free", methods=["GET", "POST"])
 @login_required
 def prescription_free(pid):

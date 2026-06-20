@@ -85,6 +85,7 @@
       <input type="hidden" name="national_id" value="{{ nid }}"><input type="hidden" name="event_key" value="bp_glucose_invite">
       <button class="btn btn-ghost" type="submit"><svg class="icon"><use href="#i-activity"></use></svg> یادآوریِ قند و فشار</button>
     </form>
+    <a class="btn btn-ghost" href="{{ url_for('patients.card_admin', pid=pid) }}"><svg class="icon"><use href="#i-bell"></use></svg> کارتِ بیمار</a>
   </div>
   <div class="help" style="margin-top:var(--s2);"><svg class="icon icon-sm"><use href="#i-info"></use></svg> «پایانِ ویزیت» فقط وضعیتِ پنلِ پزشک را ثبت می‌کند و فاکتورِ حسابداری را نمی‌بندد (کارِ پذیرش).</div>
 </div>

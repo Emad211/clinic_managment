@@ -70,6 +70,8 @@ def settings():
         repo.set_setting('prescriber_name', request.form.get('prescriber_name', '').strip())
         repo.set_setting('prescriber_license', request.form.get('prescriber_license', '').strip())
         repo.set_setting('rx_disclaimer', request.form.get('rx_disclaimer', '').strip())
+        # Patient public-card Channel (ADR-0004) — off by default; gates the /card/<token> route.
+        repo.set_setting('patient_card_enabled', '1' if request.form.get('patient_card_enabled') else '0')
         flash("تنظیمات ذخیره شد", "success")
         return redirect(url_for("manager.settings"))
     data = {
@@ -91,6 +93,7 @@ def settings():
         'prescriber_license': repo.get_setting('prescriber_license', ''),
         'rx_disclaimer': repo.get_setting('rx_disclaimer',
             'این نسخه غیربیمه‌ای (آزاد/نقدی) است و توسط سامانهٔ کلینیک صادر شده است.'),
+        'patient_card_enabled': repo.get_setting('patient_card_enabled', '0'),
     }
     return render_template("manager/settings.html", data=data, active_page='manager')
 

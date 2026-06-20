@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}کارتِ بیمار — {{ patient.full_name }}{% endblock %}
+{% block content %}
+<div class="crumb"><a href="{{ url_for('patients.detail', pid=pid) }}">پرونده</a> / کارتِ بیمار</div>
+<div class="topbar">
+  <h1><svg class="icon icon-lg"><use href="#i-bell"></use></svg> کارتِ بیمار — {{ patient.full_name }}</h1>
+</div>
+
+{% if not enabled %}
+<div class="alert-banner alert-warn"><svg class="icon"><use href="#i-alert"></use></svg>
+  <span><b>کارتِ بیمار خاموش است.</b> برای فعال‌سازی به <a href="{{ url_for('manager.settings') }}">تنظیمات → کارتِ بیمار</a> بروید. لینک ساخته می‌شود اما تا فعال‌نشدن باز نمی‌شود.</span></div>
+{% endif %}
+
+<div class="card card-soft" style="margin-bottom:var(--s3);">
+  <div class="muted text-sm" style="line-height:1.9;">
+    کارتِ بیمار یک نمای <b>فقط‌خواندنیِ</b> توکن‌دار است: بیمار آخرین قند/فشار + نوبتِ بعدی‌اش را می‌بیند (بدونِ دارو/تشخیص).
+    <b>تحویلِ داخلِ درمانگاه</b> (نمایش روی تبلتِ پذیرش/QR روی شبکهٔ کلینیک) همین حالا کار می‌کند؛
+    <b>ارسالِ پیامکی به موبایلِ بیمار</b> پس از فراهم‌شدنِ زیرساختِ اینترنتی و احراز هویتِ پنلِ پیامک فعال می‌شود.
+  </div>
+</div>
+
+<div class="card">
+  <div class="section-title"><svg class="icon"><use href="#i-bell"></use></svg> لینکِ فعال</div>
+  {% if active and card_url %}
+    <div class="fld">
+      <label>نشانیِ کارت (روی تبلتِ پذیرش باز کنید یا برای بیمار بخوانید)</label>
+      <div class="row" style="align-items:center;gap:var(--s2);">
+        <input type="text" id="cardUrl" readonly value="{{ card_url }}" style="flex:1;direction:ltr;text-align:left;">
+        <button type="button" class="btn btn-ghost" onclick="navigator.clipboard.writeText(document.getElementById('cardUrl').value)">کپی</button>
+        <a class="btn btn-ghost" href="{{ card_url }}" target="_blank">باز کردن</a>
+      </div>
+    </div>
+    <div class="help"><svg class="icon icon-sm"><use href="#i-info"></use></svg> اعتبار تا: <span class="nums">{{ active.expires_at|jalali }}</span></div>
+    <form method="post" action="{{ url_for('patients.card_revoke', pid=pid, token_id=active.id) }}" style="margin-top:var(--s2);">
+      <button class="btn btn-ghost" type="submit"><svg class="icon"><use href="#i-x"></use></svg> ابطالِ لینک</button>
+    </form>
+  {% else %}
+    <div class="empty-mini">لینکِ فعالی وجود ندارد.</div>
+  {% endif %}
+  <form method="post" action="{{ url_for('patients.card_issue', pid=pid) }}" style="margin-top:var(--s3);">
+    <button class="btn" type="submit"><svg class="icon"><use href="#i-bell"></use></svg>
+      {{ 'صدور لینکِ تازه' if active else 'صدور لینکِ کارت' }}</button>
+  </form>
+</div>
+{% endblock %}
