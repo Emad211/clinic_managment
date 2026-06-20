@@ -108,6 +108,11 @@
             <input type="checkbox" name="patient_card_enabled" value="1" {% if data.patient_card_enabled == '1' %}checked{% endif %}>
             <span>فعال‌سازیِ کارتِ بیمار (نشانیِ <code>/card/&lt;توکن&gt;</code> را در دسترس قرار می‌دهد)</span>
         </label>
+        <div class="fld" style="margin-top:var(--s2);">
+            <label>نشانیِ پایهٔ عمومی (برای لینک و QR)</label>
+            <input type="text" name="public_base_url" value="{{ data.public_base_url }}" placeholder="مثلاً http://192.168.1.10:8090" style="direction:ltr;text-align:left;">
+            <div class="help">برای تبلتِ پذیرش، IPِ کلینیک در شبکه را بگذارید تا QR روی موبایلِ بیمار باز شود؛ خالی = نشانیِ همین مرورگر. (مسیرِ اینترنتی بعداً: دامنهٔ عمومی.)</div>
+        </div>
         <div class="help"><svg class="icon icon-sm"><use href="#i-info"></use></svg> تحویلِ داخلِ درمانگاه (تبلت/QR روی شبکهٔ کلینیک) همین حالا کار می‌کند؛ ارسالِ پیامکی به موبایلِ بیمار نیازمندِ زیرساختِ اینترنتی + احراز هویتِ پنل است.</div>
     </div>
 

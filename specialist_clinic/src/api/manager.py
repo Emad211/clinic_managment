@@ -72,6 +72,9 @@ def settings():
         repo.set_setting('rx_disclaimer', request.form.get('rx_disclaimer', '').strip())
         # Patient public-card Channel (ADR-0004) — off by default; gates the /card/<token> route.
         repo.set_setting('patient_card_enabled', '1' if request.form.get('patient_card_enabled') else '0')
+        # Public base URL for card links/QR (clinic LAN IP now, public domain once the
+        # internet path lands). Empty -> fall back to the request host. Shared seam for path 2.
+        repo.set_setting('public_base_url', request.form.get('public_base_url', '').strip())
         flash("تنظیمات ذخیره شد", "success")
         return redirect(url_for("manager.settings"))
     data = {
@@ -94,6 +97,7 @@ def settings():
         'rx_disclaimer': repo.get_setting('rx_disclaimer',
             'این نسخه غیربیمه‌ای (آزاد/نقدی) است و توسط سامانهٔ کلینیک صادر شده است.'),
         'patient_card_enabled': repo.get_setting('patient_card_enabled', '0'),
+        'public_base_url': repo.get_setting('public_base_url', ''),
     }
     return render_template("manager/settings.html", data=data, active_page='manager')
 

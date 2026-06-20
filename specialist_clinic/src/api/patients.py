@@ -389,6 +389,24 @@ def invite_patient(pid):
     return redirect(url_for("patients.detail", pid=pid) + "#meds")
 
 
+def _card_url(token):
+    """Absolute card URL: the manager-set public_base_url if present (clinic LAN IP now,
+    public domain later), else the current request host. Shared by the in-clinic QR and
+    (later) the internet SMS link."""
+    base = (SmsRepository().get_setting("public_base_url", "") or "").strip().rstrip("/")
+    return f"{base}/card/{token}" if base else url_for("patient_card.view", token=token, _external=True)
+
+
+def _qr_svg(url):
+    """Inline SVG QR of the card URL — offline, server-side via segno. Degrades to None if
+    segno is unavailable so the page still works (URL + copy button)."""
+    try:
+        import segno
+        return segno.make(url, error="m").svg_inline(scale=4, border=2)
+    except Exception:
+        return None
+
+
 @bp.route("/<int:pid>/card")
 @login_required
 def card_admin(pid):
@@ -402,10 +420,11 @@ def card_admin(pid):
         return redirect(url_for("patients.list_patients"))
     from src.adapters.sqlite.patient_card_repo import PatientCardRepository
     active = PatientCardRepository().active_for_patient(pid)
-    card_url = url_for("patient_card.view", token=active["token"], _external=True) if active else None
+    card_url = _card_url(active["token"]) if active else None
+    qr_svg = _qr_svg(card_url) if card_url else None
     enabled = SmsRepository().get_setting("patient_card_enabled", "0") == "1"
     return render_template("patients/card_admin.html", patient=profile["patient"], pid=pid,
-                           active=active, card_url=card_url, enabled=enabled)
+                           active=active, card_url=card_url, qr_svg=qr_svg, enabled=enabled)
 
 
 @bp.route("/<int:pid>/card/issue", methods=["POST"])

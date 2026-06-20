@@ -31,6 +31,12 @@
       </div>
     </div>
     <div class="help"><svg class="icon icon-sm"><use href="#i-info"></use></svg> اعتبار تا: <span class="nums">{{ active.expires_at|jalali }}</span></div>
+    {% if qr_svg %}
+    <div style="text-align:center;margin:var(--s3) 0;">
+      <div style="display:inline-block;padding:10px;background:#fff;border:1px solid var(--line);border-radius:12px;">{{ qr_svg|safe }}</div>
+      <div class="help" style="justify-content:center;">بیمار با موبایلِ خود اسکن کند، یا روی تبلتِ پذیرش نمایش دهید.</div>
+    </div>
+    {% endif %}
     <form method="post" action="{{ url_for('patients.card_revoke', pid=pid, token_id=active.id) }}" style="margin-top:var(--s2);">
       <button class="btn btn-ghost" type="submit"><svg class="icon"><use href="#i-x"></use></svg> ابطالِ لینک</button>
     </form>

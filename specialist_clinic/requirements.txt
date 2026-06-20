@@ -1,4 +1,5 @@
 Flask>=3.0
 bcrypt>=4.0
 jdatetime>=4.0
+segno>=1.6   # pure-Python QR (server-side SVG) for the in-clinic patient-card link — offline, no CDN. PyInstaller: bundles automatically (pure-Python); add --collect-submodules segno if a frozen build can't find it.
 # SMS via Mediana (https://api.mediana.ir) uses the Python stdlib (urllib) — no extra package needed.
