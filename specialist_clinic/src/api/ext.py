@@ -11,9 +11,10 @@ into logs/history). The token maps to an active, unexpired user row.
   POST /api/ext/captured  → record a captured insurance prescription against a
                             patient (by national_id) and close the linked follow-up.
 """
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, current_app
 
 from src.adapters.sqlite.core import get_db
+from src.common.rate_limit import allow
 
 bp = Blueprint("ext", __name__, url_prefix="/api/ext")
 
@@ -53,6 +54,9 @@ def pending():
     national_id and active medications so the extension can auto-fill the panel."""
     if request.method == "OPTIONS":
         return ('', 204)
+    if not current_app.config.get("TESTING") and not allow(
+            f"ext:{request.remote_addr or '?'}", limit=60, per_seconds=60):
+        return jsonify({'ok': False, 'error': 'rate_limited'}), 429
     user = _user_from_request()
     if not user:
         return jsonify({'ok': False, 'error': 'unauthorized'}), 401
@@ -81,6 +85,9 @@ def captured():
     follow-up task id is supplied, close that remote follow-up."""
     if request.method == "OPTIONS":
         return ('', 204)
+    if not current_app.config.get("TESTING") and not allow(
+            f"ext:{request.remote_addr or '?'}", limit=60, per_seconds=60):
+        return jsonify({'ok': False, 'error': 'rate_limited'}), 429
     user = _user_from_request()
     if not user:
         return jsonify({'ok': False, 'error': 'unauthorized'}), 401

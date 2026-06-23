@@ -12,9 +12,10 @@ Delivery (ADR-0004 §4): the IN-CLINIC path (QR/tablet on the clinic LAN) works 
 INTERNET path (SMS link to the patient's phone) stays blocked until an Iranian VPS +
 WireGuard relay (TLS) and Kavenegar KYC are in place.
 """
-from flask import Blueprint, render_template, abort
+from flask import Blueprint, render_template, abort, request, current_app
 
 from src.adapters.sqlite.sms_repo import SmsRepository
+from src.common.rate_limit import allow
 from src.services.card_projection_service import card_for_token
 
 bp = Blueprint("patient_card", __name__, url_prefix="/card")
@@ -28,6 +29,11 @@ def _enabled() -> bool:
 def view(token):
     if not _enabled():
         abort(404)
+    # SECU-13: blunt token brute-force / scraping — at most 30 card views/min per client IP.
+    # Disabled under TESTING so the shared in-process counter can't make tests flaky.
+    if not current_app.config.get("TESTING") and not allow(
+            f"card:{request.remote_addr or '?'}", limit=30, per_seconds=60):
+        abort(429)
     data = card_for_token(token)
     if data is None:
         # Generic 404 — never reveal whether the token existed, expired, or was revoked.
