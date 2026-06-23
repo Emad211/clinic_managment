@@ -165,6 +165,7 @@ def _run_migrations(db):
     _ensure_column(db, "engagement_events", "event_type", "TEXT")
     _ensure_column(db, "engagement_events", "is_custom", "INTEGER DEFAULT 0")
     _ensure_column(db, "users", "api_token", "TEXT")
+    _ensure_column(db, "users", "api_token_expires_at", "TEXT")  # SECU-05: extension token TTL
     _ensure_column(db, "processed_invoices", "outreach_done", "INTEGER NOT NULL DEFAULT 0")
     _ensure_column(db, "lab_results", "test_key", "TEXT")
     _seed_flag_sections(db)

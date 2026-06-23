@@ -72,18 +72,30 @@ class AuthRepository:
             print(f"Error updating password: {e}")
             return False
 
-    def set_api_token(self, user_id: int, token: str):
-        """Store the (rotated) extension API token for a user."""
+    def set_api_token(self, user_id: int, token: str, ttl_days: int = 90):
+        """Store the (rotated) extension API token for a user, with an expiry (SECU-05).
+        Tokens are short-lived (default 90 days) so a leaked extension token can't be used
+        indefinitely; the physician re-rotates from Manager → Users when it lapses."""
+        from datetime import timedelta
+        from src.common.utils import iran_now
+        expires_at = (iran_now() + timedelta(days=ttl_days)).strftime('%Y-%m-%d %H:%M:%S')
         db = get_db()
-        db.execute("UPDATE users SET api_token=? WHERE id=?", (token, user_id))
+        db.execute("UPDATE users SET api_token=?, api_token_expires_at=? WHERE id=?",
+                   (token, expires_at, user_id))
         db.commit()
 
     def get_user_by_token(self, token: str) -> Optional[Dict]:
-        """Look up an active user by their extension API token, or None."""
+        """Look up an active user by their UNEXPIRED extension API token, or None (SECU-05).
+        A NULL expiry is a legacy token issued before SECU-05 — treated as valid (no real
+        extension tokens are in use yet); any re-rotation stamps a fresh expiry."""
         if not token:
             return None
+        from src.common.utils import iran_now
+        now = iran_now().strftime('%Y-%m-%d %H:%M:%S')
         db = get_db()
         r = db.execute(
-            "SELECT * FROM users WHERE api_token=? AND is_active=1", (token,)
+            "SELECT * FROM users WHERE api_token=? AND is_active=1 "
+            "AND (api_token_expires_at IS NULL OR api_token_expires_at >= ?)",
+            (token, now)
         ).fetchone()
         return dict(r) if r else None

@@ -27,6 +27,19 @@ def create_app(test_config=None):
     else:
         app.config.from_mapping(test_config)
 
+    # ---- Security hardening (active only when PRODUCTION=1; local/.exe/LAN/test unchanged) ----
+    from datetime import timedelta
+    from src.config.settings import DEFAULT_SECRET_KEY
+    if app.config.get("PRODUCTION") and not app.config.get("TESTING", False):
+        if app.config.get("SECRET_KEY") in (None, DEFAULT_SECRET_KEY):
+            raise RuntimeError(
+                "PRODUCTION=1 but SECRET_KEY is unset or the insecure default. "
+                "Set a strong SECRET_KEY environment variable before starting in production.")
+    app.config.setdefault("SESSION_COOKIE_HTTPONLY", True)
+    app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+    app.config["SESSION_COOKIE_SECURE"] = bool(app.config.get("PRODUCTION"))
+    app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(hours=8)
+
     # In source/dev mode pick up template edits without a restart (no effect in the
     # frozen .exe, where bundled templates never change).
     if not getattr(sys, "frozen", False):
@@ -134,4 +147,6 @@ def open_browser():
 if __name__ == "__main__":
     application = create_app()
     threading.Timer(1.5, open_browser).start()
-    application.run(debug=False, host="0.0.0.0", port=Config.PORT, use_reloader=False, threaded=True)
+    application.run(debug=False,
+                    host=("127.0.0.1" if application.config.get("PRODUCTION") else "0.0.0.0"),
+                    port=Config.PORT, use_reloader=False, threaded=True)

@@ -2,8 +2,22 @@ import os
 import sys
 
 
+# The weak fallback secret used for local/.exe/LAN runs. In a real server deployment
+# (PRODUCTION=1) create_app() refuses to start with this default — see src/app.py.
+DEFAULT_SECRET_KEY = 'specialist-clinic-secret-change-in-prod'
+
+
+def _env_flag(name: str) -> bool:
+    return os.environ.get(name, '').strip().lower() in ('1', 'true', 'yes', 'on')
+
+
 class Config:
-    SECRET_KEY = os.environ.get('SECRET_KEY') or 'specialist-clinic-secret-change-in-prod'
+    SECRET_KEY = os.environ.get('SECRET_KEY') or DEFAULT_SECRET_KEY
+
+    # True ONLY in a real (cloud/server) deployment. Gates the security hardening so the
+    # local .exe / LAN / dev / test runs keep working exactly as before (0.0.0.0 bind for
+    # the in-clinic card/tablet, default secret, http cookies). The cloud deploy sets PRODUCTION=1.
+    PRODUCTION = _env_flag('PRODUCTION')
 
     # Determine project root in both source and frozen (PyInstaller) modes.
     if getattr(sys, 'frozen', False):
@@ -31,7 +45,7 @@ class Config:
     # Network
     PORT = int(os.environ.get('PORT', 8090))
 
-    DEBUG = True
+    DEBUG = _env_flag('DEBUG')
     TESTING = False
 
 

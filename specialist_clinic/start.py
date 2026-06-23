@@ -18,4 +18,6 @@ from src.config.settings import Config
 if __name__ == '__main__':
     app = create_app()
     threading.Timer(1.5, open_browser).start()
-    app.run(debug=False, host='0.0.0.0', port=Config.PORT, use_reloader=False, threaded=True)
+    app.run(debug=False,
+            host=('127.0.0.1' if app.config.get('PRODUCTION') else '0.0.0.0'),
+            port=Config.PORT, use_reloader=False, threaded=True)
