@@ -9,12 +9,19 @@ Session-scoped fixtures available to ALL test files:
 
 Strategy:
   - Use a throwaway Postgres DB 'halqe_app_test' on the Docker container.
-  - Session-scoped fixture: create the DB, run apply_schema (all slices),
-    seed one patient + link + vital rows as superuser.
-  - Django settings override points both 'default' and 'accounting_read' at
-    the test DB.
+  - Session-scoped fixture: create the DB (superuser), run apply_schema (all slices,
+    superuser), seed data (superuser for accounting writes which the app role cannot do).
+  - Django DATABASES 'default' and 'accounting_read' are pointed at the LEAST-PRIVILEGE
+    app role (platform_login_test, member of platform_app) — NOT postgres superuser.
+    This means the Django ORM/connection boundary is real: accounting writes are refused
+    at the DB level, not just by the ORM router.
   - Tests run inside transactions (django_db) and see the seeded data via
     the session fixture which seeds BEFORE the transaction wraps.
+
+Connection roles:
+  - Superuser (PG_USER/PG_PASSWORD): DDL, GRANT, DROP/CREATE DB, seed accounting data.
+  - App role  (PG_APP_USER/PG_APP_PASSWORD): all Django ORM operations + boundary tests.
+    Platform_login_test is a LOGIN role member of platform_app (inherits its GRANTs).
 
 Note: we do NOT use Django's built-in test runner DB creation because:
   1. managed=False — Django wouldn't create our tables anyway.
@@ -28,13 +35,19 @@ import bcrypt
 import pytest
 
 # ---------------------------------------------------------------------------
-# Settings override — point Django at the test DB
+# Credentials — two separate identities
 # ---------------------------------------------------------------------------
 TEST_DB_NAME = os.environ.get("PG_TEST_DB", "halqe_app_test")
 PG_HOST = os.environ.get("PG_HOST", "localhost")
 PG_PORT = os.environ.get("PG_PORT", "55432")
-PG_USER = os.environ.get("PG_USER", "postgres")
-PG_PASSWORD = os.environ.get("PG_PASSWORD", "validate_only")
+
+# Superuser — for DDL/seed/DROP/CREATE only
+PG_SU_USER     = os.environ.get("PG_USER", "postgres")
+PG_SU_PASSWORD = os.environ.get("PG_PASSWORD", "validate_only")
+
+# App role — for Django ORM connections (least-privilege)
+PG_APP_USER     = os.environ.get("PG_APP_USER", "platform_login_test")
+PG_APP_PASSWORD = os.environ.get("PG_APP_PASSWORD", "test_pw")
 
 SCHEMA_SLICE_DIR = os.environ.get(
     "SCHEMA_SLICE_DIR",
@@ -52,19 +65,28 @@ SCHEMA_SLICE_DIR = os.environ.get(
 @pytest.fixture(scope="session")
 def django_db_setup(django_test_environment, django_db_blocker):
     """
-    Session-scoped: create halqe_app_test, apply all slices, seed data.
-    Override Django DATABASES to point at the test DB.
+    Session-scoped: create halqe_app_test, apply all slices, create app role.
+
+    Django DATABASES 'default' and 'accounting_read' are pointed at:
+      - Test DB name (halqe_app_test)
+      - The LEAST-PRIVILEGE app role (platform_login_test / platform_app)
+        NOT the postgres superuser.
+
+    The superuser psycopg connection is used ONLY for DDL/GRANT/seed steps
+    (which legitimately need elevated privileges).
     """
     from django.conf import settings
 
-    # Override DATABASES for the test session
+    # Override DATABASES: test DB name + least-privilege app role credentials
     for alias in ("default", "accounting_read"):
         settings.DATABASES[alias]["NAME"] = TEST_DB_NAME
+        settings.DATABASES[alias]["USER"] = PG_APP_USER
+        settings.DATABASES[alias]["PASSWORD"] = PG_APP_PASSWORD
 
-    # Create test DB (drop + recreate for clean state)
+    # ── Superuser: create test DB (drop + recreate for clean state) ──────────
     superuser_conninfo = (
         f"host='{PG_HOST}' port='{PG_PORT}' "
-        f"user='{PG_USER}' password='{PG_PASSWORD}' dbname='postgres'"
+        f"user='{PG_SU_USER}' password='{PG_SU_PASSWORD}' dbname='postgres'"
     )
     with psycopg.connect(superuser_conninfo, autocommit=True) as conn:
         conn.execute(
@@ -74,45 +96,45 @@ def django_db_setup(django_test_environment, django_db_blocker):
         conn.execute(f"DROP DATABASE IF EXISTS {TEST_DB_NAME}")
         conn.execute(f"CREATE DATABASE {TEST_DB_NAME}")
 
-    # Apply all slices
-    test_db_conninfo = (
+    # ── Superuser: apply all schema slices ────────────────────────────────────
+    su_test_conninfo = (
         f"host='{PG_HOST}' port='{PG_PORT}' "
-        f"user='{PG_USER}' password='{PG_PASSWORD}' dbname='{TEST_DB_NAME}'"
+        f"user='{PG_SU_USER}' password='{PG_SU_PASSWORD}' dbname='{TEST_DB_NAME}'"
     )
     from pathlib import Path
     slice_dir = Path(SCHEMA_SLICE_DIR)
     slice_files = sorted(slice_dir.glob("schema_pg_slice*.sql"))
     assert slice_files, f"No slice files found in {slice_dir}"
 
-    with psycopg.connect(test_db_conninfo, autocommit=True) as conn:
+    with psycopg.connect(su_test_conninfo, autocommit=True) as conn:
         for sf in slice_files:
             conn.execute(sf.read_text(encoding="utf-8"))
 
-        # Ensure the platform_login_test role exists and is a member of platform_app.
+        # ── Create the least-privilege app LOGIN role (cluster-level) ─────────
         # رفعِ شکنندگی: رمز را هر بار با ALTER ROLE بازنشانی کن — رول کلاستر-level است
         # و ممکن است از اجرایِ قبلی با رمزِ متفاوت موجود باشد.
-        conn.execute("""
+        conn.execute(f"""
             DO $$
             BEGIN
-                IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'platform_login_test') THEN
-                    CREATE ROLE platform_login_test LOGIN PASSWORD 'test_pw'
+                IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '{PG_APP_USER}') THEN
+                    CREATE ROLE {PG_APP_USER} LOGIN PASSWORD '{PG_APP_PASSWORD}'
                         IN ROLE platform_app;
                 END IF;
             END$$;
         """)
-        conn.execute("ALTER ROLE platform_login_test PASSWORD 'test_pw'")
-        conn.execute("GRANT platform_app TO platform_login_test")
+        conn.execute(f"ALTER ROLE {PG_APP_USER} PASSWORD '{PG_APP_PASSWORD}'")
+        conn.execute(f"GRANT platform_app TO {PG_APP_USER}")
 
-        # Grant the login role privileges on test DB objects
+        # Grant the login role CONNECT on the test DB (object-level, not cluster-level)
         conn.execute(
-            f"GRANT CONNECT ON DATABASE {TEST_DB_NAME} TO platform_login_test"
+            f"GRANT CONNECT ON DATABASE {TEST_DB_NAME} TO {PG_APP_USER}"
         )
 
     # Allow Django to use the DB (blocker context)
     with django_db_blocker.unblock():
         yield
 
-    # Teardown: drop test DB
+    # ── Superuser: teardown — drop test DB ───────────────────────────────────
     with psycopg.connect(superuser_conninfo, autocommit=True) as conn:
         conn.execute(
             f"SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
@@ -122,18 +144,22 @@ def django_db_setup(django_test_environment, django_db_blocker):
 
 
 # ---------------------------------------------------------------------------
-# Seed fixture — inserts ONE patient, link, and vitals as superuser
+# Seed fixture — inserts ONE patient, link, and vitals as superuser.
+# Superuser is required for accounting.patients writes — the app role cannot.
 # (outside any transaction wrapping so all tests see it)
 # ---------------------------------------------------------------------------
 @pytest.fixture(scope="session")
 def seed_data(django_db_setup):
     """
-    Insert seed data into halqe_app_test as postgres superuser.
+    Insert seed data into halqe_app_test as postgres SUPERUSER (not the app role).
+    accounting.patients is in the accounting schema; the app role (platform_app) can
+    only SELECT it — superuser is used here because seeding demo data is an out-of-band
+    dev action, not an app write path.
     Returns a dict with the UUIDs/IDs tests need.
     """
     test_db_conninfo = (
         f"host='{PG_HOST}' port='{PG_PORT}' "
-        f"user='{PG_USER}' password='{PG_PASSWORD}' dbname='{TEST_DB_NAME}'"
+        f"user='{PG_SU_USER}' password='{PG_SU_PASSWORD}' dbname='{TEST_DB_NAME}'"
     )
     patient_uuid = uuid.UUID("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
 
@@ -222,9 +248,9 @@ def seed_clinical_data(seed_data):
     Returns the extended seed dict.
     """
     test_db_conninfo = (
-        f"host='localhost' port='55432' "
-        f"user='postgres' password='validate_only' "
-        f"dbname='halqe_app_test'"
+        f"host='{PG_HOST}' port='{PG_PORT}' "
+        f"user='{PG_SU_USER}' password='{PG_SU_PASSWORD}' "
+        f"dbname='{TEST_DB_NAME}'"
     )
     tenant2_patient_uuid = uuid.UUID("11111111-2222-3333-4444-555555555555")
 
@@ -367,7 +393,7 @@ def seed_act_data(seed_clinical_data):
     """
     test_db_conninfo = (
         f"host='{PG_HOST}' port='{PG_PORT}' "
-        f"user='{PG_USER}' password='{PG_PASSWORD}' dbname='{TEST_DB_NAME}'"
+        f"user='{PG_SU_USER}' password='{PG_SU_PASSWORD}' dbname='{TEST_DB_NAME}'"
     )
 
     with psycopg.connect(test_db_conninfo, autocommit=True) as conn:

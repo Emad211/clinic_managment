@@ -74,8 +74,24 @@ class Command(BaseCommand):
             )
         )
 
-        # Build psycopg connection string from Django DB config
-        conninfo = _build_conninfo(db_conf)
+        # apply_schema needs SUPERUSER (DDL, GRANT, CREATE ROLE).
+        # Django's DATABASES entries now use the least-privilege app role, so we
+        # override USER/PASSWORD with PG_USER/PG_PASSWORD (superuser env vars).
+        su_conf = dict(db_conf)
+        su_user = os.environ.get("PG_USER")
+        su_pw   = os.environ.get("PG_PASSWORD")
+        if su_user:
+            su_conf["USER"] = su_user
+        if su_pw:
+            su_conf["PASSWORD"] = su_pw
+        conninfo = _build_conninfo(su_conf)
+
+        self.stdout.write(
+            self.style.NOTICE(
+                f"  Connecting as user '{su_conf.get('USER', '?')}' "
+                f"(set PG_USER/PG_PASSWORD for superuser access)"
+            )
+        )
 
         with psycopg.connect(conninfo, autocommit=True) as conn:
             for slice_path in slice_files:
@@ -106,11 +122,13 @@ class Command(BaseCommand):
                                 SELECT 1 FROM pg_roles WHERE rolname = '{login_role}'
                             ) THEN
                                 CREATE ROLE {login_role} LOGIN PASSWORD '{password}'
-                                    IN ROLE clinical_app;
+                                    IN ROLE platform_app;
                             END IF;
                         END$$;
                         """
                     )
+                    conn.execute(f"ALTER ROLE {login_role} PASSWORD '{password}'")
+                    conn.execute(f"GRANT platform_app TO {login_role}")
                     self.stdout.write(self.style.SUCCESS(f"     OK"))
                 except Exception as exc:
                     raise CommandError(

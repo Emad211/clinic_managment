@@ -34,14 +34,23 @@ def _login(username="testuser", password="secret123"):
 
 
 def _reset_user(seed_data):
-    """Reset testuser's failed_attempts and locked_until after lockout tests."""
+    """Reset testuser's failed_attempts and locked_until after lockout tests.
+
+    platform.users is writable by the app role (platform_app) — uses app-role
+    credentials from env, consistent with how Django connects.
+    """
     import psycopg
     import os
 
     db_name = os.environ.get("PG_TEST_DB", "halqe_app_test")
+    host = os.environ.get("PG_HOST", "localhost")
+    port = os.environ.get("PG_PORT", "55432")
+    # Use app role (platform_app member) — it has WRITE on platform.*
+    app_user = os.environ.get("PG_APP_USER", "platform_login_test")
+    app_pw   = os.environ.get("PG_APP_PASSWORD", "test_pw")
     conninfo = (
-        f"host='localhost' port='55432' user='postgres' "
-        f"password='validate_only' dbname='{db_name}'"
+        f"host='{host}' port='{port}' user='{app_user}' "
+        f"password='{app_pw}' dbname='{db_name}'"
     )
     with psycopg.connect(conninfo, autocommit=True) as conn:
         conn.execute(

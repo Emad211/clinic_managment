@@ -184,6 +184,24 @@ def _build_conninfo(conf):
     return " ".join(parts)
 
 
+def _build_su_conninfo(conf):
+    """
+    Build a SUPERUSER conninfo for seed_demo.
+
+    seed_demo writes to accounting.patients, which the least-privilege app role
+    (platform_app) cannot do (SELECT-only on accounting.*).  This is intentional
+    — seeding demo data is an out-of-band dev action, not an app write path.
+
+    We override USER/PASSWORD with PG_USER/PG_PASSWORD (the superuser env vars),
+    keeping HOST/PORT/NAME from the Django DB config.
+    """
+    import os
+    su_conf = dict(conf)
+    su_conf["USER"]     = os.environ.get("PG_USER", "postgres")
+    su_conf["PASSWORD"] = os.environ.get("PG_PASSWORD", "validate_only")
+    return _build_conninfo(su_conf)
+
+
 def _deterministic_uuid(national_id: str) -> uuid_module.UUID:
     """Stable UUID from national_id via UUID5 (namespace: DNS)."""
     return uuid_module.uuid5(uuid_module.NAMESPACE_DNS, f"demo.halqe.{national_id}")
@@ -213,7 +231,18 @@ class Command(BaseCommand):
         admin_password = options["admin_password"]
 
         db_conf = settings.DATABASES["default"]
-        conninfo = _build_conninfo(db_conf)
+        # Use SUPERUSER credentials: seed_demo writes to accounting.patients
+        # which the least-privilege app role (platform_app) physically cannot do.
+        # This is correct — seeding accounting demographics is an out-of-band
+        # dev action, not an application write path.
+        conninfo = _build_su_conninfo(db_conf)
+
+        self.stdout.write(
+            self.style.NOTICE(
+                "Note: seed_demo uses PG_USER (superuser) because it seeds "
+                "accounting.patients — the app role is SELECT-only on accounting.*"
+            )
+        )
 
         with psycopg.connect(conninfo, autocommit=True) as conn:
             # ── 1. Resolve condition code → DB id map ─────────────────────────

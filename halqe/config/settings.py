@@ -3,6 +3,29 @@ Django settings for halqe platform — vertical slice 1.
 
 managed=False throughout: the .sql slices are the authoritative schema source.
 apply_schema management command applies them.
+
+# ---------------------------------------------------------------------------
+# Role separation — two sets of credentials:
+#
+#   SUPERUSER (PG_USER / PG_PASSWORD):
+#     Default: postgres / validate_only (Docker dev)
+#     Used ONLY by:
+#       - apply_schema management command (DDL, GRANT, CREATE/DROP DATABASE)
+#       - conftest.py DDL/seed fixtures (psycopg raw, not Django ORM)
+#       - seed_demo management command for the accounting.patients seed path
+#         (dev tooling; the app role cannot write accounting)
+#     NOT used by the Django app connections.
+#
+#   APP ROLE (PG_APP_USER / PG_APP_PASSWORD):
+#     Default: platform_login_test / test_pw  (matches the role conftest creates)
+#     A LOGIN role that is a MEMBER of platform_app (inherits all its grants):
+#       - WRITE on platform.* + clinical.*
+#       - SELECT-only on accounting.*  (the hard DB-level boundary)
+#     Used by Django's 'default' and 'accounting_read' connections.
+#     Create this role idempotently with:
+#       python manage.py ensure_app_role
+#     or via apply_schema --create-login-role <name> --role-password <pw>
+# ---------------------------------------------------------------------------
 """
 import os
 from pathlib import Path
@@ -48,30 +71,44 @@ TEMPLATES = []
 WSGI_APPLICATION = "config.wsgi.application"
 
 # ---------------------------------------------------------------------------
-# Databases
-# 'default' → clinical/platform (read-write for clinical_app).
-# 'accounting_read' → accounting read-only boundary
-#   Both connect as superuser for now; OPTIONS sets the search_path so models
-#   with schema-qualified db_table work without extra search_path tricks.
-#   The role enforcement is at DB-level (GRANTs in slice0/slice3).
+# Postgres coordinates
 # ---------------------------------------------------------------------------
 _PG_HOST = os.environ.get("PG_HOST", "localhost")
 _PG_PORT = os.environ.get("PG_PORT", "55432")
-_PG_USER = os.environ.get("PG_USER", "postgres")
-_PG_PASSWORD = os.environ.get("PG_PASSWORD", "validate_only")
-_PG_DB = os.environ.get("PG_DB", "halqe_app")
+_PG_DB   = os.environ.get("PG_DB", "halqe_app")
 
+# Superuser credentials — only for apply_schema, conftest DDL, seed_demo's
+# accounting write path.  Never used by the Django app connections below.
+PG_SUPERUSER      = os.environ.get("PG_USER", "postgres")
+PG_SUPERPASSWORD  = os.environ.get("PG_PASSWORD", "validate_only")
+
+# App-role credentials — least-privilege LOGIN role, member of platform_app.
+# The role has WRITE on platform+clinical and SELECT-only on accounting.
+# Create idempotently with: python manage.py ensure_app_role
+# Default matches the role conftest creates for Docker validation.
+_PG_APP_USER     = os.environ.get("PG_APP_USER", "platform_login_test")
+_PG_APP_PASSWORD = os.environ.get("PG_APP_PASSWORD", "test_pw")
+
+# ---------------------------------------------------------------------------
+# Databases
+# 'default'         → clinical/platform read-write  (app role, platform_app)
+# 'accounting_read' → accounting SELECT-only        (app role, platform_app)
+#
+# Both use the LEAST-PRIVILEGE app role.  The role physically cannot write to
+# accounting.* — enforced by Postgres GRANTs, not only by ClinicalRouter.
+# search_path is set in OPTIONS so schema-qualified db_table names resolve
+# without extra tricks.
+# ---------------------------------------------------------------------------
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.postgresql",
         "NAME": _PG_DB,
-        "USER": _PG_USER,
-        "PASSWORD": _PG_PASSWORD,
+        "USER": _PG_APP_USER,
+        "PASSWORD": _PG_APP_PASSWORD,
         "HOST": _PG_HOST,
         "PORT": _PG_PORT,
         "OPTIONS": {
-            # platform_app: رولِ یکپارچهٔ اپِ پلتفرم — می‌نویسد روی platform+clinical،
-            # فقط می‌خواند از accounting (مرزِ یک‌طرفهٔ DB-level).
+            # platform_app: می‌نویسد روی platform+clinical، فقط می‌خواند از accounting
             "options": "-c search_path=clinical,platform,accounting,public",
         },
         "TEST": {
@@ -81,8 +118,8 @@ DATABASES = {
     "accounting_read": {
         "ENGINE": "django.db.backends.postgresql",
         "NAME": _PG_DB,
-        "USER": _PG_USER,
-        "PASSWORD": _PG_PASSWORD,
+        "USER": _PG_APP_USER,
+        "PASSWORD": _PG_APP_PASSWORD,
         "HOST": _PG_HOST,
         "PORT": _PG_PORT,
         "OPTIONS": {
