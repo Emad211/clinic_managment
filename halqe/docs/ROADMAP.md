@@ -166,8 +166,17 @@
   pending→approved/rejected، استثناهای دامنه، audit) + ۳ endpoint (GET صف + approve/reject
   **manager-only** با 403) + `tests/test_engagement_approvals.py` (۱۵ تست شاملِ گیتِ staff،
   ایزولاسیونِ tenant، عدمِ ارسالِ SMS). ۲۵۹ سبز (۲۴۴+۱۵). **هیچ پیامکی اینجا نمی‌رود.** ✅
-- [ ] **۱۸. provider abstraction + scheduler** (پورتِ `engagement_service`؛ KYCِ کاوه‌نگار
+- [x] **۱۸. provider abstraction + scheduler** (پورتِ `engagement_service`؛ KYCِ کاوه‌نگار
   بلاک → NullProvider در عمل). — *integrations-engineer*
+  **تحویل:** `clinical/sms/provider.py` (SendResult/SmsProvider/NullProvider/KavenegarProvider/
+  `get_provider`→NullProvider بدون کلید) + `sms/compliance.py` (پورت) + `clinical/engagement_service.py`
+  (`dispatch_patient`/`run_all`؛ phone از Port، گاردریل‌های opt-out/cooldown/idempotency/quiet-hours؛
+  worklist→task، sms→enqueue_approval) + endpointِ manager-only `POST /engagement/approvals/{id}/send`
+  (جریانِ pending→approved→sent؛ ارسال فقط با NullProvider در عمل) + `run_engagement` command +
+  `tests/test_engagement_dispatch.py` (۲۴ تست، شاملِ patchِ urlopen برای اثباتِ عدمِ تماسِ شبکه).
+  ۲۸۳ سبز (۲۵۹+۲۴). **هیچ SMS واقعی؛ گیتِ KYC مستند.** ✅
+
+> **🏁 خوشهٔ E (تعامل/SMS + صفِ تأیید) کامل شد** — موتورِ رویداد→کانال با گاردریل، تأییدِ انسانی، NullProvider.
 
 ## خوشهٔ F — چندمستأجریِ واقعی (آخر، پرریسک)
 

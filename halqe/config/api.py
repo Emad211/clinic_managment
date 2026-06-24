@@ -2179,6 +2179,7 @@ from clinical.engagement_approval_service import (
     ApprovalNotFound as _ApprovalNotFound,
     InvalidApprovalTransition as _InvalidApprovalTransition,
 )
+from clinical.engagement_service import send_approved_sms as _send_approved_sms
 
 
 # ---------------------------------------------------------------------------
@@ -2383,3 +2384,123 @@ def reject_engagement_approval(request, approval_id: int, body: ApproveRejectIn 
         return 409, error_response(str(exc), "invalid_transition")
 
     return 200, _approval_to_dto(approval)
+
+
+# ---------------------------------------------------------------------------
+# POST /engagement/approvals/{id}/send — approved → sent (Step 18, manager only)
+#
+# This is the ONLY endpoint that actually sends an SMS.
+# The manager must first approve (pending → approved), then trigger send here.
+# Quiet-hours guard is enforced (08:00-21:00 Tehran) unless override_quiet=True.
+# Uses get_provider() which returns NullProvider when no API key is configured.
+# In tests, provider is always NullProvider → SIMULATED, NO real network call.
+# ---------------------------------------------------------------------------
+
+class SendApprovalIn(Schema):
+    """Optional body for the send endpoint."""
+    override_quiet: bool = False  # bypass quiet-hours gate (e.g. urgent clinical)
+
+
+class SendApprovalOut(Schema):
+    """Result of an SMS send attempt."""
+    ok: bool
+    reason: Optional[str] = None
+    provider_msgid: Optional[str] = None
+    pending: bool = False
+    approval_id: int
+    status: str                   # final approval status after send attempt
+
+
+@api.post(
+    "/engagement/approvals/{approval_id}/send",
+    response={
+        200: SendApprovalOut,
+        403: ErrorSchema,
+        404: ErrorSchema,
+        409: ErrorSchema,
+    },
+    auth=_jwt_auth,
+    tags=["engagement"],
+)
+def send_engagement_approval(
+    request,
+    approval_id: int,
+    body: SendApprovalIn = None,
+):
+    """
+    Send the SMS for an approved engagement approval (manager-only, Step 18).
+
+    The approval must already be in status='approved' (call approve first).
+    This endpoint is the ONLY path where a real SMS can leave the system.
+
+    Guardrails:
+      - Patient opt-out re-checked → auto-rejects and returns ok=False reason='opt_out'.
+      - Phone via AccountingPort (PatientLink has no phone — ADR-0007).
+        No phone → auto-rejects, ok=False, reason='no_phone'.
+      - Quiet hours (08:00-21:00 Tehran): blocks outside window unless
+        body.override_quiet=True.  Approval stays 'approved' (send later).
+      - get_provider(): returns NullProvider when no KAVENEGAR_API_KEY is set.
+        In tests NullProvider is always used → SIMULATED, no network call.
+      - On send: records dispatch (idempotency ledger) + marks approval
+        status='sent' + sent_at=now().
+
+    Returns 403 if not a manager.
+    Returns 404 if approval not found for this tenant.
+    Returns 409 if approval is not in status='approved' (wrong state).
+
+    KAVENEGAR KYC NOTE: the live key returns code 430 (KYC not complete).
+    No real SMS is sent until the owner finishes KYC.  Use NullProvider in tests.
+    """
+    guard = _assert_manager(request)
+    if guard:
+        return guard
+
+    tenant_id = request.tenant_id
+    actor = getattr(request.auth, "username", None) or "unknown"
+    override_quiet = (body.override_quiet if body else False)
+
+    # Verify the approval exists and is in the correct state before calling send
+    try:
+        approval_obj = _EngagementApproval.objects.get(
+            id=approval_id, tenant_id=tenant_id
+        )
+    except _EngagementApproval.DoesNotExist:
+        return 404, error_response(
+            f"EngagementApproval id={approval_id} not found for this tenant.",
+            "not_found",
+        )
+
+    if approval_obj.status != _EngagementApproval.STATUS_APPROVED:
+        return 409, error_response(
+            f"Approval id={approval_id} is '{approval_obj.status}'; "
+            "only 'approved' rows can be sent. Call /approve first.",
+            "invalid_transition",
+        )
+
+    result = _send_approved_sms(
+        approval_id,
+        tenant_id,
+        decided_by=actor,
+        override_quiet=override_quiet,
+    )
+
+    # Re-fetch the approval to get the final status after send_approved_sms
+    try:
+        approval_obj.refresh_from_db()
+    except Exception:
+        pass
+
+    if result.get("reason") == "not_found":
+        return 404, error_response(
+            f"EngagementApproval id={approval_id} not found for this tenant.",
+            "not_found",
+        )
+
+    return 200, SendApprovalOut(
+        ok=result["ok"],
+        reason=result.get("reason"),
+        provider_msgid=result.get("provider_msgid"),
+        pending=result.get("pending", False),
+        approval_id=approval_id,
+        status=approval_obj.status,
+    )
