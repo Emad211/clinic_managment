@@ -454,6 +454,214 @@ class Observation(models.Model):
         )
 
 
+class Appointment(models.Model):
+    """
+    clinical.appointments — scheduled patient appointments.
+
+    Base columns from schema_pg_slice2_clinical.sql §appointments:
+      id, tenant_id, patient_link_id, scheduled_at TIMESTAMPTZ NOT NULL,
+      appt_type TEXT, status TEXT CHECK('scheduled'|'done'|'no_show'|'cancelled'),
+      recurrence_months INTEGER, parent_appointment_id BIGINT,
+      reminder_sent BOOLEAN DEFAULT FALSE, notes TEXT,
+      created_by TEXT, created_at TIMESTAMPTZ.
+
+    Additive columns from schema_pg_slice4b_clinical_model.sql §6 (ALTER TABLE):
+      doctor_id BIGINT (nullable; cross-schema FK → accounting.medical_staff, ON DELETE SET NULL)
+      chief_complaint TEXT (nullable)
+
+    FK conventions (managed=False — real FKs live in SQL):
+      - patient_link_id: composite FK (tenant_id, patient_link_id) → clinical.patient_links
+      - doctor_id: composite cross-schema FK (tenant_id, doctor_id) → accounting.medical_staff
+      - parent_appointment_id: soft self-reference (nullable BIGINT, no ORM FK)
+    """
+
+    STATUS_SCHEDULED = "scheduled"
+    STATUS_DONE = "done"
+    STATUS_NO_SHOW = "no_show"
+    STATUS_CANCELLED = "cancelled"
+
+    STATUS_CHOICES = [
+        (STATUS_SCHEDULED, "Scheduled"),
+        (STATUS_DONE, "Done"),
+        (STATUS_NO_SHOW, "No Show"),
+        (STATUS_CANCELLED, "Cancelled"),
+    ]
+
+    tenant_id = models.BigIntegerField(default=1)
+    patient_link_id = models.BigIntegerField()
+    scheduled_at = models.DateTimeField()
+    appt_type = models.TextField(null=True, blank=True)          # visit|lab|checkup
+    status = models.TextField(default="scheduled")               # CHECK in DB
+    recurrence_months = models.IntegerField(null=True, blank=True)
+    # Soft self-reference (nullable BIGINT, no ORM FK — DB has no FK on this col)
+    parent_appointment_id = models.BigIntegerField(null=True, blank=True)
+    reminder_sent = models.BooleanField(default=False)
+    notes = models.TextField(null=True, blank=True)
+    created_by = models.TextField(null=True, blank=True)
+    created_at = models.DateTimeField()
+    # slice4b additive columns
+    # doctor_id: cross-schema FK (tenant_id, doctor_id) → accounting.medical_staff
+    # db_constraint=False — the real composite FK lives in SQL
+    doctor_id = models.BigIntegerField(null=True, blank=True)    # nullable; ON DELETE SET NULL
+    chief_complaint = models.TextField(null=True, blank=True)
+
+    class Meta:
+        managed = False
+        app_label = "clinical"
+        db_table = '"clinical"."appointments"'
+        ordering = ["scheduled_at"]
+
+    def __str__(self):
+        return (
+            f"Appointment(id={self.id}, patient_link_id={self.patient_link_id}, "
+            f"status={self.status}, scheduled_at={self.scheduled_at})"
+        )
+
+
+class LabResult(models.Model):
+    """
+    clinical.lab_results — lab test results (the lab half of the Observation canonical).
+
+    Base columns from schema_pg_slice2_clinical.sql §lab_results:
+      id, tenant_id, patient_link_id, test_name TEXT NOT NULL,
+      test_key TEXT (nullable; soft FK to lab_test_catalog.test_key),
+      value REAL, unit TEXT, ref_low REAL, ref_high REAL,
+      taken_at TIMESTAMPTZ NOT NULL, notes TEXT, recorded_by TEXT.
+
+    Additive column from schema_pg_slice4b_clinical_model.sql §3b (ALTER TABLE):
+      encounter_id BIGINT (nullable; composite FK (tenant_id, encounter_id)
+      → clinical.encounters(tenant_id, id) ON DELETE SET NULL)
+
+    FK conventions (managed=False — real FKs live in SQL):
+      - patient_link_id: composite FK (tenant_id, patient_link_id) → clinical.patient_links
+      - encounter_id: composite FK (tenant_id, encounter_id) → clinical.encounters
+      - test_key: soft reference to lab_test_catalog.test_key (nullable TEXT, no ORM FK)
+    """
+
+    tenant_id = models.BigIntegerField(default=1)
+    patient_link_id = models.BigIntegerField()
+    test_name = models.TextField()
+    test_key = models.TextField(null=True, blank=True)           # soft ref to lab_test_catalog
+    value = models.FloatField(null=True, blank=True)
+    unit = models.TextField(null=True, blank=True)
+    ref_low = models.FloatField(null=True, blank=True)
+    ref_high = models.FloatField(null=True, blank=True)
+    taken_at = models.DateTimeField()
+    notes = models.TextField(null=True, blank=True)
+    recorded_by = models.TextField(null=True, blank=True)
+    # slice4b additive column — nullable composite FK → encounters
+    encounter_id = models.BigIntegerField(null=True, blank=True)
+
+    class Meta:
+        managed = False
+        app_label = "clinical"
+        db_table = '"clinical"."lab_results"'
+        ordering = ["-taken_at"]
+
+    def __str__(self):
+        return (
+            f"LabResult(test_name={self.test_name}, value={self.value}, "
+            f"patient_link_id={self.patient_link_id})"
+        )
+
+
+class Encounter(models.Model):
+    """
+    clinical.encounters — visit / clinical contact record (aggregate root for write path).
+
+    Source: schema_pg_slice4b_clinical_model.sql §2.
+
+    Columns:
+      id BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+      tenant_id BIGINT NOT NULL DEFAULT 1 (FK → platform.tenants),
+      patient_link_id BIGINT NOT NULL (composite FK (tenant_id, patient_link_id)
+        → clinical.patient_links),
+      doctor_id BIGINT nullable (cross-schema composite FK (tenant_id, doctor_id)
+        → accounting.medical_staff ON DELETE SET NULL),
+      encounter_type TEXT NOT NULL DEFAULT 'visit'
+        CHECK IN ('visit','follow_up','phone','remote'),
+      encounter_at TIMESTAMPTZ NOT NULL,
+      chief_complaint TEXT nullable,
+      status TEXT NOT NULL DEFAULT 'open'
+        CHECK IN ('open','completed','cancelled'),
+      completed_at TIMESTAMPTZ nullable,
+      summary_note TEXT nullable,
+      appointment_id BIGINT nullable (composite FK (tenant_id, appointment_id)
+        → clinical.appointments ON DELETE SET NULL),
+      accounting_invoice_id BIGINT nullable (cross-schema composite FK DEFERRABLE
+        → accounting.invoices ON DELETE SET NULL),
+      created_by TEXT nullable,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now() (auto-updated by DB trigger).
+
+    UNIQUE(tenant_id, id) — for composite FK targeting by child tables.
+
+    FK conventions (managed=False — real FKs live in SQL):
+      - patient_link_id: composite FK → clinical.patient_links
+      - doctor_id: cross-schema composite FK → accounting.medical_staff
+      - appointment_id: composite FK → clinical.appointments
+      - accounting_invoice_id: cross-schema composite FK (DEFERRABLE) → accounting.invoices
+
+    This is a READ+WRITE model — it will be written in Step 10. No write logic here.
+    """
+
+    ENCOUNTER_TYPE_VISIT = "visit"
+    ENCOUNTER_TYPE_FOLLOW_UP = "follow_up"
+    ENCOUNTER_TYPE_PHONE = "phone"
+    ENCOUNTER_TYPE_REMOTE = "remote"
+
+    ENCOUNTER_TYPE_CHOICES = [
+        (ENCOUNTER_TYPE_VISIT, "Visit"),
+        (ENCOUNTER_TYPE_FOLLOW_UP, "Follow-up"),
+        (ENCOUNTER_TYPE_PHONE, "Phone"),
+        (ENCOUNTER_TYPE_REMOTE, "Remote"),
+    ]
+
+    STATUS_OPEN = "open"
+    STATUS_COMPLETED = "completed"
+    STATUS_CANCELLED = "cancelled"
+
+    STATUS_CHOICES = [
+        (STATUS_OPEN, "Open"),
+        (STATUS_COMPLETED, "Completed"),
+        (STATUS_CANCELLED, "Cancelled"),
+    ]
+
+    tenant_id = models.BigIntegerField(default=1)
+    patient_link_id = models.BigIntegerField()
+    # doctor_id: cross-schema FK (tenant_id, doctor_id) → accounting.medical_staff
+    # db_constraint not expressed in ORM — real composite FK lives in SQL
+    doctor_id = models.BigIntegerField(null=True, blank=True)
+    encounter_type = models.TextField(default="visit")           # CHECK enforced by DB
+    encounter_at = models.DateTimeField()
+    chief_complaint = models.TextField(null=True, blank=True)
+    status = models.TextField(default="open")                    # CHECK enforced by DB
+    completed_at = models.DateTimeField(null=True, blank=True)
+    summary_note = models.TextField(null=True, blank=True)
+    # appointment_id: composite FK (tenant_id, appointment_id) → clinical.appointments
+    appointment_id = models.BigIntegerField(null=True, blank=True)
+    # accounting_invoice_id: cross-schema composite FK DEFERRABLE → accounting.invoices
+    # nullable snapshot — never a real accounting write; just an id reference
+    accounting_invoice_id = models.BigIntegerField(null=True, blank=True)
+    created_by = models.TextField(null=True, blank=True)
+    created_at = models.DateTimeField()
+    # updated_at is maintained by DB trigger trg_encounters_updated_at (slice4b)
+    # auto_now=False — we don't want Django to override the DB trigger on every save
+    updated_at = models.DateTimeField()
+
+    class Meta:
+        managed = False
+        app_label = "clinical"
+        db_table = '"clinical"."encounters"'
+        ordering = ["-encounter_at"]
+
+    def __str__(self):
+        return (
+            f"Encounter(id={self.id}, patient_link_id={self.patient_link_id}, "
+            f"type={self.encounter_type}, status={self.status})"
+        )
+
+
 class ActivityLog(models.Model):
     """
     clinical.activity_logs — append-only audit trail.
