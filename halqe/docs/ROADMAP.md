@@ -63,8 +63,14 @@
   (7 تست: unit build_facts + rule-engine + endpoint end-to-end). 100 تست سبز. ✅
   یافته مهم: slice4a پیشوندِ 'vital:'/'lab:' به obs_key اضافه کرد — باید در همهٔ
   consumer های VIEW در نظر گرفته شود.
-- [ ] **۶. تثبیتِ age fact.** یک helperِ واحد که `demographics` را همیشه به موتور بدهد
+- [x] **۶. تثبیتِ age fact.** یک helperِ واحد که `demographics` را همیشه به موتور بدهد
   (هرجا engine صدا زده می‌شود) + تستِ قاعده‌های age-gated (fail-closed درست است). — *backend-engineer*
+  **تحویل:** `clinical/suggestion_service.py` (`resolve_demographics` + `grouped_for_patient` +
+  `evaluate_for_patient`) + refactor `get_suggestions` در `config/api.py` (از `_grouped_for_patient`) +
+  `tests/test_age_facts.py` (6 تست: resolve/fire/no-fire/age-ineligible/evaluate/graceful-None).
+  قاعدهٔ age-gated: `T2-LIPID-RX-01` (DM + age ∈ [40,75]). 106 تست سبز (100+6). ✅
+  یافته: Step 12 باید `grouped_for_patient` صدا بزند، نه `rule_engine.grouped` خام — اگر نزند
+  age-gated rules بی‌صدا خاموش می‌مانند.
 - [ ] **۷. وضعیتِ قبلیِ accept/dismiss در `get_suggestions`** (join با `SuggestionLog`) →
   `prior_action`. **پذیرش:** پس از dismiss، re-fetch وضعیت را برمی‌گرداند. — *backend-engineer*
   - [ ] **۷b. UI:** پنلِ Suggestions حالتِ قبلی را رندر کند (بدونِ رفرش). — *frontend-web-engineer*

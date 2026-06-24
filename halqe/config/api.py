@@ -38,6 +38,7 @@ from clinical.models import (
     SuggestionLog,
 )
 import clinical.rule_engine as _rule_engine
+from clinical.suggestion_service import grouped_for_patient as _grouped_for_patient
 from clinical.audit import log_activity
 from platform_core.auth_bearer import JWTBearer
 from platform_core.auth_service import (
@@ -554,10 +555,15 @@ def get_suggestions(request, patient_uuid: uuid_module.UUID):
             f"Patient uuid={patient_uuid} has no enrollment for this tenant."
         )
 
-    # 3. Run the suggestion engine (read-only)
-    result = _rule_engine.grouped(
+    # 3. Run the suggestion engine via the canonical bridge helper.
+    # grouped_for_patient resolves demographics from the Port internally,
+    # ensuring age-gated rules always have a birthdate — even when this
+    # endpoint is refactored or reused in batch/non-HTTP contexts.
+    # Note: demo was already fetched above (step 1) to locate the PatientLink.
+    # grouped_for_patient performs one additional Port fetch (same patient,
+    # single indexed PK lookup) — acceptable overhead for centralisation.
+    result = _grouped_for_patient(
         patient_link_id=link.id,
-        demographics=demo,
         tenant_id=tenant_id,
     )
 
