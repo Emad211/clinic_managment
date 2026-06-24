@@ -206,6 +206,12 @@ export interface SuggestionRuleDTO {
   source_ref: string | null;
   section: string;
   suggestion_only: boolean;
+  /**
+   * Prior physician action for this rule on this patient.
+   * Populated by GET /patients/{uuid}/suggestions.
+   * Any value other than 'accepted' or 'dismissed' is treated as null (no prior action).
+   */
+  prior_action: "accepted" | "dismissed" | null;
 }
 
 export interface SuggestionSectionDTO {

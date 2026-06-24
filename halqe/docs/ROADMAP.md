@@ -71,9 +71,16 @@
   قاعدهٔ age-gated: `T2-LIPID-RX-01` (DM + age ∈ [40,75]). 106 تست سبز (100+6). ✅
   یافته: Step 12 باید `grouped_for_patient` صدا بزند، نه `rule_engine.grouped` خام — اگر نزند
   age-gated rules بی‌صدا خاموش می‌مانند.
-- [ ] **۷. وضعیتِ قبلیِ accept/dismiss در `get_suggestions`** (join با `SuggestionLog`) →
+- [x] **۷. وضعیتِ قبلیِ accept/dismiss در `get_suggestions`** (join با `SuggestionLog`) →
   `prior_action`. **پذیرش:** پس از dismiss، re-fetch وضعیت را برمی‌گرداند. — *backend-engineer*
-  - [ ] **۷b. UI:** پنلِ Suggestions حالتِ قبلی را رندر کند (بدونِ رفرش). — *frontend-web-engineer*
+  **تحویل:** `SuggestionRuleDTO.prior_action` (`null | "accepted" | "dismissed"`) +
+  join تک‌کوئریِ `SuggestionLog` در `get_suggestions` + ۵ تست. ۱۱۱ تست سبز. ✅
+  - [x] **۷b. UI:** پنلِ Suggestions حالتِ قبلی را رندر کند (بدونِ رفرش). — *frontend-web-engineer*
+  **تحویل:** `api.ts` (تایپِ prior_action) + `suggestion-utils.ts` (normalise/seed) +
+  `page.tsx` (سه حالتِ تأییدشده/ردشده/actionable + آپدیتِ optimistic بدونِ reload) +
+  ۱۸ تست. وب ۶۶ سبز (۴۸+۱۸). ✅
+
+> **🏁 خوشهٔ B (تکمیلِ موتور) کامل شد** — lab در موتور، age پایدار، وضعیتِ قبلیِ پیشنهادها در UI.
 
 ## خوشهٔ C — مسیرِ نوشتن / encounter (نیمهٔ گم‌شدهٔ care-loop؛ روی A+B)
 

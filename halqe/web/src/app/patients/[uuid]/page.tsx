@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { useRouter, useParams, usePathname } from "next/navigation";
 import Link from "next/link";
 import {
@@ -15,14 +15,13 @@ import {
   ApiError,
 } from "@/lib/api";
 import { formatJalali } from "@/lib/jalali";
+import {
+  buildInitialActed,
+  type ActedState,
+  type ActedMap,
+} from "@/lib/suggestion-utils";
 import Nav from "@/components/Nav";
 import styles from "./record.module.css";
-
-// ────────────────────────────────────────────────────────────
-// Per-rule acted state (optimistic update without full reload)
-// ────────────────────────────────────────────────────────────
-
-type ActedMap = Record<string, "accepted" | "dismissed" | "pending">;
 
 // ────────────────────────────────────────────────────────────
 // Severity helpers
@@ -46,7 +45,7 @@ function RuleCard({
 }: {
   rule: SuggestionRuleDTO;
   uuid: string;
-  acted: "accepted" | "dismissed" | "pending" | undefined;
+  acted: ActedState | undefined;
   onAct: (ruleCode: string, action: "accept" | "dismiss") => void;
 }) {
   const [busy, setBusy] = useState(false);
@@ -134,8 +133,26 @@ function SuggestionsPanel({
   suggestionsLoading: boolean;
   suggestionsError: string | null;
 }) {
-  // Optimistic per-rule state
+  // Per-rule acted state: seeded from server prior_action on load,
+  // then updated optimistically after user acts (no full-page reload).
   const [acted, setActed] = useState<ActedMap>({});
+
+  // Track which suggestions object we last seeded from, so we only
+  // rebuild the initial map when a genuinely new suggestions payload
+  // arrives (not on every render).
+  const seededForRef = useRef<SuggestionsResponseDTO | null>(null);
+
+  useEffect(() => {
+    if (suggestions && suggestions !== seededForRef.current) {
+      seededForRef.current = suggestions;
+      setActed((prev) => {
+        // Merge server prior_action into local state, but don't overwrite
+        // any action the physician has already taken in this session.
+        const fromServer = buildInitialActed(suggestions);
+        return { ...fromServer, ...prev };
+      });
+    }
+  }, [suggestions]);
 
   function handleAct(ruleCode: string, action: "accept" | "dismiss") {
     setActed((prev) => ({

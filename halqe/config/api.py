@@ -497,6 +497,8 @@ class SuggestionRuleDTO(Schema):
     section: str       # UI bucket: redflags | safety | risk | treatment | assessment | monitoring | vaccination | lifestyle
     # Safety marker — always True. Carries the "تأیید با پزشک" obligation.
     suggestion_only: bool
+    # Prior physician action for this rule, if any: 'accepted' | 'dismissed' | None
+    prior_action: Optional[str] = None
 
 
 class SuggestionSectionDTO(Schema):
@@ -567,6 +569,22 @@ def get_suggestions(request, patient_uuid: uuid_module.UUID):
         tenant_id=tenant_id,
     )
 
+    # 3b. Collect all fired rule_codes from the engine result, then fetch
+    # SuggestionLog rows in ONE query (no N+1). Build a {rule_code: status} map.
+    fired_codes = [
+        r["rule_code"]
+        for sec in result["sections"]
+        for r in sec["rules"]
+    ]
+    prior_action_map: dict[str, str] = {}
+    if fired_codes:
+        logs = SuggestionLog.objects.filter(
+            tenant_id=tenant_id,
+            patient_link_id=link.id,
+            rule_code__in=fired_codes,
+        ).values("rule_code", "status")
+        prior_action_map = {row["rule_code"]: row["status"] for row in logs}
+
     # 4. Serialise
     sections = [
         SuggestionSectionDTO(
@@ -589,6 +607,7 @@ def get_suggestions(request, patient_uuid: uuid_module.UUID):
                     source_ref=r.get("source_ref"),
                     section=r["section"],
                     suggestion_only=r["suggestion_only"],
+                    prior_action=prior_action_map.get(r["rule_code"]),
                 )
                 for r in sec["rules"]
             ],
