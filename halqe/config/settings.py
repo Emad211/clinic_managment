@@ -50,6 +50,12 @@ INSTALLED_APPS = [
 ]
 
 MIDDLEWARE = [
+    # TenantGucMiddleware MUST come first: clears app.current_tenant GUC to ''
+    # at the start of every request.  JWTBearer.authenticate() re-sets it to
+    # the real tenant_id for authenticated requests.  Order matters: clearing
+    # before CommonMiddleware ensures even CORS/security middleware runs with
+    # a clean GUC state.  (Step 2 — RLS hook; RLS policy is Step 19.)
+    "platform_core.middleware.TenantGucMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "corsheaders.middleware.CorsMiddleware",
     "django.middleware.common.CommonMiddleware",

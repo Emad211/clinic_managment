@@ -19,16 +19,23 @@
 
 ## خوشهٔ A — سخت‌سازیِ بنیادی (قفلِ قرارداد؛ همه ارزان، اول)
 
-- [ ] **۱. اتصالِ کم‌امتیاز به DB + اثباتِ واقعیِ مرز.**
+- [x] **۱. اتصالِ کم‌امتیاز به DB + اثباتِ واقعیِ مرز.**
   اپ به‌جای superuser با رولِ ورودِ عضوِ `platform_app` وصل می‌شود (env-configurable)؛
   superuser فقط برای `apply_schema`/seedِ accounting. تستِ نو: از اتصالِ اپ، نوشتنِ خام در
   `accounting.*` توسطِ Postgres رد می‌شود (permission denied) — مکملِ تستِ ORM-router.
   هر مسیرِ نهفته‌ای که زیرِ نقابِ superuser به accounting می‌نوشت، آشکار و اصلاح می‌شود.
   **پذیرش:** ۶۵ تست زیرِ اتصالِ کم‌امتیاز سبز + تستِ permission-denied سبز. — *api-platform-engineer*
-- [ ] **۲. plumbingِ tenant-context.** middleware که در ابتدای هر request
+  **تحویل:** `settings.py` (تفکیکِ superuser/app-role) + `ensure_app_role` command +
+  `test_db_boundary.py` (۹ تست permission-denied) + رفعِ مسیرِ نهفتهٔ نوشتنِ accounting در `seed_demo`.
+  ۷۴ تست سبز (۶۵+۹). کامیت `67ea79e`. ✅
+- [x] **۲. plumbingِ tenant-context.** middleware که در ابتدای هر request
   `SELECT set_config('app.current_tenant', …)` (GUC) را ست کند + حذفِ `tenant_id=1`ِ
   hardcode از مسیرهای audit/login (`config/api.py`) — tenant از خودِ کاربر resolve شود.
   **پذیرش:** GUC در هر اتصالِ request ست است؛ هیچ tenant ثابتِ ۱ در مسیرِ نوشتن نمی‌ماند. — *api-platform-engineer*
+  **تحویل:** `platform_core/tenant_context.py` (set/clear GUC) + `platform_core/middleware.py`
+  (TenantGucMiddleware) + `auth_bearer.py` (set_tenant_guc بعد از resolve) + `auth_service.py`
+  (login بدونِ tenant_id=1 + exc.tenant_id روی هر خطای پس از resolve) + `config/api.py`
+  (SYSTEM_TENANT_ID=1 ثابت + audit صادقانه). ۸۲ تست سبز (۷۴ قبلی + ۸ جدید). ✅
 - [ ] **۳. قراردادِ خطای یکدست + paginationِ مشترک.** schema خطای استاندارد
   (code+message) به‌جای dictهای خام؛ استخراجِ الگوی limit/offset/total از
   `list_patients`/`list_worklist` به یک utility مشترک. **پذیرش:** هر endpoint قالبِ خطای

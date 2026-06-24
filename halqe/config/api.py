@@ -45,6 +45,26 @@ from platform_core.auth_service import (
     AccountInactive,
 )
 
+# ---------------------------------------------------------------------------
+# System sentinel for audit rows where no real tenant can be resolved.
+#
+# Used ONLY for failed-login audit rows when the supplied username does not
+# exist in the DB (User.DoesNotExist or ambiguous multi-tenant collision).
+# In those cases there is no user object to extract a real tenant_id from.
+#
+# We use 1 rather than 0 because clinical.activity_logs.tenant_id has a
+# FOREIGN KEY REFERENCES platform.tenants(id), and the schema seeds tenant 1
+# as the "پیش‌فرض" (default) tenant (slice0.sql).  Using 0 would violate the
+# FK unless a system tenant row is inserted — a schema change deferred to a
+# future step.  The constant name makes the intent explicit and distinguishable
+# from any accidental hardcoded literal '1' elsewhere.
+#
+# When real tenant routing (subdomain / host-based) is implemented in a future
+# step, these audit rows should carry the resolved tenant or be stored in a
+# dedicated "platform audit" table without the FK constraint.
+# ---------------------------------------------------------------------------
+SYSTEM_TENANT_ID: int = 1
+
 api = NinjaAPI(title="Halqe Platform API", version="0.1.0")
 
 _jwt_auth = JWTBearer()
@@ -160,7 +180,7 @@ def auth_login(request, body: LoginRequest):
         from platform_core.auth_service import decode_jwt
         claims = decode_jwt(token)
         log_activity(
-            tenant_id=claims.get("tenant_id", 1),
+            tenant_id=claims.get("tenant_id", SYSTEM_TENANT_ID),
             user_id=claims.get("user_id"),
             username=body.username,
             action_type="login",
@@ -169,8 +189,12 @@ def auth_login(request, body: LoginRequest):
         )
         return 200, {"token": token}
     except AccountLocked as exc:
+        # exc.tenant_id is set when the user WAS found (wrong password triggers
+        # lockout after 5 attempts — user object was resolved before the lock).
+        # Falls back to SYSTEM_TENANT_ID only if tenant is truly unknown.
+        audit_tenant = exc.tenant_id if exc.tenant_id is not None else SYSTEM_TENANT_ID
         log_activity(
-            tenant_id=1,
+            tenant_id=audit_tenant,
             user_id=None,
             username=body.username,
             action_type="login_failed",
@@ -179,8 +203,11 @@ def auth_login(request, body: LoginRequest):
         )
         return 423, {"detail": str(exc)}
     except (InvalidCredentials, AccountInactive) as exc:
+        # exc.tenant_id is set when the user WAS found (wrong password case).
+        # It is None when the username does not exist or is ambiguous (multi-tenant).
+        audit_tenant = exc.tenant_id if exc.tenant_id is not None else SYSTEM_TENANT_ID
         log_activity(
-            tenant_id=1,
+            tenant_id=audit_tenant,
             user_id=None,
             username=body.username,
             action_type="login_failed",

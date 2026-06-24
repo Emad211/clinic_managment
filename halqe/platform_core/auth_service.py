@@ -28,7 +28,18 @@ _JWT_EXPIRY_HOURS = 8
 
 
 class AuthError(Exception):
-    """Base auth error — subclasses carry HTTP status hints."""
+    """
+    Base auth error — subclasses carry HTTP status hints.
+
+    tenant_id attribute (optional, set by callers):
+      When the user WAS found in the DB but auth failed (wrong password,
+      locked, inactive), the caller attaches the resolved user's tenant_id
+      so the audit row records the REAL tenant rather than a sentinel.
+      When the user was NOT found (DoesNotExist / ambiguous username),
+      tenant_id is None — the audit layer must use SYSTEM_TENANT_ID instead.
+    """
+    http_status = 500
+    tenant_id: Optional[int] = None    # set after construction when user is known
 
 
 class InvalidCredentials(AuthError):
@@ -47,30 +58,50 @@ def login(username: str, password: str) -> str:
     """
     Verify credentials and return a signed JWT on success.
 
+    Tenant resolution: looks up the user by username ONLY (no tenant filter).
+    Real tenant routing (subdomain / host header) is a future step — platform.tenants
+    currently has NO subdomain column, so we cannot derive tenant from the host.
+    For single-tenant deployments this is correct. For multi-tenant, the correct
+    tenant will be derived automatically from the resolved user's tenant_id.
+
+    MultipleObjectsReturned (username exists in two tenants): treated as auth
+    failure with InvalidCredentials — ambiguous login is not allowed without a
+    tenant discriminator.  This is the safe, conservative choice until host-based
+    routing is implemented.
+
     Raises:
-        InvalidCredentials — user not found or wrong password
+        InvalidCredentials — user not found, wrong password, or ambiguous (multi-tenant collision)
         AccountLocked      — locked_until is in the future
         AccountInactive    — is_active = False
     """
     try:
-        user = User.objects.get(username=username, tenant_id=1)
+        user = User.objects.get(username=username)
     except User.DoesNotExist:
+        raise InvalidCredentials("نام کاربری یا رمز اشتباه است")
+    except User.MultipleObjectsReturned:
+        # Username exists in multiple tenants.  Without a tenant discriminator
+        # (subdomain / host-header routing — deferred to a future step) we
+        # cannot safely choose one.  Treat as auth failure: ambiguous identity.
         raise InvalidCredentials("نام کاربری یا رمز اشتباه است")
 
     if not user.is_active:
-        raise AccountInactive("حساب غیرفعال است")
+        exc = AccountInactive("حساب غیرفعال است")
+        exc.tenant_id = user.tenant_id  # user was found → real tenant known
+        raise exc
 
     now = timezone.now()
     if user.locked_until and user.locked_until > now:
-        raise AccountLocked(
-            f"حساب تا {user.locked_until.isoformat()} قفل است"
-        )
+        exc = AccountLocked(f"حساب تا {user.locked_until.isoformat()} قفل است")
+        exc.tenant_id = user.tenant_id  # user was found → real tenant known
+        raise exc
 
     # Verify bcrypt — password_hash is memoryview/bytes from BinaryField
     pw_hash: bytes = bytes(user.password_hash)
     if not bcrypt.checkpw(password.encode(), pw_hash):
         _record_bad_attempt(user, now)
-        raise InvalidCredentials("نام کاربری یا رمز اشتباه است")
+        exc = InvalidCredentials("نام کاربری یا رمز اشتباه است")
+        exc.tenant_id = user.tenant_id  # user was found → real tenant known
+        raise exc
 
     # Success — reset counter, record last_login
     User.objects.filter(pk=user.pk).update(
