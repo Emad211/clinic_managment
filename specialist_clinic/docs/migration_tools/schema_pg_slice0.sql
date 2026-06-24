@@ -131,6 +131,10 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA clinical TO clinica
 GRANT SELECT ON ALL TABLES IN SCHEMA accounting TO clinical_app;   -- فقط خواندن — هرگز نوشتن
 GRANT SELECT ON ALL TABLES IN SCHEMA platform   TO clinical_app;
 ALTER DEFAULT PRIVILEGES IN SCHEMA accounting GRANT SELECT ON TABLES TO clinical_app;
+-- جداولِ آیندهٔ clinical (که در برش‌های بعدی توسطِ همین نقش ساخته می‌شوند) خودکار به
+-- clinical_app گرنت شوند — مکملِ footerِ GRANTِ هر برش (که جداولِ موجود را می‌پوشاند).
+ALTER DEFAULT PRIVILEGES IN SCHEMA clinical GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO clinical_app;
+ALTER DEFAULT PRIVILEGES IN SCHEMA clinical GRANT USAGE, SELECT ON SEQUENCES TO clinical_app;
 
 -- حسابداری: نوشتن روی accounting؛ هیچ دسترسی به clinical (وابستگیِ یک‌طرفه).
 GRANT USAGE ON SCHEMA accounting, platform TO accounting_app;

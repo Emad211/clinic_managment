@@ -854,6 +854,16 @@ INSERT INTO clinical.engagement_events
 ON CONFLICT (tenant_id, event_key) DO NOTHING;
 
 -- ============================================================================
+-- GRANTهای مرز برای جداولِ این برش (ADR-0007 §۲.۳)
+--   ⚠️ ضروری: «GRANT … ON ALL TABLES IN SCHEMA clinical» در برشِ ۰ پیش از ساختِ این
+--   جداول اجرا می‌شود، پس آن‌ها را پوشش نمی‌دهد. هر برش باید گرنتِ جداولِ خودش را تکرار
+--   کند — وگرنه رولِ clinical_app نمی‌تواند در جداولِ خودش بنویسد (با اجرای واقعی روی
+--   Postgres اثبات شد: پیش از این اصلاح، ۱ از ۳۵ جدول گرنت داشت). idempotent است.
+-- ============================================================================
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA clinical TO clinical_app;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA clinical TO clinical_app;
+
+-- ============================================================================
 -- معیارِ «انجام‌شدهٔ» برشِ ۲ (برای تستِ نگهبان):
 --   ۱) این فایل روی Postgresِ خالی که برشِ ۰ روی آن اجرا شده، بدونِ خطا اجرا شود
 --      (idempotent: اجرای دوم هم سبز — CREATE … IF NOT EXISTS + ON CONFLICT DO NOTHING).
