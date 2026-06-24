@@ -324,6 +324,10 @@ END$$;
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA clinical TO clinical_app;
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA clinical TO clinical_app;
 
+-- Finding 3b: بلنکتِ GRANT بالا UPDATE/DELETE را روی clinical.activity_logs دوباره اعطا می‌کند.
+--   همین‌جا دوباره REVOKE می‌کنیم تا append-only بودنِ جدول حفظ شود (idempotent).
+REVOKE UPDATE, DELETE ON clinical.activity_logs FROM clinical_app;
+
 -- ============================================================================
 -- FKهایِ حذف‌شده (soft — گزارشِ اجباریِ selectivity):
 --

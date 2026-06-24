@@ -455,10 +455,11 @@ def test_processed_invoices_deferred_fk_fires_at_commit(admin_conn):
     conn = psycopg.connect(PG_DSN)
     try:
         conn.execute("BEGIN")
+        # Batch 3: national_id حذف شد → patient_uuid به‌جایش (nullable — می‌تواند NULL باشد)
         conn.execute(
             """INSERT INTO clinical.processed_invoices
-                   (tenant_id, accounting_invoice_id, national_id, full_name)
-               VALUES (1, 999999, 'FAKE', 'تستِ مرز')"""
+                   (tenant_id, accounting_invoice_id, full_name)
+               VALUES (1, 999999, 'تستِ مرز')"""
         )
         # در این لحظه (قبلِ commit) FK هنوز بررسی نشده (DEFERRED)
         with pytest.raises(pgerr.ForeignKeyViolation):
@@ -596,3 +597,183 @@ def test_batch2b_logical_fks_exist(admin_conn):
     }
     missing = expected - found
     assert not missing, f"این FKهای بَچ ۲b پیدا نشدند: {missing}"
+
+
+# ===========================================================================
+# Batch 3 — Security hardening (SECU-05/06/07/08/ADR-0007)
+# ===========================================================================
+
+# ---------------------------------------------------------------------------
+# گاردِ الف — clinical_app نمی‌تواند accounting.payroll_settings را SELECT کند (least-privilege)
+# ---------------------------------------------------------------------------
+def test_clinical_app_cannot_read_payroll_settings(admin_conn):
+    """Batch 3 SECU-06: clinical_app نباید به accounting.payroll_settings دسترسی داشته باشد."""
+    can_select = admin_conn.execute(
+        "SELECT has_table_privilege('clinical_app', 'accounting.payroll_settings', 'SELECT')"
+    ).fetchone()[0]
+    assert can_select is False, (
+        "clinical_app نباید بتواند accounting.payroll_settings را SELECT کند "
+        "(least-privilege: فقط جداولِ بیمار/درآمدی مجاز است)"
+    )
+
+
+def test_clinical_app_cannot_read_accounting_settings(admin_conn):
+    """Batch 3 SECU-06: clinical_app نباید به accounting.settings (کلیدِ API) دسترسی داشته باشد."""
+    can_select = admin_conn.execute(
+        "SELECT has_table_privilege('clinical_app', 'accounting.settings', 'SELECT')"
+    ).fetchone()[0]
+    assert can_select is False, (
+        "clinical_app نباید بتواند accounting.settings را SELECT کند "
+        "(ممکن است کلیدِ API/رمزِ حساس داشته باشد)"
+    )
+
+
+def test_clinical_app_cannot_read_medical_staff(admin_conn):
+    """Batch 3 SECU-06: clinical_app نباید به accounting.medical_staff دسترسی داشته باشد."""
+    can_select = admin_conn.execute(
+        "SELECT has_table_privilege('clinical_app', 'accounting.medical_staff', 'SELECT')"
+    ).fetchone()[0]
+    assert can_select is False, (
+        "clinical_app نباید بتواند accounting.medical_staff را SELECT کند"
+    )
+
+
+def test_clinical_app_can_read_patient_revenue_tables(admin_conn):
+    """Batch 3 SECU-06: clinical_app باید بتواند جداولِ بیمار/درآمدی را SELECT کند."""
+    allowed_tables = [
+        "accounting.patients",
+        "accounting.invoices",
+        "accounting.visits",
+        "accounting.injections",
+        "accounting.procedures",
+        "accounting.consumables_ledger",
+    ]
+    missing_access = []
+    for tbl in allowed_tables:
+        ok = admin_conn.execute(
+            "SELECT has_table_privilege('clinical_app', %s, 'SELECT')", (tbl,)
+        ).fetchone()[0]
+        if not ok:
+            missing_access.append(tbl)
+    assert not missing_access, (
+        f"clinical_app باید این جداول را بخواند ولی دسترسی ندارد: {missing_access}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# گاردِ ب — platform.users دارای api_token_hash + api_token_prefix است و api_token ندارد
+# ---------------------------------------------------------------------------
+def test_users_has_hashed_token_columns(admin_conn):
+    """Batch 3 SECU-05: platform.users باید api_token_hash (BYTEA) و api_token_prefix (TEXT) داشته باشد."""
+    cols = {
+        row[0]: row[1]
+        for row in admin_conn.execute(
+            """SELECT column_name, data_type
+                 FROM information_schema.columns
+                WHERE table_schema = 'platform' AND table_name = 'users'
+                  AND column_name IN ('api_token_hash', 'api_token_prefix', 'api_token')"""
+        ).fetchall()
+    }
+    assert "api_token_hash" in cols, (
+        "platform.users باید ستونِ api_token_hash داشته باشد (Batch 3 SECU-05)"
+    )
+    assert cols["api_token_hash"] == "bytea", (
+        f"api_token_hash باید BYTEA باشد؛ یافته: {cols.get('api_token_hash')}"
+    )
+    assert "api_token_prefix" in cols, (
+        "platform.users باید ستونِ api_token_prefix داشته باشد (Batch 3 SECU-05)"
+    )
+    assert cols["api_token_prefix"] == "text", (
+        f"api_token_prefix باید TEXT باشد؛ یافته: {cols.get('api_token_prefix')}"
+    )
+    assert "api_token" not in cols, (
+        "platform.users نباید ستونِ api_token (plaintext) داشته باشد — Batch 3 آن را حذف کرد"
+    )
+
+
+# ---------------------------------------------------------------------------
+# گاردِ ج — clinical.activity_logs جدول وجود دارد
+# ---------------------------------------------------------------------------
+def test_clinical_activity_logs_table_exists(admin_conn):
+    """Batch 3 SECU-08: جدولِ clinical.activity_logs باید وجود داشته باشد (PHI audit trail)."""
+    row = admin_conn.execute(
+        """SELECT 1 FROM information_schema.tables
+            WHERE table_schema = 'clinical' AND table_name = 'activity_logs'"""
+    ).fetchone()
+    assert row is not None, (
+        "clinical.activity_logs پیدا نشد — Batch 3 این جدول را در slice2 اضافه می‌کند"
+    )
+
+
+def test_clinical_activity_logs_has_required_columns(admin_conn):
+    """clinical.activity_logs باید ستون‌های کلیدی را داشته باشد."""
+    cols = {
+        row[0]
+        for row in admin_conn.execute(
+            """SELECT column_name FROM information_schema.columns
+                WHERE table_schema = 'clinical' AND table_name = 'activity_logs'"""
+        ).fetchall()
+    }
+    required = {"id", "tenant_id", "user_id", "username", "action_type",
+                "target_table", "target_id", "patient_link_id", "created_at"}
+    missing = required - cols
+    assert not missing, (
+        f"clinical.activity_logs ستون‌های زیر را ندارد: {missing}"
+    )
+
+
+def test_clinical_app_has_insert_on_activity_logs(admin_conn):
+    """clinical.activity_logs باید برای clinical_app گرنتِ INSERT داشته باشد."""
+    ok = admin_conn.execute(
+        "SELECT has_table_privilege('clinical_app', 'clinical.activity_logs', 'INSERT')"
+    ).fetchone()[0]
+    assert ok is True, (
+        "clinical_app باید بتواند به clinical.activity_logs درج کند (PHI audit trail)"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Finding 3b — clinical.activity_logs باید append-only باشد:
+#   clinical_login_test (عضوِ clinical_app) می‌تواند SELECT و INSERT کند
+#   ولی UPDATE یا DELETE نمی‌تواند (audit trail tamper-resistant).
+# ---------------------------------------------------------------------------
+def test_clinical_login_can_select_activity_logs(clinical_tx):
+    """clinical_login_test باید بتواند clinical.activity_logs را SELECT کند."""
+    clinical_tx.execute("SELECT id, action_type FROM clinical.activity_logs LIMIT 1").fetchall()
+
+
+def test_clinical_login_can_insert_activity_logs(clinical_tx, admin_conn):
+    """clinical_login_test باید بتواند ردیف به clinical.activity_logs اضافه کند (append-only)."""
+    pid = _test_patient_id(admin_conn)
+    # ابتدا patient_link می‌سازیم (با superuser) تا FK برقرار باشد
+    admin_conn.execute(
+        "INSERT INTO clinical.patient_links (tenant_id, patient_id) VALUES (1, %s)"
+        " ON CONFLICT (tenant_id, patient_id) DO NOTHING",
+        (pid,),
+    )
+    link_row = admin_conn.execute(
+        "SELECT id FROM clinical.patient_links WHERE tenant_id=1 AND patient_id=%s", (pid,)
+    ).fetchone()
+    assert link_row, "patient_link تستِ activity_logs ساخته نشد"
+    link_id = link_row[0]
+    # حالا clinical_tx می‌تواند لاگِ بالینی درج کند
+    clinical_tx.execute(
+        """INSERT INTO clinical.activity_logs
+               (tenant_id, action_type, target_table, patient_link_id)
+           VALUES (1, 'test_insert', 'activity_logs', %s)""",
+        (link_id,),
+    )
+
+
+def test_clinical_login_cannot_update_activity_logs(clinical_tx):
+    """clinical_login_test نباید بتواند clinical.activity_logs را UPDATE کند (append-only)."""
+    with pytest.raises(pgerr.InsufficientPrivilege):
+        clinical_tx.execute(
+            "UPDATE clinical.activity_logs SET action_type='tampered' WHERE id=1"
+        )
+
+
+def test_clinical_login_cannot_delete_activity_logs(clinical_tx):
+    """clinical_login_test نباید بتواند ردیفی از clinical.activity_logs حذف کند (append-only)."""
+    with pytest.raises(pgerr.InsufficientPrivilege):
+        clinical_tx.execute("DELETE FROM clinical.activity_logs WHERE id=1")
