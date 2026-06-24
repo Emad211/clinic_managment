@@ -154,7 +154,12 @@
 
 ## خوشهٔ E — تعامل/SMS + صفِ تأیید (روی C)
 
-- [ ] **۱۶. مدل‌های engagement** (`engagement_events`/`engagement_dispatch` با UNIQUEهای موجود). — *backend-engineer*
+- [x] **۱۶. مدل‌های engagement** (`engagement_events`/`engagement_dispatch` با UNIQUEهای موجود). — *backend-engineer*
+  **تحویل:** مدل‌های `EngagementEvent` + `EngagementDispatch` (managed=False) + management
+  command `seed_engagement_events` (۱۴ رویدادِ پیش‌فرض، وفادار از `schema.sql`، idempotent
+  ON CONFLICT) + `tests/test_engagement_models.py` (۸ تست شاملِ ردِ CHECK + UNIQUEِ
+  idempotencyِ dispatch). ۲۴۴ سبز (۲۳۶+۸). یافته: FKِ مرکبِ پنهانِ slice2b
+  `engagement_dispatch(tenant,event_key)→engagement_events`. ✅
 - [ ] **۱۷. صفِ تأییدِ پزشک** (`engagement_approvals`) — SMS فقط پس از تأیید. — *integrations-engineer*
 - [ ] **۱۸. provider abstraction + scheduler** (پورتِ `engagement_service`؛ KYCِ کاوه‌نگار
   بلاک → NullProvider در عمل). — *integrations-engineer*

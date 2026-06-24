@@ -896,6 +896,142 @@ class DoctorVisitLog(models.Model):
         )
 
 
+class EngagementEvent(models.Model):
+    """
+    clinical.engagement_events — manager-editable event→channel routing table.
+
+    Each row describes one type of patient outreach event: what channel to use
+    (sms|worklist|both|off), the SMS template, cooldown, and source_action that
+    feeds it.  The engagement dispatcher reads this table at dispatch time.
+
+    Schema (schema_pg_slice2_clinical.sql §engagement_events):
+      id, tenant_id, event_key TEXT NOT NULL, label TEXT NOT NULL,
+      category TEXT DEFAULT 'clinical' CHECK IN ('operational','clinical','marketing'),
+      channel TEXT DEFAULT 'worklist' CHECK IN ('sms','worklist','both','off'),
+      sms_template TEXT, lead_days INTEGER DEFAULT 0,
+      cooldown_days INTEGER DEFAULT 30, source_action TEXT,
+      priority INTEGER DEFAULT 100,
+      event_type TEXT (additive migration),
+      is_custom BOOLEAN DEFAULT FALSE (additive migration),
+      is_active BOOLEAN DEFAULT TRUE, notes TEXT.
+      UNIQUE(tenant_id, event_key).
+
+    FK conventions (managed=False — real FKs live in SQL):
+      - tenant_id: FK → platform.tenants (expressed as BigIntegerField).
+    CHECK constraints (category, channel) are enforced by the DB; Django
+    choices are listed here for documentation, not DB-level enforcement.
+    """
+
+    CATEGORY_OPERATIONAL = "operational"
+    CATEGORY_CLINICAL = "clinical"
+    CATEGORY_MARKETING = "marketing"
+
+    CATEGORY_CHOICES = [
+        (CATEGORY_OPERATIONAL, "Operational"),
+        (CATEGORY_CLINICAL, "Clinical"),
+        (CATEGORY_MARKETING, "Marketing"),
+    ]
+
+    CHANNEL_SMS = "sms"
+    CHANNEL_WORKLIST = "worklist"
+    CHANNEL_BOTH = "both"
+    CHANNEL_OFF = "off"
+
+    CHANNEL_CHOICES = [
+        (CHANNEL_SMS, "SMS"),
+        (CHANNEL_WORKLIST, "Worklist"),
+        (CHANNEL_BOTH, "Both"),
+        (CHANNEL_OFF, "Off"),
+    ]
+
+    tenant_id = models.BigIntegerField(default=1)
+    event_key = models.TextField()
+    label = models.TextField()
+    # CHECK(category IN ('operational','clinical','marketing')) enforced by DB
+    category = models.TextField(default="clinical", choices=CATEGORY_CHOICES)
+    # CHECK(channel IN ('sms','worklist','both','off')) enforced by DB
+    channel = models.TextField(default="worklist", choices=CHANNEL_CHOICES)
+    sms_template = models.TextField(null=True, blank=True)
+    lead_days = models.IntegerField(default=0)
+    cooldown_days = models.IntegerField(default=30)
+    source_action = models.TextField(null=True, blank=True)
+    priority = models.IntegerField(default=100)
+    # additive migration columns (core.py _ensure_column)
+    event_type = models.TextField(null=True, blank=True)
+    is_custom = models.BooleanField(default=False)
+    is_active = models.BooleanField(default=True)
+    notes = models.TextField(null=True, blank=True)
+
+    class Meta:
+        managed = False
+        app_label = "clinical"
+        db_table = '"clinical"."engagement_events"'
+        ordering = ["priority", "id"]
+        # DB-enforced: UNIQUE(tenant_id, event_key)
+
+    def __str__(self):
+        return (
+            f"EngagementEvent(event_key={self.event_key!r}, "
+            f"channel={self.channel}, tenant_id={self.tenant_id})"
+        )
+
+
+class EngagementDispatch(models.Model):
+    """
+    clinical.engagement_dispatch — idempotency/cooldown ledger.
+
+    One row per (tenant, patient, event, period_key, channel) — the 5-column
+    UNIQUE constraint is the hard idempotency guarantee that Step 18's dispatch
+    logic relies on.  A second attempt for the same bucket raises IntegrityError
+    which the dispatcher treats as "already sent".
+
+    period_key is a TEXT bucket key (e.g. 'hba1c-2026-Q2', 'visit-2026-07-15')
+    — not a DATE. ref_id is the sms_messages.id or followup_tasks.id that was
+    created for this dispatch.
+
+    Schema (schema_pg_slice2_clinical.sql §engagement_dispatch):
+      id, tenant_id, patient_link_id (composite FK → patient_links),
+      event_key TEXT NOT NULL, period_key TEXT NOT NULL,
+      channel TEXT NOT NULL (sms|worklist),
+      ref_id BIGINT (sms_messages.id or followup_tasks.id),
+      status TEXT DEFAULT 'done', created_at TIMESTAMPTZ DEFAULT now().
+      UNIQUE(tenant_id, patient_link_id, event_key, period_key, channel).
+
+    FK conventions (managed=False — real FKs live in SQL):
+      - patient_link_id: composite FK (tenant_id, patient_link_id) → patient_links.
+      - event_key: composite FK (tenant_id, event_key) → engagement_events
+        (slice2b fk_engagement_dispatch_event_key — ON DELETE RESTRICT).
+        A dispatch row CANNOT be inserted unless the matching engagement_events
+        row already exists for that tenant.
+      - ref_id: logical reference; no ORM FK.
+    """
+
+    tenant_id = models.BigIntegerField(default=1)
+    # composite FK (tenant_id, patient_link_id) → clinical.patient_links — DB enforces
+    patient_link_id = models.BigIntegerField()
+    event_key = models.TextField()
+    period_key = models.TextField()                     # dedupe bucket — TEXT, not DATE
+    channel = models.TextField()                        # sms|worklist — CHECK in DB
+    # logical ref: sms_messages.id or followup_tasks.id (nullable)
+    ref_id = models.BigIntegerField(null=True, blank=True)
+    status = models.TextField(default="done")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        managed = False
+        app_label = "clinical"
+        db_table = '"clinical"."engagement_dispatch"'
+        ordering = ["-created_at"]
+        # DB-enforced: UNIQUE(tenant_id, patient_link_id, event_key, period_key, channel)
+
+    def __str__(self):
+        return (
+            f"EngagementDispatch(patient_link_id={self.patient_link_id}, "
+            f"event_key={self.event_key!r}, period_key={self.period_key!r}, "
+            f"channel={self.channel}, status={self.status})"
+        )
+
+
 class ActivityLog(models.Model):
     """
     clinical.activity_logs — append-only audit trail.
