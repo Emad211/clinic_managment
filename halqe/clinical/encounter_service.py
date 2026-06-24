@@ -60,7 +60,7 @@ from typing import Optional
 from django.db import IntegrityError
 from django.utils import timezone
 
-from clinical.models import Encounter, VitalReading, LabResult
+from clinical.models import Encounter, VitalReading, LabResult, Prescription, PrescriptionItem
 from clinical.audit import log_activity
 
 logger = logging.getLogger(__name__)
@@ -107,6 +107,28 @@ class DuplicateVitalReading(EncounterServiceError):
     Raised when add_vital_to_encounter would violate the UNIQUE natural key
     (tenant_id, patient_link_id, type, measured_at, source) from Step 4.
     Callers should surface this as HTTP 409 Conflict.
+    """
+
+
+class InsurancePrescriptionNotSupported(EncounterServiceError):
+    """
+    Raised when a caller attempts to create a prescription with mode='insurance'.
+
+    The insurance/MV3 bridge track is BLOCKED until the owner provides live access
+    and the final structure of the insurance portal prescription page.
+    Only mode='free' prescriptions are supported in this step.
+    Callers should surface this as HTTP 422 Unprocessable Entity.
+    """
+
+
+class PrescriptionItemValidationError(EncounterServiceError):
+    """
+    Raised when a prescription item fails service-layer validation BEFORE the DB.
+
+    Covers: invalid frequency, invalid route, quantity <= 0, duration_days <= 0.
+    The DB CHECK constraints are a backstop; this exception lets the caller
+    surface a clear domain error before hitting the DB.
+    Callers should surface this as HTTP 422.
     """
 
 
@@ -251,8 +273,9 @@ def add_vital_to_encounter(
             measured_at=measured_at,
             source=source,
             recorded_by=recorded_by,
-            # encounter_id not in the base VitalReading schema (slice4b adds it
-            # to lab_results, not vital_readings) — no encounter_id field here.
+            # slice4b adds encounter_id to vital_readings too — link the reading
+            # to the encounter it was taken in (aggregate-root invariant).
+            encounter_id=enc.id,
         )
     except IntegrityError as exc:
         # The UNIQUE constraint from Step 4 fired.
@@ -438,3 +461,169 @@ def cancel_encounter(
     )
 
     return enc
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Prescription constants (validated here; DB CHECK is the backstop)
+# ─────────────────────────────────────────────────────────────────────────────
+
+_ALLOWED_FREQUENCIES = PrescriptionItem.ALLOWED_FREQUENCIES
+_ALLOWED_ROUTES = PrescriptionItem.ALLOWED_ROUTES
+
+
+def _validate_item(item: dict, index: int) -> None:
+    """
+    Validate one prescription item dict before writing to DB.
+
+    Raises PrescriptionItemValidationError with a clear message on first error.
+    Validated fields: frequency, route, quantity > 0, duration_days > 0.
+    drug_name is required (not None/empty).
+    """
+    drug_name = item.get("drug_name", "")
+    if not drug_name or not str(drug_name).strip():
+        raise PrescriptionItemValidationError(
+            f"Item [{index}]: drug_name is required and must not be empty."
+        )
+
+    frequency = item.get("frequency")
+    if frequency is not None and frequency not in _ALLOWED_FREQUENCIES:
+        raise PrescriptionItemValidationError(
+            f"Item [{index}] drug_name={drug_name!r}: "
+            f"frequency {frequency!r} is not valid. "
+            f"Allowed: {sorted(_ALLOWED_FREQUENCIES)}."
+        )
+
+    route = item.get("route")
+    if route is not None and route not in _ALLOWED_ROUTES:
+        raise PrescriptionItemValidationError(
+            f"Item [{index}] drug_name={drug_name!r}: "
+            f"route {route!r} is not valid. "
+            f"Allowed: {sorted(_ALLOWED_ROUTES)}."
+        )
+
+    quantity = item.get("quantity")
+    if quantity is not None and quantity <= 0:
+        raise PrescriptionItemValidationError(
+            f"Item [{index}] drug_name={drug_name!r}: "
+            f"quantity must be > 0, got {quantity}."
+        )
+
+    duration_days = item.get("duration_days")
+    if duration_days is not None and duration_days <= 0:
+        raise PrescriptionItemValidationError(
+            f"Item [{index}] drug_name={drug_name!r}: "
+            f"duration_days must be > 0, got {duration_days}."
+        )
+
+
+def add_prescription_to_encounter(
+    encounter_id: int,
+    tenant_id: int,
+    *,
+    kind: str,
+    items: list[dict],
+    mode: str = "free",
+    prescriber_user_id: Optional[int] = None,
+    created_by: Optional[str] = None,
+) -> Prescription:
+    """
+    Add a free-mode Prescription (with its PrescriptionItems) to an open Encounter.
+
+    Atomicity
+    ─────────
+    Prescription header + all PrescriptionItem rows are created inside a single
+    Django transaction (atomic block).  If any item creation fails (e.g. a DB
+    CHECK violation on an item that passed service-layer validation), the whole
+    prescription is rolled back — no orphaned header row is left behind.
+    This is intentionally different from the independent-item approach used for
+    vitals/labs batches (see ROADMAP note §item 10), because a prescription
+    without its items is semantically meaningless.
+
+    Insurance-blocked guard
+    ───────────────────────
+    The MV3 browser-extension insurance bridge track is BLOCKED (gated on owner
+    providing live access + page structure — see CLAUDE.md).  Passing
+    mode='insurance' raises InsurancePrescriptionNotSupported so callers cannot
+    accidentally initiate an insurance flow.
+
+    Validation (service-layer, before DB)
+    ─────────────────────────────────────
+    Each item's frequency and route are validated against the allowed sets.
+    quantity and duration_days must be > 0 if provided.
+    drug_name must be non-empty.
+    These checks mirror the DB CHECKs; the DB CHECKs are the backstop.
+
+    Guards
+    ──────
+    - Encounter must exist for (encounter_id, tenant_id) → EncounterNotFound.
+    - Encounter must be 'open' → EncounterSealed.
+    - mode must not be 'insurance' → InsurancePrescriptionNotSupported.
+
+    Returns the created Prescription instance (items are accessible via
+    PrescriptionItem.objects.filter(prescription_id=rx.id, tenant_id=tenant_id)).
+    """
+    # ── Insurance-blocked guard (before any DB access) ────────────────────────
+    if mode == Prescription.MODE_INSURANCE:
+        raise InsurancePrescriptionNotSupported(
+            "Insurance prescriptions (mode='insurance') are not supported. "
+            "The insurance/MV3 bridge track is blocked pending owner KYC "
+            "and portal access. Only mode='free' prescriptions can be written."
+        )
+
+    # ── Validate all items upfront (service layer) ────────────────────────────
+    for idx, item in enumerate(items):
+        _validate_item(item, idx)
+
+    # ── Resolve encounter (also validates tenant scope) ───────────────────────
+    enc = _get_encounter(encounter_id, tenant_id)
+    _require_open(enc)
+
+    now = timezone.now()
+
+    # ── Atomic: create Prescription header + all PrescriptionItem rows ────────
+    from django.db import transaction
+
+    with transaction.atomic():
+        rx = Prescription.objects.create(
+            tenant_id=tenant_id,
+            patient_link_id=enc.patient_link_id,
+            kind=kind,
+            items=None,                         # structured rows in prescription_items
+            mode=mode,                          # always 'free' here; guard above blocks 'insurance'
+            prescriber_user_id=prescriber_user_id,
+            encounter_id=enc.id,
+            issued_at=now,
+        )
+
+        for item in items:
+            PrescriptionItem.objects.create(
+                tenant_id=tenant_id,
+                prescription_id=rx.id,
+                drug_name=item["drug_name"],
+                drug_class=item.get("drug_class"),
+                dose_value=item.get("dose_value"),
+                dose_unit=item.get("dose_unit"),
+                frequency=item.get("frequency"),
+                route=item.get("route"),
+                quantity=item.get("quantity"),
+                duration_days=item.get("duration_days"),
+                instructions=item.get("instructions"),
+            )
+
+    # ── Audit ────────────────────────────────────────────────────────────────
+    log_activity(
+        tenant_id=tenant_id,
+        user_id=prescriber_user_id,
+        username=created_by,
+        action_type="prescription_created",
+        action_category="encounter",
+        description=(
+            f"Prescription id={rx.id} (kind={kind!r}, mode={mode}, "
+            f"{len(items)} item(s)) added under encounter {encounter_id}"
+        ),
+        target_table="clinical.prescriptions",
+        target_id=rx.id,
+        patient_link_id=enc.patient_link_id,
+    )
+
+    return rx

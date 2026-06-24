@@ -973,11 +973,14 @@ from clinical.encounter_service import (
     add_lab_to_encounter as _add_lab_to_encounter,
     complete_encounter as _complete_encounter,
     cancel_encounter as _cancel_encounter,
+    add_prescription_to_encounter as _add_prescription_to_encounter,
     EncounterNotFound as _EncounterNotFound,
     InvalidEncounterTransition as _InvalidEncounterTransition,
     EncounterSealed as _EncounterSealed,
     InvalidEncounterType as _InvalidEncounterType,
     DuplicateVitalReading as _DuplicateVitalReading,
+    InsurancePrescriptionNotSupported as _InsurancePrescriptionNotSupported,
+    PrescriptionItemValidationError as _PrescriptionItemValidationError,
 )
 
 
@@ -1448,3 +1451,187 @@ def cancel_encounter_endpoint(
         return 409, error_response(str(exc), "invalid_transition")
 
     return 200, _encounter_to_out(enc)
+
+
+# ===========================================================================
+# Prescription write-path (Step 11) — mode='free' only
+# Insurance/MV3 bridge is BLOCKED — do NOT add mode='insurance' support here.
+# ===========================================================================
+
+from decimal import Decimal as _Decimal
+from clinical.models import Prescription as _Prescription, PrescriptionItem as _PrescriptionItem
+
+
+# ---------------------------------------------------------------------------
+# Prescription schemas
+# ---------------------------------------------------------------------------
+
+class PrescriptionItemIn(Schema):
+    """
+    One prescription item.
+
+    drug_name is required; all other fields are optional.
+    frequency must be one of: od, bid, tid, qid, qod, weekly, monthly, prn,
+      with_meal, bedtime, other (or omitted).
+    route must be one of: oral, sublingual, sc, im, iv, topical, inhaled, other
+      (or omitted).
+    quantity and duration_days must be > 0 if provided.
+    """
+    drug_name: str
+    drug_class: Optional[str] = None
+    dose_value: Optional[float] = None         # NUMERIC(10,3) — float in API, Decimal in DB
+    dose_unit: Optional[str] = None
+    frequency: Optional[str] = None            # validated by service against allowed set
+    route: Optional[str] = None                # validated by service against allowed set
+    quantity: Optional[int] = None             # > 0
+    duration_days: Optional[int] = None        # > 0
+    instructions: Optional[str] = None
+
+
+class CreatePrescriptionIn(Schema):
+    """Body for POST /encounters/{encounter_id}/prescriptions."""
+    kind: str
+    items: list[PrescriptionItemIn]
+    mode: str = "free"                         # default free; 'insurance' is rejected
+
+
+class PrescriptionItemOut(Schema):
+    """One created prescription item."""
+    id: int
+    tenant_id: int
+    prescription_id: int
+    drug_name: str
+    drug_class: Optional[str] = None
+    dose_value: Optional[float] = None
+    dose_unit: Optional[str] = None
+    frequency: Optional[str] = None
+    route: Optional[str] = None
+    quantity: Optional[int] = None
+    duration_days: Optional[int] = None
+    instructions: Optional[str] = None
+
+
+class PrescriptionOut(Schema):
+    """Created prescription header + items."""
+    id: int
+    tenant_id: int
+    patient_link_id: int
+    encounter_id: Optional[int] = None
+    kind: str
+    mode: str
+    prescriber_user_id: Optional[int] = None
+    followup_task_id: Optional[int] = None
+    issued_at: datetime
+    items_structured: list[PrescriptionItemOut]
+
+
+# ---------------------------------------------------------------------------
+# Helper — build PrescriptionOut from ORM objects
+# ---------------------------------------------------------------------------
+
+def _prescription_to_out(
+    rx: "_Prescription",
+    item_rows: "list[_PrescriptionItem]",
+) -> PrescriptionOut:
+    return PrescriptionOut(
+        id=rx.id,
+        tenant_id=rx.tenant_id,
+        patient_link_id=rx.patient_link_id,
+        encounter_id=rx.encounter_id,
+        kind=rx.kind,
+        mode=rx.mode,
+        prescriber_user_id=rx.prescriber_user_id,
+        followup_task_id=rx.followup_task_id,
+        issued_at=rx.issued_at,
+        items_structured=[
+            PrescriptionItemOut(
+                id=item.id,
+                tenant_id=item.tenant_id,
+                prescription_id=item.prescription_id,
+                drug_name=item.drug_name,
+                drug_class=item.drug_class,
+                dose_value=float(item.dose_value) if item.dose_value is not None else None,
+                dose_unit=item.dose_unit,
+                frequency=item.frequency,
+                route=item.route,
+                quantity=item.quantity,
+                duration_days=item.duration_days,
+                instructions=item.instructions,
+            )
+            for item in item_rows
+        ],
+    )
+
+
+# ---------------------------------------------------------------------------
+# POST /encounters/{encounter_id}/prescriptions — create free prescription
+# ---------------------------------------------------------------------------
+
+@api.post(
+    "/encounters/{encounter_id}/prescriptions",
+    response={
+        201: PrescriptionOut,
+        400: ErrorSchema,
+        404: ErrorSchema,
+        409: ErrorSchema,
+        422: ErrorSchema,
+    },
+    auth=_jwt_auth,
+    tags=["encounters"],
+)
+def create_prescription(
+    request,
+    encounter_id: int,
+    body: CreatePrescriptionIn,
+):
+    """
+    Add a free-mode prescription (header + structured items) to an open encounter.
+
+    Only mode='free' is supported. Passing mode='insurance' returns 422
+    (insurance_prescription_not_supported) — the insurance/MV3 bridge track
+    is blocked pending owner live access.
+
+    The prescription header and all items are created in a single transaction:
+    either all items are saved or none (no orphaned header on item failure).
+
+    Returns 201 with the created prescription + items on success.
+    Returns 404 if the encounter does not exist for this tenant.
+    Returns 409 (encounter_sealed) if the encounter is not open.
+    Returns 422 for mode='insurance' or item validation errors (bad frequency,
+    bad route, quantity/duration_days <= 0, empty drug_name).
+    """
+    tenant_id = request.tenant_id
+    actor = getattr(request.auth, "username", None) or "unknown"
+    user_id = getattr(request.auth, "pk", None)
+
+    # Convert Pydantic schema list to plain dicts for the service layer
+    items_dicts = [item.dict() for item in body.items]
+
+    try:
+        rx = _add_prescription_to_encounter(
+            encounter_id,
+            tenant_id,
+            kind=body.kind,
+            items=items_dicts,
+            mode=body.mode,
+            prescriber_user_id=user_id,
+            created_by=actor,
+        )
+    except _EncounterNotFound as exc:
+        return 404, error_response(str(exc), "not_found")
+    except _EncounterSealed as exc:
+        return 409, error_response(str(exc), "encounter_sealed")
+    except _InsurancePrescriptionNotSupported as exc:
+        return 422, error_response(str(exc), "insurance_prescription_not_supported")
+    except _PrescriptionItemValidationError as exc:
+        return 422, error_response(str(exc), "validation_error")
+
+    # Fetch created items (single query, ordered by id)
+    item_rows = list(
+        _PrescriptionItem.objects.filter(
+            prescription_id=rx.id,
+            tenant_id=tenant_id,
+        ).order_by("id")
+    )
+
+    return 201, _prescription_to_out(rx, item_rows)

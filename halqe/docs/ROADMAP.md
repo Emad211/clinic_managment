@@ -107,8 +107,15 @@
   لیستِ «ویزیت‌های اخیر» با تاریخِ جلالی + `encounters.test.tsx`. وب ۱۰۵ سبز (۶۶+۳۹)، tsc پاک. ✅
 
 > **🏁 نیمهٔ گم‌شدهٔ care-loop (نوشتنِ encounter) کامل شد** — از ثبتِ ویزیت تا اندازه‌گیری تا بستن.
-- [ ] **۱۱. مدل + مسیرِ نوشتنِ `Prescription`/`PrescriptionItem`** (نسخهٔ آزادِ غیربیمه‌ای؛
+- [x] **۱۱. مدل + مسیرِ نوشتنِ `Prescription`/`PrescriptionItem`** (نسخهٔ آزادِ غیربیمه‌ای؛
   پلِ بیمه بعداً و **بلاک‌شده**). — *backend-engineer*
+  **تحویل:** دو مدلِ managed=False + `add_prescription_to_encounter` (اتمیک header+items،
+  گاردِ `mode='insurance'`→`InsurancePrescriptionNotSupported`، validateِ frequency/route/qty)
+  + `POST /encounters/{id}/prescriptions` + `tests/test_prescription.py` (۱۵ تست).
+  **+ رفعِ باگِ واقعی:** `add_vital_to_encounter` اشتباهاً `encounter_id` را روی vitals ست
+  نمی‌کرد (کامنتِ غلط: «slice4b فقط به lab اضافه می‌کند»)، در‌حالی‌که slice4b به vital_readings
+  هم اضافه کرده — vitalها به encounterشان لینک نمی‌شدند (نقضِ aggregate-root). فیلدِ مدل +
+  ست‌کردنِ encounter_id + assertion افزوده شد. ۱۷۸ تست سبز (۱۶۳+۱۵). ✅
 - [ ] **۱۲. تولیدِ خودکارِ `followup_tasks` از موتور** (پورتِ `followup_engine.due_clinical_events`)
   — اتصالِ تشخیص→قیف. — *backend-engineer*
 

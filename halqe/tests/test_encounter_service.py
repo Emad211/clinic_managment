@@ -127,10 +127,13 @@ def test_add_vital_to_encounter(seed_clinical_data):
     assert reading.type == "bp_systolic"
     assert abs(reading.value - 130.0) < 0.01
     assert reading.unit == "mmHg"
+    # The reading MUST be linked to its encounter (slice4b aggregate-root link).
+    assert reading.encounter_id == enc.id, "vital must be linked to its encounter"
 
     # Read back
     r_db = VitalReading.objects.get(id=reading.id)
     assert r_db.patient_link_id == link_id
+    assert r_db.encounter_id == enc.id
 
 
 # ─────────────────────────────────────────────────────────────────────────────
