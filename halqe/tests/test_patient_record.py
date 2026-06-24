@@ -155,10 +155,22 @@ def test_get_patient_record_returns_conditions_and_meds_and_vitals(seed_clinical
     assert len(vitals) >= 1
     assert len(vitals) <= 10
     if len(vitals) > 1:
-        # Confirm descending order
+        # Confirm descending order — parse ISO strings to datetime so that
+        # microsecond precision differences don't break string comparison
+        # (e.g. '18:16:55.230Z' vs '18:16:55Z' are ordered wrong alphabetically).
+        from datetime import datetime, timezone as _tz
+
+        def _parse_ts(s: str) -> datetime:
+            # Handle both 'Z' suffix and '+00:00' offset; strip trailing Z and add offset.
+            s = s.replace("Z", "+00:00")
+            return datetime.fromisoformat(s)
+
         for i in range(len(vitals) - 1):
-            assert vitals[i]["measured_at"] >= vitals[i + 1]["measured_at"], (
-                "Vitals must be returned newest-first"
+            ts_a = _parse_ts(vitals[i]["measured_at"])
+            ts_b = _parse_ts(vitals[i + 1]["measured_at"])
+            assert ts_a >= ts_b, (
+                f"Vitals must be returned newest-first: "
+                f"{vitals[i]['measured_at']} < {vitals[i + 1]['measured_at']}"
             )
 
 

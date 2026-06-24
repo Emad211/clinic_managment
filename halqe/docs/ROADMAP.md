@@ -92,7 +92,12 @@
   ستون‌های ALTERِ slice4b: `appointments.doctor_id/chief_complaint`, `lab_results.encounter_id`)
   + `tests/test_encounter_models.py` (۱۶ تست: round-trip + ردِ CHECKِ نوع/وضعیت + ردِ FK + زنجیرهٔ سه‌مدلی).
   ۱۲۷ تست سبز (۱۱۱+۱۶). یافته: `updated_at` با trigger DB مدیریت می‌شود (نه auto_now). ✅
-- [ ] **۹. سرویسِ encounter** (state-machine؛ encounter = aggregate root). — *backend-engineer*
+- [x] **۹. سرویسِ encounter** (state-machine؛ encounter = aggregate root). — *backend-engineer*
+  **تحویل:** `clinical/encounter_service.py` (create/complete/cancel + add_vital/add_lab؛
+  گذارهای open→completed/cancelled، sealed-immutable، tenant-isolation با پیامِ یکسانِ
+  not-found، duplicate-vital→DuplicateVitalReading، audit روی هر نوشتن) + سلسله‌خطاهای دامنه
+  (نگاشتِ HTTP آمادهٔ قدم ۱۰) + `tests/test_encounter_service.py` (۲۰ تست) + رفعِ flakyِ
+  مقایسهٔ timestamp در `test_patient_record.py`. ۱۴۷ تست سبز (۱۲۷+۲۰). ✅
 - [ ] **۱۰. POST encounter + نوشتنِ vital/lab زیرِ encounter** (مرزِ accounting دست‌نخورده؛
   `accounting_invoice_id` فقط snapshotِ شناسه، نه نوشتنِ مالی) + UIِ ثبتِ ویزیت. — *backend + frontend*
 - [ ] **۱۱. مدل + مسیرِ نوشتنِ `Prescription`/`PrescriptionItem`** (نسخهٔ آزادِ غیربیمه‌ای؛
