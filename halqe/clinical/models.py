@@ -10,6 +10,9 @@ VitalReading: the vitals half of the canonical Observation (ADR-0005).
 Condition: disease-module catalog (clinical.conditions).
 PatientCondition: per-patient diagnosis (clinical.patient_conditions).
 PatientMedication: per-patient medication list (clinical.patient_medications).
+ClinicalRule: clinical_rules catalog — trigger_json DSL rows (JSONB in PG).
+ClinicalIndicator: clinical_indicators — live threshold/target metadata.
+PatientFlag: patient_flags — per-patient categorical/bool decision inputs.
 """
 from django.db import models
 
@@ -175,4 +178,115 @@ class PatientMedication(models.Model):
         return (
             f"PatientMedication(drug_name={self.drug_name}, "
             f"patient_link_id={self.patient_link_id}, is_active={self.is_active})"
+        )
+
+
+class ClinicalRule(models.Model):
+    """
+    clinical.clinical_rules — the If/Then rule catalog.
+
+    trigger_json and action_params_json are JSONB in Postgres; Django returns
+    them as Python dicts automatically via the JSONField bridge. We use
+    JSONField here so Django handles serialisation correctly.
+
+    Slice2 columns: rule_code, title, category, condition_code, trigger_json,
+    human_if, recommendation, dosage_titration, monitoring, contraindications,
+    evidence_level, action_type, action_params_json, severity, priority,
+    source_ref, is_active, notes.
+    """
+
+    tenant_id = models.BigIntegerField(default=1)
+    rule_code = models.TextField()
+    title = models.TextField()
+    category = models.TextField()
+    condition_code = models.TextField(default="all")
+    # JSONB — Django JSONField maps to JSONB in Postgres via psycopg
+    trigger_json = models.JSONField(null=True, blank=True)
+    human_if = models.TextField(null=True, blank=True)
+    recommendation = models.TextField(null=True, blank=True)
+    dosage_titration = models.TextField(null=True, blank=True)
+    monitoring = models.TextField(null=True, blank=True)
+    contraindications = models.TextField(null=True, blank=True)
+    evidence_level = models.TextField(null=True, blank=True)
+    action_type = models.TextField(default="educate")
+    action_params_json = models.JSONField(null=True, blank=True)
+    severity = models.TextField(default="info")
+    priority = models.IntegerField(default=100)
+    source_ref = models.TextField(null=True, blank=True)
+    is_active = models.BooleanField(default=True)
+    notes = models.TextField(null=True, blank=True)
+
+    class Meta:
+        managed = False
+        app_label = "clinical"
+        db_table = '"clinical"."clinical_rules"'
+        ordering = ["priority", "id"]
+
+    def __str__(self):
+        return f"ClinicalRule({self.rule_code}, {self.title})"
+
+
+class ClinicalIndicator(models.Model):
+    """
+    clinical.clinical_indicators — indicator metadata (thresholds/targets).
+    Live source of truth for warn/danger thresholds used by the rule engine.
+
+    Slice2 columns: key, label, unit, category, direction, warn, danger,
+    target, goal_low, goal_high, conditions, risk_weight, is_vital,
+    display_order, is_active, notes.
+    """
+
+    tenant_id = models.BigIntegerField(default=1)
+    key = models.TextField()                         # vital_readings.type key
+    label = models.TextField()
+    unit = models.TextField(null=True, blank=True)
+    category = models.TextField(default="other")    # glycemic|bp|lipid|kidney|anthro|other
+    direction = models.TextField(default="high")    # high=worse when higher; low=worse when lower
+    warn = models.FloatField(null=True, blank=True)
+    danger = models.FloatField(null=True, blank=True)
+    target = models.FloatField(null=True, blank=True)
+    goal_low = models.FloatField(null=True, blank=True)
+    goal_high = models.FloatField(null=True, blank=True)
+    conditions = models.TextField(default="all")   # comma-separated condition codes
+    risk_weight = models.IntegerField(default=1)
+    is_vital = models.BooleanField(default=True)
+    display_order = models.IntegerField(default=100)
+    is_active = models.BooleanField(default=True)
+    notes = models.TextField(null=True, blank=True)
+
+    class Meta:
+        managed = False
+        app_label = "clinical"
+        db_table = '"clinical"."clinical_indicators"'
+        ordering = ["display_order"]
+
+    def __str__(self):
+        return f"ClinicalIndicator({self.key}, warn={self.warn}, danger={self.danger})"
+
+
+class PatientFlag(models.Model):
+    """
+    clinical.patient_flags — per-patient categorical/boolean decision inputs.
+
+    Slice2 columns: patient_link_id, flag_key, value, recorded_by, updated_at.
+    Matches the fact bundle 'flag' dict in rule_engine.py.
+    """
+
+    tenant_id = models.BigIntegerField(default=1)
+    patient_link_id = models.BigIntegerField()
+    flag_key = models.TextField()
+    value = models.TextField(null=True, blank=True)
+    recorded_by = models.TextField(null=True, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        managed = False
+        app_label = "clinical"
+        db_table = '"clinical"."patient_flags"'
+        ordering = ["flag_key"]
+
+    def __str__(self):
+        return (
+            f"PatientFlag(patient_link_id={self.patient_link_id}, "
+            f"flag_key={self.flag_key}, value={self.value})"
         )

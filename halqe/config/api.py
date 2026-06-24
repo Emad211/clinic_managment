@@ -27,6 +27,7 @@ from clinical.models import (
     PatientCondition,
     PatientMedication,
 )
+import clinical.rule_engine as _rule_engine
 from platform_core.auth_bearer import JWTBearer
 from platform_core.auth_service import (
     login,
@@ -389,3 +390,128 @@ def get_latest_vitals(request, patient_uuid: uuid_module.UUID):
     )
 
     return list(latest_per_type)
+
+
+# ---------------------------------------------------------------------------
+# Suggestion engine schemas
+# ---------------------------------------------------------------------------
+
+class SuggestionRuleDTO(Schema):
+    """One fired clinical rule — suggestion-only framing."""
+    rule_code: str
+    title: str
+    category: str
+    condition_code: str
+    recommendation: Optional[str] = None
+    dosage_titration: Optional[str] = None
+    monitoring: Optional[str] = None
+    contraindications: Optional[str] = None
+    evidence_level: Optional[str] = None
+    action_type: str
+    severity: str      # info | warn | urgent
+    priority: int
+    source_ref: Optional[str] = None
+    section: str       # UI bucket: redflags | safety | risk | treatment | assessment | monitoring | vaccination | lifestyle
+    # Safety marker — always True. Carries the "تأیید با پزشک" obligation.
+    suggestion_only: bool
+
+
+class SuggestionSectionDTO(Schema):
+    key: str
+    label: str
+    rules: list[SuggestionRuleDTO]
+
+
+class SuggestionsResponseDTO(Schema):
+    patient_link_id: int
+    count: int
+    has_redflag: bool
+    # suggestion-only framing label — displayed in the UI
+    framing: str
+    sections: list[SuggestionSectionDTO]
+
+
+# ---------------------------------------------------------------------------
+# Suggestions endpoint — GET /patients/{uuid}/suggestions
+# ---------------------------------------------------------------------------
+
+@api.get(
+    "/patients/{patient_uuid}/suggestions",
+    response=SuggestionsResponseDTO,
+    auth=_jwt_auth,
+    tags=["clinical"],
+)
+def get_suggestions(request, patient_uuid: uuid_module.UUID):
+    """
+    Return grouped clinical suggestions for one enrolled patient.
+
+    Output is SUGGESTION-ONLY: every rule carries suggestion_only=True and
+    the response carries a framing label ("پیشنهاد — تأیید با پزشک").
+
+    Only fired rules are returned (trigger_json evaluated against the patient's
+    current facts). Rules with NULL trigger_json (reference-only catalog rows)
+    are excluded.
+
+    Requires JWT. Tenant-scoped: 404 if patient has no enrollment for this tenant.
+    """
+    tenant_id = request.tenant_id
+
+    # 1. Resolve uuid → accounting patient
+    demo = get_patient_by_uuid(patient_uuid)
+    if demo is None:
+        raise Http404(f"Patient with uuid={patient_uuid} not found.")
+
+    # 2. Find clinical enrollment for THIS tenant
+    try:
+        link = PatientLink.objects.get(
+            tenant_id=tenant_id,
+            patient_id=demo.id,
+        )
+    except PatientLink.DoesNotExist:
+        raise Http404(
+            f"Patient uuid={patient_uuid} has no enrollment for this tenant."
+        )
+
+    # 3. Run the suggestion engine (read-only)
+    result = _rule_engine.grouped(
+        patient_link_id=link.id,
+        demographics=demo,
+        tenant_id=tenant_id,
+    )
+
+    # 4. Serialise
+    sections = [
+        SuggestionSectionDTO(
+            key=sec["key"],
+            label=sec["label"],
+            rules=[
+                SuggestionRuleDTO(
+                    rule_code=r["rule_code"],
+                    title=r["title"],
+                    category=r["category"],
+                    condition_code=r["condition_code"],
+                    recommendation=r.get("recommendation"),
+                    dosage_titration=r.get("dosage_titration"),
+                    monitoring=r.get("monitoring"),
+                    contraindications=r.get("contraindications"),
+                    evidence_level=r.get("evidence_level"),
+                    action_type=r["action_type"],
+                    severity=r["severity"],
+                    priority=r["priority"],
+                    source_ref=r.get("source_ref"),
+                    section=r["section"],
+                    suggestion_only=r["suggestion_only"],
+                )
+                for r in sec["rules"]
+            ],
+        )
+        for sec in result["sections"]
+    ]
+
+    return SuggestionsResponseDTO(
+        patient_link_id=link.id,
+        count=result["count"],
+        has_redflag=result["has_redflag"],
+        framing="پیشنهاد — تأیید با پزشک",
+        sections=sections,
+    )
