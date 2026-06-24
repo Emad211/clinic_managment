@@ -189,9 +189,13 @@ def test_faithful_login_cannot_insert_accounting(clinical_tx):
 
 def test_faithful_login_can_write_clinical(clinical_tx, admin_conn):
     pid = _test_patient_id(admin_conn)
-    # نوشتن روی جدولِ بالینی مجاز است (سپس rollback می‌شود)
+    # نوشتن روی جدولِ بالینی مجاز است (سپس rollback می‌شود).
+    # ON CONFLICT DO NOTHING: در صورتِ تکرار از تست‌های قبلیِ session، بازهم موفق است.
+    # هدف اثباتِ «مجاز بودنِ INSERT» است، نه یکتایی.
     clinical_tx.execute(
-        "INSERT INTO clinical.patient_links (tenant_id, patient_id) VALUES (1, %s)", (pid,)
+        "INSERT INTO clinical.patient_links (tenant_id, patient_id) VALUES (1, %s)"
+        " ON CONFLICT (tenant_id, patient_id) DO NOTHING",
+        (pid,),
     )
 
 
@@ -777,3 +781,144 @@ def test_clinical_login_cannot_delete_activity_logs(clinical_tx):
     """clinical_login_test نباید بتواند ردیفی از clinical.activity_logs حذف کند (append-only)."""
     with pytest.raises(pgerr.InsufficientPrivilege):
         clinical_tx.execute("DELETE FROM clinical.activity_logs WHERE id=1")
+
+
+# ===========================================================================
+# Batch 4a — domain polish (updated_at trigger · allergies CHECK · performer FK)
+# ===========================================================================
+
+# ---------------------------------------------------------------------------
+# (a) updated_at trigger — UPDATE روی یکی از جداول باید updated_at را جلو ببرد
+#     جدولِ تست: clinical.patient_conditions (ساده‌ترین schema برای fixture)
+#     جریان: INSERT با tenant_id=1 و patient_link_id معتبر → sleep مصنوعی با
+#     pg_sleep → UPDATE یک ستون → assert updated_at > مقدارِ اولیه
+# ---------------------------------------------------------------------------
+def test_updated_at_trigger_advances_on_update(admin_conn):
+    """Batch 4a: UPDATE روی clinical.patient_conditions باید updated_at را جلو ببرد.
+    از یک اتصالِ مستقل با autocommit=True استفاده می‌کنیم تا INSERT در transaction
+    جداگانه commit شود و سپس UPDATE در transaction جدید now() بزرگ‌تری داشته باشد.
+    rollback در پایان توسطِ fixture مادر (admin_conn autocommit=True نیست).
+    """
+    import psycopg as _pg
+    import time
+
+    pid = _test_patient_id(admin_conn)
+    admin_conn.execute(
+        "INSERT INTO clinical.patient_links (tenant_id, patient_id) VALUES (1, %s)"
+        " ON CONFLICT (tenant_id, patient_id) DO NOTHING",
+        (pid,),
+    )
+    link_id = admin_conn.execute(
+        "SELECT id FROM clinical.patient_links WHERE tenant_id=1 AND patient_id=%s", (pid,)
+    ).fetchone()[0]
+
+    # INSERT در یک اتصال با autocommit=True — committed فوری
+    conn = _pg.connect(PG_DSN, autocommit=True)
+    try:
+        row = conn.execute(
+            """INSERT INTO clinical.patient_conditions
+                   (tenant_id, patient_link_id, condition_id, stage,
+                    updated_at)
+               VALUES (1, %s, 1, 'trigger_test_initial',
+                       now() - interval '2 seconds')
+               RETURNING id, updated_at""",
+            (link_id,),
+        ).fetchone()
+        pc_id, updated_at_before = row[0], row[1]
+
+        # UPDATE در همان اتصال (autocommit) — trigger SET updated_at = now()
+        updated_at_after = conn.execute(
+            """UPDATE clinical.patient_conditions
+                  SET stage = 'trigger_test_revised'
+                WHERE id = %s
+            RETURNING updated_at""",
+            (pc_id,),
+        ).fetchone()[0]
+    finally:
+        # cleanup — حذفِ ردیفِ committed
+        conn.execute(
+            "DELETE FROM clinical.patient_conditions WHERE id = %s", (pc_id,)
+        )
+        conn.close()
+
+    assert updated_at_after > updated_at_before, (
+        f"updated_at trigger کار نمی‌کند: "
+        f"before={updated_at_before!r}  after={updated_at_after!r}"
+    )
+
+
+def test_updated_at_trigger_exists_on_invoices(admin_conn):
+    """Batch 4a: trigger trg_invoices_updated_at باید روی accounting.invoices وجود داشته باشد."""
+    row = admin_conn.execute(
+        """SELECT tgname FROM pg_trigger t
+             JOIN pg_class c ON c.oid = t.tgrelid
+             JOIN pg_namespace n ON n.oid = c.relnamespace
+            WHERE n.nspname = 'accounting'
+              AND c.relname = 'invoices'
+              AND t.tgname = 'trg_invoices_updated_at'"""
+    ).fetchone()
+    assert row is not None, (
+        "trigger 'trg_invoices_updated_at' روی accounting.invoices پیدا نشد (Batch 4a)"
+    )
+
+
+# ---------------------------------------------------------------------------
+# (b) allergies.severity CHECK — مقدارِ نامعتبر باید CheckViolation بدهد
+# ---------------------------------------------------------------------------
+def test_allergies_severity_check_rejects_invalid(admin_tx, admin_conn):
+    """Batch 4a: clinical.allergies.severity CHECK مقدارِ نامعتبر ('fatal') را رد می‌کند."""
+    pid = _test_patient_id(admin_conn)
+    link_id = admin_conn.execute(
+        "SELECT id FROM clinical.patient_links WHERE tenant_id=1 AND patient_id=%s", (pid,)
+    ).fetchone()[0]
+
+    with pytest.raises(pgerr.CheckViolation):
+        admin_tx.execute(
+            """INSERT INTO clinical.allergies
+                   (tenant_id, patient_link_id, substance, severity)
+               VALUES (1, %s, 'peanut', 'fatal')""",
+            (link_id,),
+        )
+
+
+def test_allergies_severity_check_accepts_valid(admin_tx, admin_conn):
+    """Batch 4a: clinical.allergies.severity مقادیرِ معتبر و NULL را قبول می‌کند."""
+    pid = _test_patient_id(admin_conn)
+    link_id = admin_conn.execute(
+        "SELECT id FROM clinical.patient_links WHERE tenant_id=1 AND patient_id=%s", (pid,)
+    ).fetchone()[0]
+
+    for sev in ('mild', 'moderate', 'severe', 'anaphylaxis', None):
+        admin_tx.execute(
+            """INSERT INTO clinical.allergies
+                   (tenant_id, patient_link_id, substance, severity)
+               VALUES (1, %s, %s, %s)""",
+            (link_id, f'sub_{sev}', sev),
+        )
+
+
+# ---------------------------------------------------------------------------
+# (c) procedures.performer_id FK — مقدارِ نامعتبر باید ForeignKeyViolation بدهد
+# ---------------------------------------------------------------------------
+def test_procedures_performer_fk_rejects_invalid(admin_tx, admin_conn):
+    """Batch 4a: accounting.procedures.performer_id FK مقدارِ نامعتبر (999999) را رد می‌کند."""
+    pid = _test_patient_id(admin_conn)
+    with pytest.raises(pgerr.ForeignKeyViolation):
+        admin_tx.execute(
+            """INSERT INTO accounting.procedures
+                   (tenant_id, patient_id, procedure_type, performer_type, performer_id)
+               VALUES (1, %s, 'dressing', 'nurse', 999999)""",
+            (pid,),
+        )
+
+
+def test_procedures_performer_fk_exists_in_catalog(admin_conn):
+    """Batch 4a: constraint fk_procedures_performer باید در pg_constraint موجود باشد."""
+    row = admin_conn.execute(
+        """SELECT conname FROM pg_constraint
+            WHERE conrelid = 'accounting.procedures'::regclass
+              AND conname = 'fk_procedures_performer'"""
+    ).fetchone()
+    assert row is not None, (
+        "constraint 'fk_procedures_performer' روی accounting.procedures پیدا نشد (Batch 4a)"
+    )

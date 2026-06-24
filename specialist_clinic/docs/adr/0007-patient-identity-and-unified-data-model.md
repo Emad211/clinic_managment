@@ -117,6 +117,39 @@ clinical.patient_links (
 | `*_json TEXT` (`trigger_json`, `items`) | `JSONB` | کوئری‌پذیر |
 | FK implicit | FK صریح + `ON DELETE RESTRICT` | هیچ cascade روی مالی |
 
+## ضمیمه C — گرافِ وابستگیِ schema (DAG واقعیِ سه‌سطحی)
+
+وابستگیِ FKِ واقعی (نه مفهومی) سه‌سطحی است، نه دو‌سطحی:
+
+```
+platform
+  ^          ^
+  |          |
+accounting  clinical
+  ^
+  |
+clinical
+```
+
+به‌صورتِ صریح:
+
+| فرزند | والد | نمونه FK واقعی |
+|---|---|---|
+| `accounting` → `platform` | accounting.patients.tenant_id → platform.tenants(id) | slice0 |
+| `accounting` → `platform` | accounting.activity_logs.user_id → platform.users(tenant_id, id) | slice3 |
+| `clinical` → `platform` | clinical.patient_links.tenant_id → platform.tenants(id) | slice0 |
+| `clinical` → `platform` | clinical.activity_logs.user_id → platform.users(tenant_id, id) | slice2 |
+| `clinical` → `platform` | clinical.prescriptions.prescriber_user_id → platform.users(tenant_id, id) | slice2b |
+| `clinical` → `accounting` | clinical.patient_links(tenant_id, patient_id) → accounting.patients(tenant_id, id) | slice0 |
+| `clinical` → `accounting` | clinical.processed_invoices(tenant_id, accounting_invoice_id) → accounting.invoices(tenant_id, id) | slice4 |
+| `clinical` → `accounting` | clinical.campaign_audience(tenant_id, accounting_patient_id) → accounting.patients(tenant_id, id) | slice4 |
+
+**قاعدهٔ یک‌طرفه (اجباری):**
+- هیچ FKی از `accounting` به `clinical` وجود ندارد و نباید وجود داشته باشد.
+- هیچ FKی از `platform` به `accounting` یا `clinical` وجود ندارد.
+- `platform` برگِ ریشه است (والدِ هر دو schema)؛ `clinical` و `accounting` هر دو به آن FK می‌زنند.
+- این DAG تستِ نگهبانِ `test_no_reverse_fk_from_accounting_to_clinical` در `tests/test_pg_schema.py` آن را اثبات می‌کند.
+
 ## ضمیمه B — سه تعریفِ درآمد (literal حفظ شوند)
 ۱) **raw** `visits.price+injections.total_price+procedures.price` (closed) — `accounting_bridge.py:253-276`. ۲) **total_amount** `Σ patient_share` — `invoices_repo.py:283-286`. ۳) **collected** `Σ(is_paid=1)` — `accounting_bridge.py:347-361`. ستون‌های پولیِ ذخیره‌شده **بیت‌به‌بیت** مهاجرت می‌شوند؛ `update_invoice_totals` در ETL **صدا زده نمی‌شود**.
 
