@@ -47,8 +47,8 @@ CREATE TABLE IF NOT EXISTS platform.users (
     tenant_id             BIGINT NOT NULL DEFAULT 1 REFERENCES platform.tenants(id),
     username              TEXT NOT NULL,
     password_hash         BYTEA NOT NULL,                 -- bcrypt (BLOB→BYTEA)
-    role                  TEXT NOT NULL DEFAULT 'staff',  -- admin|manager|reception|doctor|staff
-    app                   TEXT NOT NULL DEFAULT 'platform', -- 'accounting'|'clinical'|'platform' (منشأ/حوزه)
+    role                  TEXT NOT NULL DEFAULT 'staff' CHECK (role IN ('admin','manager','reception','doctor','staff')),  -- admin|manager|reception|doctor|staff
+    app                   TEXT NOT NULL DEFAULT 'platform' CHECK (app IN ('accounting','clinical','platform')), -- 'accounting'|'clinical'|'platform' (منشأ/حوزه)
     full_name             TEXT,
     staff_id              BIGINT,                         -- accounting: لینک به medical_staff (cross-context؛ بعداً FK)
     api_token             TEXT,                           -- پلِ نسخه‌نویسی (clinical)

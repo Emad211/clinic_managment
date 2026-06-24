@@ -140,7 +140,7 @@ CREATE TABLE IF NOT EXISTS clinical.flag_catalog (
     tenant_id      BIGINT NOT NULL DEFAULT 1 REFERENCES platform.tenants(id),
     flag_key       TEXT NOT NULL,
     label          TEXT NOT NULL,
-    flag_type      TEXT NOT NULL DEFAULT 'bool',        -- bool|enum|date|text
+    flag_type      TEXT NOT NULL DEFAULT 'bool' CHECK (flag_type IN ('bool','enum','date','text')),        -- bool|enum|date|text
     options        TEXT,                                -- "value|label,…" (قالبِ خاصِ کد، نه JSON)
     category       TEXT NOT NULL DEFAULT 'other',       -- cardiac|renal|risk|hepatic|repro|lifestyle|…
     record_section TEXT,                                -- (migration core.py) بخشِ پرونده
@@ -216,8 +216,8 @@ CREATE TABLE IF NOT EXISTS clinical.engagement_events (
     tenant_id      BIGINT NOT NULL DEFAULT 1 REFERENCES platform.tenants(id),
     event_key      TEXT NOT NULL,
     label          TEXT NOT NULL,
-    category       TEXT NOT NULL DEFAULT 'clinical',     -- operational|clinical|marketing
-    channel        TEXT NOT NULL DEFAULT 'worklist',     -- sms|worklist|both|off
+    category       TEXT NOT NULL DEFAULT 'clinical' CHECK (category IN ('operational','clinical','marketing')),     -- operational|clinical|marketing
+    channel        TEXT NOT NULL DEFAULT 'worklist' CHECK (channel IN ('sms','worklist','both','off')),     -- sms|worklist|both|off
     sms_template   TEXT,                                 -- placeholder {name}
     lead_days      INTEGER NOT NULL DEFAULT 0,           -- چند روز قبل از سررسید fire شود
     cooldown_days  INTEGER NOT NULL DEFAULT 30,          -- حداقل فاصلهٔ تکرار per patient
@@ -395,7 +395,7 @@ CREATE TABLE IF NOT EXISTS clinical.appointments (
     patient_link_id        BIGINT NOT NULL REFERENCES clinical.patient_links(id),
     scheduled_at           TIMESTAMPTZ NOT NULL,            -- زمانِ نوبت (تاریخ+ساعت) → لحظه‌ای
     appt_type              TEXT,                            -- visit|lab|checkup
-    status                 TEXT NOT NULL DEFAULT 'scheduled', -- scheduled|done|no_show|cancelled
+    status                 TEXT NOT NULL DEFAULT 'scheduled' CHECK (status IN ('scheduled','done','no_show','cancelled')), -- scheduled|done|no_show|cancelled
     recurrence_months      INTEGER,                         -- نوبت‌های دوره‌ایِ خودکار
     parent_appointment_id  BIGINT,                          -- FK منطقی به همین جدول (nullable)
     reminder_sent          BOOLEAN DEFAULT FALSE,           -- بولی
@@ -417,13 +417,13 @@ CREATE TABLE IF NOT EXISTS clinical.followup_tasks (
     due_date         DATE,                                -- تقویمی YYYY-MM-DD
     reason           TEXT,                                -- refill|uncontrolled|lapsed|visit_due|manual
     detail           TEXT,
-    status           TEXT NOT NULL DEFAULT 'open',         -- open|done|dismissed
+    status           TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open','done','dismissed')),         -- open|done|dismissed
     assigned_to      TEXT,
     call_log         TEXT,
     source_rule      TEXT,                                -- (migration core.py) قاعدهٔ مولد (dedupe)
     source_event     TEXT,                                -- (migration core.py) رویدادِ مولدِ تعامل
     appointment_id   BIGINT,                              -- (migration core.py) نوبتِ مرتبط
-    fulfillment      TEXT DEFAULT 'in_person',            -- (migration core.py) in_person|remote
+    fulfillment      TEXT DEFAULT 'in_person' CHECK (fulfillment IN ('in_person','remote')),            -- (migration core.py) in_person|remote
     created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
     resolved_at      TIMESTAMPTZ                           -- لحظه‌ای (nullable، بدونِ DEFAULT)
 );
@@ -440,7 +440,7 @@ CREATE TABLE IF NOT EXISTS clinical.suggestion_log (
     rule_code        TEXT NOT NULL,
     suggestion_text  TEXT,
     evidence_level   TEXT,
-    status           TEXT NOT NULL DEFAULT 'pending',      -- pending|accepted|dismissed
+    status           TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','accepted','dismissed')),      -- pending|accepted|dismissed
     acted_by         TEXT,
     acted_at         TIMESTAMPTZ,
     note             TEXT,
@@ -547,15 +547,15 @@ CREATE TABLE IF NOT EXISTS clinical.sms_campaigns (
     template_id          BIGINT REFERENCES clinical.sms_templates(id),
     body                 TEXT,
     segment              TEXT,                            -- all|diabetes|hypertension|uncontrolled|lapsed|refill_due
-    campaign_type        TEXT NOT NULL DEFAULT 'info',     -- info|wallet_credit|reminder
+    campaign_type        TEXT NOT NULL DEFAULT 'info' CHECK (campaign_type IN ('info','wallet_credit','reminder')),     -- info|wallet_credit|reminder
     credit_amount        NUMERIC(14,0) DEFAULT 0,          -- اعتبارِ کیف‌پولِ هر گیرنده (تومان)
     credit_expires_days  INTEGER,                          -- انقضای اختیاریِ اعتبار
-    holdout_percent      INTEGER NOT NULL DEFAULT 0,        -- % گروهِ کنترلِ تصادفی (incrementality)
-    status               TEXT NOT NULL DEFAULT 'draft',     -- draft|scheduled|sending|done|cancelled
+    holdout_percent      INTEGER NOT NULL DEFAULT 0 CHECK (holdout_percent BETWEEN 0 AND 100),        -- % گروهِ کنترلِ تصادفی (incrementality)
+    status               TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','scheduled','sending','done','cancelled')),     -- draft|scheduled|sending|done|cancelled
     scheduled_at         TIMESTAMPTZ,
-    total_recipients     INTEGER DEFAULT 0,
-    sent_count           INTEGER DEFAULT 0,
-    failed_count         INTEGER DEFAULT 0,
+    total_recipients     INTEGER DEFAULT 0 CHECK (total_recipients >= 0),
+    sent_count           INTEGER DEFAULT 0 CHECK (sent_count >= 0),
+    failed_count         INTEGER DEFAULT 0 CHECK (failed_count >= 0),
     created_by           TEXT,
     created_at           TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -570,7 +570,7 @@ CREATE TABLE IF NOT EXISTS clinical.sms_messages (
     patient_link_id  BIGINT REFERENCES clinical.patient_links(id),  -- nullable (ارسالِ بدونِ enrollment)
     recipient        TEXT NOT NULL,
     body             TEXT NOT NULL,
-    status           TEXT NOT NULL DEFAULT 'pending',      -- pending|sent|failed
+    status           TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','sent','failed')),      -- pending|sent|failed
     provider_msgid   TEXT,
     delivery_status  TEXT,
     error            TEXT,
@@ -590,7 +590,7 @@ CREATE TABLE IF NOT EXISTS clinical.campaign_audience (
     campaign_id            BIGINT NOT NULL REFERENCES clinical.sms_campaigns(id),
     patient_link_id        BIGINT NOT NULL REFERENCES clinical.patient_links(id),
     accounting_patient_id  BIGINT,                         -- snapshotِ لینک (denormalized؛ FK پس از برشِ accounting)
-    grp                    TEXT NOT NULL DEFAULT 'treated', -- treated (sent) | control (held out)
+    grp                    TEXT NOT NULL DEFAULT 'treated' CHECK (grp IN ('treated','control')), -- treated (sent) | control (held out)
     assigned_at            TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_campaign_audience ON clinical.campaign_audience (campaign_id, grp);
@@ -661,7 +661,7 @@ CREATE TABLE IF NOT EXISTS clinical.processed_invoices (
     work_date              DATE,                          -- تاریخِ کارِ تقویمی → DATE
     closed_at              TIMESTAMPTZ,                   -- لحظهٔ بسته‌شدن → TIMESTAMPTZ
     total_amount           NUMERIC(14,0),                 -- پول → تومانِ صحیح
-    status                 TEXT NOT NULL DEFAULT 'applied', -- applied | pending_link
+    status                 TEXT NOT NULL DEFAULT 'applied' CHECK (status IN ('applied','pending_link')), -- applied | pending_link
     outreach_done          BOOLEAN NOT NULL DEFAULT FALSE,    -- (migration core.py) بولی
     processed_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
     CONSTRAINT uq_processed_invoices_acct UNIQUE (tenant_id, accounting_invoice_id)
@@ -681,7 +681,7 @@ CREATE TABLE IF NOT EXISTS clinical.doctor_visit_log (
     national_id            TEXT,                          -- snapshot (denormalized عمدی)
     full_name              TEXT NOT NULL,                 -- snapshot (denormalized عمدی)
     work_date              DATE NOT NULL,                 -- تقویمی → DATE
-    status                 TEXT NOT NULL DEFAULT 'waiting', -- waiting|in_progress|done
+    status                 TEXT NOT NULL DEFAULT 'waiting' CHECK (status IN ('waiting','in_progress','done')), -- waiting|in_progress|done
     started_at             TIMESTAMPTZ,
     done_at                TIMESTAMPTZ,
     physician_notes        TEXT,

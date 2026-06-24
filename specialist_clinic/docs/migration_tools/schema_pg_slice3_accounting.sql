@@ -126,7 +126,7 @@ CREATE TABLE IF NOT EXISTS accounting.invoices (
     patient_id               BIGINT NOT NULL REFERENCES accounting.patients(id),
     doctor_id                BIGINT REFERENCES accounting.medical_staff(id),
     nurse_id                 BIGINT REFERENCES accounting.medical_staff(id),
-    status                   TEXT NOT NULL DEFAULT 'open',  -- open|closed
+    status                   TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open','closed')),  -- open|closed
     insurance_type           TEXT,                          -- snapshotِ تاریخی (بدونِ FK)
     supplementary_insurance  TEXT,                          -- snapshotِ تاریخی (بدونِ FK)
     total_amount             NUMERIC(14,0) NOT NULL DEFAULT 0,  -- پول → تومان (ستونِ ساده، نه generated)
@@ -157,7 +157,7 @@ CREATE TABLE IF NOT EXISTS accounting.visits (
     supplementary_insurance  TEXT,
     status                   TEXT NOT NULL DEFAULT 'pending',
     price                    NUMERIC(14,0) NOT NULL DEFAULT 0,  -- پول → تومان
-    payment_status           TEXT NOT NULL DEFAULT 'unpaid', -- unpaid|paid
+    payment_status           TEXT NOT NULL DEFAULT 'unpaid' CHECK (payment_status IN ('unpaid','paid')), -- unpaid|paid
     reception_user           TEXT,
     notes                    TEXT,
     invoice_id               BIGINT REFERENCES accounting.invoices(id),
@@ -270,7 +270,7 @@ CREATE TABLE IF NOT EXISTS accounting.procedures (
     reception_user  TEXT,
     notes           TEXT,
     invoice_id      BIGINT REFERENCES accounting.invoices(id),
-    performer_type  TEXT,                                  -- doctor|nurse (polymorphic)
+    performer_type  TEXT CHECK (performer_type IN ('doctor','nurse')),  -- doctor|nurse (polymorphic)
     performer_id    BIGINT,                                -- بدونِ FK (polymorphic: doctor یا nurse)
     doctor_id       BIGINT REFERENCES accounting.medical_staff(id),
     nurse_id        BIGINT REFERENCES accounting.medical_staff(id)
@@ -300,7 +300,7 @@ CREATE TABLE IF NOT EXISTS accounting.consumables_ledger (
     tenant_id         BIGINT NOT NULL DEFAULT 1 REFERENCES platform.tenants(id),
     patient_id        BIGINT REFERENCES accounting.patients(id),
     item_name         TEXT NOT NULL,
-    category          TEXT,                                -- drug|supply
+    category          TEXT CHECK (category IN ('drug','supply')),  -- drug|supply
     quantity          NUMERIC(14,3) NOT NULL DEFAULT 1,    -- تعداد (REAL منبع — کسری ممکن: ۰.۵ ویال؛ scale=3 برای وفاداری)
     unit_price        NUMERIC(14,0) NOT NULL DEFAULT 0,    -- پول → تومان
     total_cost        NUMERIC(14,0) NOT NULL DEFAULT 0,    -- پول → تومان
@@ -325,7 +325,7 @@ CREATE TABLE IF NOT EXISTS accounting.consumable_tariffs (
     tenant_id      BIGINT NOT NULL DEFAULT 1 REFERENCES platform.tenants(id),
     name           TEXT NOT NULL,
     default_price  NUMERIC(14,0) NOT NULL DEFAULT 0,       -- پول → تومان
-    category       TEXT NOT NULL,                          -- supply|drug
+    category       TEXT NOT NULL CHECK (category IN ('supply','drug')),  -- supply|drug
     is_active      BOOLEAN NOT NULL DEFAULT TRUE,          -- بولی
     created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
     CONSTRAINT uq_consumable_tariffs_tenant_name UNIQUE (tenant_id, name)
@@ -380,11 +380,11 @@ CREATE TABLE IF NOT EXISTS accounting.payroll_settings (
     base_evening             NUMERIC(14,0) NOT NULL DEFAULT 0,  -- پول → تومان
     base_night               NUMERIC(14,0) NOT NULL DEFAULT 0,  -- پول → تومان
     visit_fee                NUMERIC(14,0) NOT NULL DEFAULT 0,  -- پول → تومان
-    injection_percent        NUMERIC(6,3) NOT NULL DEFAULT 0,   -- درصد (نه تومان)
-    procedure_percent        NUMERIC(6,3) NOT NULL DEFAULT 0,   -- درصد
-    tax_percent              NUMERIC(6,3) NOT NULL DEFAULT 0,   -- درصد
-    nursing_percent          NUMERIC(6,3) NOT NULL DEFAULT 0,   -- درصد
-    nurse_procedure_percent  NUMERIC(6,3) NOT NULL DEFAULT 0,   -- درصد
+    injection_percent        NUMERIC(6,3) NOT NULL DEFAULT 0 CHECK (injection_percent BETWEEN 0 AND 100),   -- درصد (نه تومان)
+    procedure_percent        NUMERIC(6,3) NOT NULL DEFAULT 0 CHECK (procedure_percent BETWEEN 0 AND 100),   -- درصد
+    tax_percent              NUMERIC(6,3) NOT NULL DEFAULT 0 CHECK (tax_percent BETWEEN 0 AND 100),   -- درصد
+    nursing_percent          NUMERIC(6,3) NOT NULL DEFAULT 0 CHECK (nursing_percent BETWEEN 0 AND 100),   -- درصد
+    nurse_procedure_percent  NUMERIC(6,3) NOT NULL DEFAULT 0 CHECK (nurse_procedure_percent BETWEEN 0 AND 100),   -- درصد
     created_at               TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at               TIMESTAMPTZ NOT NULL DEFAULT now(),
     CONSTRAINT uq_payroll_settings_tenant_staff UNIQUE (tenant_id, staff_id)
