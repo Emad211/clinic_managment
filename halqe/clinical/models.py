@@ -384,3 +384,44 @@ class SuggestionLog(models.Model):
             f"SuggestionLog(patient_link_id={self.patient_link_id}, "
             f"rule_code={self.rule_code}, status={self.status})"
         )
+
+
+class ActivityLog(models.Model):
+    """
+    clinical.activity_logs — append-only audit trail.
+
+    Schema confirmed from schema_pg_slice2_clinical.sql §5b:
+      id, tenant_id, user_id (cross-schema FK → platform.users, nullable),
+      username, action_type, action_category, description,
+      target_table, target_id, patient_link_id (nullable),
+      created_at TIMESTAMPTZ DEFAULT now().
+
+    managed=False: schema owned by the SQL slices.
+    Append-only at DB level: REVOKE UPDATE/DELETE FROM clinical_app + platform_app
+    is applied in the slice SQL. The ORM helper (audit.log_activity) only INSERTs.
+    """
+
+    tenant_id = models.BigIntegerField(default=1)
+    # Cross-schema FK → platform.users (composite; no ORM FK, DB enforces it)
+    user_id = models.BigIntegerField(null=True, blank=True)
+    username = models.TextField(null=True, blank=True)
+    action_type = models.TextField()
+    action_category = models.TextField(null=True, blank=True)
+    description = models.TextField(null=True, blank=True)
+    target_table = models.TextField(null=True, blank=True)
+    target_id = models.BigIntegerField(null=True, blank=True)
+    # nullable — some events are not per-patient (e.g. login)
+    patient_link_id = models.BigIntegerField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        managed = False
+        app_label = "clinical"
+        db_table = '"clinical"."activity_logs"'
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return (
+            f"ActivityLog(action_type={self.action_type}, "
+            f"user_id={self.user_id}, tenant_id={self.tenant_id})"
+        )

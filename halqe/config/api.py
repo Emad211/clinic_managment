@@ -36,6 +36,7 @@ from clinical.models import (
     SuggestionLog,
 )
 import clinical.rule_engine as _rule_engine
+from clinical.audit import log_activity
 from platform_core.auth_bearer import JWTBearer
 from platform_core.auth_service import (
     login,
@@ -153,10 +154,39 @@ def auth_login(request, body: LoginRequest):
     """
     try:
         token = login(body.username, body.password)
+        # Resolve user_id from the token claims for the audit row.
+        # We decode here rather than issuing a second DB query — the JWT was
+        # just signed by auth_service.login so it is guaranteed valid.
+        from platform_core.auth_service import decode_jwt
+        claims = decode_jwt(token)
+        log_activity(
+            tenant_id=claims.get("tenant_id", 1),
+            user_id=claims.get("user_id"),
+            username=body.username,
+            action_type="login",
+            action_category="auth",
+            description="successful login",
+        )
         return 200, {"token": token}
     except AccountLocked as exc:
+        log_activity(
+            tenant_id=1,
+            user_id=None,
+            username=body.username,
+            action_type="login_failed",
+            action_category="auth",
+            description="account locked",
+        )
         return 423, {"detail": str(exc)}
     except (InvalidCredentials, AccountInactive) as exc:
+        log_activity(
+            tenant_id=1,
+            user_id=None,
+            username=body.username,
+            action_type="login_failed",
+            action_category="auth",
+            description=str(exc),
+        )
         return 401, {"detail": str(exc)}
 
 
@@ -708,6 +738,19 @@ def mark_task_done(request, task_id: int):
     task.resolved_at = timezone.now()
     task.save(update_fields=["status", "resolved_at"])
 
+    # Audit: state-changing write — append-only, best-effort
+    actor = getattr(request.auth, "username", None) or "unknown"
+    log_activity(
+        tenant_id=tenant_id,
+        user_id=getattr(request.auth, "pk", None),
+        username=actor,
+        action_type="followup_done",
+        action_category="clinical",
+        target_table="followup_tasks",
+        target_id=task.id,
+        patient_link_id=task.patient_link_id,
+    )
+
     return 200, FollowupTaskDTO(
         id=task.id,
         patient_link_id=task.patient_link_id,
@@ -815,6 +858,22 @@ def suggestion_action(
             note=body.note,
             created_at=now,
         )
+
+    # Audit: state-changing write — append-only, best-effort
+    audit_action_type = (
+        "suggestion_accepted" if body.action == "accept" else "suggestion_dismissed"
+    )
+    log_activity(
+        tenant_id=tenant_id,
+        user_id=getattr(request.auth, "pk", None),
+        username=actor,
+        action_type=audit_action_type,
+        action_category="clinical",
+        target_table="suggestion_log",
+        target_id=log_row.id,
+        patient_link_id=link.id,
+        description=f"rule_code={rule_code}",
+    )
 
     return 200, SuggestionLogDTO(
         id=log_row.id,

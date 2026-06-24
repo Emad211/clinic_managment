@@ -1,6 +1,12 @@
 """
 pytest-django conftest for halqe vertical slice tests.
 
+Session-scoped fixtures available to ALL test files:
+  - django_db_setup   : create test DB, apply slices, create login role
+  - seed_data         : one patient + link + vitals + testuser
+  - seed_clinical_data: extends seed_data with conditions, meds, tenant-2 patient
+  - seed_act_data     : extends seed_clinical_data with followup_tasks for worklist/audit tests
+
 Strategy:
   - Use a throwaway Postgres DB 'halqe_app_test' on the Docker container.
   - Session-scoped fixture: create the DB, run apply_schema (all slices),
@@ -342,4 +348,93 @@ def seed_clinical_data(seed_data):
         "diabetes_condition_id": diabetes_id,
         "htn_condition_id": htn_id,
         "pc_ids": pc_ids,
+    }
+
+
+# ---------------------------------------------------------------------------
+# seed_act_data — extends seed_clinical_data with followup_tasks
+# (previously in test_act_slice.py; moved here so audit tests can use it too)
+# ---------------------------------------------------------------------------
+@pytest.fixture(scope="session")
+def seed_act_data(seed_clinical_data):
+    """
+    Extend the existing clinical seed with followup_tasks for worklist + audit tests:
+      - Task A: status='open', due_date=today-1 (past-due → visible by default)
+      - Task B: status='done', due_date=today-5 (should NOT show in default listing)
+      - Task C: status='open', due_date=today+30 (future → excluded by default filter)
+      - Tenant-2 task (isolation test)
+    Returns dict with task IDs and UUIDs.
+    """
+    test_db_conninfo = (
+        f"host='{PG_HOST}' port='{PG_PORT}' "
+        f"user='{PG_USER}' password='{PG_PASSWORD}' dbname='{TEST_DB_NAME}'"
+    )
+
+    with psycopg.connect(test_db_conninfo, autocommit=True) as conn:
+        link_id = seed_clinical_data["link_id"]
+
+        # Task A — open, past-due (should appear in default worklist listing)
+        row = conn.execute("""
+            INSERT INTO clinical.followup_tasks
+                (tenant_id, patient_link_id, due_date, reason, detail,
+                 status, fulfillment, created_at)
+            VALUES
+                (1, %s, CURRENT_DATE - 1, 'uncontrolled',
+                 'HbA1c بالاست — پیگیری لازم است',
+                 'open', 'in_person', now())
+            RETURNING id
+        """, (link_id,)).fetchone()
+        task_a_id = row[0]
+
+        # Task B — already done
+        row = conn.execute("""
+            INSERT INTO clinical.followup_tasks
+                (tenant_id, patient_link_id, due_date, reason,
+                 status, fulfillment, created_at, resolved_at)
+            VALUES
+                (1, %s, CURRENT_DATE - 5, 'refill',
+                 'done', 'remote', now() - interval '5 days', now() - interval '3 days')
+            RETURNING id
+        """, (link_id,)).fetchone()
+        task_b_id = row[0]
+
+        # Task C — open but FUTURE (should not appear in default due-filter)
+        row = conn.execute("""
+            INSERT INTO clinical.followup_tasks
+                (tenant_id, patient_link_id, due_date, reason,
+                 status, fulfillment, created_at)
+            VALUES
+                (1, %s, CURRENT_DATE + 30, 'visit_due',
+                 'open', 'in_person', now())
+            RETURNING id
+        """, (link_id,)).fetchone()
+        task_c_id = row[0]
+
+        # ── Tenant-2 task (isolation) ─────────────────────────────────────────
+        t2_patient_id = seed_clinical_data["tenant2_patient_id"]
+        t2_link_row = conn.execute(
+            "SELECT id FROM clinical.patient_links WHERE tenant_id=2 AND patient_id=%s",
+            (t2_patient_id,)
+        ).fetchone()
+        assert t2_link_row, "Tenant-2 patient link must exist from seed_clinical_data"
+        t2_link_id = t2_link_row[0]
+
+        row = conn.execute("""
+            INSERT INTO clinical.followup_tasks
+                (tenant_id, patient_link_id, due_date, reason,
+                 status, fulfillment, created_at)
+            VALUES
+                (2, %s, CURRENT_DATE - 1, 'lapsed',
+                 'open', 'in_person', now())
+            RETURNING id
+        """, (t2_link_id,)).fetchone()
+        task_t2_id = row[0]
+
+    return {
+        **seed_clinical_data,
+        "task_a_id": task_a_id,        # open, past-due, tenant-1
+        "task_b_id": task_b_id,        # done, tenant-1
+        "task_c_id": task_c_id,        # open, future, tenant-1
+        "task_t2_id": task_t2_id,      # open, tenant-2 (isolation)
+        "t2_link_id": t2_link_id,
     }
