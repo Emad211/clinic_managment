@@ -648,6 +648,8 @@ class WorklistItemDTO(Schema):
     fulfillment: Optional[str] = None
     created_at: datetime
     resolved_at: Optional[datetime] = None
+    # Manager-only revenue column — null for staff even if include_revenue=true
+    revenue: Optional[int] = None
 
 
 class WorklistResponseDTO(Schema):
@@ -705,6 +707,7 @@ def list_worklist(
     status: Optional[str] = Query(default=None),
     limit: int = Query(default=20, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
+    include_revenue: bool = Query(default=False),
 ):
     """
     Paginated follow-up worklist for the authenticated tenant.
@@ -716,10 +719,19 @@ def list_worklist(
     N+1-avoidance: page tasks first, then batch-fetch demographics for the page
     via AccountingReadPort.get_patients_by_ids().
 
+    include_revenue=true: when the authenticated user is a MANAGER, each task
+    gains a `revenue` field (Toman int from accounting, read-only, batched).
+    For non-managers, `revenue` is always null even if include_revenue=true.
+    This is a hard gate — revenue is manager-only.
+
     Returns 401 without JWT. Tasks from other tenants are never shown.
     """
     tenant_id = request.tenant_id
     today = timezone.now().date()
+
+    # Manager gate: revenue column only for managers, never for staff
+    user_role = getattr(request.auth, "role", "staff")
+    effective_include_revenue = include_revenue and (user_role == "manager")
 
     # Build queryset — always tenant-scoped
     qs = FollowupTask.objects.filter(tenant_id=tenant_id)
@@ -747,15 +759,25 @@ def list_worklist(
         for pl in PatientLink.objects.filter(id__in=link_ids_on_page):
             links_map[pl.id] = pl
 
-    patient_ids = list({pl.patient_id for pl in links_map.values()})
+    patient_ids_on_page = list({pl.patient_id for pl in links_map.values()})
     demos_by_pid: dict[int, PatientDTO] = {
-        d.id: d for d in get_patients_by_ids(patient_ids)
+        d.id: d for d in get_patients_by_ids(patient_ids_on_page)
     }
+
+    # Revenue batch (manager-only) — one call for the whole page
+    from accounting_port.port import get_revenue_by_patient_ids as _get_rev
+    rev_by_pid: dict[int, int] = {}
+    if effective_include_revenue and patient_ids_on_page:
+        rev_by_pid = _get_rev(patient_ids_on_page)
 
     items: list[WorklistItemDTO] = []
     for task in page_tasks:
         pl = links_map.get(task.patient_link_id)
         demo = demos_by_pid.get(pl.patient_id) if pl else None
+        revenue_val: Optional[int] = None
+        if effective_include_revenue and pl:
+            revenue_val = rev_by_pid.get(pl.patient_id)
+
         items.append(
             WorklistItemDTO(
                 id=task.id,
@@ -768,6 +790,7 @@ def list_worklist(
                 fulfillment=task.fulfillment,
                 created_at=task.created_at,
                 resolved_at=task.resolved_at,
+                revenue=revenue_val,
             )
         )
 
@@ -1908,3 +1931,230 @@ def done_visit_endpoint(
         return 409, error_response(str(exc), "conflict")
 
     return 200, _log_row_to_out(row)
+
+
+# ===========================================================================
+# Control Room (Step 15) — prioritized cohort targeting
+#
+# GET  /control-room              → panel (JWT required; show_value = role=='manager')
+# GET  /control-room/conversion   → funnel conversion metric (JWT required)
+# GET  /control-room/cohort/{key} → recomputed cohort patient ids (JWT required)
+#
+# Clinical-first priority score; revenue is manager-only seasoning.
+# Non-managers: show_value=False (no revenue column, no valuable_drifting cohort).
+# NEVER writes accounting.  All revenue reads via accounting_port (read-only).
+# ===========================================================================
+
+import clinical.control_room_service as _cr_svc
+
+
+# ---------------------------------------------------------------------------
+# Control Room schemas
+# ---------------------------------------------------------------------------
+
+class ControlRoomFlagDTO(Schema):
+    """A danger or warn indicator flag for a patient."""
+    label: str
+    value: float
+
+
+class ControlRoomPatientDTO(Schema):
+    """One patient entry in the control-room panel."""
+    id: int                                   # patient_link_id
+    patient_id: int                           # accounting patient id
+    full_name: Optional[str] = None
+    phone_number: Optional[str] = None
+    opt_out: bool
+    control: str                              # uncontrolled | borderline | controlled | unknown
+    flags: list[ControlRoomFlagDTO]
+    warns: list[ControlRoomFlagDTO]
+    lapsed: bool
+    days_since_last: Optional[int] = None
+    last_observed_at: Optional[str] = None   # ISO datetime or null
+    open_fu: int
+    value: Optional[int] = None              # revenue Toman (manager-only; null for staff)
+    score: int
+    breakdown: list                           # [(label, points), ...]
+    conditions: list[str]
+    upcoming: bool
+
+
+class ControlRoomCohortDTO(Schema):
+    """A cohort bucket with count and member ids."""
+    key: str
+    label: str
+    count: int
+    ids: list[int]
+
+
+class ControlRoomPanelResponse(Schema):
+    """Full control-room panel response."""
+    patients: list[ControlRoomPatientDTO]
+    cohorts: list[ControlRoomCohortDTO]
+    median_rev: int
+    total: int
+    show_value: bool
+
+
+class ConversionResponse(Schema):
+    """Follow-up → visit funnel conversion metric."""
+    resolved: int       # total resolved (status='done') tasks
+    to_visit: int       # of those, linked to an appointment
+    rate: float         # to_visit * 100 / resolved (0 if no resolved)
+
+
+class CohortIdsResponse(Schema):
+    cohort_key: str
+    ids: list[int]
+    count: int
+
+
+# ---------------------------------------------------------------------------
+# GET /control-room — full panel
+# ---------------------------------------------------------------------------
+
+@api.get(
+    "/control-room",
+    response=ControlRoomPanelResponse,
+    auth=_jwt_auth,
+    tags=["control_room"],
+)
+def control_room_panel(request):
+    """
+    Return the prioritized control-room panel for the authenticated tenant.
+
+    show_value = (role == 'manager'):
+      - Managers see revenue values per patient + the 'valuable_drifting' cohort.
+      - Staff see show_value=False — no revenue, no valuable_drifting cohort.
+
+    Clinical-first scoring:
+      danger flags×3 + warn flags×1 + lapsed+2 + no-baseline+1 + open_fu capped 3
+      + valuable+1 (manager only) − upcoming_appt 2.
+    Only patients with score>0 are returned, sorted by score descending.
+
+    Control vitals (hba1c, fbs, bp_systolic, bp_diastolic, ldl, egfr, uacr)
+    are read from the unified observations VIEW (vitals+labs) using live
+    clinical_indicators thresholds — consistent with the rule engine.
+
+    Demographics batched from accounting_port.get_patients_by_ids().
+    Revenue batched from accounting_port.get_revenue_by_patient_ids() (manager only).
+    NEVER writes accounting.  Requires JWT (tenant-scoped).
+    """
+    tenant_id = request.tenant_id
+    user_role = getattr(request.auth, "role", "staff")
+    show_value = (user_role == "manager")
+
+    data = _cr_svc.panel(tenant_id=tenant_id, show_value=show_value)
+
+    patients_out = [
+        ControlRoomPatientDTO(
+            id=p["id"],
+            patient_id=p["patient_id"],
+            full_name=p["full_name"],
+            phone_number=p["phone_number"],
+            opt_out=p["opt_out"],
+            control=p["control"],
+            flags=[ControlRoomFlagDTO(**f) for f in p["flags"]],
+            warns=[ControlRoomFlagDTO(**f) for f in p["warns"]],
+            lapsed=p["lapsed"],
+            days_since_last=p["days_since_last"],
+            last_observed_at=p["last_observed_at"],
+            open_fu=p["open_fu"],
+            value=p["value"],
+            score=p["score"],
+            breakdown=p["breakdown"],
+            conditions=p["conditions"],
+            upcoming=p["upcoming"],
+        )
+        for p in data["patients"]
+    ]
+    cohorts_out = [
+        ControlRoomCohortDTO(**c) for c in data["cohorts"]
+    ]
+
+    return ControlRoomPanelResponse(
+        patients=patients_out,
+        cohorts=cohorts_out,
+        median_rev=data["median_rev"],
+        total=data["total"],
+        show_value=data["show_value"],
+    )
+
+
+# ---------------------------------------------------------------------------
+# GET /control-room/conversion — funnel metric
+# ---------------------------------------------------------------------------
+
+@api.get(
+    "/control-room/conversion",
+    response=ConversionResponse,
+    auth=_jwt_auth,
+    tags=["control_room"],
+)
+def control_room_conversion(request):
+    """
+    Follow-up → visit conversion funnel metric for this tenant.
+
+    Of all resolved (status='done') follow-ups, the share linked to an
+    appointment (appointment_id IS NOT NULL) indicates whether the recall
+    funnel actually lands patients in a visit.
+
+    Returns: {resolved, to_visit, rate}.
+    Requires JWT (tenant-scoped).
+    """
+    tenant_id = request.tenant_id
+    result = _cr_svc.conversion(tenant_id=tenant_id)
+    return ConversionResponse(**result)
+
+
+# ---------------------------------------------------------------------------
+# GET /control-room/cohort/{key} — recomputed cohort ids
+# ---------------------------------------------------------------------------
+
+@api.get(
+    "/control-room/cohort/{cohort_key}",
+    response={200: CohortIdsResponse, 404: ErrorSchema},
+    auth=_jwt_auth,
+    tags=["control_room"],
+)
+def control_room_cohort_ids(request, cohort_key: str):
+    """
+    Recompute a cohort's patient_link_ids server-side (never trust posted ids).
+
+    Valid cohort keys: uncontrolled_lapsed, valuable_drifting (manager only),
+    overdue_care, uncontrolled.
+
+    Returns 404 if the key is unknown or not accessible (e.g. valuable_drifting
+    for a staff user).
+    Requires JWT (tenant-scoped).
+    """
+    tenant_id = request.tenant_id
+    user_role = getattr(request.auth, "role", "staff")
+    show_value = (user_role == "manager")
+
+    # Reject valuable_drifting for non-managers (manager-only gate)
+    if cohort_key == "valuable_drifting" and not show_value:
+        return 404, error_response(
+            "valuable_drifting cohort is only accessible to managers.",
+            "not_found",
+        )
+
+    valid_keys = {k for k, _ in _cr_svc.COHORT_DEFS}
+    if cohort_key not in valid_keys:
+        return 404, error_response(
+            f"Unknown cohort key '{cohort_key}'. "
+            f"Valid keys: {sorted(valid_keys)}.",
+            "not_found",
+        )
+
+    ids = _cr_svc.cohort_ids(
+        cohort_key=cohort_key,
+        tenant_id=tenant_id,
+        show_value=show_value,
+    )
+
+    return 200, CohortIdsResponse(
+        cohort_key=cohort_key,
+        ids=ids,
+        count=len(ids),
+    )

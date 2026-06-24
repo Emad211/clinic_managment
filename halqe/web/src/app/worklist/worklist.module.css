@@ -280,6 +280,14 @@
   color: var(--color-text-muted);
 }
 
+/* ── Revenue column (manager-only) ── */
+.revenueCell {
+  font-variant-numeric: tabular-nums;
+  color: var(--color-primary-dark);
+  white-space: nowrap;
+  text-align: right;
+}
+
 /* ── Inline error for mark-done failures ── */
 .rowError {
   font-size: 0.8rem;

@@ -11,7 +11,7 @@ import {
   type WorklistItem,
   ApiError,
 } from "@/lib/api";
-import { formatJalali } from "@/lib/jalali";
+import { formatJalali, formatToman } from "@/lib/jalali";
 import Nav from "@/components/Nav";
 import styles from "./worklist.module.css";
 
@@ -165,6 +165,10 @@ export default function WorklistPage() {
   const currentPage = Math.floor(offset / PAGE_SIZE) + 1;
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
+  // Show the revenue column only when the backend returned at least one non-null
+  // revenue value — which only happens for MANAGER users (backend-enforced gate).
+  const hasRevenue = items.some((item) => item.revenue != null);
+
   return (
     <div className={styles.layout}>
       <Nav
@@ -239,6 +243,9 @@ export default function WorklistPage() {
                     <th scope="col">نوع پیگیری</th>
                     <th scope="col">تاریخ سررسید</th>
                     <th scope="col">وضعیت</th>
+                    {hasRevenue && (
+                      <th scope="col" className={styles.revenueCell}>درآمد</th>
+                    )}
                     <th scope="col">اقدام</th>
                   </tr>
                 </thead>
@@ -289,6 +296,20 @@ export default function WorklistPage() {
                             {statusLabel(effectiveStatus)}
                           </span>
                         </td>
+
+                        {/* Revenue — manager-only column; only rendered when hasRevenue */}
+                        {hasRevenue && (
+                          <td
+                            className={styles.revenueCell}
+                            aria-label={
+                              item.revenue != null
+                                ? `درآمد: ${formatToman(item.revenue)}`
+                                : "درآمد: ندارد"
+                            }
+                          >
+                            {item.revenue != null ? formatToman(item.revenue) : "—"}
+                          </td>
+                        )}
 
                         {/* Mark-done action — only for open, not-yet-flipped rows */}
                         <td>

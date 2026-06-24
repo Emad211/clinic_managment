@@ -141,7 +141,16 @@
   invoiceهای بازِ read-only با وضعیتِ لوکال، نگاشت به patient_link با patient_id، upsert روی
   UNIQUE(tenant,invoice)، گذارِ waiting→in_progress→done، audit) + ۳ endpoint (GET/start/done)
   + `tests/test_doctor_queue.py` (۱۳ تست). ۲۱۷ تست سبز (۲۰۴+۱۳). UI موکول. ✅
-- [ ] **۱۵. control-room/cohort** (پورتِ `control_room_service`) + ستونِ درآمدِ manager-only در worklist. — *backend + frontend*
+- [x] **۱۵. control-room/cohort** (پورتِ `control_room_service`) + ستونِ درآمدِ manager-only در worklist. — *backend + frontend*
+  **تحویل (backend):** `clinical/control_room_service.py` (panel/cohort_ids/conversion؛ امتیازِ
+  بالینی‌-اول؛ demographics از Port؛ control vitals از observations؛ revenue از پورتِ قدم۱۳،
+  manager-only via `show_value=role=='manager'`) + `GET /control-room` + `/conversion` +
+  `/cohort/{key}` + `include_revenue` در worklist (گیتِ manager) + `tests/test_control_room.py`
+  (۱۹ تست). ۲۳۶ سبز (۲۱۷+۱۹). **تحویل (frontend):** ستونِ «درآمد» data-driven (فقط وقتی
+  backend برگرداند = مدیر)، `formatToman` + `worklist-revenue.test.tsx`. وب ۱۲۲ سبز (۱۰۵+۱۷). ✅
+  *(صفحهٔ کاملِ /control-room در UI موکول شد؛ endpoint + داده آماده است.)*
+
+> **🏁 خوشهٔ D (خواندنِ مالی/پذیرش) کامل شد** — revenue، صفِ پزشک، اتاقِ کنترل؛ همه read-only از مرز.
 
 ## خوشهٔ E — تعامل/SMS + صفِ تأیید (روی C)
 
@@ -162,7 +171,7 @@
 2. **UNIQUEِ vital_readings** روی دادهٔ تکراریِ موجود ممکن است شکست بخورد؛ کلیدِ طبیعی
    `(tenant_id, patient_link_id, type, measured_at, source)` باید بررسی شود.
 3. **مدلِ روی VIEWِ observations**: فقط read؛ سازگاریِ `distinct("type")` با obs_key بررسی شود.
-4. **revenue در worklist**: staff ببیند یا فقط manager؟ — تأییدِ مالک لازم است (پیش از قدم ۱۵).
+4. **revenue در worklist**: ✅ حل شد (قدم ۱۵) — **manager-only** (گیتِ سخت در backend؛ staff هرگز نمی‌بیند)، مطابقِ الگوی `control_room_service`. اگر مالک خواست staff هم ببیند، فقط گیت تغییر کند.
 5. خارج از این ۲۰: Flutter موبایل، PDFِ نسخهٔ آزاد، پلِ بیمهٔ MV3 (بلاک‌شده تا دسترسیِ مالک).
 6. **(قدم ۵، follow-up)** `build_facts` با `DISTINCT ON(obs_key)`ِ نام‌فضادار کار می‌کند؛ اگر یک
    اندیکاتور (مثل `hba1c`) هم vital و هم lab باشد، پس از strip هر دو به کلیدِ خام نگاشته می‌شوند و

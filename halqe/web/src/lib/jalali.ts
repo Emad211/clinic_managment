@@ -156,6 +156,21 @@ export function formatJalali(isoString: string | null | undefined): string {
 }
 
 /**
+ * Format an integer Toman amount with thousands separators and Persian digits,
+ * followed by the تومان suffix.
+ *
+ * Examples:
+ *   1500000  → "۱٬۵۰۰٬۰۰۰ تومان"
+ *   0        → "۰ تومان"
+ *   null/undefined → "—"
+ */
+export function formatToman(amount: number | null | undefined): string {
+  if (amount === null || amount === undefined) return "—";
+  const formatted = amount.toLocaleString("fa-IR");
+  return `${formatted} تومان`;
+}
+
+/**
  * Return only the Jalali year from an ISO date/datetime string, as Persian digits.
  * Example: "2026-06-24" → "۱۴۰۵"
  */

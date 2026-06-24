@@ -280,6 +280,12 @@ export interface WorklistItem {
   fulfillment: string | null;
   created_at: string;        // ISO datetime
   resolved_at: string | null;
+  /**
+   * Cumulative closed-invoice revenue for this patient (Toman).
+   * Only populated when the authed user is a MANAGER and include_revenue=true
+   * was sent. Backend enforces the manager gate — non-managers always get null.
+   */
+  revenue?: number | null;
 }
 
 export interface WorklistResponse {
@@ -293,15 +299,24 @@ export async function apiGetWorklist({
   status,
   limit = 20,
   offset = 0,
+  includeRevenue = true,
 }: {
   status?: string;
   limit?: number;
   offset?: number;
+  /**
+   * When true, passes include_revenue=true to the backend.
+   * The backend only populates `revenue` for MANAGER users — non-managers
+   * receive null regardless. Defaults to true so the UI auto-shows the column
+   * for managers without any client-side role check.
+   */
+  includeRevenue?: boolean;
 } = {}): Promise<WorklistResponse> {
   const params = new URLSearchParams();
   if (status !== undefined) params.set("status", status);
   params.set("limit", String(limit));
   params.set("offset", String(offset));
+  if (includeRevenue) params.set("include_revenue", "true");
   return apiFetch<WorklistResponse>(`/worklist?${params.toString()}`);
 }
 
