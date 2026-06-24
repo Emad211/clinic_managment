@@ -21,6 +21,8 @@ from ninja import NinjaAPI, Schema, Query
 from django.http import Http404
 from django.utils import timezone
 
+from config.errors import ErrorSchema, error_response
+from config.pagination import paginate
 from accounting_port.port import (
     get_patient_by_uuid,
     get_patients_by_ids,
@@ -68,6 +70,26 @@ SYSTEM_TENANT_ID: int = 1
 api = NinjaAPI(title="Halqe Platform API", version="0.1.0")
 
 _jwt_auth = JWTBearer()
+
+
+# ---------------------------------------------------------------------------
+# Global exception handler — Http404 → uniform error contract
+#
+# django-ninja converts Http404 to {"detail": "Not Found"} by default,
+# which lacks the `code` field the contract requires.  By registering a
+# handler here, every `raise Http404(...)` in any endpoint of *this* API
+# returns the standard ErrorSchema shape, so the web client still reads
+# `detail` and new consumers can branch on `code`.
+# ---------------------------------------------------------------------------
+from django.http import JsonResponse as _JsonResponse
+
+
+@api.exception_handler(Http404)
+def _handle_404(request, exc):
+    return _JsonResponse(
+        error_response(str(exc) or "Not Found", "not_found"),
+        status=404,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -164,7 +186,7 @@ class ClinicalRecordDTO(Schema):
 # Auth endpoint — POST /auth/login
 # ---------------------------------------------------------------------------
 
-@api.post("/auth/login", response={200: TokenResponse, 401: dict, 423: dict}, auth=None, tags=["auth"])
+@api.post("/auth/login", response={200: TokenResponse, 401: ErrorSchema, 423: ErrorSchema}, auth=None, tags=["auth"])
 def auth_login(request, body: LoginRequest):
     """
     Verify credentials against platform.users (bcrypt).
@@ -201,7 +223,7 @@ def auth_login(request, body: LoginRequest):
             action_category="auth",
             description="account locked",
         )
-        return 423, {"detail": str(exc)}
+        return 423, error_response(str(exc), "account_locked")
     except (InvalidCredentials, AccountInactive) as exc:
         # exc.tenant_id is set when the user WAS found (wrong password case).
         # It is None when the username does not exist or is ambiguous (multi-tenant).
@@ -214,7 +236,7 @@ def auth_login(request, body: LoginRequest):
             action_category="auth",
             description=str(exc),
         )
-        return 401, {"detail": str(exc)}
+        return 401, error_response(str(exc), "invalid_credentials")
 
 
 # ---------------------------------------------------------------------------
@@ -276,12 +298,7 @@ def list_patients(
             )
         )
 
-    return PatientListResponse(
-        items=items,
-        total=total,
-        limit=limit,
-        offset=offset,
-    )
+    return PatientListResponse(**paginate(total, items, limit, offset))
 
 
 # ---------------------------------------------------------------------------
@@ -721,19 +738,14 @@ def list_worklist(
             )
         )
 
-    return WorklistResponseDTO(
-        items=items,
-        total=total,
-        limit=limit,
-        offset=offset,
-    )
+    return WorklistResponseDTO(**paginate(total, items, limit, offset))
 
 
 # ── POST /worklist/{task_id}/done ─────────────────────────────────────────────
 
 @api.post(
     "/worklist/{task_id}/done",
-    response={200: FollowupTaskDTO, 404: dict, 409: dict},
+    response={200: FollowupTaskDTO, 404: ErrorSchema, 409: ErrorSchema},
     auth=_jwt_auth,
     tags=["worklist"],
 )
@@ -751,15 +763,15 @@ def mark_task_done(request, task_id: int):
     try:
         task = FollowupTask.objects.get(id=task_id, tenant_id=tenant_id)
     except FollowupTask.DoesNotExist:
-        return 404, {"detail": f"FollowupTask id={task_id} not found for this tenant."}
+        return 404, error_response(
+            f"FollowupTask id={task_id} not found for this tenant.", "not_found"
+        )
 
     if task.status != FollowupTask.STATUS_OPEN:
-        return 409, {
-            "detail": (
-                f"Task id={task_id} is already '{task.status}'; "
-                "only open tasks can be marked done."
-            )
-        }
+        return 409, error_response(
+            f"Task id={task_id} is already '{task.status}'; only open tasks can be marked done.",
+            "conflict",
+        )
 
     task.status = FollowupTask.STATUS_DONE
     task.resolved_at = timezone.now()
@@ -798,7 +810,7 @@ def mark_task_done(request, task_id: int):
 
 @api.post(
     "/patients/{patient_uuid}/suggestions/{rule_code}/action",
-    response={200: SuggestionLogDTO, 400: dict, 404: dict},
+    response={200: SuggestionLogDTO, 400: ErrorSchema, 404: ErrorSchema},
     auth=_jwt_auth,
     tags=["clinical"],
 )
@@ -826,9 +838,10 @@ def suggestion_action(
 
     # 1. Validate action
     if body.action not in ("accept", "dismiss"):
-        return 400, {
-            "detail": f"Invalid action '{body.action}'. Must be 'accept' or 'dismiss'."
-        }
+        return 400, error_response(
+            f"Invalid action '{body.action}'. Must be 'accept' or 'dismiss'.",
+            "validation_error",
+        )
 
     # 2. Resolve uuid → accounting patient (read-only via Port)
     demo = get_patient_by_uuid(patient_uuid)

@@ -36,10 +36,13 @@
   (TenantGucMiddleware) + `auth_bearer.py` (set_tenant_guc بعد از resolve) + `auth_service.py`
   (login بدونِ tenant_id=1 + exc.tenant_id روی هر خطای پس از resolve) + `config/api.py`
   (SYSTEM_TENANT_ID=1 ثابت + audit صادقانه). ۸۲ تست سبز (۷۴ قبلی + ۸ جدید). ✅
-- [ ] **۳. قراردادِ خطای یکدست + paginationِ مشترک.** schema خطای استاندارد
+- [x] **۳. قراردادِ خطای یکدست + paginationِ مشترک.** schema خطای استاندارد
   (code+message) به‌جای dictهای خام؛ استخراجِ الگوی limit/offset/total از
   `list_patients`/`list_worklist` به یک utility مشترک. **پذیرش:** هر endpoint قالبِ خطای
   یکسان می‌دهد؛ تستِ قرارداد. — *backend-engineer*
+  **تحویل:** `config/errors.py` (ErrorSchema + error_response) + `config/pagination.py`
+  (paginate helper) + custom Http404 handler روی api + `tests/test_error_contract.py`
+  (11 تست: ۶ قرارداد + ۵ pagination). 93 تست سبز (82+11). ✅
 - [ ] **۴. UNIQUEِ idempotency روی `vital_readings`.** افزودنِ کلیدِ طبیعیِ مرکبِ
   tenant-safe (با planِ dedupe)؛ additive + idempotent (`IF NOT EXISTS`). **پذیرش:** درجِ
   دوگانه → یک ردیف؛ ساختِ constraint روی دادهٔ موجود امن. — *data-engineer*
