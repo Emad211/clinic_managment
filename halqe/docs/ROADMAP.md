@@ -43,9 +43,14 @@
   **تحویل:** `config/errors.py` (ErrorSchema + error_response) + `config/pagination.py`
   (paginate helper) + custom Http404 handler روی api + `tests/test_error_contract.py`
   (11 تست: ۶ قرارداد + ۵ pagination). 93 تست سبز (82+11). ✅
-- [ ] **۴. UNIQUEِ idempotency روی `vital_readings`.** افزودنِ کلیدِ طبیعیِ مرکبِ
+- [x] **۴. UNIQUEِ idempotency روی `vital_readings`.** افزودنِ کلیدِ طبیعیِ مرکبِ
   tenant-safe (با planِ dedupe)؛ additive + idempotent (`IF NOT EXISTS`). **پذیرش:** درجِ
   دوگانه → یک ردیف؛ ساختِ constraint روی دادهٔ موجود امن. — *data-engineer*
+  **تحویل:** `schema_pg_slice4c_idempotency.sql` (dedupe→MAX(id) سپس
+  `UNIQUE NULLS NOT DISTINCT (tenant_id, patient_link_id, type, measured_at, source)`)
+  + ۴ تستِ نگهبان در `test_pg_schema.py`. نگهبان ۷۰ (۶۶+۴)، halqe ۹۳ بدون‌تغییر. ✅
+
+> **🏁 خوشهٔ A (سخت‌سازیِ بنیادی) کامل شد** — مرزِ واقعیِ DB، GUCِ tenant، قراردادِ خطا/pagination، idempotency.
 
 ## خوشهٔ B — تکمیلِ موتور و منبعِ حقیقت (ارزان، روی A)
 

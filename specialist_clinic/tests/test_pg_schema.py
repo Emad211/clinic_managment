@@ -1229,3 +1229,118 @@ def test_platform_app_activity_logs_append_only(admin_conn):
     assert can_insert is True, "platform_app باید بتواند به clinical.activity_logs درج کند"
     assert can_update is False, "platform_app نباید clinical.activity_logs را UPDATE کند (append-only)"
     assert can_delete is False, "platform_app نباید از clinical.activity_logs حذف کند (append-only)"
+
+
+# ===========================================================================
+# Slice 4c — قیدِ یکتایِ طبیعی روی clinical.vital_readings (idempotency)
+# ===========================================================================
+
+# ---------------------------------------------------------------------------
+# معیار ۱ — constraint وجود دارد و NULLS NOT DISTINCT دارد
+# ---------------------------------------------------------------------------
+def test_vital_readings_natural_key_constraint_exists(admin_conn):
+    """Slice 4c: constraint uq_vital_readings_natural_key روی clinical.vital_readings باید موجود باشد."""
+    row = admin_conn.execute(
+        """SELECT pg_get_constraintdef(oid)
+             FROM pg_constraint
+            WHERE conname = 'uq_vital_readings_natural_key'"""
+    ).fetchone()
+    assert row is not None, (
+        "constraint 'uq_vital_readings_natural_key' روی clinical.vital_readings پیدا نشد (Slice 4c)"
+    )
+    defn = row[0]
+    assert "NULLS NOT DISTINCT" in defn, (
+        f"constraint باید NULLS NOT DISTINCT داشته باشد؛ یافته: {defn!r}"
+    )
+    # اطمینان از وجودِ همهٔ ستون‌های کلیدِ طبیعی
+    for col in ("tenant_id", "patient_link_id", "type", "measured_at", "source"):
+        assert col in defn, f"ستونِ '{col}' در تعریفِ constraint پیدا نشد: {defn!r}"
+
+
+# ---------------------------------------------------------------------------
+# معیار ۲ — درجِ تکراری (همان tenant/patient/type/measured_at/source) رد می‌شود
+# ---------------------------------------------------------------------------
+def test_vital_readings_duplicate_rejected(admin_tx, admin_conn):
+    """Slice 4c: دو INSERT با کلیدِ طبیعیِ یکسان (source='clinic') باید UniqueViolation بدهد."""
+    pid = _test_patient_id(admin_conn)
+    admin_conn.execute(
+        "INSERT INTO clinical.patient_links (tenant_id, patient_id) VALUES (1, %s)"
+        " ON CONFLICT (tenant_id, patient_id) DO NOTHING",
+        (pid,),
+    )
+    link_id = admin_conn.execute(
+        "SELECT id FROM clinical.patient_links WHERE tenant_id=1 AND patient_id=%s", (pid,)
+    ).fetchone()[0]
+
+    ts = "2026-06-24 08:00:00+00"
+    # درجِ اول موفق است
+    admin_tx.execute(
+        """INSERT INTO clinical.vital_readings
+               (tenant_id, patient_link_id, type, value, measured_at, source)
+           VALUES (1, %s, 'hba1c_dup_test', 7.0, %s, 'clinic')""",
+        (link_id, ts),
+    )
+    # درجِ دوم با همان کلید باید رد شود
+    with pytest.raises(pgerr.UniqueViolation):
+        admin_tx.execute(
+            """INSERT INTO clinical.vital_readings
+                   (tenant_id, patient_link_id, type, value, measured_at, source)
+               VALUES (1, %s, 'hba1c_dup_test', 7.5, %s, 'clinic')""",
+            (link_id, ts),
+        )
+
+
+# ---------------------------------------------------------------------------
+# معیار ۳ — NULL-source تکراری هم رد می‌شود (اثباتِ NULLS NOT DISTINCT)
+# ---------------------------------------------------------------------------
+def test_vital_readings_null_source_duplicate_rejected(admin_tx, admin_conn):
+    """Slice 4c: دو INSERT با source=NULL و همان کلیدِ دیگر → UniqueViolation (NULLS NOT DISTINCT)."""
+    pid = _test_patient_id(admin_conn)
+    link_id = admin_conn.execute(
+        "SELECT id FROM clinical.patient_links WHERE tenant_id=1 AND patient_id=%s", (pid,)
+    ).fetchone()[0]
+
+    ts = "2026-06-24 09:00:00+00"
+    # NULL-sourceِ اول موفق است
+    admin_tx.execute(
+        """INSERT INTO clinical.vital_readings
+               (tenant_id, patient_link_id, type, value, measured_at, source)
+           VALUES (1, %s, 'weight_null_src', 80.0, %s, NULL)""",
+        (link_id, ts),
+    )
+    # NULL-sourceِ دوم با همان کلید باید رد شود (NULL = NULL در این constraint)
+    with pytest.raises(pgerr.UniqueViolation):
+        admin_tx.execute(
+            """INSERT INTO clinical.vital_readings
+                   (tenant_id, patient_link_id, type, value, measured_at, source)
+               VALUES (1, %s, 'weight_null_src', 80.5, %s, NULL)""",
+            (link_id, ts),
+        )
+
+
+# ---------------------------------------------------------------------------
+# معیار ۴ — ON CONFLICT DO NOTHING با کلیدِ جدید همچنان idempotent است
+# ---------------------------------------------------------------------------
+def test_vital_readings_on_conflict_do_nothing_idempotent(admin_tx, admin_conn):
+    """Slice 4c: ON CONFLICT DO NOTHING روی کلیدِ طبیعی ردیفِ تکراری را بدونِ خطا نادیده می‌گیرد."""
+    pid = _test_patient_id(admin_conn)
+    link_id = admin_conn.execute(
+        "SELECT id FROM clinical.patient_links WHERE tenant_id=1 AND patient_id=%s", (pid,)
+    ).fetchone()[0]
+
+    ts = "2026-06-24 11:00:00+00"
+    for _ in range(2):
+        admin_tx.execute(
+            """INSERT INTO clinical.vital_readings
+                   (tenant_id, patient_link_id, type, value, measured_at, source)
+               VALUES (1, %s, 'fbs_idem_test', 105.0, %s, 'demo')
+               ON CONFLICT (tenant_id, patient_link_id, type, measured_at, source)
+                   DO NOTHING""",
+            (link_id, ts),
+        )
+    count = admin_tx.execute(
+        "SELECT COUNT(*) FROM clinical.vital_readings "
+        "WHERE tenant_id=1 AND patient_link_id=%s AND type='fbs_idem_test'",
+        (link_id,),
+    ).fetchone()[0]
+    assert count == 1, f"ON CONFLICT DO NOTHING باید دقیقاً ۱ ردیف بگذارد؛ یافته: {count}"
