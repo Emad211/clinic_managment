@@ -128,8 +128,13 @@
 
 ## خوشهٔ D — خواندنِ مالی/پذیرش (روی Port؛ مرزِ read-only)
 
-- [ ] **۱۳. توسعهٔ `accounting_port`** برای revenue/visits/invoices (read-only، آینهٔ تعریفِ
+- [x] **۱۳. توسعهٔ `accounting_port`** برای revenue/visits/invoices (read-only، آینهٔ تعریفِ
   `webapp/accounting_bridge`). — *integrations-engineer*
+  **تحویل:** `get_revenue_by_patient_ids` + `get_patient_revenue_summary` +
+  `get_daily_revenue_by_patient_ids` در `accounting_port/port.py` (closed-only، work_date،
+  visits.price+injections.total_price+procedures.price؛ همه via `accounting_read`، SELECT-only؛
+  obligationِ sync سه‌جا مستند) + `tests/test_accounting_revenue_port.py` (۱۵ تست شاملِ ردِ
+  invoiceِ باز). ۲۰۴ تست سبز (۱۸۹+۱۵). ✅
 - [ ] **۱۴. صفِ ویزیتِ پزشک** (`doctor_visit_log` snapshotِ مرزی). — *backend-engineer*
 - [ ] **۱۵. control-room/cohort** (پورتِ `control_room_service`) + ستونِ درآمدِ manager-only در worklist. — *backend + frontend*
 

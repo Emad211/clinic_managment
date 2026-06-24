@@ -1,6 +1,6 @@
 """
-AccountingReadPort — the ONLY legitimate read path into accounting.patients
-from the clinical side.
+AccountingReadPort — the ONLY legitimate read path into accounting from the
+clinical/platform side.
 
 Contract:
   - Always uses 'accounting_read' db alias (enforced by router, double-checked here).
@@ -11,15 +11,32 @@ Contract:
   - Fail-loud: raises on unexpected DB errors; returns None/[] only when the
     patient genuinely doesn't exist.
 
+Revenue functions:
+  - MUST stay in sync with the webapp's revenue definition
+    (specialist_clinic/src/adapters/accounting_bridge.py::revenue_for_accounting_ids).
+  - Definition: visits.price + injections.total_price + procedures.price,
+    CLOSED invoices only (status='closed'), attributed by invoices.work_date.
+    Consumables are excluded. See ADR-0003.
+  - All reads go through 'accounting_read' (SELECT-only at DB level — enforced by
+    Postgres GRANTs; accounting_app is the sole writer).
+
+SYNC WARNING: if the webapp revenue definition changes (tables / column names /
+  closed-status value), update these functions AND the webapp AND the reference
+  in specialist_clinic/src/adapters/accounting_bridge.py to keep all three in
+  agreement (per CLAUDE.md).
+
 Usage:
-  from accounting_port.port import get_patient_by_uuid, get_patients_by_ids, PatientDTO
-  dto = get_patient_by_uuid(some_uuid)
-  dtos = get_patients_by_ids([1, 2, 3])   # N+1-avoidance: batch fetch
+  from accounting_port.port import (
+      get_patient_by_uuid, get_patients_by_ids, PatientDTO,
+      get_revenue_by_patient_ids, get_patient_revenue_summary,
+      RevenueByPatientDTO, get_daily_revenue_by_patient_ids,
+  )
 """
 import uuid as uuid_module
 from datetime import date
 from typing import Optional
 
+from django.db import connections
 from pydantic import BaseModel
 
 from accounting.models import Patient
@@ -90,3 +107,213 @@ def get_patients_by_ids(patient_ids: list[int]) -> list[PatientDTO]:
         .filter(id__in=patient_ids)
     )
     return [PatientDTO.model_validate(p) for p in patients]
+
+
+# ===========================================================================
+# Revenue reads — read-only, accounting_read connection only.
+#
+# Revenue definition (faithful mirror of webapp + accounting_bridge.py):
+#   SUM(visits.price) + SUM(injections.total_price) + SUM(procedures.price)
+#   WHERE invoice.status = 'closed'
+#   AND   invoice.work_date BETWEEN since AND until  (both inclusive, optional)
+#   GROUP BY accounting_patient_id
+#
+# Slice-3 column confirmation:
+#   accounting.invoices  : id, patient_id, status TEXT CHECK('open'|'closed'), work_date DATE
+#   accounting.visits    : id, invoice_id, patient_id, price NUMERIC(14,0)
+#   accounting.injections: id, invoice_id, patient_id, total_price NUMERIC(14,0)
+#   accounting.procedures: id, invoice_id, patient_id, price NUMERIC(14,0)
+#   All joins: t.invoice_id = i.id  (same as SQLite webapp)
+#   Money stored as NUMERIC(14,0) Toman integer.
+#
+# SYNC WARNING: keep in step with:
+#   specialist_clinic/src/adapters/accounting_bridge.py::revenue_for_accounting_ids
+#   webapp/src/adapters/sqlite/  (the authoritative webapp definition)
+# ===========================================================================
+
+
+def _accounting_read_cursor():
+    """Return a cursor on the accounting_read connection (SELECT-only at DB level)."""
+    return connections["accounting_read"].cursor()
+
+
+def get_revenue_by_patient_ids(
+    accounting_patient_ids: list[int],
+    since: Optional[str] = None,
+    until: Optional[str] = None,
+) -> dict[int, int]:
+    """
+    Per-patient total closed-invoice revenue (Toman int), keyed by
+    accounting.patients.id.
+
+    Revenue = visits.price + injections.total_price + procedures.price,
+    CLOSED invoices only, attributed by invoices.work_date.
+    Consumables are excluded (mirrors webapp definition exactly).
+
+    since / until: optional gregorian 'YYYY-MM-DD' bounds on invoices.work_date
+    (both inclusive).
+
+    Returns: {accounting_patient_id: total_toman}.
+    Patients with no closed revenue are ABSENT from the dict (callers should
+    treat a missing key as 0). Unknown patient_ids simply produce no rows.
+
+    Reads exclusively through 'accounting_read' (SELECT-only at DB level).
+    NEVER writes accounting.
+    """
+    if not accounting_patient_ids:
+        return {}
+
+    ids = list({int(i) for i in accounting_patient_ids if i})
+    if not ids:
+        return {}
+
+    # Build optional date-range clause
+    date_clause = ""
+    date_params: list = []
+    if since:
+        date_clause += " AND i.work_date >= %s"
+        date_params.append(since)
+    if until:
+        date_clause += " AND i.work_date <= %s"
+        date_params.append(until)
+
+    # One query per revenue table, GROUP BY patient_id — mirrors accounting_bridge.py
+    # pattern but uses a single GROUP BY query per table for efficiency.
+    totals: dict[int, int] = {}
+
+    with _accounting_read_cursor() as cur:
+        for table, col in (
+            ("accounting.visits",     "price"),
+            ("accounting.injections", "total_price"),
+            ("accounting.procedures", "price"),
+        ):
+            # %s placeholders for psycopg; ids list passed as a tuple for IN (...)
+            sql = (
+                f"SELECT t.patient_id, COALESCE(SUM(t.{col}), 0) "
+                f"FROM {table} t "
+                f"JOIN accounting.invoices i ON i.id = t.invoice_id "
+                f"  AND i.status = 'closed' "
+                f"WHERE t.patient_id = ANY(%s)"
+                f"{date_clause} "
+                f"GROUP BY t.patient_id"
+            )
+            cur.execute(sql, [ids] + date_params)
+            for row in cur.fetchall():
+                pid, amount = int(row[0]), int(row[1] or 0)
+                totals[pid] = totals.get(pid, 0) + amount
+
+    return totals
+
+
+class RevenueByPatientDTO(BaseModel):
+    """Single-patient revenue summary from accounting (read-only)."""
+
+    accounting_patient_id: int
+    total_billed: int           # Toman; visits + injections + procedures (closed only)
+    invoice_count: int          # number of distinct closed invoices
+    last_visit_date: Optional[str] = None  # max closed-invoice work_date 'YYYY-MM-DD'
+
+
+def get_patient_revenue_summary(
+    accounting_patient_id: int,
+) -> Optional[RevenueByPatientDTO]:
+    """
+    Single-patient revenue summary: total billed (Toman), closed-invoice count,
+    and last closed-invoice work_date.
+
+    Returns RevenueByPatientDTO, or None if the patient doesn't exist or has
+    no closed invoices (callers should treat None as zeroes).
+
+    Reads exclusively through 'accounting_read'.  NEVER writes accounting.
+    """
+    pid = int(accounting_patient_id)
+
+    with _accounting_read_cursor() as cur:
+        # Invoice-level aggregates: count + max work_date
+        cur.execute(
+            """
+            SELECT COUNT(*), MAX(work_date)
+            FROM accounting.invoices
+            WHERE patient_id = %s AND status = 'closed'
+            """,
+            [pid],
+        )
+        row = cur.fetchone()
+        invoice_count = int(row[0] or 0)
+        last_date_raw = row[1]  # date object or None
+        last_visit_date: Optional[str] = (
+            last_date_raw.isoformat() if last_date_raw else None
+        )
+
+        if invoice_count == 0:
+            return None
+
+        # Revenue from each item table
+        total = 0
+        for table, col in (
+            ("accounting.visits",     "price"),
+            ("accounting.injections", "total_price"),
+            ("accounting.procedures", "price"),
+        ):
+            cur.execute(
+                f"SELECT COALESCE(SUM(t.{col}), 0) "
+                f"FROM {table} t "
+                f"JOIN accounting.invoices i ON i.id = t.invoice_id "
+                f"  AND i.status = 'closed' "
+                f"WHERE t.patient_id = %s",
+                [pid],
+            )
+            total += int(cur.fetchone()[0] or 0)
+
+    return RevenueByPatientDTO(
+        accounting_patient_id=pid,
+        total_billed=total,
+        invoice_count=invoice_count,
+        last_visit_date=last_visit_date,
+    )
+
+
+def get_daily_revenue_by_patient_ids(
+    accounting_patient_ids: list[int],
+    date_from: str,
+    date_to: str,
+) -> dict[str, int]:
+    """
+    Revenue per work_date (gregorian 'YYYY-MM-DD') for a trend chart.
+    Mirrors accounting_bridge.daily_revenue_for_accounting_ids exactly.
+
+    Returns {work_date_str: total_toman} for dates that have closed revenue.
+    Dates with no revenue are absent (callers can treat as 0).
+
+    date_from / date_to: gregorian 'YYYY-MM-DD', both inclusive.
+    Reads exclusively through 'accounting_read'.  NEVER writes accounting.
+    """
+    ids = list({int(i) for i in accounting_patient_ids if i})
+    if not ids:
+        return {}
+
+    totals: dict[str, int] = {}
+
+    with _accounting_read_cursor() as cur:
+        for table, col in (
+            ("accounting.visits",     "price"),
+            ("accounting.injections", "total_price"),
+            ("accounting.procedures", "price"),
+        ):
+            cur.execute(
+                f"SELECT i.work_date, COALESCE(SUM(t.{col}), 0) "
+                f"FROM {table} t "
+                f"JOIN accounting.invoices i ON i.id = t.invoice_id "
+                f"  AND i.status = 'closed' "
+                f"WHERE t.patient_id = ANY(%s) "
+                f"  AND i.work_date BETWEEN %s AND %s "
+                f"GROUP BY i.work_date",
+                [ids, date_from, date_to],
+            )
+            for row in cur.fetchall():
+                d, amount = row[0], int(row[1] or 0)
+                if d:
+                    key = d.isoformat() if hasattr(d, "isoformat") else str(d)
+                    totals[key] = totals.get(key, 0) + amount
+
+    return totals
