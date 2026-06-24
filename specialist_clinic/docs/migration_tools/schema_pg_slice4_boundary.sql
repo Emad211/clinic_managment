@@ -15,8 +15,8 @@
 --   * دو لجرِ فاکتور: FKِ *مرکب* (tenant_id, accounting_invoice_id) → accounting.invoices
 --     (tenant_id, id) — از uq_invoices_tenant_idِ برشِ ۳ استفاده می‌کند؛ ضمانت می‌کند که
 --     ردیفِ بالینی به فاکتورِ همان مستأجر اشاره کند (نه cross-tenant).
---   * campaign_audience: FKِ *تک‌ستونی* accounting_patient_id → accounting.patients(id)
---     (patients در برشِ ۰ قفل است و UNIQUE(tenant_id,id) ندارد؛ id خودش PK یکتاست).
+--   * campaign_audience: FKِ *مرکب* (tenant_id, accounting_patient_id) → accounting.patients
+--     (tenant_id, id) — Batch 2c: patients حالا UNIQUE(tenant_id,id) دارد (uq_patients_tenant_id).
 --   * ON DELETE NO ACTION: فاکتور/بیمار در این سیستم hard-delete نمی‌شوند؛ این مرز نباید
 --     اجازه دهد رکوردی که سمتِ بالینی روی آن اقدام کرده، حذف شود (یکپارچگیِ مالی-بالینی).
 --   * DEFERRABLE INITIALLY DEFERRED: در ETL می‌توان ردیفِ بالینی را پیش از ردیفِ accounting
@@ -56,15 +56,18 @@ BEGIN
 END$$;
 
 -- ---------------------------------------------------------------------------
--- campaign_audience → accounting.patients  (تک‌ستونی؛ accounting_patient_id nullable)
+-- campaign_audience → accounting.patients  (مرکب، tenant-safe؛ Batch 2c)
+--   Batch 2c: FKِ تک‌ستونیِ قدیمی → FKِ مرکب (tenant_id, accounting_patient_id) →
+--   accounting.patients(tenant_id, id) که از uq_patients_tenant_id برشِ ۰ استفاده می‌کند.
+--   accounting_patient_id nullable؛ tenant_id هرگز null نیست → FK روی NULL نمی‌نشیند.
 -- ---------------------------------------------------------------------------
 DO $$
 BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_campaign_audience_acct_patient') THEN
         ALTER TABLE clinical.campaign_audience
             ADD CONSTRAINT fk_campaign_audience_acct_patient
-            FOREIGN KEY (accounting_patient_id)
-            REFERENCES accounting.patients (id)
+            FOREIGN KEY (tenant_id, accounting_patient_id)
+            REFERENCES accounting.patients (tenant_id, id)
             ON DELETE NO ACTION
             DEFERRABLE INITIALLY DEFERRED;
     END IF;

@@ -515,3 +515,59 @@ def test_no_reverse_fk_from_accounting_to_clinical(admin_conn):
             for name, sn, st, tn, tt in reverse_fks
         )
     )
+
+
+# ===========================================================================
+# Batch 2c — FKهای مرکبِ tenant-safe (RLS-readiness)
+# ===========================================================================
+
+# ---------------------------------------------------------------------------
+# معیار ۱ — ارجاعِ cross-tenant ساختاراً غیرممکن است
+#   child با tenant_id=2 که به والدِ tenant 1 اشاره کند → ForeignKeyViolation
+#   (چون FK مرکب (tenant_id, patient_id) → patients(tenant_id, id) است).
+# ---------------------------------------------------------------------------
+def test_cross_tenant_fk_rejected(admin_tx, admin_conn):
+    """درجِ clinical.patient_links با tenant_id=2 که به بیمارِ tenant 1 اشاره کند → FK violation."""
+    pid = _test_patient_id(admin_conn)  # بیمارِ tenant 1
+    admin_tx.execute(
+        "INSERT INTO platform.tenants (id, name) VALUES (2, 't2') ON CONFLICT (id) DO NOTHING"
+    )
+    with pytest.raises(pgerr.ForeignKeyViolation):
+        admin_tx.execute(
+            "INSERT INTO clinical.patient_links (tenant_id, patient_id) VALUES (2, %s)", (pid,)
+        )
+
+
+# ---------------------------------------------------------------------------
+# معیار ۲ — جداولِ والدِ کلیدی UNIQUE(tenant_id, id) دارند (هدفِ FKِ مرکب)
+# ---------------------------------------------------------------------------
+def test_parent_tables_have_composite_unique_tenant_id(admin_conn):
+    """هر جدولِ والدِ per-tenant باید یک UNIQUE با ستون‌های دقیقاً {tenant_id, id} داشته باشد."""
+    parents = [
+        ("platform", "users"),
+        ("accounting", "patients"),
+        ("accounting", "medical_staff"),
+        ("accounting", "services"),
+        ("accounting", "nursing_services"),
+        ("accounting", "insurance_schemes"),
+        ("accounting", "invoices"),
+        ("accounting", "visits"),
+        ("clinical", "patient_links"),
+        ("clinical", "conditions"),
+    ]
+    missing = []
+    for schema, table in parents:
+        rows = admin_conn.execute(
+            """SELECT array_agg(a.attname ORDER BY a.attname)
+                 FROM pg_constraint c
+                 JOIN pg_class t ON t.oid = c.conrelid
+                 JOIN pg_namespace n ON n.oid = t.relnamespace
+                 JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = ANY(c.conkey)
+                WHERE n.nspname = %s AND t.relname = %s AND c.contype = 'u'
+                GROUP BY c.conname""",
+            (schema, table),
+        ).fetchall()
+        has = any(sorted(r[0]) == ["id", "tenant_id"] for r in rows)
+        if not has:
+            missing.append(f"{schema}.{table}")
+    assert not missing, f"این والدها UNIQUE(tenant_id, id) ندارند: {missing}"
