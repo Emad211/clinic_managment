@@ -25,18 +25,42 @@ apply_schema management command applies them.
 #     Create this role idempotently with:
 #       python manage.py ensure_app_role
 #     or via apply_schema --create-login-role <name> --role-password <pw>
+#
+# ---------------------------------------------------------------------------
+# Production hardening — gated by PRODUCTION=1 env var:
+#
+#   When PRODUCTION=1 is set the server refuses to start unless:
+#     - SECRET_KEY is non-empty and not the dev placeholder  → fail-fast
+#     - DEBUG is forced to False regardless of the DEBUG env var
+#     - ALLOWED_HOSTS is explicit (no wildcard allowed)       → fail-fast
+#     - CORS_ALLOWED_ORIGINS comes from env, not localhost defaults
+#
+#   Dev / CI / tests: PRODUCTION is unset → permissive defaults unchanged.
+#   Resolution logic lives in config/env.py (pure functions, unit-testable).
 # ---------------------------------------------------------------------------
 """
 import os
 from pathlib import Path
 
+# env.py must be imported AFTER Django internals are importable. It is imported
+# here at module load time because settings.py is only loaded once per process.
+from config.env import is_production, resolve_secret_key, resolve_debug, \
+    resolve_allowed_hosts, resolve_cors_origins
+
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-SECRET_KEY = os.environ.get("SECRET_KEY", "halqe-dev-secret-not-for-production")
+# Resolve all environment-gated settings via pure functions from config/env.py
+_env = os.environ
+_production = is_production(_env)
 
-DEBUG = os.environ.get("DEBUG", "true").lower() == "true"
+SECRET_KEY = resolve_secret_key(_env, _production)
 
-ALLOWED_HOSTS = ["*"]
+DEBUG = resolve_debug(_env, _production)
+
+ALLOWED_HOSTS = resolve_allowed_hosts(_env, _production)
+
+# Expose the flag so middleware/views can inspect it if needed (read-only).
+PRODUCTION = _production
 
 INSTALLED_APPS = [
     # No django.contrib.admin — minimal vertical slice
@@ -62,12 +86,9 @@ MIDDLEWARE = [
 ]
 
 # ---------------------------------------------------------------------------
-# CORS — dev only: allow Next.js dev server on localhost:3000
+# CORS — dev: localhost:3000; production: from CORS_ALLOWED_ORIGINS env var
 # ---------------------------------------------------------------------------
-CORS_ALLOWED_ORIGINS = [
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
-]
+CORS_ALLOWED_ORIGINS = resolve_cors_origins(_env, _production)
 CORS_ALLOW_CREDENTIALS = False
 
 ROOT_URLCONF = "config.urls"
