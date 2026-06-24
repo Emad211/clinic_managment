@@ -290,3 +290,97 @@ class PatientFlag(models.Model):
             f"PatientFlag(patient_link_id={self.patient_link_id}, "
             f"flag_key={self.flag_key}, value={self.value})"
         )
+
+
+class FollowupTask(models.Model):
+    """
+    clinical.followup_tasks — follow-up worklist items.
+
+    Slice2 columns (from schema_pg_slice2_clinical.sql lines 449-468):
+      tenant_id, patient_link_id,
+      due_date (DATE nullable), reason, detail,
+      status CHECK('open'|'done'|'dismissed') DEFAULT 'open',
+      assigned_to, call_log,
+      source_rule (additive migration), source_event (additive migration),
+      appointment_id (additive migration),
+      fulfillment CHECK('in_person'|'remote') DEFAULT 'in_person' (additive migration),
+      created_at TIMESTAMPTZ DEFAULT now(),
+      resolved_at TIMESTAMPTZ nullable.
+    """
+
+    STATUS_OPEN = "open"
+    STATUS_DONE = "done"
+    STATUS_DISMISSED = "dismissed"
+
+    FULFILLMENT_IN_PERSON = "in_person"
+    FULFILLMENT_REMOTE = "remote"
+
+    tenant_id = models.BigIntegerField(default=1)
+    patient_link_id = models.BigIntegerField()
+    due_date = models.DateField(null=True, blank=True)
+    reason = models.TextField(null=True, blank=True)
+    detail = models.TextField(null=True, blank=True)
+    status = models.TextField(default="open")
+    assigned_to = models.TextField(null=True, blank=True)
+    call_log = models.TextField(null=True, blank=True)
+    source_rule = models.TextField(null=True, blank=True)   # additive migration col
+    source_event = models.TextField(null=True, blank=True)  # additive migration col
+    appointment_id = models.BigIntegerField(null=True, blank=True)  # additive migration col
+    fulfillment = models.TextField(default="in_person", null=True, blank=True)  # additive migration col
+    created_at = models.DateTimeField()
+    resolved_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        managed = False
+        app_label = "clinical"
+        db_table = '"clinical"."followup_tasks"'
+        ordering = ["due_date", "id"]
+
+    def __str__(self):
+        return (
+            f"FollowupTask(id={self.id}, patient_link_id={self.patient_link_id}, "
+            f"status={self.status}, due_date={self.due_date})"
+        )
+
+
+class SuggestionLog(models.Model):
+    """
+    clinical.suggestion_log — physician accept/dismiss of clinical suggestions.
+
+    Slice2 columns (from schema_pg_slice2_clinical.sql lines 475-491):
+      tenant_id, patient_link_id, rule_code,
+      suggestion_text, evidence_level,
+      status CHECK('pending'|'accepted'|'dismissed') DEFAULT 'pending',
+      acted_by, acted_at TIMESTAMPTZ nullable, note,
+      created_at TIMESTAMPTZ DEFAULT now().
+    UNIQUE(tenant_id, patient_link_id, rule_code) — one log per (patient, rule).
+    Upsert semantics: UPDATE if row already exists for (patient_link_id, rule_code).
+    """
+
+    STATUS_PENDING = "pending"
+    STATUS_ACCEPTED = "accepted"
+    STATUS_DISMISSED = "dismissed"
+
+    tenant_id = models.BigIntegerField(default=1)
+    patient_link_id = models.BigIntegerField()
+    rule_code = models.TextField()
+    suggestion_text = models.TextField(null=True, blank=True)
+    evidence_level = models.TextField(null=True, blank=True)
+    status = models.TextField(default="pending")
+    acted_by = models.TextField(null=True, blank=True)
+    acted_at = models.DateTimeField(null=True, blank=True)
+    note = models.TextField(null=True, blank=True)
+    created_at = models.DateTimeField()
+
+    class Meta:
+        managed = False
+        app_label = "clinical"
+        db_table = '"clinical"."suggestion_log"'
+        ordering = ["-created_at"]
+        # DB-enforced: UNIQUE(tenant_id, patient_link_id, rule_code)
+
+    def __str__(self):
+        return (
+            f"SuggestionLog(patient_link_id={self.patient_link_id}, "
+            f"rule_code={self.rule_code}, status={self.status})"
+        )

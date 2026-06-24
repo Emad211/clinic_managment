@@ -2,11 +2,16 @@
 django-ninja API — halqe platform v1.
 
 Endpoints:
-  POST /api/v1/auth/login                   → JWT token
-  GET  /api/v1/patients                      → paginated enrolled patient list (requires JWT)
-  GET  /api/v1/patients/{uuid}               → PatientDTO (requires JWT)
-  GET  /api/v1/patients/{uuid}/vitals/latest → list[VitalReadingDTO] (requires JWT)
-  GET  /api/v1/patients/{uuid}/record        → full clinical record (requires JWT)
+  POST /api/v1/auth/login                                         → JWT token
+  GET  /api/v1/patients                                           → paginated enrolled patient list (requires JWT)
+  GET  /api/v1/patients/{uuid}                                    → PatientDTO (requires JWT)
+  GET  /api/v1/patients/{uuid}/vitals/latest                      → list[VitalReadingDTO] (requires JWT)
+  GET  /api/v1/patients/{uuid}/record                             → full clinical record (requires JWT)
+
+  ACT slice (care-loop):
+  GET  /api/v1/worklist                                           → paginated follow-up tasks (requires JWT)
+  POST /api/v1/worklist/{task_id}/done                            → mark task done (requires JWT)
+  POST /api/v1/patients/{uuid}/suggestions/{rule_code}/action     → accept/dismiss suggestion (requires JWT)
 """
 import uuid as uuid_module
 from typing import Optional
@@ -14,6 +19,7 @@ from datetime import datetime, date
 
 from ninja import NinjaAPI, Schema, Query
 from django.http import Http404
+from django.utils import timezone
 
 from accounting_port.port import (
     get_patient_by_uuid,
@@ -26,6 +32,8 @@ from clinical.models import (
     Condition,
     PatientCondition,
     PatientMedication,
+    FollowupTask,
+    SuggestionLog,
 )
 import clinical.rule_engine as _rule_engine
 from platform_core.auth_bearer import JWTBearer
@@ -514,4 +522,308 @@ def get_suggestions(request, patient_uuid: uuid_module.UUID):
         has_redflag=result["has_redflag"],
         framing="پیشنهاد — تأیید با پزشک",
         sections=sections,
+    )
+
+
+# ---------------------------------------------------------------------------
+# ACT slice — follow-up worklist + suggestion action
+# ---------------------------------------------------------------------------
+
+class WorklistItemDTO(Schema):
+    """One follow-up task enriched with patient demographics."""
+    id: int
+    patient_uuid: Optional[str] = None
+    patient_full_name: Optional[str] = None
+    kind: Optional[str] = None        # maps from reason field
+    reason: Optional[str] = None
+    due_date: Optional[date] = None
+    status: str
+    fulfillment: Optional[str] = None
+    created_at: datetime
+    resolved_at: Optional[datetime] = None
+
+
+class WorklistResponseDTO(Schema):
+    items: list[WorklistItemDTO]
+    total: int
+    limit: int
+    offset: int
+
+
+class FollowupTaskDTO(Schema):
+    """Full task DTO returned after a state change."""
+    id: int
+    patient_link_id: int
+    tenant_id: int
+    reason: Optional[str] = None
+    detail: Optional[str] = None
+    due_date: Optional[date] = None
+    status: str
+    fulfillment: Optional[str] = None
+    source_rule: Optional[str] = None
+    source_event: Optional[str] = None
+    created_at: datetime
+    resolved_at: Optional[datetime] = None
+
+
+class SuggestionActionRequest(Schema):
+    """Body for accept/dismiss suggestion action."""
+    action: str        # 'accept' | 'dismiss'
+    note: Optional[str] = None
+
+
+class SuggestionLogDTO(Schema):
+    """Suggestion log row returned after an action."""
+    id: int
+    patient_link_id: int
+    tenant_id: int
+    rule_code: str
+    status: str
+    acted_by: Optional[str] = None
+    acted_at: Optional[datetime] = None
+    note: Optional[str] = None
+    created_at: datetime
+
+
+# ── GET /worklist ─────────────────────────────────────────────────────────────
+
+@api.get(
+    "/worklist",
+    response=WorklistResponseDTO,
+    auth=_jwt_auth,
+    tags=["worklist"],
+)
+def list_worklist(
+    request,
+    status: Optional[str] = Query(default=None),
+    limit: int = Query(default=20, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+):
+    """
+    Paginated follow-up worklist for the authenticated tenant.
+
+    Default filter: status='open' and due_date <= today (due tasks).
+    Pass ?status=done or ?status=dismissed to see other states.
+    Ordered by due_date ASC (oldest-due first), then id.
+
+    N+1-avoidance: page tasks first, then batch-fetch demographics for the page
+    via AccountingReadPort.get_patients_by_ids().
+
+    Returns 401 without JWT. Tasks from other tenants are never shown.
+    """
+    tenant_id = request.tenant_id
+    today = timezone.now().date()
+
+    # Build queryset — always tenant-scoped
+    qs = FollowupTask.objects.filter(tenant_id=tenant_id)
+
+    if status is not None:
+        qs = qs.filter(status=status)
+    else:
+        # Default: open and due (due_date <= today OR due_date is NULL)
+        from django.db.models import Q
+        qs = qs.filter(
+            status=FollowupTask.STATUS_OPEN,
+        ).filter(
+            Q(due_date__lte=today) | Q(due_date__isnull=True)
+        )
+
+    total = qs.count()
+    page_tasks = list(qs.order_by("due_date", "id")[offset: offset + limit])
+
+    # Batch-fetch demographics — collect unique patient_link_ids on this page,
+    # look up patient_ids, then batch-fetch from accounting.
+    link_ids_on_page = [t.patient_link_id for t in page_tasks]
+    # Fetch the PatientLink rows to get patient_id → uuid mapping
+    links_map: dict[int, PatientLink] = {}
+    if link_ids_on_page:
+        for pl in PatientLink.objects.filter(id__in=link_ids_on_page):
+            links_map[pl.id] = pl
+
+    patient_ids = list({pl.patient_id for pl in links_map.values()})
+    demos_by_pid: dict[int, PatientDTO] = {
+        d.id: d for d in get_patients_by_ids(patient_ids)
+    }
+
+    items: list[WorklistItemDTO] = []
+    for task in page_tasks:
+        pl = links_map.get(task.patient_link_id)
+        demo = demos_by_pid.get(pl.patient_id) if pl else None
+        items.append(
+            WorklistItemDTO(
+                id=task.id,
+                patient_uuid=str(demo.uuid) if demo else None,
+                patient_full_name=demo.full_name if demo else None,
+                kind=task.reason,          # reason is the "kind" of follow-up
+                reason=task.reason,
+                due_date=task.due_date,
+                status=task.status,
+                fulfillment=task.fulfillment,
+                created_at=task.created_at,
+                resolved_at=task.resolved_at,
+            )
+        )
+
+    return WorklistResponseDTO(
+        items=items,
+        total=total,
+        limit=limit,
+        offset=offset,
+    )
+
+
+# ── POST /worklist/{task_id}/done ─────────────────────────────────────────────
+
+@api.post(
+    "/worklist/{task_id}/done",
+    response={200: FollowupTaskDTO, 404: dict, 409: dict},
+    auth=_jwt_auth,
+    tags=["worklist"],
+)
+def mark_task_done(request, task_id: int):
+    """
+    Mark a follow-up task as done.
+
+    Sets status='done' and resolved_at=now().
+    Returns 404 if the task does not exist for this tenant.
+    Returns 409 if the task is already done or dismissed.
+    Clinical WRITE — uses 'default' connection (platform_app role).
+    """
+    tenant_id = request.tenant_id
+
+    try:
+        task = FollowupTask.objects.get(id=task_id, tenant_id=tenant_id)
+    except FollowupTask.DoesNotExist:
+        return 404, {"detail": f"FollowupTask id={task_id} not found for this tenant."}
+
+    if task.status != FollowupTask.STATUS_OPEN:
+        return 409, {
+            "detail": (
+                f"Task id={task_id} is already '{task.status}'; "
+                "only open tasks can be marked done."
+            )
+        }
+
+    task.status = FollowupTask.STATUS_DONE
+    task.resolved_at = timezone.now()
+    task.save(update_fields=["status", "resolved_at"])
+
+    return 200, FollowupTaskDTO(
+        id=task.id,
+        patient_link_id=task.patient_link_id,
+        tenant_id=task.tenant_id,
+        reason=task.reason,
+        detail=task.detail,
+        due_date=task.due_date,
+        status=task.status,
+        fulfillment=task.fulfillment,
+        source_rule=task.source_rule,
+        source_event=task.source_event,
+        created_at=task.created_at,
+        resolved_at=task.resolved_at,
+    )
+
+
+# ── POST /patients/{uuid}/suggestions/{rule_code}/action ─────────────────────
+
+@api.post(
+    "/patients/{patient_uuid}/suggestions/{rule_code}/action",
+    response={200: SuggestionLogDTO, 400: dict, 404: dict},
+    auth=_jwt_auth,
+    tags=["clinical"],
+)
+def suggestion_action(
+    request,
+    patient_uuid: uuid_module.UUID,
+    rule_code: str,
+    body: SuggestionActionRequest,
+):
+    """
+    Record physician accept or dismiss of a clinical suggestion.
+
+    Upsert semantics (matching the specialist_clinic Flask app's per-(patient, rule)
+    behaviour): if a suggestion_log row for (tenant_id, patient_link_id, rule_code)
+    already exists, UPDATE it — do NOT create a duplicate.
+
+    Body: {action: 'accept'|'dismiss', note?: str}
+
+    Returns 404 if no enrollment for this uuid in this tenant.
+    Returns 400 if action value is invalid.
+    Clinical WRITE — uses 'default' connection (platform_app role).
+    Accounting data accessed read-only via AccountingReadPort only.
+    """
+    tenant_id = request.tenant_id
+
+    # 1. Validate action
+    if body.action not in ("accept", "dismiss"):
+        return 400, {
+            "detail": f"Invalid action '{body.action}'. Must be 'accept' or 'dismiss'."
+        }
+
+    # 2. Resolve uuid → accounting patient (read-only via Port)
+    demo = get_patient_by_uuid(patient_uuid)
+    if demo is None:
+        raise Http404(f"Patient with uuid={patient_uuid} not found.")
+
+    # 3. Find clinical enrollment for THIS tenant
+    try:
+        link = PatientLink.objects.get(
+            tenant_id=tenant_id,
+            patient_id=demo.id,
+        )
+    except PatientLink.DoesNotExist:
+        raise Http404(
+            f"Patient uuid={patient_uuid} has no enrollment for this tenant."
+        )
+
+    # 4. Map action → status
+    new_status = (
+        SuggestionLog.STATUS_ACCEPTED
+        if body.action == "accept"
+        else SuggestionLog.STATUS_DISMISSED
+    )
+
+    # 5. Determine actor from the JWT user (request.auth is set by JWTBearer)
+    actor = getattr(request.auth, "username", None) or "unknown"
+
+    now = timezone.now()
+
+    # 6. Upsert: UPDATE if exists, INSERT if not.
+    #    UNIQUE(tenant_id, patient_link_id, rule_code) — one row per (patient, rule).
+    try:
+        log_row = SuggestionLog.objects.get(
+            tenant_id=tenant_id,
+            patient_link_id=link.id,
+            rule_code=rule_code,
+        )
+        # Row exists — update status, actor, timestamp, note
+        log_row.status = new_status
+        log_row.acted_by = actor
+        log_row.acted_at = now
+        if body.note is not None:
+            log_row.note = body.note
+        log_row.save(update_fields=["status", "acted_by", "acted_at", "note"])
+    except SuggestionLog.DoesNotExist:
+        # New row
+        log_row = SuggestionLog.objects.create(
+            tenant_id=tenant_id,
+            patient_link_id=link.id,
+            rule_code=rule_code,
+            status=new_status,
+            acted_by=actor,
+            acted_at=now,
+            note=body.note,
+            created_at=now,
+        )
+
+    return 200, SuggestionLogDTO(
+        id=log_row.id,
+        patient_link_id=log_row.patient_link_id,
+        tenant_id=log_row.tenant_id,
+        rule_code=log_row.rule_code,
+        status=log_row.status,
+        acted_by=log_row.acted_by,
+        acted_at=log_row.acted_at,
+        note=log_row.note,
+        created_at=log_row.created_at,
     )
