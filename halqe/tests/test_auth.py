@@ -53,6 +53,8 @@ def _reset_user(seed_data):
         f"password='{app_pw}' dbname='{db_name}'"
     )
     with psycopg.connect(conninfo, autocommit=True) as conn:
+        # GUC را ست کن تا RLS tenant_isolation به UPDATE اجازه دهد
+        conn.execute("SELECT set_config('app.current_tenant', '1', false)")
         conn.execute(
             "UPDATE platform.users SET failed_attempts=0, locked_until=NULL "
             "WHERE tenant_id=1 AND username='testuser'"

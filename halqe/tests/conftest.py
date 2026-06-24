@@ -464,3 +464,42 @@ def seed_act_data(seed_clinical_data):
         "task_t2_id": task_t2_id,      # open, tenant-2 (isolation)
         "t2_link_id": t2_link_id,
     }
+
+
+# ---------------------------------------------------------------------------
+# RLS compatibility fixture — Slice 5 (قدم ۱۹)
+#
+# پس از فعال‌سازیِ RLS در slice5، هر کوئریِ ORM/psycopg که با app-role اجرا
+# می‌شود نیاز دارد GUCِ app.current_tenant ست شده باشد. در production این کار
+# توسطِ JWTBearer.authenticate() انجام می‌شود. برای تست‌هایی که مستقیماً
+# service/ORM را فراخوانی می‌کنند (نه از طریقِ endpoint)، این fixture
+# GUC را قبل از هر تست به tenant_id=1 (مستأجرِ پیش‌فرضِ تست) ست می‌کند
+# و بعد از تست آن را به '' reset می‌کند (yield fixture).
+#
+# این fixture:
+#   - autouse=True: همهٔ تست‌های django_db به‌صورتِ خودکار از آن بهره می‌برند.
+#   - policy را تضعیف نمی‌کند: fail-closed با GUC='' در production کار می‌کند.
+#     این fixture فقط برای تست‌هایی است که از endpoint نمی‌گذرند.
+#   - شبیه‌سازیِ JWTBearer: همان الگوی set_tenant_guc(1) که در production
+#     auth_bearer.py انجام می‌شود.
+#   - yield: پس از تست GUC را به '' برمی‌گرداند — از تداخل بین تست‌ها جلوگیری می‌کند.
+# ---------------------------------------------------------------------------
+@pytest.fixture(autouse=True)
+def set_default_tenant_guc(db, request):
+    """
+    برای همهٔ تست‌های django_db، GUCِ app.current_tenant را به '1' ست می‌کند
+    و پس از تست آن را پاک می‌کند. این fixture از `db` استفاده می‌کند تا فقط
+    وقتی DB connection واقعاً فعال است اجرا شود (نه برای unit testهای بدون DB).
+
+    تست‌هایی که نیاز به GUCِ خاص دارند (مثلِ tenant_context و rls_isolation)
+    می‌توانند GUC را بعداً override کنند — این fixture فقط default می‌زند.
+    """
+    from platform_core.tenant_context import set_tenant_guc, clear_tenant_guc
+
+    set_tenant_guc(1)
+    yield
+    # reset بعد از تست: از آلودگیِ connection بین تست‌ها جلوگیری می‌کند
+    try:
+        clear_tenant_guc()
+    except Exception:
+        pass

@@ -245,6 +245,12 @@ class Command(BaseCommand):
         skipped = 0
 
         with psycopg.connect(conninfo, autocommit=True) as conn:
+            # RLS (slice5): ست کردنِ GUC قبل از هر INSERT/UPDATE
+            # تضمین می‌کند tenant_isolation WITH CHECK رد نشود.
+            conn.execute(
+                "SELECT set_config('app.current_tenant', %s, false)",
+                [str(tenant_id)],
+            )
             for (
                 event_key,
                 label,

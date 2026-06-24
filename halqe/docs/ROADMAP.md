@@ -180,7 +180,8 @@
 
 ## خوشهٔ F — چندمستأجریِ واقعی (آخر، پرریسک)
 
-- [ ] **۱۹. سیاست‌های RLS** روی جداولِ clinical با GUCِ `app.current_tenant` (آمادهٔ قدم ۲). — *api-platform-engineer*
+- [x] **۱۹. سیاست‌های RLS** روی جداولِ clinical با GUCِ `app.current_tenant` (آمادهٔ قدم ۲). — *api-platform-engineer*
+  **تحویل:** `specialist_clinic/docs/migration_tools/schema_pg_slice5_rls.sql` — DO-block روی `pg_catalog`: همهٔ جداولِ `tenant_id`دارِ `clinical`+`platform` → `ENABLE`+**`FORCE`** ROW LEVEL SECURITY + policyِ idempotentِ `tenant_isolation FOR ALL` با `USING/WITH CHECK (tenant_id = NULLIF(current_setting('app.current_tenant', true), '')::bigint)` = **fail-closed** (GUCِ خالی→NULL→صفر ردیف)؛ + `ALTER VIEW clinical.observations SET (security_invoker=true)` تا VIEW از حقوقِ مالک/superuser دور نزند (رفعِ RLS-TODOِ slice2). `accounting.*` عمداً RLS نگرفت (مرز read-only؛ موکول به T1). **استثناءِ auth:** `platform.users` یک policyِ دومِ `tenant_isolation_read (FOR SELECT USING true)` دارد چون login باید username را پیش از دانستنِ tenant بیابد — **WRITE همچنان tenant-قفل**، امنیت via JWT claim (ریسک #۱۰). **تست:** ۹ تستِ RLSِ نگهبان با **رولِ واقعیِ `clinical_login_test` (نه superuser)** — read-isolation (GUC=1→فقط t1)، fail-closed (GUC=''→۰ ردیف)، write-check (INSERT tenant_id=2→رد)، observations (security_invoker)، idempotency؛ + assertِ relrowsecurity/relforcerowsecurity + نبودِ BYPASSRLS/super روی app-roleها. رگرسیونِ ۲۸۲ تست حل شد با fixtureِ autouseِ `set_default_tenant_guc(1)` (شبیه‌سازیِ auth_bearer برای کوئریِ مستقیمِ ORM) + ست‌کردنِ GUC در `seed_engagement_events`/`test_auth._reset_user`/`test_db_boundary._app_conn`. **نگهبان ۷۹ سبز (۷۰+۹)، halqe ۲۸۲ سبز + ۱ skip** (هر دو روی Docker، بازبینیِ مستقل). ✅
 - [ ] **۲۰. onboarding/مدیریتِ tenant + تستِ end-to-endِ ایزولاسیون با رولِ واقعی** (نه superuser). — *api-platform-engineer + qa-automation-engineer*
 
 ---
@@ -204,5 +205,15 @@
 9. **(قدم ۱۷، follow-up برای ۱۸)** `enqueue_approval` از get()-then-create استفاده می‌کند (نه
    اتمیک get_or_create) — برای schedulerِ تک‌نخی امن است؛ dispatcherِ قدم ۱۸ باید تک‌نخی بماند
    یا get_or_create شود، و **همیشه `period_key` پر باشد** (UNIQUE روی NULL کار نمی‌کند).
+10. **(قدم ۱۹، امنیتِ T1) `platform.users` خواندنِ cross-tenant باز است** (`tenant_isolation_read
+   FOR SELECT USING true`) — لازمهٔ loginِ username-اول است (chicken-and-egg)، ولی یعنی هر اتصالِ
+   app-role می‌تواند `password_hash`/`api_token_hash`ِ همهٔ مستأجرها را بخواند (همان Finding-4/
+   RLS-TODOِ slice0). **WRITE قفل است** (با `tenant_isolation`). سخت‌سازیِ T1: یک تابعِ
+   `SECURITY DEFINER`ِ `auth_lookup_user(username)` که فقط همان ردیف را برگرداند و policyِ SELECTِ
+   آزاد حذف شود؛ یا مسیریابیِ tenant پیش از login. تا آن زمان، اپ نباید `platform.users` را برای
+   چیزی جز authٰ بخواند.
+11. **(قدم ۱۹، follow-up) `set_config(..., is_local=false)`** GUC را روی کانکشن نگه می‌دارد؛ با
+   PgBouncer در حالتِ transaction-pooling می‌تواند بینِ requestها نشت کند. الان pooler نیست و
+   middleware در ابتدای هر request پاک می‌کند؛ در ابر (T1) قبل از افزودنِ pooler بازبینی شود.
 
-> آخرین به‌روزرسانی: شروعِ حلقهٔ سوم. وضعیتِ هر قدم با ✅ در همین فایل علامت می‌خورد.
+> آخرین به‌روزرسانی: حلقهٔ چهارم — قدم ۱۹ (RLS) سبز. مانده: قدم ۲۰ (onboarding + e2e ایزولاسیون). وضعیتِ هر قدم با ✅ علامت می‌خورد.

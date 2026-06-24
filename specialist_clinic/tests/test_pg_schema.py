@@ -100,9 +100,19 @@ def admin_tx(admin_conn):
 
 @pytest.fixture
 def clinical_tx(admin_conn):
-    """اتصال با کاربرِ LOGINِ عضوِ clinical_app — مسیرِ ایزولاسیونِ واقعیِ production."""
+    """اتصال با کاربرِ LOGINِ عضوِ clinical_app — مسیرِ ایزولاسیونِ واقعیِ production.
+
+    پس از فعال‌سازیِ RLS در slice5، این اتصال باید GUCِ app.current_tenant را ست کند تا
+    کوئری‌های نوشتن/خواندن موفق باشند. در production این کار توسطِ JWTBearer.authenticate()
+    انجام می‌شود. اینجا آن را شبیه‌سازی می‌کنیم: tenant_id=1 (مستأجرِ پیش‌فرضِ تستِ نگهبان).
+    این طرز عمل policy را تضعیف نمی‌کند — تست‌های این fixture اثباتِ «مجاز-بودنِ GRANTها»
+    است، نه تستِ ایزولاسیون (که در تست‌های _rls_isolation_* با GUC‌های صریح انجام می‌شود).
+    """
     conn = psycopg.connect(_login_dsn())
     try:
+        # شبیه‌سازیِ JWTBearer.authenticate(): GUCِ tenant را ست کن (is_local=false)
+        # autocommit نیاز نیست چون GUC is_local=false روی connection است، نه transaction.
+        conn.execute("SELECT set_config('app.current_tenant', '1', false)")
         yield conn
     finally:
         conn.rollback()
@@ -1344,3 +1354,293 @@ def test_vital_readings_on_conflict_do_nothing_idempotent(admin_tx, admin_conn):
         (link_id,),
     ).fetchone()[0]
     assert count == 1, f"ON CONFLICT DO NOTHING باید دقیقاً ۱ ردیف بگذارد؛ یافته: {count}"
+
+
+# ===========================================================================
+# Slice 5 — Row Level Security (RLS) روی جداولِ clinical و platform
+# ===========================================================================
+
+# ---------------------------------------------------------------------------
+# معیار ۱ — همهٔ جداولِ tenant_id‌دارِ clinical و platform باید RLS و FORCE داشته باشند
+# ---------------------------------------------------------------------------
+def test_rls_enabled_on_all_tenant_tables(admin_conn):
+    """Slice 5: هر جدولِ tenant_id‌دارِ clinical/platform باید relrowsecurity=true و relforcerowsecurity=true داشته باشد."""
+    rows = admin_conn.execute(
+        """SELECT n.nspname, c.relname, c.relrowsecurity, c.relforcerowsecurity
+             FROM pg_class c
+             JOIN pg_namespace n ON n.oid = c.relnamespace
+            WHERE c.relkind = 'r'
+              AND n.nspname IN ('clinical', 'platform')
+              AND EXISTS (
+                  SELECT 1 FROM pg_attribute a
+                  WHERE a.attrelid = c.oid AND a.attname = 'tenant_id'
+                    AND NOT a.attisdropped
+              )
+            ORDER BY n.nspname, c.relname"""
+    ).fetchall()
+    assert rows, "هیچ جدولِ tenant_id‌داری در clinical/platform پیدا نشد"
+
+    not_enabled = [
+        f"{schema}.{table}"
+        for schema, table, rls, force in rows
+        if not rls
+    ]
+    not_forced = [
+        f"{schema}.{table}"
+        for schema, table, rls, force in rows
+        if rls and not force
+    ]
+
+    assert not not_enabled, (
+        f"این جداول RLS ندارند (ENABLE ROW LEVEL SECURITY اعمال نشده): {not_enabled}"
+    )
+    assert not not_forced, (
+        f"این جداول FORCE ROW LEVEL SECURITY ندارند: {not_forced}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# معیار ۲ — policy tenant_isolation روی هر جدولِ tenant_id‌دار وجود دارد
+# ---------------------------------------------------------------------------
+def test_tenant_isolation_policy_exists_on_all_tenant_tables(admin_conn):
+    """Slice 5: policy 'tenant_isolation' باید روی هر جدولِ tenant_id‌دارِ clinical/platform وجود داشته باشد."""
+    tenant_tables = {
+        (row[0], row[1])
+        for row in admin_conn.execute(
+            """SELECT n.nspname, c.relname
+                 FROM pg_class c
+                 JOIN pg_namespace n ON n.oid = c.relnamespace
+                WHERE c.relkind = 'r'
+                  AND n.nspname IN ('clinical', 'platform')
+                  AND EXISTS (
+                      SELECT 1 FROM pg_attribute a
+                      WHERE a.attrelid = c.oid AND a.attname = 'tenant_id'
+                        AND NOT a.attisdropped
+                  )"""
+        ).fetchall()
+    }
+
+    policy_tables = {
+        (row[0], row[1])
+        for row in admin_conn.execute(
+            "SELECT schemaname, tablename FROM pg_policies WHERE policyname = 'tenant_isolation'"
+        ).fetchall()
+    }
+
+    missing = tenant_tables - policy_tables
+    assert not missing, (
+        f"این جداول policy tenant_isolation ندارند: {sorted(missing)}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# معیار ۳ — رول‌های اپ فاقدِ BYPASSRLS و SUPERUSER هستند
+# ---------------------------------------------------------------------------
+def test_app_roles_have_no_bypassrls_or_superuser(admin_conn):
+    """Slice 5: platform_app و platform_login_test نباید rolbypassrls یا rolsuper داشته باشند."""
+    rows = admin_conn.execute(
+        """SELECT rolname, rolsuper, rolbypassrls
+             FROM pg_roles
+            WHERE rolname IN ('platform_app', 'platform_login_test',
+                              'clinical_app', 'clinical_login_test')
+            ORDER BY rolname"""
+    ).fetchall()
+
+    violated = [
+        f"{name} (super={sup}, bypassrls={byp})"
+        for name, sup, byp in rows
+        if sup or byp
+    ]
+    assert not violated, (
+        f"این رول‌ها SUPERUSER یا BYPASSRLS دارند — RLS را bypass می‌کنند: {violated}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# معیار ۴ — security_invoker روی clinical.observations فعال است
+# ---------------------------------------------------------------------------
+def test_observations_view_has_security_invoker(admin_conn):
+    """Slice 5: clinical.observations باید security_invoker=true داشته باشد تا RLS جداولِ زیرین اعمال شود."""
+    row = admin_conn.execute(
+        """SELECT reloptions
+             FROM pg_class c
+             JOIN pg_namespace n ON n.oid = c.relnamespace
+            WHERE c.relname = 'observations' AND n.nspname = 'clinical'"""
+    ).fetchone()
+    assert row is not None, "VIEW clinical.observations پیدا نشد"
+    opts = row[0] or []
+    assert any("security_invoker=true" in (o or "") for o in opts), (
+        f"clinical.observations باید security_invoker=true داشته باشد؛ reloptions یافته: {opts}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# معیار ۵ — تستِ رفتاریِ ایزولاسیون با رولِ واقعی (نه superuser)
+#   از clinical_login_test استفاده می‌کنیم (عضوِ clinical_app، بدونِ BYPASSRLS).
+#   autocommit برای اثرِ GUC (is_local=false: GUC روی کانکشن می‌ماند تا reset شود).
+#   پیش‌نیاز: دو tenant با داده در clinical.vital_readings وجود داشته باشد.
+#   این داده توسطِ admin_conn (superuser — BYPASSRLS) در ابتدایِ session آماده می‌شود.
+# ---------------------------------------------------------------------------
+
+def _ensure_rls_test_data(admin_conn):
+    """
+    مطمئن می‌شود داده‌های آزمایشیِ دو-tenant در vital_readings وجود دارند.
+    superuser برای seed استفاده می‌شود (BYPASSRLS — بدونِ تداخل با RLS).
+    مقادیرِ RETURNING را برمی‌گرداند.
+    """
+    # Tenant 1 بیمار
+    pid1 = _test_patient_id(admin_conn)
+    admin_conn.execute(
+        "INSERT INTO clinical.patient_links (tenant_id, patient_id) VALUES (1, %s)"
+        " ON CONFLICT (tenant_id, patient_id) DO NOTHING",
+        (pid1,),
+    )
+    link1_row = admin_conn.execute(
+        "SELECT id FROM clinical.patient_links WHERE tenant_id=1 AND patient_id=%s", (pid1,)
+    ).fetchone()
+    link1_id = link1_row[0]
+
+    # Tenant 2 بیمار — ساختنِ patient در accounting با superuser
+    admin_conn.execute(
+        "INSERT INTO platform.tenants (id, name) VALUES (2, 'تستِ RLS') ON CONFLICT (id) DO NOTHING"
+    )
+    t2_patient_row = admin_conn.execute(
+        """INSERT INTO accounting.patients (tenant_id, name, family_name, national_id)
+           VALUES (2, 'بیمارِ', 'tenant2', 'RLS_TEST_T2')
+           ON CONFLICT (tenant_id, national_id) DO NOTHING
+           RETURNING id"""
+    ).fetchone()
+    if t2_patient_row is None:
+        t2_patient_row = admin_conn.execute(
+            "SELECT id FROM accounting.patients WHERE tenant_id=2 AND national_id='RLS_TEST_T2'"
+        ).fetchone()
+    t2_patient_id = t2_patient_row[0]
+
+    admin_conn.execute(
+        "INSERT INTO clinical.patient_links (tenant_id, patient_id) VALUES (2, %s)"
+        " ON CONFLICT (tenant_id, patient_id) DO NOTHING",
+        (t2_patient_id,),
+    )
+    link2_row = admin_conn.execute(
+        "SELECT id FROM clinical.patient_links WHERE tenant_id=2 AND patient_id=%s", (t2_patient_id,)
+    ).fetchone()
+    link2_id = link2_row[0]
+
+    # درجِ vital_readings برای هر دو tenant (superuser — RLS bypass)
+    ts1 = "2026-06-25 10:00:00+00"
+    ts2 = "2026-06-25 11:00:00+00"
+    admin_conn.execute(
+        """INSERT INTO clinical.vital_readings (tenant_id, patient_link_id, type, value, measured_at, source)
+           VALUES (1, %s, 'rls_test_hba1c', 7.2, %s, 'rls_test')
+           ON CONFLICT (tenant_id, patient_link_id, type, measured_at, source) DO NOTHING""",
+        (link1_id, ts1),
+    )
+    admin_conn.execute(
+        """INSERT INTO clinical.vital_readings (tenant_id, patient_link_id, type, value, measured_at, source)
+           VALUES (2, %s, 'rls_test_hba1c', 9.5, %s, 'rls_test')
+           ON CONFLICT (tenant_id, patient_link_id, type, measured_at, source) DO NOTHING""",
+        (link2_id, ts2),
+    )
+    return {"link1_id": link1_id, "link2_id": link2_id}
+
+
+def test_rls_isolation_read_tenant1_sees_only_tenant1(admin_conn):
+    """
+    Slice 5 — (a): با GUC=1، کاربرِ app-role فقط ردیف‌های tenant 1 را می‌بیند.
+    از clinical_login_test با autocommit استفاده می‌کنیم (GUC is_local=false → روی کانکشن می‌ماند).
+    """
+    _ensure_rls_test_data(admin_conn)
+
+    with psycopg.connect(_login_dsn(), autocommit=True) as conn:
+        # ستِ GUC برای tenant 1
+        conn.execute("SELECT set_config('app.current_tenant', '1', false)")
+
+        rows = conn.execute(
+            "SELECT tenant_id FROM clinical.vital_readings WHERE type='rls_test_hba1c'"
+        ).fetchall()
+        tenant_ids = {r[0] for r in rows}
+
+    assert tenant_ids == {1}, (
+        f"با GUC=1 باید فقط tenant 1 دیده شود؛ یافته: {tenant_ids}"
+    )
+
+
+def test_rls_isolation_empty_guc_sees_zero_rows(admin_conn):
+    """
+    Slice 5 — (b): GUCِ خالی (fail-closed) → صفر ردیف.
+    این اثباتِ fail-closed بودنِ RLS است: بدونِ GUC هیچ داده‌ای نباید دیده شود.
+    """
+    _ensure_rls_test_data(admin_conn)
+
+    with psycopg.connect(_login_dsn(), autocommit=True) as conn:
+        # GUC را به '' (خالی) ریست می‌کنیم
+        conn.execute("SELECT set_config('app.current_tenant', '', false)")
+
+        count = conn.execute(
+            "SELECT COUNT(*) FROM clinical.vital_readings WHERE type='rls_test_hba1c'"
+        ).fetchone()[0]
+
+    assert count == 0, (
+        f"با GUCِ خالی (fail-closed) باید صفر ردیف دیده شود؛ یافته: {count}"
+    )
+
+
+def test_rls_isolation_write_check_rejects_wrong_tenant(admin_conn):
+    """
+    Slice 5 — (c): با GUC=1 تلاش برای INSERT با tenant_id=2 → WITH CHECK رد می‌کند.
+    این اثباتِ ایزولاسیونِ نوشتن است: نشتِ cross-tenant در INSERT بسته است.
+    """
+    _ensure_rls_test_data(admin_conn)
+    link1_id = _ensure_rls_test_data(admin_conn)["link1_id"]
+
+    with psycopg.connect(_login_dsn(), autocommit=True) as conn:
+        conn.execute("SELECT set_config('app.current_tenant', '1', false)")
+        # تلاش برای INSERT با tenant_id=2 در حالی که GUC=1 است
+        # WITH CHECK باید این را رد کند
+        with pytest.raises(
+            (pgerr.CheckViolation, pgerr.InsufficientPrivilege, pgerr.RaiseException),
+            match=None
+        ):
+            conn.execute(
+                """INSERT INTO clinical.vital_readings
+                       (tenant_id, patient_link_id, type, value, measured_at, source)
+                   VALUES (2, %s, 'rls_write_check', 8.0, now(), 'rls_test')""",
+                (link1_id,),
+            )
+
+
+def test_rls_isolation_observations_view_with_guc(admin_conn):
+    """
+    Slice 5 — (d): SELECT از clinical.observations با GUC=1 فقط tenant 1 را برمی‌گرداند.
+    این اثباتِ security_invoker است: VIEW دیگر از حقوقِ سوپریوزر استفاده نمی‌کند.
+    نکته: در VIEW فعلی، obs_key برای vital‌ها به شکلِ 'vital:<type>' است
+    (مثلاً 'vital:rls_test_hba1c').
+    """
+    _ensure_rls_test_data(admin_conn)
+
+    with psycopg.connect(_login_dsn(), autocommit=True) as conn:
+        conn.execute("SELECT set_config('app.current_tenant', '1', false)")
+
+        # obs_key در VIEW برای vital‌ها به صورتِ 'vital:<type>' است
+        rows = conn.execute(
+            "SELECT DISTINCT tenant_id FROM clinical.observations WHERE obs_key='vital:rls_test_hba1c'"
+        ).fetchall()
+        tenant_ids = {r[0] for r in rows}
+
+    assert tenant_ids <= {1}, (
+        f"با GUC=1، clinical.observations باید فقط tenant 1 نشان دهد؛ یافته: {tenant_ids}"
+    )
+    # حداقل یک ردیف باید باشد (داده seed شده)
+    assert tenant_ids, "clinical.observations با GUC=1 هیچ ردیفی برنگرداند — seed آزمایشی مشکل دارد"
+
+
+def test_rls_isolation_idempotent_re_apply(admin_conn):
+    """
+    Slice 5 — idempotency: اجرای دوبارهٔ slice5 بدونِ خطا باید ممکن باشد.
+    تستِ test_slices_idempotent موجود این را پوشش می‌دهد، ولی اینجا صریحاً تأیید می‌کنیم.
+    """
+    import pathlib
+    slice5_path = pathlib.Path(_MIG) / "schema_pg_slice5_rls.sql"
+    assert slice5_path.exists(), f"فایلِ slice5 پیدا نشد: {slice5_path}"
+    # اجرای مجدد — نباید خطا بدهد (DROP POLICY IF EXISTS تضمین می‌کند)
+    admin_conn.execute(_read(str(slice5_path)))

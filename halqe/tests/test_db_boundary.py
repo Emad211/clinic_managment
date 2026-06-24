@@ -46,13 +46,24 @@ _APP_USER    = os.environ.get("PG_APP_USER", "platform_login_test")
 _APP_PW      = os.environ.get("PG_APP_PASSWORD", "test_pw")
 
 
-def _app_conn():
-    """Open a psycopg connection as the least-privilege app role."""
+def _app_conn(tenant_id: int = 1):
+    """
+    Open a psycopg connection as the least-privilege app role.
+
+    RLS note (slice5): after enabling RLS on clinical.* and platform.*,
+    INSERT/UPDATE/DELETE require app.current_tenant GUC to be set; otherwise
+    the NULLIF fail-closed policy rejects all writes.  These boundary tests
+    verify GRANT (can the role write at all?), not isolation — so we simulate
+    JWTBearer by setting GUC=tenant_id here.  Isolation is tested separately
+    in test_pg_schema.py::test_rls_isolation_*.
+    """
     conninfo = (
         f"host='{_PG_HOST}' port='{_PG_PORT}' "
         f"user='{_APP_USER}' password='{_APP_PW}' dbname='{_PG_DB}'"
     )
-    return psycopg.connect(conninfo, autocommit=True)
+    conn = psycopg.connect(conninfo, autocommit=True)
+    conn.execute("SELECT set_config('app.current_tenant', %s, false)", [str(tenant_id)])
+    return conn
 
 
 def _try_sql(conn, sql, params=None):
