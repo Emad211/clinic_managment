@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
 import {
   apiGetPatients,
@@ -11,12 +11,14 @@ import {
 } from "@/lib/api";
 import { ApiError } from "@/lib/api";
 import { formatJalali } from "@/lib/jalali";
+import Nav from "@/components/Nav";
 import styles from "./patients.module.css";
 
 const PAGE_SIZE = 20;
 
 export default function PatientsPage() {
   const router = useRouter();
+  const pathname = usePathname();
   const [patients, setPatients] = useState<EnrolledPatient[]>([]);
   const [total, setTotal] = useState(0);
   const [offset, setOffset] = useState(0);
@@ -82,20 +84,10 @@ export default function PatientsPage() {
 
   return (
     <div className={styles.layout}>
-      {/* Top navigation */}
-      <header className={styles.topbar} role="banner">
-        <span className={styles.topbarBrand}>حلقه</span>
-        <nav className={styles.topbarNav} aria-label="ناوبری اصلی">
-          <span className={styles.topbarPageTitle}>لیست بیماران</span>
-        </nav>
-        <button
-          onClick={handleLogout}
-          className={styles.logoutBtn}
-          aria-label="خروج از سامانه"
-        >
-          خروج
-        </button>
-      </header>
+      <Nav
+        currentPath={pathname ?? "/patients"}
+        onLogout={handleLogout}
+      />
 
       {/* Main content */}
       <main className={styles.main} id="main-content">

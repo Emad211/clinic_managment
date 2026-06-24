@@ -1,0 +1,289 @@
+/* Worklist page */
+
+.layout {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--color-bg);
+}
+
+/* ── Main content ── */
+.main {
+  flex: 1;
+  padding: var(--space-6);
+  max-width: 1080px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+.pageHeader {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  margin-bottom: var(--space-6);
+}
+
+.pageTitle {
+  font-size: 1.375rem;
+  font-weight: 700;
+  color: var(--color-text);
+  flex: 1;
+}
+
+.totalBadge {
+  font-size: 0.875rem;
+  color: var(--color-text-muted);
+}
+
+/* ── Status filter toolbar ── */
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.filterLabel {
+  font-size: 0.875rem;
+  color: var(--color-text-muted);
+}
+
+.filterBtn {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+  padding: var(--space-1) var(--space-3);
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.filterBtn:hover {
+  background: var(--color-primary-light);
+  border-color: var(--color-accent);
+  color: var(--color-primary-dark);
+}
+
+.filterBtn:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.filterBtnActive {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: #fff;
+  font-weight: 600;
+}
+
+.filterBtnActive:hover {
+  background: var(--color-primary-dark);
+  border-color: var(--color-primary-dark);
+  color: #fff;
+}
+
+/* ── State boxes ── */
+.stateBox {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-8);
+  justify-content: center;
+  color: var(--color-text-muted);
+  font-size: 1rem;
+}
+
+.spinner {
+  display: inline-block;
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--color-border);
+  border-top-color: var(--color-primary);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.errorBox {
+  background: #fdf0ef;
+  border: 1px solid #f5c6c2;
+  border-radius: var(--radius);
+  color: var(--color-danger);
+  padding: var(--space-6);
+  text-align: center;
+}
+
+.retryBtn {
+  margin-top: var(--space-4);
+  background: var(--color-primary);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-6);
+  font-size: 0.875rem;
+  transition: background 0.15s;
+}
+
+.retryBtn:hover {
+  background: var(--color-primary-dark);
+}
+
+/* ── Table ── */
+.tableWrapper {
+  overflow-x: auto;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-sm);
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9375rem;
+}
+
+.table th {
+  background: var(--color-primary-light);
+  color: var(--color-primary-dark);
+  font-weight: 600;
+  font-size: 0.875rem;
+  padding: var(--space-3) var(--space-4);
+  text-align: right;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.table td {
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--color-border);
+  text-align: right;
+  vertical-align: middle;
+}
+
+.tableRow:last-child td {
+  border-bottom: none;
+}
+
+.tableRow:hover {
+  background: var(--color-primary-light);
+}
+
+/* Row that has been optimistically flipped to done */
+.tableRowDone {
+  opacity: 0.6;
+}
+
+.nameCell {
+  font-weight: 500;
+}
+
+.monoCell {
+  font-variant-numeric: tabular-nums;
+  direction: ltr;
+  text-align: left;
+}
+
+/* ── Status badges ── */
+.badge {
+  display: inline-block;
+  padding: 0.125rem 0.625rem;
+  border-radius: 999px;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.badgeOpen {
+  background: #fff4e0;
+  color: var(--color-warn);
+}
+
+.badgeDone {
+  background: #e6f9ef;
+  color: var(--color-ok);
+}
+
+.badgeDismissed {
+  background: #f0f0f0;
+  color: var(--color-text-muted);
+}
+
+/* ── Mark-done button ── */
+.doneBtn {
+  background: var(--color-ok);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  padding: var(--space-1) var(--space-3);
+  transition: background 0.15s, opacity 0.15s;
+  white-space: nowrap;
+}
+
+.doneBtn:hover:not(:disabled) {
+  background: #1e9152;
+}
+
+.doneBtn:focus-visible {
+  outline: 2px solid var(--color-ok);
+  outline-offset: 2px;
+}
+
+.doneBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ── Pagination ── */
+.pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-4);
+  margin-top: var(--space-6);
+}
+
+.pageBtn {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-primary);
+  font-size: 0.875rem;
+  padding: var(--space-2) var(--space-4);
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.pageBtn:hover:not(:disabled) {
+  background: var(--color-primary-light);
+  border-color: var(--color-accent);
+}
+
+.pageBtn:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.pageBtn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.pageInfo {
+  font-size: 0.875rem;
+  color: var(--color-text-muted);
+}
+
+/* ── Inline error for mark-done failures ── */
+.rowError {
+  font-size: 0.8rem;
+  color: var(--color-danger);
+  display: block;
+  margin-top: var(--space-1);
+}

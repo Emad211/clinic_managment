@@ -501,3 +501,205 @@ describe("apiSuggestionAction", () => {
     ).rejects.toMatchObject({ status: 400 });
   });
 });
+
+// ────────────────────────────────────────────────────────────
+// apiGetWorklist
+// ────────────────────────────────────────────────────────────
+
+describe("apiGetWorklist", () => {
+  beforeEach(() => {
+    localStorageMock.clear();
+    jest.resetAllMocks();
+    saveToken("mock-bearer-token");
+  });
+
+  const MOCK_ITEM = {
+    id: 7,
+    patient_uuid: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+    patient_full_name: "علی رضایی",
+    kind: "lab_review",
+    reason: "lab_review",
+    due_date: "2026-06-20",
+    status: "open",
+    fulfillment: null,
+    created_at: "2026-06-10T09:00:00+03:30",
+    resolved_at: null,
+  };
+
+  test("parses WorklistResponseDTO correctly on 200", async () => {
+    const mockPayload = {
+      items: [MOCK_ITEM],
+      total: 1,
+      limit: 20,
+      offset: 0,
+    };
+
+    globalThis.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => mockPayload,
+    }) as jest.Mock;
+
+    const { apiGetWorklist } = await import("../src/lib/api");
+    const result = await apiGetWorklist({ limit: 20, offset: 0 });
+
+    expect(result.total).toBe(1);
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0].id).toBe(7);
+    expect(result.items[0].patient_full_name).toBe("علی رضایی");
+    expect(result.items[0].status).toBe("open");
+    expect(result.items[0].due_date).toBe("2026-06-20");
+  });
+
+  test("attaches Authorization header with Bearer token", async () => {
+    globalThis.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ items: [], total: 0, limit: 20, offset: 0 }),
+    }) as jest.Mock;
+
+    const { apiGetWorklist } = await import("../src/lib/api");
+    await apiGetWorklist();
+
+    const callArgs = (globalThis.fetch as jest.Mock).mock.calls[0];
+    const headers = callArgs[1]?.headers as Record<string, string>;
+    expect(headers["Authorization"]).toBe("Bearer mock-bearer-token");
+  });
+
+  test("passes status filter as query param when provided", async () => {
+    globalThis.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ items: [], total: 0, limit: 20, offset: 0 }),
+    }) as jest.Mock;
+
+    const { apiGetWorklist } = await import("../src/lib/api");
+    await apiGetWorklist({ status: "done", limit: 20, offset: 0 });
+
+    const url: string = (globalThis.fetch as jest.Mock).mock.calls[0][0];
+    expect(url).toContain("status=done");
+    expect(url).toContain("/worklist");
+  });
+
+  test("omits status param when not provided (uses backend default)", async () => {
+    globalThis.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ items: [], total: 0, limit: 20, offset: 0 }),
+    }) as jest.Mock;
+
+    const { apiGetWorklist } = await import("../src/lib/api");
+    await apiGetWorklist({ limit: 20, offset: 0 });
+
+    const url: string = (globalThis.fetch as jest.Mock).mock.calls[0][0];
+    expect(url).not.toContain("status=");
+  });
+
+  test("returns empty items array when worklist is empty", async () => {
+    globalThis.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ items: [], total: 0, limit: 20, offset: 0 }),
+    }) as jest.Mock;
+
+    const { apiGetWorklist } = await import("../src/lib/api");
+    const result = await apiGetWorklist();
+    expect(result.items).toHaveLength(0);
+    expect(result.total).toBe(0);
+  });
+
+  test("throws ApiError(401) when token missing or expired", async () => {
+    globalThis.fetch = jest.fn().mockResolvedValue({
+      ok: false,
+      status: 401,
+      statusText: "Unauthorized",
+      json: async () => ({ detail: "Authentication required" }),
+    }) as jest.Mock;
+
+    const { apiGetWorklist } = await import("../src/lib/api");
+    await expect(apiGetWorklist()).rejects.toMatchObject({ status: 401 });
+  });
+});
+
+// ────────────────────────────────────────────────────────────
+// apiMarkDone
+// ────────────────────────────────────────────────────────────
+
+describe("apiMarkDone", () => {
+  beforeEach(() => {
+    localStorageMock.clear();
+    jest.resetAllMocks();
+    saveToken("mock-bearer-token");
+  });
+
+  const MOCK_TASK = {
+    id: 7,
+    patient_link_id: 42,
+    tenant_id: 1,
+    reason: "lab_review",
+    detail: null,
+    due_date: "2026-06-20",
+    status: "done",
+    fulfillment: null,
+    source_rule: null,
+    source_event: null,
+    created_at: "2026-06-10T09:00:00+03:30",
+    resolved_at: "2026-06-24T10:00:00+03:30",
+  };
+
+  test("POSTs to /worklist/{id}/done and returns FollowupTaskDTO", async () => {
+    globalThis.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => MOCK_TASK,
+    }) as jest.Mock;
+
+    const { apiMarkDone } = await import("../src/lib/api");
+    const result = await apiMarkDone(7);
+
+    expect(result.id).toBe(7);
+    expect(result.status).toBe("done");
+    expect(result.resolved_at).toBe("2026-06-24T10:00:00+03:30");
+
+    const callArgs = (globalThis.fetch as jest.Mock).mock.calls[0];
+    const url: string = callArgs[0];
+    const options = callArgs[1] as RequestInit;
+
+    expect(url).toContain("/worklist/7/done");
+    expect(options.method).toBe("POST");
+    const headers = options.headers as Record<string, string>;
+    expect(headers["Authorization"]).toBe("Bearer mock-bearer-token");
+  });
+
+  test("throws ApiError(404) when task does not exist for tenant", async () => {
+    globalThis.fetch = jest.fn().mockResolvedValue({
+      ok: false,
+      status: 404,
+      statusText: "Not Found",
+      json: async () => ({ detail: "FollowupTask id=99 not found for this tenant." }),
+    }) as jest.Mock;
+
+    const { apiMarkDone } = await import("../src/lib/api");
+    await expect(apiMarkDone(99)).rejects.toMatchObject({ status: 404 });
+  });
+
+  test("throws ApiError(409) when task is already done", async () => {
+    globalThis.fetch = jest.fn().mockResolvedValue({
+      ok: false,
+      status: 409,
+      statusText: "Conflict",
+      json: async () => ({
+        detail: "Task id=7 is already 'done'; only open tasks can be marked done.",
+      }),
+    }) as jest.Mock;
+
+    const { apiMarkDone } = await import("../src/lib/api");
+    await expect(apiMarkDone(7)).rejects.toMatchObject({ status: 409 });
+  });
+
+  test("throws ApiError(401) when unauthenticated", async () => {
+    globalThis.fetch = jest.fn().mockResolvedValue({
+      ok: false,
+      status: 401,
+      statusText: "Unauthorized",
+      json: async () => ({ detail: "Authentication required" }),
+    }) as jest.Mock;
+
+    const { apiMarkDone } = await import("../src/lib/api");
+    await expect(apiMarkDone(7)).rejects.toMatchObject({ status: 401 });
+  });
+});

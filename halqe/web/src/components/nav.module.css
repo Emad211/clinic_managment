@@ -1,0 +1,102 @@
+/* Shared top navigation bar — حلقه */
+
+.topbar {
+  background: var(--color-primary);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  padding: 0 var(--space-6);
+  height: 56px;
+  gap: var(--space-4);
+  box-shadow: var(--shadow-sm);
+  /* sticky so it stays in view on long pages */
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+/* Brand mark — «حلقه» */
+.brand {
+  font-size: 1.25rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: #fff;
+  text-decoration: none;
+  flex-shrink: 0;
+}
+
+.brand:hover {
+  text-decoration: none;
+  opacity: 0.9;
+  color: #fff;
+}
+
+/* Main nav links */
+.nav {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.navLink {
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 0.9rem;
+  text-decoration: none;
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.navLink:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.1);
+  text-decoration: none;
+}
+
+.navLink:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 2px;
+}
+
+/* Active/current page link */
+.navLinkActive {
+  color: #fff;
+  font-weight: 600;
+  background: rgba(255, 255, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.25);
+}
+
+/* Page title / breadcrumb injected by the consumer */
+.pageTitle {
+  font-size: 0.875rem;
+  opacity: 0.82;
+  margin-inline-start: var(--space-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 280px;
+}
+
+/* Logout button — end of the bar */
+.logoutBtn {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  border-radius: var(--radius-sm);
+  color: #fff;
+  font-size: 0.875rem;
+  padding: var(--space-1) var(--space-3);
+  transition: background 0.15s;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.logoutBtn:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.logoutBtn:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 2px;
+}

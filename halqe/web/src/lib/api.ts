@@ -259,4 +259,69 @@ export async function apiSuggestionAction(
   );
 }
 
+// ────────────────────────────────────────────────────────────
+// Worklist  — mirrors WorklistItemDTO + WorklistResponseDTO
+// ────────────────────────────────────────────────────────────
+
+export interface WorklistItem {
+  id: number;
+  patient_uuid: string | null;
+  patient_full_name: string | null;
+  kind: string | null;       // same value as reason — the "kind" of follow-up
+  reason: string | null;
+  due_date: string | null;   // ISO date YYYY-MM-DD (can be null)
+  status: string;            // 'open' | 'done' | 'dismissed'
+  fulfillment: string | null;
+  created_at: string;        // ISO datetime
+  resolved_at: string | null;
+}
+
+export interface WorklistResponse {
+  items: WorklistItem[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export async function apiGetWorklist({
+  status,
+  limit = 20,
+  offset = 0,
+}: {
+  status?: string;
+  limit?: number;
+  offset?: number;
+} = {}): Promise<WorklistResponse> {
+  const params = new URLSearchParams();
+  if (status !== undefined) params.set("status", status);
+  params.set("limit", String(limit));
+  params.set("offset", String(offset));
+  return apiFetch<WorklistResponse>(`/worklist?${params.toString()}`);
+}
+
+// ────────────────────────────────────────────────────────────
+// Mark worklist task done  — mirrors FollowupTaskDTO
+// ────────────────────────────────────────────────────────────
+
+export interface FollowupTaskDTO {
+  id: number;
+  patient_link_id: number;
+  tenant_id: number;
+  reason: string | null;
+  detail: string | null;
+  due_date: string | null;
+  status: string;
+  fulfillment: string | null;
+  source_rule: string | null;
+  source_event: string | null;
+  created_at: string;
+  resolved_at: string | null;
+}
+
+export async function apiMarkDone(taskId: number): Promise<FollowupTaskDTO> {
+  return apiFetch<FollowupTaskDTO>(`/worklist/${taskId}/done`, {
+    method: "POST",
+  });
+}
+
 export { ApiError };

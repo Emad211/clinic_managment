@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { useRouter, useParams } from "next/navigation";
+import { useRouter, useParams, usePathname } from "next/navigation";
 import Link from "next/link";
 import {
   apiGetRecord,
@@ -15,6 +15,7 @@ import {
   ApiError,
 } from "@/lib/api";
 import { formatJalali } from "@/lib/jalali";
+import Nav from "@/components/Nav";
 import styles from "./record.module.css";
 
 // ────────────────────────────────────────────────────────────
@@ -214,6 +215,7 @@ function SuggestionsPanel({
 export default function PatientDetailPage() {
   const router = useRouter();
   const params = useParams<{ uuid: string }>();
+  const pathname = usePathname();
   const uuid = params?.uuid ?? "";
 
   const [record, setRecord] = useState<ClinicalRecordDTO | null>(null);
@@ -295,27 +297,11 @@ export default function PatientDetailPage() {
 
   return (
     <div className={styles.layout}>
-      {/* Top navigation */}
-      <header className={styles.topbar} role="banner">
-        <span className={styles.topbarBrand}>حلقه</span>
-        <nav className={styles.topbarNav} aria-label="ناوبری اصلی">
-          <Link href="/patients" className={styles.backLink} aria-label="بازگشت به لیست بیماران">
-            ← بیماران
-          </Link>
-          {demo && (
-            <span className={styles.topbarPageTitle}>
-              {demo.full_name}
-            </span>
-          )}
-        </nav>
-        <button
-          onClick={handleLogout}
-          className={styles.logoutBtn}
-          aria-label="خروج از سامانه"
-        >
-          خروج
-        </button>
-      </header>
+      <Nav
+        currentPath={pathname ?? `/patients/${uuid}`}
+        pageTitle={demo?.full_name ?? undefined}
+        onLogout={handleLogout}
+      />
 
       {/* Loading state */}
       {recordLoading && (
