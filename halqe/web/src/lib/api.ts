@@ -122,4 +122,141 @@ export async function apiGetPatients(
   );
 }
 
+// ────────────────────────────────────────────────────────────
+// Clinical record  — mirrors ClinicalRecordDTO
+// ────────────────────────────────────────────────────────────
+
+export interface PatientDemographics {
+  id: number;
+  uuid: string;
+  name: string;
+  family_name: string;
+  full_name: string;
+  national_id: string | null;
+  phone_number: string | null;
+  birthdate: string | null;   // ISO date YYYY-MM-DD
+  gender: string | null;
+}
+
+export interface ConditionDTO {
+  id: number;
+  condition_id: number;
+  condition_name: string | null;
+  condition_code: string | null;
+  stage: string | null;
+  onset_date: string | null;  // ISO date
+  notes: string | null;
+  is_active: boolean;
+  diagnosed_at: string;       // ISO datetime
+}
+
+export interface MedicationDTO {
+  id: number;
+  drug_name: string;
+  dose: string | null;
+  schedule: string | null;
+  start_date: string | null;
+  refill_due_date: string | null;
+  drug_class: string | null;
+  is_active: boolean;
+  notes: string | null;
+  created_at: string;
+}
+
+export interface VitalReadingDTO {
+  id: number;
+  patient_link_id: number;
+  type: string;
+  value: number;
+  unit: string | null;
+  measured_at: string;        // ISO datetime
+  source: string | null;
+  notes: string | null;
+}
+
+export interface ClinicalRecordDTO {
+  patient_link_id: number;
+  demographics: PatientDemographics | null;
+  active_conditions: ConditionDTO[];
+  active_medications: MedicationDTO[];
+  recent_vitals: VitalReadingDTO[];
+}
+
+export async function apiGetRecord(uuid: string): Promise<ClinicalRecordDTO> {
+  return apiFetch<ClinicalRecordDTO>(`/patients/${uuid}/record`);
+}
+
+// ────────────────────────────────────────────────────────────
+// Suggestions  — mirrors SuggestionsResponseDTO
+// ────────────────────────────────────────────────────────────
+
+export interface SuggestionRuleDTO {
+  rule_code: string;
+  title: string;
+  category: string;
+  condition_code: string;
+  recommendation: string | null;
+  dosage_titration: string | null;
+  monitoring: string | null;
+  contraindications: string | null;
+  evidence_level: string | null;
+  action_type: string;
+  severity: "info" | "warn" | "urgent";
+  priority: number;
+  source_ref: string | null;
+  section: string;
+  suggestion_only: boolean;
+}
+
+export interface SuggestionSectionDTO {
+  key: string;
+  label: string;
+  rules: SuggestionRuleDTO[];
+}
+
+export interface SuggestionsResponseDTO {
+  patient_link_id: number;
+  count: number;
+  has_redflag: boolean;
+  framing: string;
+  sections: SuggestionSectionDTO[];
+}
+
+export async function apiGetSuggestions(
+  uuid: string,
+): Promise<SuggestionsResponseDTO> {
+  return apiFetch<SuggestionsResponseDTO>(`/patients/${uuid}/suggestions`);
+}
+
+// ────────────────────────────────────────────────────────────
+// Suggestion action  — mirrors SuggestionLogDTO
+// ────────────────────────────────────────────────────────────
+
+export interface SuggestionLogDTO {
+  id: number;
+  patient_link_id: number;
+  tenant_id: number;
+  rule_code: string;
+  status: string;
+  acted_by: string | null;
+  acted_at: string | null;
+  note: string | null;
+  created_at: string;
+}
+
+export async function apiSuggestionAction(
+  uuid: string,
+  ruleCode: string,
+  action: "accept" | "dismiss",
+  note?: string,
+): Promise<SuggestionLogDTO> {
+  return apiFetch<SuggestionLogDTO>(
+    `/patients/${uuid}/suggestions/${encodeURIComponent(ruleCode)}/action`,
+    {
+      method: "POST",
+      body: JSON.stringify({ action, note: note ?? null }),
+    },
+  );
+}
+
 export { ApiError };

@@ -143,3 +143,361 @@ describe("apiGetPatients", () => {
     expect(headers["Authorization"]).toBe("Bearer mock-bearer-token");
   });
 });
+
+// ────────────────────────────────────────────────────────────
+// apiGetRecord
+// ────────────────────────────────────────────────────────────
+
+describe("apiGetRecord", () => {
+  const TEST_UUID = "11111111-2222-3333-4444-555555555555";
+
+  beforeEach(() => {
+    localStorageMock.clear();
+    jest.resetAllMocks();
+    saveToken("mock-bearer-token");
+  });
+
+  test("parses ClinicalRecordDTO correctly on 200", async () => {
+    const mockRecord = {
+      patient_link_id: 42,
+      demographics: {
+        id: 7,
+        uuid: TEST_UUID,
+        name: "علی",
+        family_name: "رضایی",
+        full_name: "علی رضایی",
+        national_id: "TEST0001",
+        phone_number: "09120000001",
+        birthdate: "1970-03-15",
+        gender: "M",
+      },
+      active_conditions: [
+        {
+          id: 1,
+          condition_id: 10,
+          condition_name: "دیابت نوع ۲",
+          condition_code: "DM",
+          stage: null,
+          onset_date: "2015-06-01",
+          notes: null,
+          is_active: true,
+          diagnosed_at: "2024-01-01T10:00:00+03:30",
+        },
+      ],
+      active_medications: [
+        {
+          id: 5,
+          drug_name: "متفورمین",
+          dose: "1000mg",
+          schedule: "دو بار در روز",
+          start_date: "2024-01-10",
+          refill_due_date: null,
+          drug_class: "biguanide",
+          is_active: true,
+          notes: null,
+          created_at: "2024-01-10T09:00:00+03:30",
+        },
+      ],
+      recent_vitals: [
+        {
+          id: 99,
+          patient_link_id: 42,
+          type: "FBS",
+          value: 188.0,
+          unit: "mg/dL",
+          measured_at: "2024-06-01T08:30:00+03:30",
+          source: "lab",
+          notes: null,
+        },
+      ],
+    };
+
+    globalThis.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => mockRecord,
+    }) as jest.Mock;
+
+    const { apiGetRecord } = await import("../src/lib/api");
+    const result = await apiGetRecord(TEST_UUID);
+
+    expect(result.patient_link_id).toBe(42);
+    expect(result.demographics?.full_name).toBe("علی رضایی");
+    expect(result.demographics?.national_id).toBe("TEST0001");
+    expect(result.active_conditions).toHaveLength(1);
+    expect(result.active_conditions[0].condition_code).toBe("DM");
+    expect(result.active_medications).toHaveLength(1);
+    expect(result.active_medications[0].drug_name).toBe("متفورمین");
+    expect(result.recent_vitals).toHaveLength(1);
+    expect(result.recent_vitals[0].value).toBe(188.0);
+  });
+
+  test("attaches Bearer token in Authorization header", async () => {
+    globalThis.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        patient_link_id: 1,
+        demographics: null,
+        active_conditions: [],
+        active_medications: [],
+        recent_vitals: [],
+      }),
+    }) as jest.Mock;
+
+    const { apiGetRecord } = await import("../src/lib/api");
+    await apiGetRecord(TEST_UUID);
+
+    const callArgs = (globalThis.fetch as jest.Mock).mock.calls[0];
+    const url: string = callArgs[0];
+    const headers = callArgs[1]?.headers as Record<string, string>;
+
+    expect(url).toContain(`/patients/${TEST_UUID}/record`);
+    expect(headers["Authorization"]).toBe("Bearer mock-bearer-token");
+  });
+
+  test("throws ApiError(401) on unauthorized", async () => {
+    globalThis.fetch = jest.fn().mockResolvedValue({
+      ok: false,
+      status: 401,
+      statusText: "Unauthorized",
+      json: async () => ({ detail: "Authentication required" }),
+    }) as jest.Mock;
+
+    const { apiGetRecord } = await import("../src/lib/api");
+    await expect(apiGetRecord(TEST_UUID)).rejects.toMatchObject({ status: 401 });
+  });
+});
+
+// ────────────────────────────────────────────────────────────
+// apiGetSuggestions
+// ────────────────────────────────────────────────────────────
+
+describe("apiGetSuggestions", () => {
+  const TEST_UUID = "11111111-2222-3333-4444-555555555555";
+
+  beforeEach(() => {
+    localStorageMock.clear();
+    jest.resetAllMocks();
+    saveToken("mock-bearer-token");
+  });
+
+  test("parses SuggestionsResponseDTO correctly on 200", async () => {
+    const mockSuggestions = {
+      patient_link_id: 42,
+      count: 2,
+      has_redflag: true,
+      framing: "پیشنهاد — تأیید با پزشک",
+      sections: [
+        {
+          key: "redflags",
+          label: "پرچم‌های قرمز",
+          rules: [
+            {
+              rule_code: "T2-RF-001",
+              title: "HbA1c بالاتر از ۱۰٪",
+              category: "glycemic",
+              condition_code: "DM",
+              recommendation: "بررسی دوز انسولین",
+              dosage_titration: null,
+              monitoring: null,
+              contraindications: null,
+              evidence_level: "A",
+              action_type: "urgent_review",
+              severity: "urgent",
+              priority: 1,
+              source_ref: null,
+              section: "redflags",
+              suggestion_only: true,
+            },
+          ],
+        },
+        {
+          key: "treatment",
+          label: "درمان",
+          rules: [
+            {
+              rule_code: "T2-TX-010",
+              title: "اضافه کردن GLP-1",
+              category: "treatment",
+              condition_code: "DM",
+              recommendation: "در صورت BMI بالا بررسی شود",
+              dosage_titration: null,
+              monitoring: null,
+              contraindications: null,
+              evidence_level: "B",
+              action_type: "add_drug",
+              severity: "warn",
+              priority: 5,
+              source_ref: null,
+              section: "treatment",
+              suggestion_only: true,
+            },
+          ],
+        },
+      ],
+    };
+
+    globalThis.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => mockSuggestions,
+    }) as jest.Mock;
+
+    const { apiGetSuggestions } = await import("../src/lib/api");
+    const result = await apiGetSuggestions(TEST_UUID);
+
+    expect(result.count).toBe(2);
+    expect(result.has_redflag).toBe(true);
+    expect(result.framing).toBe("پیشنهاد — تأیید با پزشک");
+    expect(result.sections).toHaveLength(2);
+    expect(result.sections[0].key).toBe("redflags");
+    expect(result.sections[0].rules[0].rule_code).toBe("T2-RF-001");
+    expect(result.sections[0].rules[0].suggestion_only).toBe(true);
+    expect(result.sections[0].rules[0].severity).toBe("urgent");
+    expect(result.sections[1].rules[0].rule_code).toBe("T2-TX-010");
+  });
+
+  test("attaches Bearer token and hits the correct URL", async () => {
+    globalThis.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        patient_link_id: 1,
+        count: 0,
+        has_redflag: false,
+        framing: "پیشنهاد — تأیید با پزشک",
+        sections: [],
+      }),
+    }) as jest.Mock;
+
+    const { apiGetSuggestions } = await import("../src/lib/api");
+    await apiGetSuggestions(TEST_UUID);
+
+    const callArgs = (globalThis.fetch as jest.Mock).mock.calls[0];
+    const url: string = callArgs[0];
+    const headers = callArgs[1]?.headers as Record<string, string>;
+
+    expect(url).toContain(`/patients/${TEST_UUID}/suggestions`);
+    expect(headers["Authorization"]).toBe("Bearer mock-bearer-token");
+  });
+});
+
+// ────────────────────────────────────────────────────────────
+// apiSuggestionAction
+// ────────────────────────────────────────────────────────────
+
+describe("apiSuggestionAction", () => {
+  const TEST_UUID = "11111111-2222-3333-4444-555555555555";
+  const RULE_CODE = "T2-RF-001";
+
+  beforeEach(() => {
+    localStorageMock.clear();
+    jest.resetAllMocks();
+    saveToken("mock-bearer-token");
+  });
+
+  test("POSTs the correct body for accept action", async () => {
+    const mockLog = {
+      id: 10,
+      patient_link_id: 42,
+      tenant_id: 1,
+      rule_code: RULE_CODE,
+      status: "accepted",
+      acted_by: "admin",
+      acted_at: "2024-06-01T10:00:00+03:30",
+      note: null,
+      created_at: "2024-06-01T10:00:00+03:30",
+    };
+
+    globalThis.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => mockLog,
+    }) as jest.Mock;
+
+    const { apiSuggestionAction } = await import("../src/lib/api");
+    const result = await apiSuggestionAction(TEST_UUID, RULE_CODE, "accept");
+
+    expect(result.status).toBe("accepted");
+    expect(result.rule_code).toBe(RULE_CODE);
+
+    const callArgs = (globalThis.fetch as jest.Mock).mock.calls[0];
+    const url: string = callArgs[0];
+    const options = callArgs[1] as RequestInit;
+    const body = JSON.parse(options.body as string);
+
+    expect(url).toContain(`/patients/${TEST_UUID}/suggestions/${RULE_CODE}/action`);
+    expect(options.method).toBe("POST");
+    expect(body.action).toBe("accept");
+    expect(body.note).toBeNull();
+
+    const headers = options.headers as Record<string, string>;
+    expect(headers["Authorization"]).toBe("Bearer mock-bearer-token");
+  });
+
+  test("POSTs the correct body for dismiss action with note", async () => {
+    globalThis.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        id: 11,
+        patient_link_id: 42,
+        tenant_id: 1,
+        rule_code: RULE_CODE,
+        status: "dismissed",
+        acted_by: "admin",
+        acted_at: "2024-06-01T10:01:00+03:30",
+        note: "بیمار نمی‌تواند دارو را تحمل کند",
+        created_at: "2024-06-01T10:01:00+03:30",
+      }),
+    }) as jest.Mock;
+
+    const { apiSuggestionAction } = await import("../src/lib/api");
+    const result = await apiSuggestionAction(
+      TEST_UUID,
+      RULE_CODE,
+      "dismiss",
+      "بیمار نمی‌تواند دارو را تحمل کند",
+    );
+
+    expect(result.status).toBe("dismissed");
+
+    const callArgs = (globalThis.fetch as jest.Mock).mock.calls[0];
+    const body = JSON.parse((callArgs[1] as RequestInit).body as string);
+    expect(body.action).toBe("dismiss");
+    expect(body.note).toBe("بیمار نمی‌تواند دارو را تحمل کند");
+  });
+
+  test("URL-encodes rule_code in the path", async () => {
+    globalThis.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        id: 12,
+        patient_link_id: 42,
+        tenant_id: 1,
+        rule_code: "T2-RF/001",
+        status: "accepted",
+        acted_by: "admin",
+        acted_at: "2024-06-01T10:00:00+03:30",
+        note: null,
+        created_at: "2024-06-01T10:00:00+03:30",
+      }),
+    }) as jest.Mock;
+
+    const { apiSuggestionAction } = await import("../src/lib/api");
+    await apiSuggestionAction(TEST_UUID, "T2-RF/001", "accept");
+
+    const url: string = (globalThis.fetch as jest.Mock).mock.calls[0][0];
+    // slash must be encoded
+    expect(url).toContain("T2-RF%2F001");
+  });
+
+  test("throws ApiError(400) on invalid action response", async () => {
+    globalThis.fetch = jest.fn().mockResolvedValue({
+      ok: false,
+      status: 400,
+      statusText: "Bad Request",
+      json: async () => ({ detail: "Invalid action" }),
+    }) as jest.Mock;
+
+    const { apiSuggestionAction } = await import("../src/lib/api");
+    await expect(
+      apiSuggestionAction(TEST_UUID, RULE_CODE, "accept"),
+    ).rejects.toMatchObject({ status: 400 });
+  });
+});

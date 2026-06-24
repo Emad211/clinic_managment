@@ -1,0 +1,544 @@
+/* Patient detail / care-loop screen */
+
+/* ── Layout ── */
+.layout {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--color-bg);
+}
+
+/* ── Top bar (reused pattern) ── */
+.topbar {
+  background: var(--color-primary);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  padding: 0 var(--space-6);
+  height: 56px;
+  gap: var(--space-4);
+  box-shadow: var(--shadow-sm);
+}
+
+.topbarBrand {
+  font-size: 1.25rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.topbarNav {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.backLink {
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 0.875rem;
+  text-decoration: none;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: var(--radius-sm);
+  padding: var(--space-1) var(--space-3);
+  transition: background 0.15s;
+}
+
+.backLink:hover {
+  background: rgba(255, 255, 255, 0.1);
+  text-decoration: none;
+  color: #fff;
+}
+
+.backLink:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 2px;
+}
+
+.topbarPageTitle {
+  font-size: 0.9rem;
+  opacity: 0.85;
+}
+
+.logoutBtn {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  border-radius: var(--radius-sm);
+  color: #fff;
+  font-size: 0.875rem;
+  padding: var(--space-1) var(--space-3);
+  transition: background 0.15s;
+}
+
+.logoutBtn:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.logoutBtn:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 2px;
+}
+
+/* ── Main two-column grid ── */
+.main {
+  flex: 1;
+  padding: var(--space-6);
+  max-width: 1200px;
+  width: 100%;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: 1fr 360px;
+  grid-template-rows: auto 1fr;
+  gap: var(--space-6);
+  align-items: start;
+}
+
+/* Stack to single column on narrow viewports */
+@media (max-width: 900px) {
+  .main {
+    grid-template-columns: 1fr;
+  }
+
+  .suggestionsColumn {
+    grid-row: 2;
+  }
+}
+
+/* ── State boxes ── */
+.stateBox {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-8);
+  justify-content: center;
+  color: var(--color-text-muted);
+  font-size: 1rem;
+  grid-column: 1 / -1;
+}
+
+.spinner {
+  display: inline-block;
+  width: 22px;
+  height: 22px;
+  border: 2px solid var(--color-border);
+  border-top-color: var(--color-primary);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.errorBox {
+  background: #fdf0ef;
+  border: 1px solid #f5c6c2;
+  border-radius: var(--radius);
+  color: var(--color-danger);
+  padding: var(--space-6);
+  text-align: center;
+  grid-column: 1 / -1;
+}
+
+.retryBtn {
+  margin-top: var(--space-4);
+  background: var(--color-primary);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-6);
+  font-size: 0.875rem;
+  transition: background 0.15s;
+}
+
+.retryBtn:hover {
+  background: var(--color-primary-dark);
+}
+
+/* ── Card wrapper ── */
+.card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+}
+
+/* ── Patient header card ── */
+.patientHeader {
+  grid-column: 1 / -1;
+  padding: var(--space-6);
+}
+
+.patientName {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--color-text);
+  margin-bottom: var(--space-3);
+}
+
+.patientMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+}
+
+.metaItem {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.metaLabel {
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.metaValue {
+  font-size: 0.9375rem;
+  color: var(--color-text);
+}
+
+.metaValueMono {
+  font-size: 0.9375rem;
+  color: var(--color-text);
+  font-variant-numeric: tabular-nums;
+  direction: ltr;
+  text-align: right;
+}
+
+/* ── Left column: clinical record ── */
+.recordColumn {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+/* ── Section card ── */
+.section {
+  padding: var(--space-6);
+}
+
+.sectionTitle {
+  font-size: 1.0625rem;
+  font-weight: 700;
+  color: var(--color-primary-dark);
+  margin-bottom: var(--space-4);
+  padding-bottom: var(--space-3);
+  border-bottom: 2px solid var(--color-primary-light);
+}
+
+/* ── Conditions list ── */
+.conditionList {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.conditionItem {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-primary-light);
+  border-radius: var(--radius-sm);
+  border-right: 3px solid var(--color-accent);
+}
+
+.conditionName {
+  font-weight: 600;
+  font-size: 0.9375rem;
+}
+
+.conditionMeta {
+  font-size: 0.8125rem;
+  color: var(--color-text-muted);
+}
+
+/* ── Medications table ── */
+.tableWrapper {
+  overflow-x: auto;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.table th {
+  background: var(--color-primary-light);
+  color: var(--color-primary-dark);
+  font-weight: 600;
+  font-size: 0.8125rem;
+  padding: var(--space-2) var(--space-3);
+  text-align: right;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.table td {
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--color-border);
+  text-align: right;
+  vertical-align: middle;
+}
+
+.tableRow:last-child td {
+  border-bottom: none;
+}
+
+.tableRow:hover {
+  background: var(--color-primary-light);
+}
+
+/* ── Empty state within a section ── */
+.emptyNote {
+  color: var(--color-text-muted);
+  font-size: 0.9rem;
+  padding: var(--space-4) 0;
+  text-align: center;
+}
+
+/* ── Vital type label ── */
+.vitalType {
+  font-weight: 600;
+  font-size: 0.875rem;
+}
+
+.vitalValue {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Right column: suggestions ── */
+.suggestionsColumn {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  position: sticky;
+  top: var(--space-4);
+}
+
+/* ── Suggestions panel ── */
+.suggestionsPanel {
+  padding: var(--space-4) var(--space-5);
+}
+
+.suggestionsPanelTitle {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--color-primary-dark);
+  margin-bottom: var(--space-2);
+}
+
+/* Framing banner */
+.framingBanner {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  background: #fff8e1;
+  border: 1px solid #ffe082;
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-3);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: #7b5800;
+  margin-bottom: var(--space-4);
+}
+
+.framingIcon {
+  font-size: 1rem;
+  flex-shrink: 0;
+}
+
+/* Redflag warning strip */
+.redflagStrip {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  background: #fdf0ef;
+  border: 1px solid var(--color-danger);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-3);
+  font-size: 0.8125rem;
+  font-weight: 700;
+  color: var(--color-danger);
+  margin-bottom: var(--space-3);
+}
+
+/* ── Section group ── */
+.suggestionSection {
+  margin-bottom: var(--space-4);
+}
+
+.suggestionSectionLabel {
+  font-size: 0.8125rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-text-muted);
+  margin-bottom: var(--space-2);
+}
+
+/* ── Single rule card ── */
+.ruleCard {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-3) var(--space-4);
+  margin-bottom: var(--space-2);
+  background: var(--color-surface);
+  transition: border-color 0.15s;
+}
+
+.ruleCard:last-child {
+  margin-bottom: 0;
+}
+
+.ruleCard[data-severity="urgent"] {
+  border-right: 4px solid var(--color-danger);
+  background: #fff8f7;
+}
+
+.ruleCard[data-severity="warn"] {
+  border-right: 4px solid var(--color-warn);
+  background: #fffdf5;
+}
+
+.ruleCard[data-severity="info"] {
+  border-right: 4px solid var(--color-accent);
+}
+
+/* Rule header row */
+.ruleHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-2);
+}
+
+.ruleTitle {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--color-text);
+  flex: 1;
+}
+
+.severityBadge {
+  flex-shrink: 0;
+  display: inline-block;
+  padding: 0.1rem 0.4rem;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.severityBadge[data-severity="urgent"] {
+  background: #fde8e7;
+  color: var(--color-danger);
+}
+
+.severityBadge[data-severity="warn"] {
+  background: #fef3e2;
+  color: #8b5000;
+}
+
+.severityBadge[data-severity="info"] {
+  background: #e0f4fb;
+  color: #0e5a72;
+}
+
+/* Rule recommendation text */
+.ruleRec {
+  font-size: 0.8125rem;
+  color: var(--color-text-muted);
+  margin-bottom: var(--space-3);
+  line-height: 1.55;
+}
+
+/* Action buttons */
+.ruleActions {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.acceptBtn,
+.dismissBtn {
+  font-size: 0.8125rem;
+  border-radius: var(--radius-sm);
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid transparent;
+  transition: background 0.15s, border-color 0.15s, opacity 0.15s;
+}
+
+.acceptBtn {
+  background: var(--color-ok);
+  color: #fff;
+}
+
+.acceptBtn:hover:not(:disabled) {
+  background: #229954;
+}
+
+.dismissBtn {
+  background: var(--color-surface);
+  border-color: var(--color-border);
+  color: var(--color-text-muted);
+}
+
+.dismissBtn:hover:not(:disabled) {
+  background: #f0f0f0;
+  border-color: #b0b8c4;
+}
+
+.acceptBtn:focus-visible,
+.dismissBtn:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.acceptBtn:disabled,
+.dismissBtn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* Acted state indicator */
+.actedState {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-sm);
+}
+
+.actedAccepted {
+  background: #e6f9ef;
+  color: var(--color-ok);
+}
+
+.actedDismissed {
+  background: #f5f5f5;
+  color: var(--color-text-muted);
+}
+
+/* Suggestions loading */
+.suggestionsLoading {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+  padding: var(--space-4);
+  justify-content: center;
+}
+
+.suggestionsCount {
+  font-size: 0.8125rem;
+  color: var(--color-text-muted);
+  margin-bottom: var(--space-3);
+}

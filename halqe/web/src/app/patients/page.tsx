@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import {
   apiGetPatients,
   clearToken,
@@ -153,8 +154,12 @@ export default function PatientsPage() {
                   {patients.map((p) => (
                     <tr key={p.link_id} className={styles.tableRow}>
                       <td className={styles.nameCell}>
-                        {p.full_name ?? (
-                          <span className="text-muted">بدون نام</span>
+                        {p.patient_uuid ? (
+                          <Link href={`/patients/${p.patient_uuid}`}>
+                            {p.full_name ?? <span className="text-muted">بدون نام</span>}
+                          </Link>
+                        ) : (
+                          p.full_name ?? <span className="text-muted">بدون نام</span>
                         )}
                       </td>
                       <td className={styles.monoCell}>
