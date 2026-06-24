@@ -19,6 +19,7 @@ INSTALLED_APPS = [
     # No django.contrib.admin — minimal vertical slice
     "django.contrib.contenttypes",
     "django.contrib.auth",
+    "corsheaders",
     "platform_core",
     "accounting",
     "clinical",
@@ -27,8 +28,18 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    "corsheaders.middleware.CorsMiddleware",
     "django.middleware.common.CommonMiddleware",
 ]
+
+# ---------------------------------------------------------------------------
+# CORS — dev only: allow Next.js dev server on localhost:3000
+# ---------------------------------------------------------------------------
+CORS_ALLOWED_ORIGINS = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+]
+CORS_ALLOW_CREDENTIALS = False
 
 ROOT_URLCONF = "config.urls"
 
