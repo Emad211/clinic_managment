@@ -2158,3 +2158,228 @@ def control_room_cohort_ids(request, cohort_key: str):
         ids=ids,
         count=len(ids),
     )
+
+
+# ===========================================================================
+# Engagement Approval Queue (Step 17) — physician hard gate before any SMS.
+#
+# GET  /engagement/approvals                  → pending queue (any authed user)
+# POST /engagement/approvals/{id}/approve     → pending → approved (manager only)
+# POST /engagement/approvals/{id}/reject      → pending → rejected (manager only)
+#
+# NO SMS is sent here.  Sending (Step 18) ONLY reads approved rows.
+# The approve/reject actions are manager-only — the safety gate MUST be privileged.
+# ===========================================================================
+
+from clinical.models import EngagementApproval as _EngagementApproval
+from clinical.engagement_approval_service import (
+    list_pending as _list_pending_approvals,
+    approve as _approve_approval,
+    reject as _reject_approval,
+    ApprovalNotFound as _ApprovalNotFound,
+    InvalidApprovalTransition as _InvalidApprovalTransition,
+)
+
+
+# ---------------------------------------------------------------------------
+# Schemas
+# ---------------------------------------------------------------------------
+
+class EngagementApprovalDTO(Schema):
+    """
+    One engagement approval row.
+
+    status values: 'pending' | 'approved' | 'rejected' | 'sent' (Step 18).
+    """
+    id: int
+    tenant_id: int
+    patient_link_id: int
+    event_key: str
+    channel: Optional[str] = None
+    due_date: Optional[date] = None
+    message: Optional[str] = None
+    offer: Optional[str] = None
+    status: str
+    period_key: Optional[str] = None
+    appointment_id: Optional[int] = None
+    decided_by: Optional[str] = None
+    decided_at: Optional[datetime] = None
+    sent_at: Optional[datetime] = None
+    created_at: datetime
+
+
+class ApprovalListResponse(Schema):
+    """Pending queue list."""
+    items: list[EngagementApprovalDTO]
+    total: int
+
+
+class ApproveRejectIn(Schema):
+    """Optional body for approve/reject endpoints."""
+    reason: Optional[str] = None   # only used by reject; ignored on approve
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _approval_to_dto(approval: "_EngagementApproval") -> EngagementApprovalDTO:
+    return EngagementApprovalDTO(
+        id=approval.id,
+        tenant_id=approval.tenant_id,
+        patient_link_id=approval.patient_link_id,
+        event_key=approval.event_key,
+        channel=approval.channel,
+        due_date=approval.due_date,
+        message=approval.message,
+        offer=approval.offer,
+        status=approval.status,
+        period_key=approval.period_key,
+        appointment_id=approval.appointment_id,
+        decided_by=approval.decided_by,
+        decided_at=approval.decided_at,
+        sent_at=approval.sent_at,
+        created_at=approval.created_at,
+    )
+
+
+def _assert_manager(request) -> Optional[tuple]:
+    """
+    Return (403, error_response(...)) if the authenticated user is not a manager.
+
+    Usage in an endpoint:
+        guard = _assert_manager(request)
+        if guard:
+            return guard
+    """
+    user_role = getattr(request.auth, "role", "staff")
+    if user_role != "manager":
+        return 403, error_response(
+            "This action requires manager role.",
+            "forbidden",
+        )
+    return None
+
+
+# ---------------------------------------------------------------------------
+# GET /engagement/approvals — pending queue (any authed user can VIEW)
+# ---------------------------------------------------------------------------
+
+@api.get(
+    "/engagement/approvals",
+    response=ApprovalListResponse,
+    auth=_jwt_auth,
+    tags=["engagement"],
+)
+def list_engagement_approvals(request):
+    """
+    Return the pending engagement approval queue for the authenticated tenant.
+
+    Any authenticated user (staff or manager) can VIEW the queue.
+    Only managers can approve or reject items (see the POST endpoints below).
+
+    Ordered by due_date ASC (nulls last), then newest first within the same day.
+    Returns only status='pending' items — use the admin panel or DB directly to
+    review approved/rejected history.
+
+    NO SMS is sent here.  Requires JWT (tenant-scoped).
+    """
+    tenant_id = request.tenant_id
+    rows = _list_pending_approvals(tenant_id)
+    return ApprovalListResponse(
+        items=[_approval_to_dto(r) for r in rows],
+        total=len(rows),
+    )
+
+
+# ---------------------------------------------------------------------------
+# POST /engagement/approvals/{id}/approve — pending → approved (manager only)
+# ---------------------------------------------------------------------------
+
+@api.post(
+    "/engagement/approvals/{approval_id}/approve",
+    response={
+        200: EngagementApprovalDTO,
+        403: ErrorSchema,
+        404: ErrorSchema,
+        409: ErrorSchema,
+    },
+    auth=_jwt_auth,
+    tags=["engagement"],
+)
+def approve_engagement_approval(request, approval_id: int, body: ApproveRejectIn = None):
+    """
+    Approve a pending engagement approval (manager-only).
+
+    Transitions status: pending → approved.
+    Sets decided_by (JWT username) and decided_at (now()).
+    Does NOT send any SMS — Step 18 will process approved rows.
+
+    Returns 403 if the authenticated user is not a manager.
+    Returns 404 if the approval does not exist for this tenant.
+    Returns 409 if the approval is not in 'pending' status (already decided).
+    Requires JWT (tenant-scoped, manager role).
+    """
+    # Manager gate — the approval is the privileged safety gate
+    guard = _assert_manager(request)
+    if guard:
+        return guard
+
+    tenant_id = request.tenant_id
+    actor = getattr(request.auth, "username", None) or "unknown"
+
+    try:
+        approval = _approve_approval(approval_id, tenant_id, decided_by=actor)
+    except _ApprovalNotFound as exc:
+        return 404, error_response(str(exc), "not_found")
+    except _InvalidApprovalTransition as exc:
+        return 409, error_response(str(exc), "invalid_transition")
+
+    return 200, _approval_to_dto(approval)
+
+
+# ---------------------------------------------------------------------------
+# POST /engagement/approvals/{id}/reject — pending → rejected (manager only)
+# ---------------------------------------------------------------------------
+
+@api.post(
+    "/engagement/approvals/{approval_id}/reject",
+    response={
+        200: EngagementApprovalDTO,
+        403: ErrorSchema,
+        404: ErrorSchema,
+        409: ErrorSchema,
+    },
+    auth=_jwt_auth,
+    tags=["engagement"],
+)
+def reject_engagement_approval(request, approval_id: int, body: ApproveRejectIn = None):
+    """
+    Reject a pending engagement approval (manager-only).
+
+    Transitions status: pending → rejected.
+    Sets decided_by (JWT username) and decided_at (now()).
+    The optional body.reason is appended to the message field for audit trail.
+
+    Returns 403 if the authenticated user is not a manager.
+    Returns 404 if the approval does not exist for this tenant.
+    Returns 409 if the approval is not in 'pending' status (already decided).
+    Requires JWT (tenant-scoped, manager role).
+    """
+    # Manager gate — the approval is the privileged safety gate
+    guard = _assert_manager(request)
+    if guard:
+        return guard
+
+    tenant_id = request.tenant_id
+    actor = getattr(request.auth, "username", None) or "unknown"
+    reason = body.reason if body else None
+
+    try:
+        approval = _reject_approval(approval_id, tenant_id, decided_by=actor, reason=reason)
+    except _ApprovalNotFound as exc:
+        return 404, error_response(str(exc), "not_found")
+    except _InvalidApprovalTransition as exc:
+        return 409, error_response(str(exc), "invalid_transition")
+
+    return 200, _approval_to_dto(approval)

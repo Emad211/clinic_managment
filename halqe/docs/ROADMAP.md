@@ -160,7 +160,12 @@
   ON CONFLICT) + `tests/test_engagement_models.py` (۸ تست شاملِ ردِ CHECK + UNIQUEِ
   idempotencyِ dispatch). ۲۴۴ سبز (۲۳۶+۸). یافته: FKِ مرکبِ پنهانِ slice2b
   `engagement_dispatch(tenant,event_key)→engagement_events`. ✅
-- [ ] **۱۷. صفِ تأییدِ پزشک** (`engagement_approvals`) — SMS فقط پس از تأیید. — *integrations-engineer*
+- [x] **۱۷. صفِ تأییدِ پزشک** (`engagement_approvals`) — SMS فقط پس از تأیید. — *integrations-engineer*
+  **تحویل:** مدلِ `EngagementApproval` + `clinical/engagement_approval_service.py`
+  (`enqueue_approval` idempotent، `list_pending`، `approve`/`reject` با state-machine
+  pending→approved/rejected، استثناهای دامنه، audit) + ۳ endpoint (GET صف + approve/reject
+  **manager-only** با 403) + `tests/test_engagement_approvals.py` (۱۵ تست شاملِ گیتِ staff،
+  ایزولاسیونِ tenant، عدمِ ارسالِ SMS). ۲۵۹ سبز (۲۴۴+۱۵). **هیچ پیامکی اینجا نمی‌رود.** ✅
 - [ ] **۱۸. provider abstraction + scheduler** (پورتِ `engagement_service`؛ KYCِ کاوه‌نگار
   بلاک → NullProvider در عمل). — *integrations-engineer*
 
@@ -187,5 +192,8 @@
    `apiFetch` را گسترش بده تا `code` را از body بخواند و `encounterErrorMessage` روی `code` سوییچ کند.
 8. **(قدم ۱۰)** افزودنِ batchِ vital/lab atomic نیست (شکستِ آیتمِ دوم، آیتمِ اول را نگه می‌دارد)؛
    آگاهانه (هر آیتم مستقل audit)؛ اگر atomicity لازم شد، wrapper تراکنش.
+9. **(قدم ۱۷، follow-up برای ۱۸)** `enqueue_approval` از get()-then-create استفاده می‌کند (نه
+   اتمیک get_or_create) — برای schedulerِ تک‌نخی امن است؛ dispatcherِ قدم ۱۸ باید تک‌نخی بماند
+   یا get_or_create شود، و **همیشه `period_key` پر باشد** (UNIQUE روی NULL کار نمی‌کند).
 
 > آخرین به‌روزرسانی: شروعِ حلقهٔ سوم. وضعیتِ هر قدم با ✅ در همین فایل علامت می‌خورد.
