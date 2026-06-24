@@ -386,6 +386,74 @@ class SuggestionLog(models.Model):
         )
 
 
+class Observation(models.Model):
+    """
+    clinical.observations — canonical UNION VIEW of vital_readings + lab_results.
+
+    ADR-0005: the single source-agnostic read path for the rule engine.
+    This model is READ-ONLY (managed=False on a VIEW — never write, save, or delete).
+
+    Columns (from the CREATE OR REPLACE VIEW in schema_pg_slice2_clinical.sql §6):
+      source_table  : 'vital' | 'lab'
+      source_id     : BIGINT — the PK of the originating row in its table
+      tenant_id     : BIGINT
+      patient_link_id : BIGINT
+      obs_key       : TEXT — namespace-prefixed since slice4a: 'vital:<type>' OR 'lab:<COALESCE(test_key,test_name)>'
+      test_name     : TEXT | NULL — original lab test_name (NULL for vitals)
+      value         : REAL
+      unit          : TEXT | NULL
+      ref_low       : REAL | NULL — lab reference range low (NULL for vitals)
+      ref_high      : REAL | NULL — lab reference range high (NULL for vitals)
+      observed_at   : TIMESTAMPTZ — measured_at (vitals) or taken_at (labs)
+      source        : TEXT | NULL — 'clinic' / 'lab' etc.
+      recorded_by   : TEXT | NULL
+
+    PRIMARY KEY NOTE: source_id is declared as primary_key=True so Django can
+    build a model identity — BUT it is NOT globally unique across the UNION.
+    A vital row with id=5 and a lab row with id=5 both map to source_id=5.
+    This is acceptable because this model is used ONLY for read iteration
+    (DISTINCT ON / order_by queries); it is never used for identity-map
+    get()/update()/save() operations. Do not call .save() or .delete() on
+    Observation instances.
+    """
+
+    source_table = models.TextField()           # 'vital' | 'lab'
+    source_id = models.BigIntegerField(primary_key=True)  # NOT globally unique — see note above
+    tenant_id = models.BigIntegerField(default=1)
+    patient_link_id = models.BigIntegerField()
+    obs_key = models.TextField()                # namespace-prefixed: 'vital:<type>' | 'lab:<key>' (slice4a)
+    test_name = models.TextField(null=True, blank=True)
+    value = models.FloatField(null=True, blank=True)
+    unit = models.TextField(null=True, blank=True)
+    ref_low = models.FloatField(null=True, blank=True)
+    ref_high = models.FloatField(null=True, blank=True)
+    observed_at = models.DateTimeField()
+    source = models.TextField(null=True, blank=True)
+    recorded_by = models.TextField(null=True, blank=True)
+
+    class Meta:
+        managed = False
+        app_label = "clinical"
+        db_table = '"clinical"."observations"'
+        ordering = ["obs_key", "-observed_at"]
+
+    def save(self, *args, **kwargs):
+        raise NotImplementedError(
+            "Observation is a read-only VIEW model. Do not write to it."
+        )
+
+    def delete(self, *args, **kwargs):
+        raise NotImplementedError(
+            "Observation is a read-only VIEW model. Do not write to it."
+        )
+
+    def __str__(self):
+        return (
+            f"Observation(source={self.source_table}, obs_key={self.obs_key}, "
+            f"value={self.value}, patient_link_id={self.patient_link_id})"
+        )
+
+
 class ActivityLog(models.Model):
     """
     clinical.activity_logs — append-only audit trail.

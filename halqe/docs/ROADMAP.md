@@ -54,9 +54,15 @@
 
 ## خوشهٔ B — تکمیلِ موتور و منبعِ حقیقت (ارزان، روی A)
 
-- [ ] **۵. مدلِ `managed=False` روی VIEWِ `clinical.observations`** (UNIONِ vitals+labs) و
+- [x] **۵. مدلِ `managed=False` روی VIEWِ `clinical.observations`** (UNIONِ vitals+labs) و
   تغذیهٔ `build_facts` از آن → سیم‌کشیِ lab به موتور. **پذیرش:** بیمار با egfr/ldl در
   lab_results → قاعده‌های lab-سورس fire شوند. — *backend-engineer*
+  **تحویل:** `clinical/models.py` (مدلِ `Observation` managed=False + read-only guard) +
+  `clinical/rule_engine.py` (`build_facts` از `Observation.objects.distinct("obs_key")` +
+  strip namespace prefix 'vital:'/'lab:' → bare key) + `tests/test_lab_engine.py`
+  (7 تست: unit build_facts + rule-engine + endpoint end-to-end). 100 تست سبز. ✅
+  یافته مهم: slice4a پیشوندِ 'vital:'/'lab:' به obs_key اضافه کرد — باید در همهٔ
+  consumer های VIEW در نظر گرفته شود.
 - [ ] **۶. تثبیتِ age fact.** یک helperِ واحد که `demographics` را همیشه به موتور بدهد
   (هرجا engine صدا زده می‌شود) + تستِ قاعده‌های age-gated (fail-closed درست است). — *backend-engineer*
 - [ ] **۷. وضعیتِ قبلیِ accept/dismiss در `get_suggestions`** (join با `SuggestionLog`) →
@@ -105,5 +111,9 @@
 3. **مدلِ روی VIEWِ observations**: فقط read؛ سازگاریِ `distinct("type")` با obs_key بررسی شود.
 4. **revenue در worklist**: staff ببیند یا فقط manager؟ — تأییدِ مالک لازم است (پیش از قدم ۱۵).
 5. خارج از این ۲۰: Flutter موبایل، PDFِ نسخهٔ آزاد، پلِ بیمهٔ MV3 (بلاک‌شده تا دسترسیِ مالک).
+6. **(قدم ۵، follow-up)** `build_facts` با `DISTINCT ON(obs_key)`ِ نام‌فضادار کار می‌کند؛ اگر یک
+   اندیکاتور (مثل `hba1c`) هم vital و هم lab باشد، پس از strip هر دو به کلیدِ خام نگاشته می‌شوند و
+   نسخهٔ vital (به‌خاطرِ ترتیبِ الفبایی) بازنویسی می‌کند — یعنی «vital برنده» نه «جدیدترینِ کلی».
+   برای دمو بی‌اثر (هر اندیکاتور از یک منبع)؛ اصلاحِ آینده: dedup روی کلیدِ خام با max(observed_at).
 
 > آخرین به‌روزرسانی: شروعِ حلقهٔ سوم. وضعیتِ هر قدم با ✅ در همین فایل علامت می‌خورد.

@@ -9,7 +9,8 @@ Output is SUGGESTION-ONLY: "پیشنهاد — تأیید با پزشک".
 Every fired rule carries `suggestion_only=True`.
 
 Facts assembled from Postgres via Django ORM:
-  - latest vital/lab values per type  (vital_readings)
+  - latest observations per obs_key  (clinical.observations VIEW — UNION of
+    vital_readings + lab_results; ADR-0005)
   - active condition codes             (patient_conditions → conditions)
   - patient_flags (categorical/bool)  (patient_flags)
   - active medications' drug_class set (patient_medications)
@@ -19,15 +20,12 @@ Deferred (not yet wired):
   - age: patient birthdate lives in accounting.patients — wired via the port
     if demographics are available; falls back to None (rules that need age
     simply won't fire; no wrong suggestions).
-  - lab_results: currently pulled through VitalReading only (both tables share
-    the same `type`/`key` vocabulary). A dedicated lab_results pass is
-    straightforward to add (see TODO below).
 """
 import json
 from datetime import datetime
 
 from clinical.models import (
-    VitalReading,
+    Observation,
     PatientCondition,
     PatientMedication,
     ClinicalRule,
@@ -210,22 +208,52 @@ def build_facts(patient_link_id: int, demographics=None, tenant_id: int = 1) -> 
         for row in ClinicalIndicator.objects.filter(tenant_id=tenant_id, is_active=True)
     }
 
-    # --- vital readings (latest per type) -------------------------------------
-    # Use DISTINCT ON equivalent: order by type, -measured_at then dedupe in Python
-    # because Django ORM distinct("type") is Postgres-specific and works here.
-    latest_per_type_qs = (
-        VitalReading.objects.filter(
+    # --- observations (vitals + labs, latest per obs_key) ---------------------
+    # ADR-0005: read from the canonical VIEW clinical.observations which UNION
+    # ALLs vital_readings and lab_results into one source-agnostic stream.
+    #
+    # obs_key is namespace-prefixed since slice4a:
+    #   vitals → 'vital:<type>'           e.g. 'vital:hba1c'
+    #   labs   → 'lab:<test_key or name>' e.g. 'lab:egfr', 'lab:اسم آزاد'
+    #
+    # DISTINCT ON obs_key (Postgres-specific ORM distinct("obs_key")) gives the
+    # latest observation per namespaced-key across BOTH sources after ordering by
+    # (obs_key, -observed_at).  Vitals still appear exactly as before (they're in
+    # the VIEW); labs now appear too.
+    #
+    # We strip the 'vital:'/'lab:' prefix before indexing indicator_facts because:
+    #   - The indicator_map (clinical_indicators.key) uses bare keys ('hba1c', 'egfr')
+    #   - The DSL trigger resolver (_resolve) looks up indicator_facts['hba1c'] etc.
+    #
+    # For obs_keys WITHOUT a matching clinical_indicators row (e.g. a free-text lab
+    # whose test_key is NULL → obs_key = 'lab:<Persian test_name>'), _evaluate_reading
+    # returns the fail-safe level='ok' — but the value still lands in indicator_facts
+    # so value-based DSL leaves (indicator.X.latest >=/>/<...) still fire correctly.
+    latest_per_obs_key_qs = (
+        Observation.objects.filter(
             patient_link_id=patient_link_id,
             tenant_id=tenant_id,
         )
-        .order_by("type", "-measured_at")
-        .distinct("type")
+        .order_by("obs_key", "-observed_at")
+        .distinct("obs_key")
     )
 
     indicator_facts: dict = {}
-    for vr in latest_per_type_qs:
-        level = _evaluate_reading(vr.type, vr.value, indicator_map)
-        indicator_facts[vr.type] = {"latest": vr.value, "level": level}
+    for obs in latest_per_obs_key_qs:
+        # obs_key is namespace-prefixed since slice4a: 'vital:<type>' or 'lab:<key>'.
+        # The indicator map (clinical_indicators.key) and DSL triggers use bare keys
+        # (e.g. 'hba1c', 'egfr'). Strip the prefix to get the canonical bare key.
+        raw_key = obs.obs_key or ""
+        if raw_key.startswith("vital:"):
+            bare_key = raw_key[len("vital:"):]
+        elif raw_key.startswith("lab:"):
+            bare_key = raw_key[len("lab:"):]
+        else:
+            bare_key = raw_key  # no prefix (legacy / unexpected) — use as-is
+        if not bare_key:
+            continue
+        level = _evaluate_reading(bare_key, obs.value, indicator_map)
+        indicator_facts[bare_key] = {"latest": obs.value, "level": level}
 
     # --- patient_flags --------------------------------------------------------
     flag_rows = PatientFlag.objects.filter(
