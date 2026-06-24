@@ -542,3 +542,378 @@
   color: var(--color-text-muted);
   margin-bottom: var(--space-3);
 }
+
+/* ── Register visit section ── */
+.visitSection {
+  /* No card wrapper — the form itself provides the visual container */
+}
+
+.registerVisitBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  background: var(--color-primary);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-5);
+  font-size: 0.9375rem;
+  font-weight: 600;
+  transition: background 0.15s;
+  cursor: pointer;
+}
+
+.registerVisitBtn:hover {
+  background: var(--color-primary-dark);
+}
+
+.registerVisitBtn:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+/* ── Visit form (inline card) ── */
+.visitForm {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+  padding: var(--space-5) var(--space-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.visitFormHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-1);
+}
+
+.visitFormTitle {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--color-primary-dark);
+}
+
+.visitFormClose {
+  background: transparent;
+  border: none;
+  font-size: 1.25rem;
+  line-height: 1;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  padding: var(--space-1);
+  border-radius: var(--radius-sm);
+  transition: background 0.15s;
+}
+
+.visitFormClose:hover {
+  background: var(--color-primary-light);
+  color: var(--color-text);
+}
+
+.visitFormClose:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+/* ── Form fields ── */
+.formGroup {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.formLabel {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
+}
+
+.formSelect,
+.formInput,
+.formTextarea {
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-3);
+  font-size: 0.9rem;
+  color: var(--color-text);
+  font-family: inherit;
+  transition: border-color 0.15s;
+  width: 100%;
+  box-sizing: border-box;
+  text-align: right;
+  direction: rtl;
+}
+
+.formSelect:focus,
+.formInput:focus,
+.formTextarea:focus {
+  outline: none;
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 20%, transparent);
+}
+
+.formTextarea {
+  resize: vertical;
+  min-height: 60px;
+}
+
+/* ── Vitals mini-table ── */
+.vitalsFieldset {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-3) var(--space-4);
+}
+
+.vitalsLegend {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  padding: 0 var(--space-2);
+}
+
+.vitalsHeader {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr auto;
+  gap: var(--space-2);
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  margin-bottom: var(--space-2);
+  padding: 0 var(--space-1);
+}
+
+.vitalInputRow {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr auto;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+  align-items: center;
+}
+
+.vitalInputRow .formInput {
+  padding: var(--space-1) var(--space-2);
+  font-size: 0.875rem;
+}
+
+.removeRowBtn {
+  background: transparent;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-muted);
+  font-size: 1rem;
+  line-height: 1;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  flex-shrink: 0;
+}
+
+.removeRowBtn:hover:not(:disabled) {
+  background: #fdf0ef;
+  border-color: var(--color-danger);
+  color: var(--color-danger);
+}
+
+.removeRowBtn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.addRowBtn {
+  background: transparent;
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-primary);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  padding: var(--space-1) var(--space-3);
+  cursor: pointer;
+  margin-top: var(--space-1);
+  transition: background 0.15s;
+}
+
+.addRowBtn:hover:not(:disabled) {
+  background: var(--color-primary-light);
+}
+
+.addRowBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ── Form error & success ── */
+.visitFormError {
+  background: #fdf0ef;
+  border: 1px solid #f5c6c2;
+  border-radius: var(--radius-sm);
+  color: var(--color-danger);
+  font-size: 0.875rem;
+  padding: var(--space-2) var(--space-3);
+}
+
+.visitFormSuccess {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  background: #e6f9ef;
+  border: 1px solid #a8e6c2;
+  border-radius: var(--radius);
+  color: var(--color-ok);
+  font-size: 0.9375rem;
+  font-weight: 600;
+  padding: var(--space-4) var(--space-5);
+}
+
+.successIcon {
+  font-size: 1.25rem;
+  font-weight: 700;
+}
+
+/* ── Form action buttons ── */
+.visitFormActions {
+  display: flex;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.submitBtn {
+  background: var(--color-primary);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-6);
+  font-size: 0.9375rem;
+  font-weight: 600;
+  transition: background 0.15s;
+  cursor: pointer;
+}
+
+.submitBtn:hover:not(:disabled) {
+  background: var(--color-primary-dark);
+}
+
+.submitBtn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.submitBtn:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.cancelBtn {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-muted);
+  padding: var(--space-2) var(--space-5);
+  font-size: 0.9375rem;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.cancelBtn:hover:not(:disabled) {
+  background: var(--color-primary-light);
+}
+
+.cancelBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ── Encounters list ── */
+.encList {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.encItem {
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  transition: border-color 0.15s;
+}
+
+.encItem:hover {
+  border-color: var(--color-primary);
+}
+
+.encItemRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-1);
+}
+
+.encType {
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: var(--color-text);
+}
+
+.encStatusBadge {
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+}
+
+.encStatusBadge[data-status="completed"] {
+  background: #e6f9ef;
+  color: var(--color-ok);
+}
+
+.encStatusBadge[data-status="open"] {
+  background: #e0f4fb;
+  color: #0e5a72;
+}
+
+.encStatusBadge[data-status="cancelled"] {
+  background: #f5f5f5;
+  color: var(--color-text-muted);
+}
+
+.encMeta {
+  display: flex;
+  gap: var(--space-3);
+  font-size: 0.8125rem;
+  color: var(--color-text-muted);
+  flex-wrap: wrap;
+}
+
+.encComplaint {
+  font-style: italic;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 260px;
+}
+
+.encLoading {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+  padding: var(--space-4) 0;
+  justify-content: center;
+}
+
+.encError {
+  color: var(--color-danger);
+  font-size: 0.875rem;
+}

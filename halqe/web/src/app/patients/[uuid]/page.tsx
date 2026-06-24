@@ -7,11 +7,18 @@ import {
   apiGetRecord,
   apiGetSuggestions,
   apiSuggestionAction,
+  apiCreateEncounter,
+  apiAddVitals,
+  apiCompleteEncounter,
+  apiListEncounters,
   clearToken,
   getToken,
   type ClinicalRecordDTO,
   type SuggestionsResponseDTO,
   type SuggestionRuleDTO,
+  type EncounterOut,
+  type EncounterType,
+  type VitalIn,
   ApiError,
 } from "@/lib/api";
 import { formatJalali } from "@/lib/jalali";
@@ -32,6 +39,388 @@ const SEVERITY_LABEL: Record<string, string> = {
   warn: "احتیاط",
   info: "توجه",
 };
+
+// ────────────────────────────────────────────────────────────
+// Encounter helpers
+// ────────────────────────────────────────────────────────────
+
+const ENCOUNTER_TYPE_LABEL: Record<EncounterType, string> = {
+  visit: "ویزیت",
+  follow_up: "پیگیری",
+  phone: "تلفنی",
+  remote: "از راه دور",
+};
+
+const ENCOUNTER_STATUS_LABEL: Record<string, string> = {
+  open: "باز",
+  completed: "تکمیل‌شده",
+  cancelled: "لغوشده",
+};
+
+/** Map backend error codes to human-readable Farsi messages. */
+function encounterErrorMessage(err: unknown): string {
+  if (err instanceof ApiError) {
+    // The apiFetch wrapper puts `detail` into err.message
+    const msg = err.message;
+    if (msg.includes("encounter_sealed") || err.status === 409) {
+      // try to parse the `code` field — but our wrapper only stores detail
+      // so we fall back to heuristic on the detail text
+      if (msg.toLowerCase().includes("duplicate")) {
+        return "این اندازه‌گیری قبلاً در این ویزیت ثبت شده.";
+      }
+      if (msg.toLowerCase().includes("sealed") || msg.toLowerCase().includes("complete")) {
+        return "این ویزیت قبلاً بسته شده است.";
+      }
+      return "تعارض داده — ممکن است این ویزیت قبلاً ثبت شده باشد.";
+    }
+    if (err.status === 401) return "لطفاً دوباره وارد شوید.";
+    if (err.status === 404) return "بیمار یا ویزیت یافت نشد.";
+    if (err.status === 422) return "داده‌های وارد‌شده معتبر نیستند.";
+    return `خطا: ${msg}`;
+  }
+  return "عملیات ناموفق بود. دوباره امتحان کنید.";
+}
+
+// ────────────────────────────────────────────────────────────
+// Vital row shape used inside the form
+// ────────────────────────────────────────────────────────────
+
+interface VitalRow {
+  id: number;       // local key only
+  type: string;
+  value: string;    // string while typing; parsed to number on submit
+  unit: string;
+}
+
+// ────────────────────────────────────────────────────────────
+// Sub-component: register-visit form (inline, no external modal lib)
+// ────────────────────────────────────────────────────────────
+
+function RegisterVisitForm({
+  uuid,
+  onSuccess,
+  onClose,
+}: {
+  uuid: string;
+  onSuccess: () => void;
+  onClose: () => void;
+}) {
+  const [encounterType, setEncounterType] = useState<EncounterType>("visit");
+  const [chiefComplaint, setChiefComplaint] = useState("");
+  const [vitals, setVitals] = useState<VitalRow[]>([
+    { id: 1, type: "", value: "", unit: "" },
+  ]);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState(false);
+  const nextId = useRef(2);
+
+  function addVitalRow() {
+    setVitals((prev) => [
+      ...prev,
+      { id: nextId.current++, type: "", value: "", unit: "" },
+    ]);
+  }
+
+  function removeVitalRow(id: number) {
+    setVitals((prev) => prev.filter((r) => r.id !== id));
+  }
+
+  function updateVitalRow(id: number, field: keyof Omit<VitalRow, "id">, val: string) {
+    setVitals((prev) =>
+      prev.map((r) => (r.id === id ? { ...r, [field]: val } : r)),
+    );
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    setBusy(true);
+
+    // Filter out blank rows
+    const validVitals: VitalIn[] = vitals
+      .filter((r) => r.type.trim() !== "" && r.value.trim() !== "")
+      .map((r) => ({
+        type: r.type.trim(),
+        value: parseFloat(r.value),
+        unit: r.unit.trim() || null,
+        source: "clinic",
+      }));
+
+    try {
+      // Step 1: create encounter
+      const enc = await apiCreateEncounter(uuid, {
+        encounter_type: encounterType,
+        chief_complaint: chiefComplaint.trim() || null,
+      });
+
+      // Step 2: add vitals (batch, only if any)
+      if (validVitals.length > 0) {
+        await apiAddVitals(enc.id, validVitals);
+      }
+
+      // Step 3: complete the encounter
+      await apiCompleteEncounter(enc.id);
+
+      setSuccess(true);
+      // Brief pause so user sees success state, then close + refresh
+      setTimeout(() => {
+        onSuccess();
+      }, 900);
+    } catch (err) {
+      setError(encounterErrorMessage(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (success) {
+    return (
+      <div className={styles.visitFormSuccess} role="status" aria-live="polite">
+        <span className={styles.successIcon} aria-hidden="true">✓</span>
+        ویزیت با موفقیت ثبت شد.
+      </div>
+    );
+  }
+
+  return (
+    <form
+      className={styles.visitForm}
+      onSubmit={handleSubmit}
+      aria-label="فرم ثبت ویزیت"
+      noValidate
+    >
+      <div className={styles.visitFormHeader}>
+        <h3 className={styles.visitFormTitle}>ثبت ویزیت جدید</h3>
+        <button
+          type="button"
+          className={styles.visitFormClose}
+          onClick={onClose}
+          aria-label="بستن فرم ثبت ویزیت"
+          disabled={busy}
+        >
+          ×
+        </button>
+      </div>
+
+      {/* Encounter type */}
+      <div className={styles.formGroup}>
+        <label htmlFor="enc-type" className={styles.formLabel}>
+          نوع ویزیت
+        </label>
+        <select
+          id="enc-type"
+          className={styles.formSelect}
+          value={encounterType}
+          onChange={(e) => setEncounterType(e.target.value as EncounterType)}
+          disabled={busy}
+        >
+          {(Object.keys(ENCOUNTER_TYPE_LABEL) as EncounterType[]).map((t) => (
+            <option key={t} value={t}>
+              {ENCOUNTER_TYPE_LABEL[t]}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {/* Chief complaint */}
+      <div className={styles.formGroup}>
+        <label htmlFor="chief-complaint" className={styles.formLabel}>
+          شکایت اصلی
+        </label>
+        <textarea
+          id="chief-complaint"
+          className={styles.formTextarea}
+          value={chiefComplaint}
+          onChange={(e) => setChiefComplaint(e.target.value)}
+          disabled={busy}
+          rows={2}
+          placeholder="شکایت اصلی بیمار را وارد کنید…"
+          aria-label="شکایت اصلی بیمار"
+        />
+      </div>
+
+      {/* Vitals mini-form */}
+      <fieldset className={styles.vitalsFieldset} disabled={busy}>
+        <legend className={styles.vitalsLegend}>اندازه‌گیری‌ها (اختیاری)</legend>
+
+        <div className={styles.vitalsHeader} aria-hidden="true">
+          <span>نوع</span>
+          <span>مقدار</span>
+          <span>واحد</span>
+          <span />
+        </div>
+
+        {vitals.map((row) => (
+          <div key={row.id} className={styles.vitalInputRow} role="group" aria-label="ردیف اندازه‌گیری">
+            <input
+              className={styles.formInput}
+              type="text"
+              value={row.type}
+              onChange={(e) => updateVitalRow(row.id, "type", e.target.value)}
+              placeholder="مثال: FBS"
+              aria-label="نوع اندازه‌گیری"
+            />
+            <input
+              className={styles.formInput}
+              type="number"
+              value={row.value}
+              onChange={(e) => updateVitalRow(row.id, "value", e.target.value)}
+              placeholder="مقدار"
+              aria-label="مقدار اندازه‌گیری"
+              step="any"
+              min="0"
+            />
+            <input
+              className={styles.formInput}
+              type="text"
+              value={row.unit}
+              onChange={(e) => updateVitalRow(row.id, "unit", e.target.value)}
+              placeholder="واحد"
+              aria-label="واحد اندازه‌گیری"
+            />
+            <button
+              type="button"
+              className={styles.removeRowBtn}
+              onClick={() => removeVitalRow(row.id)}
+              aria-label="حذف این ردیف"
+              disabled={vitals.length === 1}
+            >
+              −
+            </button>
+          </div>
+        ))}
+
+        <button
+          type="button"
+          className={styles.addRowBtn}
+          onClick={addVitalRow}
+          disabled={busy}
+        >
+          + افزودن ردیف
+        </button>
+      </fieldset>
+
+      {/* Error */}
+      {error && (
+        <div className={styles.visitFormError} role="alert">
+          {error}
+        </div>
+      )}
+
+      {/* Actions */}
+      <div className={styles.visitFormActions}>
+        <button
+          type="submit"
+          className={styles.submitBtn}
+          disabled={busy}
+          aria-busy={busy}
+        >
+          {busy ? "در حال ثبت…" : "ثبت ویزیت"}
+        </button>
+        <button
+          type="button"
+          className={styles.cancelBtn}
+          onClick={onClose}
+          disabled={busy}
+        >
+          انصراف
+        </button>
+      </div>
+    </form>
+  );
+}
+
+// ────────────────────────────────────────────────────────────
+// Sub-component: recent encounters list
+// ────────────────────────────────────────────────────────────
+
+function EncountersList({
+  uuid,
+  refreshKey,
+}: {
+  uuid: string;
+  refreshKey: number;
+}) {
+  const [encounters, setEncounters] = useState<EncounterOut[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+
+    apiListEncounters(uuid, 10, 0)
+      .then((resp) => {
+        if (!cancelled) setEncounters(resp.items);
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setError(
+            err instanceof ApiError
+              ? `خطا: ${err.message}`
+              : "بارگذاری ویزیت‌ها ناموفق بود.",
+          );
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => { cancelled = true; };
+  }, [uuid, refreshKey]);
+
+  if (loading) {
+    return (
+      <div className={styles.encLoading} role="status" aria-live="polite">
+        <span className={styles.spinner} aria-hidden="true" />
+        در حال بارگذاری ویزیت‌ها…
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <p className={styles.encError} role="alert">{error}</p>
+    );
+  }
+
+  if (encounters.length === 0) {
+    return (
+      <p className={styles.emptyNote}>هیچ ویزیتی ثبت نشده است.</p>
+    );
+  }
+
+  return (
+    <ul className={styles.encList} aria-label="فهرست ویزیت‌های اخیر">
+      {encounters.map((enc) => (
+        <li key={enc.id} className={styles.encItem}>
+          <div className={styles.encItemRow}>
+            <span className={styles.encType}>
+              {ENCOUNTER_TYPE_LABEL[enc.encounter_type] ?? enc.encounter_type}
+            </span>
+            <span
+              className={styles.encStatusBadge}
+              data-status={enc.status}
+              aria-label={`وضعیت: ${ENCOUNTER_STATUS_LABEL[enc.status] ?? enc.status}`}
+            >
+              {ENCOUNTER_STATUS_LABEL[enc.status] ?? enc.status}
+            </span>
+          </div>
+          <div className={styles.encMeta}>
+            <time dateTime={enc.encounter_at}>
+              {formatJalali(enc.encounter_at)}
+            </time>
+            {enc.chief_complaint && (
+              <span className={styles.encComplaint}>{enc.chief_complaint}</span>
+            )}
+          </div>
+        </li>
+      ))}
+    </ul>
+  );
+}
 
 // ────────────────────────────────────────────────────────────
 // Sub-component: single rule card
@@ -243,6 +632,10 @@ export default function PatientDetailPage() {
   const [suggestionsLoading, setSuggestionsLoading] = useState(true);
   const [suggestionsError, setSuggestionsError] = useState<string | null>(null);
 
+  // Register-visit form visibility + encounter list refresh trigger
+  const [showVisitForm, setShowVisitForm] = useState(false);
+  const [encounterRefreshKey, setEncounterRefreshKey] = useState(0);
+
   // Handle 401 uniformly
   const handle401 = useCallback(() => {
     clearToken();
@@ -308,6 +701,16 @@ export default function PatientDetailPage() {
   function handleLogout() {
     clearToken();
     router.push("/login");
+  }
+
+  /** Called when a visit is successfully registered: refresh both record + suggestions + encounters list. */
+  function handleVisitSuccess() {
+    setShowVisitForm(false);
+    // Bump refresh key to re-fetch the encounters list
+    setEncounterRefreshKey((k) => k + 1);
+    // Also refresh the record (new vitals) and suggestions (new clinical state)
+    fetchRecord();
+    fetchSuggestions();
   }
 
   const demo = record?.demographics;
@@ -381,6 +784,28 @@ export default function PatientDetailPage() {
 
           {/* Left column: clinical record */}
           <div className={styles.recordColumn} role="region" aria-label="پرونده بالینی">
+
+            {/* Register visit — button + inline form */}
+            <div className={styles.visitSection}>
+              {!showVisitForm ? (
+                <button
+                  className={styles.registerVisitBtn}
+                  onClick={() => setShowVisitForm(true)}
+                  aria-expanded={false}
+                  aria-controls="register-visit-form"
+                >
+                  + ثبت ویزیت
+                </button>
+              ) : (
+                <div id="register-visit-form">
+                  <RegisterVisitForm
+                    uuid={uuid}
+                    onSuccess={handleVisitSuccess}
+                    onClose={() => setShowVisitForm(false)}
+                  />
+                </div>
+              )}
+            </div>
 
             {/* Active conditions */}
             <section className={`${styles.card} ${styles.section}`} aria-label="بیماری‌های فعال">
@@ -470,6 +895,13 @@ export default function PatientDetailPage() {
                 </div>
               )}
             </section>
+
+            {/* Recent encounters list */}
+            <section className={`${styles.card} ${styles.section}`} aria-label="ویزیت‌های اخیر">
+              <h2 className={styles.sectionTitle}>ویزیت‌های اخیر</h2>
+              <EncountersList uuid={uuid} refreshKey={encounterRefreshKey} />
+            </section>
+
           </div>
 
           {/* Right column: suggestions */}

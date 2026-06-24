@@ -703,3 +703,420 @@ describe("apiMarkDone", () => {
     await expect(apiMarkDone(7)).rejects.toMatchObject({ status: 401 });
   });
 });
+
+// ────────────────────────────────────────────────────────────
+// apiCreateEncounter
+// ────────────────────────────────────────────────────────────
+
+describe("apiCreateEncounter", () => {
+  const TEST_UUID = "11111111-2222-3333-4444-555555555555";
+
+  beforeEach(() => {
+    localStorageMock.clear();
+    jest.resetAllMocks();
+    saveToken("mock-bearer-token");
+  });
+
+  const MOCK_ENCOUNTER = {
+    id: 1,
+    tenant_id: 1,
+    patient_link_id: 42,
+    encounter_type: "visit",
+    encounter_at: "2026-06-24T10:00:00+03:30",
+    status: "open",
+    chief_complaint: "سردرد",
+    doctor_id: null,
+    appointment_id: null,
+    accounting_invoice_id: null,
+    completed_at: null,
+    summary_note: null,
+    created_by: "admin",
+    created_at: "2026-06-24T10:00:00+03:30",
+    updated_at: "2026-06-24T10:00:00+03:30",
+  };
+
+  test("POSTs to /patients/{uuid}/encounters with correct body and returns EncounterOut", async () => {
+    globalThis.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => MOCK_ENCOUNTER,
+    }) as jest.Mock;
+
+    const { apiCreateEncounter } = await import("../src/lib/api");
+    const result = await apiCreateEncounter(TEST_UUID, {
+      encounter_type: "visit",
+      chief_complaint: "سردرد",
+    });
+
+    expect(result.id).toBe(1);
+    expect(result.status).toBe("open");
+    expect(result.chief_complaint).toBe("سردرد");
+    expect(result.encounter_type).toBe("visit");
+
+    const callArgs = (globalThis.fetch as jest.Mock).mock.calls[0];
+    const url: string = callArgs[0];
+    const options = callArgs[1] as RequestInit;
+    const body = JSON.parse(options.body as string);
+
+    expect(url).toContain(`/patients/${TEST_UUID}/encounters`);
+    expect(options.method).toBe("POST");
+    expect(body.encounter_type).toBe("visit");
+    expect(body.chief_complaint).toBe("سردرد");
+
+    const headers = options.headers as Record<string, string>;
+    expect(headers["Authorization"]).toBe("Bearer mock-bearer-token");
+  });
+
+  test("throws ApiError with detail message on error response", async () => {
+    globalThis.fetch = jest.fn().mockResolvedValue({
+      ok: false,
+      status: 404,
+      statusText: "Not Found",
+      json: async () => ({ detail: "Patient not found for this tenant." }),
+    }) as jest.Mock;
+
+    const { apiCreateEncounter, ApiError: AE } = await import("../src/lib/api");
+    await expect(
+      apiCreateEncounter(TEST_UUID, { encounter_type: "visit" }),
+    ).rejects.toBeInstanceOf(AE);
+    await expect(
+      apiCreateEncounter(TEST_UUID, { encounter_type: "visit" }),
+    ).rejects.toMatchObject({ status: 404, message: "Patient not found for this tenant." });
+  });
+});
+
+// ────────────────────────────────────────────────────────────
+// apiAddVitals
+// ────────────────────────────────────────────────────────────
+
+describe("apiAddVitals", () => {
+  const ENCOUNTER_ID = 7;
+
+  beforeEach(() => {
+    localStorageMock.clear();
+    jest.resetAllMocks();
+    saveToken("mock-bearer-token");
+  });
+
+  test("POSTs list of vitals to /encounters/{id}/vitals and returns count", async () => {
+    const mockResponse = {
+      count: 2,
+      vitals: [
+        {
+          id: 1,
+          patient_link_id: 42,
+          encounter_id: ENCOUNTER_ID,
+          type: "FBS",
+          value: 188.0,
+          unit: "mg/dL",
+          source: "clinic",
+          measured_at: "2026-06-24T10:00:00+03:30",
+        },
+        {
+          id: 2,
+          patient_link_id: 42,
+          encounter_id: ENCOUNTER_ID,
+          type: "BP_SYS",
+          value: 135,
+          unit: "mmHg",
+          source: "clinic",
+          measured_at: "2026-06-24T10:00:00+03:30",
+        },
+      ],
+    };
+
+    globalThis.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => mockResponse,
+    }) as jest.Mock;
+
+    const { apiAddVitals } = await import("../src/lib/api");
+    const result = await apiAddVitals(ENCOUNTER_ID, [
+      { type: "FBS", value: 188.0, unit: "mg/dL" },
+      { type: "BP_SYS", value: 135, unit: "mmHg" },
+    ]);
+
+    expect(result.count).toBe(2);
+    expect(result.vitals).toHaveLength(2);
+    expect(result.vitals[0].type).toBe("FBS");
+    expect(result.vitals[1].type).toBe("BP_SYS");
+
+    const callArgs = (globalThis.fetch as jest.Mock).mock.calls[0];
+    const url: string = callArgs[0];
+    const options = callArgs[1] as RequestInit;
+    const body = JSON.parse(options.body as string);
+
+    expect(url).toContain(`/encounters/${ENCOUNTER_ID}/vitals`);
+    expect(options.method).toBe("POST");
+    expect(Array.isArray(body)).toBe(true);
+    expect(body[0].type).toBe("FBS");
+    expect(body[0].value).toBe(188.0);
+    expect(body[1].unit).toBe("mmHg");
+  });
+
+  test("throws ApiError(409) on duplicate_vital", async () => {
+    globalThis.fetch = jest.fn().mockResolvedValue({
+      ok: false,
+      status: 409,
+      statusText: "Conflict",
+      json: async () => ({ detail: "duplicate_vital", code: "duplicate_vital" }),
+    }) as jest.Mock;
+
+    const { apiAddVitals } = await import("../src/lib/api");
+    await expect(
+      apiAddVitals(ENCOUNTER_ID, [{ type: "FBS", value: 188 }]),
+    ).rejects.toMatchObject({ status: 409 });
+  });
+
+  test("throws ApiError(409) on encounter_sealed", async () => {
+    globalThis.fetch = jest.fn().mockResolvedValue({
+      ok: false,
+      status: 409,
+      statusText: "Conflict",
+      json: async () => ({ detail: "encounter_sealed", code: "encounter_sealed" }),
+    }) as jest.Mock;
+
+    const { apiAddVitals } = await import("../src/lib/api");
+    await expect(
+      apiAddVitals(ENCOUNTER_ID, [{ type: "FBS", value: 188 }]),
+    ).rejects.toMatchObject({ status: 409 });
+  });
+});
+
+// ────────────────────────────────────────────────────────────
+// apiCompleteEncounter
+// ────────────────────────────────────────────────────────────
+
+describe("apiCompleteEncounter", () => {
+  const ENCOUNTER_ID = 7;
+
+  beforeEach(() => {
+    localStorageMock.clear();
+    jest.resetAllMocks();
+    saveToken("mock-bearer-token");
+  });
+
+  test("POSTs to /encounters/{id}/complete with summary_note and returns completed EncounterOut", async () => {
+    const mockCompleted = {
+      id: ENCOUNTER_ID,
+      tenant_id: 1,
+      patient_link_id: 42,
+      encounter_type: "visit",
+      encounter_at: "2026-06-24T10:00:00+03:30",
+      status: "completed",
+      chief_complaint: "سردرد",
+      doctor_id: null,
+      appointment_id: null,
+      accounting_invoice_id: null,
+      completed_at: "2026-06-24T10:15:00+03:30",
+      summary_note: "بیمار در وضعیت مناسب",
+      created_by: "admin",
+      created_at: "2026-06-24T10:00:00+03:30",
+      updated_at: "2026-06-24T10:15:00+03:30",
+    };
+
+    globalThis.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => mockCompleted,
+    }) as jest.Mock;
+
+    const { apiCompleteEncounter } = await import("../src/lib/api");
+    const result = await apiCompleteEncounter(ENCOUNTER_ID, "بیمار در وضعیت مناسب");
+
+    expect(result.status).toBe("completed");
+    expect(result.summary_note).toBe("بیمار در وضعیت مناسب");
+    expect(result.completed_at).toBe("2026-06-24T10:15:00+03:30");
+
+    const callArgs = (globalThis.fetch as jest.Mock).mock.calls[0];
+    const url: string = callArgs[0];
+    const options = callArgs[1] as RequestInit;
+    const body = JSON.parse(options.body as string);
+
+    expect(url).toContain(`/encounters/${ENCOUNTER_ID}/complete`);
+    expect(options.method).toBe("POST");
+    expect(body.summary_note).toBe("بیمار در وضعیت مناسب");
+  });
+
+  test("sends null summary_note when not provided", async () => {
+    globalThis.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        id: ENCOUNTER_ID,
+        status: "completed",
+        summary_note: null,
+        encounter_type: "visit",
+        encounter_at: "2026-06-24T10:00:00+03:30",
+        tenant_id: 1,
+        patient_link_id: 42,
+        chief_complaint: null,
+        doctor_id: null,
+        appointment_id: null,
+        accounting_invoice_id: null,
+        completed_at: "2026-06-24T10:15:00+03:30",
+        created_by: "admin",
+        created_at: "2026-06-24T10:00:00+03:30",
+        updated_at: "2026-06-24T10:15:00+03:30",
+      }),
+    }) as jest.Mock;
+
+    const { apiCompleteEncounter } = await import("../src/lib/api");
+    await apiCompleteEncounter(ENCOUNTER_ID);
+
+    const body = JSON.parse(
+      ((globalThis.fetch as jest.Mock).mock.calls[0][1] as RequestInit).body as string,
+    );
+    expect(body.summary_note).toBeNull();
+  });
+});
+
+// ────────────────────────────────────────────────────────────
+// apiCancelEncounter
+// ────────────────────────────────────────────────────────────
+
+describe("apiCancelEncounter", () => {
+  const ENCOUNTER_ID = 7;
+
+  beforeEach(() => {
+    localStorageMock.clear();
+    jest.resetAllMocks();
+    saveToken("mock-bearer-token");
+  });
+
+  test("POSTs to /encounters/{id}/cancel with reason and returns cancelled EncounterOut", async () => {
+    const mockCancelled = {
+      id: ENCOUNTER_ID,
+      tenant_id: 1,
+      patient_link_id: 42,
+      encounter_type: "visit",
+      encounter_at: "2026-06-24T10:00:00+03:30",
+      status: "cancelled",
+      chief_complaint: null,
+      doctor_id: null,
+      appointment_id: null,
+      accounting_invoice_id: null,
+      completed_at: null,
+      summary_note: null,
+      created_by: "admin",
+      created_at: "2026-06-24T10:00:00+03:30",
+      updated_at: "2026-06-24T10:20:00+03:30",
+    };
+
+    globalThis.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => mockCancelled,
+    }) as jest.Mock;
+
+    const { apiCancelEncounter } = await import("../src/lib/api");
+    const result = await apiCancelEncounter(ENCOUNTER_ID, "بیمار نیامد");
+
+    expect(result.status).toBe("cancelled");
+
+    const callArgs = (globalThis.fetch as jest.Mock).mock.calls[0];
+    const url: string = callArgs[0];
+    const options = callArgs[1] as RequestInit;
+    const body = JSON.parse(options.body as string);
+
+    expect(url).toContain(`/encounters/${ENCOUNTER_ID}/cancel`);
+    expect(options.method).toBe("POST");
+    expect(body.reason).toBe("بیمار نیامد");
+  });
+});
+
+// ────────────────────────────────────────────────────────────
+// apiListEncounters
+// ────────────────────────────────────────────────────────────
+
+describe("apiListEncounters", () => {
+  const TEST_UUID = "11111111-2222-3333-4444-555555555555";
+
+  beforeEach(() => {
+    localStorageMock.clear();
+    jest.resetAllMocks();
+    saveToken("mock-bearer-token");
+  });
+
+  const MOCK_ENC_1 = {
+    id: 3,
+    tenant_id: 1,
+    patient_link_id: 42,
+    encounter_type: "visit",
+    encounter_at: "2026-06-24T10:00:00+03:30",
+    status: "completed",
+    chief_complaint: "کنترل دوره‌ای",
+    doctor_id: null,
+    appointment_id: null,
+    accounting_invoice_id: null,
+    completed_at: "2026-06-24T10:30:00+03:30",
+    summary_note: null,
+    created_by: "admin",
+    created_at: "2026-06-24T10:00:00+03:30",
+    updated_at: "2026-06-24T10:30:00+03:30",
+  };
+
+  test("GETs /patients/{uuid}/encounters and returns EncounterListResponse", async () => {
+    const mockPayload = {
+      items: [MOCK_ENC_1],
+      total: 1,
+      limit: 10,
+      offset: 0,
+    };
+
+    globalThis.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => mockPayload,
+    }) as jest.Mock;
+
+    const { apiListEncounters } = await import("../src/lib/api");
+    const result = await apiListEncounters(TEST_UUID);
+
+    expect(result.total).toBe(1);
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0].id).toBe(3);
+    expect(result.items[0].status).toBe("completed");
+    expect(result.items[0].chief_complaint).toBe("کنترل دوره‌ای");
+
+    const url: string = (globalThis.fetch as jest.Mock).mock.calls[0][0];
+    expect(url).toContain(`/patients/${TEST_UUID}/encounters`);
+    expect(url).toContain("limit=10");
+    expect(url).toContain("offset=0");
+  });
+
+  test("attaches Bearer token and uses GET method (no body)", async () => {
+    globalThis.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ items: [], total: 0, limit: 10, offset: 0 }),
+    }) as jest.Mock;
+
+    const { apiListEncounters } = await import("../src/lib/api");
+    await apiListEncounters(TEST_UUID);
+
+    const callArgs = (globalThis.fetch as jest.Mock).mock.calls[0];
+    const headers = callArgs[1]?.headers as Record<string, string>;
+    expect(headers["Authorization"]).toBe("Bearer mock-bearer-token");
+    // GET — apiFetch default method; no explicit method needed
+    expect(callArgs[1]?.method).toBeUndefined();
+  });
+
+  test("returns empty items array when no encounters", async () => {
+    globalThis.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ items: [], total: 0, limit: 10, offset: 0 }),
+    }) as jest.Mock;
+
+    const { apiListEncounters } = await import("../src/lib/api");
+    const result = await apiListEncounters(TEST_UUID);
+    expect(result.items).toHaveLength(0);
+    expect(result.total).toBe(0);
+  });
+
+  test("throws ApiError(401) when unauthenticated", async () => {
+    globalThis.fetch = jest.fn().mockResolvedValue({
+      ok: false,
+      status: 401,
+      statusText: "Unauthorized",
+      json: async () => ({ detail: "Authentication required" }),
+    }) as jest.Mock;
+
+    const { apiListEncounters } = await import("../src/lib/api");
+    await expect(apiListEncounters(TEST_UUID)).rejects.toMatchObject({ status: 401 });
+  });
+});

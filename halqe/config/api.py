@@ -12,6 +12,14 @@ Endpoints:
   GET  /api/v1/worklist                                           → paginated follow-up tasks (requires JWT)
   POST /api/v1/worklist/{task_id}/done                            → mark task done (requires JWT)
   POST /api/v1/patients/{uuid}/suggestions/{rule_code}/action     → accept/dismiss suggestion (requires JWT)
+
+  Encounter write-path (Step 10):
+  POST /api/v1/patients/{uuid}/encounters                         → create encounter (requires JWT) → 201 EncounterOut
+  GET  /api/v1/patients/{uuid}/encounters                         → paginated encounter list (requires JWT)
+  POST /api/v1/encounters/{encounter_id}/vitals                   → add vitals list (requires JWT)
+  POST /api/v1/encounters/{encounter_id}/labs                     → add labs list (requires JWT)
+  POST /api/v1/encounters/{encounter_id}/complete                 → complete encounter (requires JWT)
+  POST /api/v1/encounters/{encounter_id}/cancel                   → cancel encounter (requires JWT)
 """
 import uuid as uuid_module
 from typing import Optional
@@ -951,3 +959,492 @@ def suggestion_action(
         note=log_row.note,
         created_at=log_row.created_at,
     )
+
+
+# ===========================================================================
+# Encounter write-path (Step 10)
+# ===========================================================================
+
+from typing import List as _List
+from clinical.models import Encounter as _Encounter
+from clinical.encounter_service import (
+    create_encounter as _create_encounter,
+    add_vital_to_encounter as _add_vital_to_encounter,
+    add_lab_to_encounter as _add_lab_to_encounter,
+    complete_encounter as _complete_encounter,
+    cancel_encounter as _cancel_encounter,
+    EncounterNotFound as _EncounterNotFound,
+    InvalidEncounterTransition as _InvalidEncounterTransition,
+    EncounterSealed as _EncounterSealed,
+    InvalidEncounterType as _InvalidEncounterType,
+    DuplicateVitalReading as _DuplicateVitalReading,
+)
+
+
+# ---------------------------------------------------------------------------
+# Input/Output schemas
+# ---------------------------------------------------------------------------
+
+class CreateEncounterIn(Schema):
+    """Body for POST /patients/{uuid}/encounters."""
+    encounter_type: str = "visit"
+    encounter_at: Optional[datetime] = None
+    chief_complaint: Optional[str] = None
+    doctor_id: Optional[int] = None
+    appointment_id: Optional[int] = None
+
+
+class EncounterOut(Schema):
+    """Encounter representation returned from all encounter endpoints."""
+    id: int
+    tenant_id: int
+    patient_link_id: int
+    encounter_type: str
+    encounter_at: datetime
+    status: str
+    chief_complaint: Optional[str] = None
+    doctor_id: Optional[int] = None
+    appointment_id: Optional[int] = None
+    accounting_invoice_id: Optional[int] = None
+    completed_at: Optional[datetime] = None
+    summary_note: Optional[str] = None
+    created_by: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class EncounterListResponse(Schema):
+    items: list[EncounterOut]
+    total: int
+    limit: int
+    offset: int
+
+
+class VitalIn(Schema):
+    """One vital reading to add under an encounter."""
+    type: str
+    value: float
+    unit: Optional[str] = None
+    source: str = "clinic"
+    measured_at: Optional[datetime] = None
+
+
+class VitalReadingCreatedDTO(Schema):
+    """A created vital reading."""
+    id: int
+    patient_link_id: int
+    type: str
+    value: float
+    unit: Optional[str] = None
+    source: Optional[str] = None
+    measured_at: datetime
+    recorded_by: Optional[str] = None
+
+
+class LabIn(Schema):
+    """
+    One lab result to add under an encounter.
+
+    test_key is a soft FK to lab_test_catalog.test_key — pass null if the catalog
+    row does not exist yet; the LabResult will still be saved (test_name is the
+    required human-readable label).
+    """
+    test_name: str
+    test_key: Optional[str] = None   # nullable; must match lab_test_catalog if supplied
+    value: Optional[float] = None
+    unit: Optional[str] = None
+    ref_low: Optional[float] = None
+    ref_high: Optional[float] = None
+    taken_at: Optional[datetime] = None
+
+
+class LabResultCreatedDTO(Schema):
+    """A created lab result."""
+    id: int
+    patient_link_id: int
+    encounter_id: Optional[int] = None
+    test_name: str
+    test_key: Optional[str] = None
+    value: Optional[float] = None
+    unit: Optional[str] = None
+    ref_low: Optional[float] = None
+    ref_high: Optional[float] = None
+    taken_at: datetime
+    recorded_by: Optional[str] = None
+
+
+class VitalsAddedResponse(Schema):
+    """Response from POST /encounters/{id}/vitals (list add)."""
+    count: int
+    vitals: list[VitalReadingCreatedDTO]
+
+
+class LabsAddedResponse(Schema):
+    """Response from POST /encounters/{id}/labs (list add)."""
+    count: int
+    labs: list[LabResultCreatedDTO]
+
+
+class CompleteEncounterIn(Schema):
+    summary_note: Optional[str] = None
+
+
+class CancelEncounterIn(Schema):
+    reason: Optional[str] = None
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _encounter_to_out(enc: _Encounter) -> EncounterOut:
+    return EncounterOut(
+        id=enc.id,
+        tenant_id=enc.tenant_id,
+        patient_link_id=enc.patient_link_id,
+        encounter_type=enc.encounter_type,
+        encounter_at=enc.encounter_at,
+        status=enc.status,
+        chief_complaint=enc.chief_complaint,
+        doctor_id=enc.doctor_id,
+        appointment_id=enc.appointment_id,
+        accounting_invoice_id=enc.accounting_invoice_id,
+        completed_at=enc.completed_at,
+        summary_note=enc.summary_note,
+        created_by=enc.created_by,
+        created_at=enc.created_at,
+        updated_at=enc.updated_at,
+    )
+
+
+def _resolve_patient_link_for_tenant(
+    patient_uuid: uuid_module.UUID,
+    tenant_id: int,
+) -> "PatientLink":
+    """
+    Resolve patient_uuid → accounting patient → clinical PatientLink for tenant.
+    Raises Http404 at each step (handled by the global handler).
+    """
+    demo = get_patient_by_uuid(patient_uuid)
+    if demo is None:
+        raise Http404(f"Patient with uuid={patient_uuid} not found.")
+    try:
+        link = PatientLink.objects.get(
+            tenant_id=tenant_id,
+            patient_id=demo.id,
+        )
+    except PatientLink.DoesNotExist:
+        raise Http404(
+            f"Patient uuid={patient_uuid} has no enrollment for this tenant."
+        )
+    return link
+
+
+# ---------------------------------------------------------------------------
+# POST /patients/{uuid}/encounters — create encounter
+# ---------------------------------------------------------------------------
+
+@api.post(
+    "/patients/{patient_uuid}/encounters",
+    response={
+        201: EncounterOut,
+        404: ErrorSchema,
+        422: ErrorSchema,
+    },
+    auth=_jwt_auth,
+    tags=["encounters"],
+)
+def create_encounter_endpoint(
+    request,
+    patient_uuid: uuid_module.UUID,
+    body: CreateEncounterIn,
+):
+    """
+    Create a new encounter (status=open) for an enrolled patient.
+
+    encounter_type: 'visit' (default) | 'follow_up' | 'phone' | 'remote'.
+    doctor_id / appointment_id / accounting_invoice_id are stored id snapshots —
+    they reference existing rows but are NEVER accounting writes.
+    Returns 201 on success, 404 if patient/enrollment not found,
+    422 if encounter_type is invalid.
+    """
+    tenant_id = request.tenant_id
+    actor = getattr(request.auth, "username", None) or "unknown"
+
+    link = _resolve_patient_link_for_tenant(patient_uuid, tenant_id)
+
+    try:
+        enc = _create_encounter(
+            patient_link_id=link.id,
+            tenant_id=tenant_id,
+            encounter_type=body.encounter_type,
+            encounter_at=body.encounter_at,
+            chief_complaint=body.chief_complaint,
+            doctor_id=body.doctor_id,
+            appointment_id=body.appointment_id,
+            created_by=actor,
+        )
+    except _InvalidEncounterType as exc:
+        return 422, error_response(str(exc), "validation_error")
+
+    return 201, _encounter_to_out(enc)
+
+
+# ---------------------------------------------------------------------------
+# GET /patients/{uuid}/encounters — paginated list
+# ---------------------------------------------------------------------------
+
+@api.get(
+    "/patients/{patient_uuid}/encounters",
+    response=EncounterListResponse,
+    auth=_jwt_auth,
+    tags=["encounters"],
+)
+def list_encounters(
+    request,
+    patient_uuid: uuid_module.UUID,
+    limit: int = Query(default=20, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+):
+    """
+    Paginated list of encounters for one enrolled patient, newest first.
+
+    Tenant-scoped: 404 if no enrollment for this uuid in this tenant.
+    """
+    tenant_id = request.tenant_id
+    link = _resolve_patient_link_for_tenant(patient_uuid, tenant_id)
+
+    qs = _Encounter.objects.filter(
+        patient_link_id=link.id,
+        tenant_id=tenant_id,
+    )
+    total = qs.count()
+    page = list(qs.order_by("-encounter_at")[offset: offset + limit])
+
+    return EncounterListResponse(
+        **paginate(total, [_encounter_to_out(e) for e in page], limit, offset)
+    )
+
+
+# ---------------------------------------------------------------------------
+# POST /encounters/{encounter_id}/vitals — add list of vitals
+# ---------------------------------------------------------------------------
+
+@api.post(
+    "/encounters/{encounter_id}/vitals",
+    response={
+        200: VitalsAddedResponse,
+        404: ErrorSchema,
+        409: ErrorSchema,
+    },
+    auth=_jwt_auth,
+    tags=["encounters"],
+)
+def add_vitals(
+    request,
+    encounter_id: int,
+    body: _List[VitalIn],
+):
+    """
+    Add one or more vital readings to an open encounter.
+
+    Accepts a JSON array of VitalIn objects.
+    Returns 409 with code='encounter_sealed' if the encounter is not open.
+    Returns 409 with code='duplicate_vital' if any vital would violate the UNIQUE key.
+    The service is called per item; on error after partial success the already-written
+    items remain (each item is individually audited by the service).
+
+    Note: test_key for each vital is NOT a lab field here — VitalIn.type is the
+    vital_readings.type value (e.g. 'bp_systolic', 'hba1c').
+    """
+    tenant_id = request.tenant_id
+    actor = getattr(request.auth, "username", None) or "unknown"
+
+    created = []
+    try:
+        for item in body:
+            reading = _add_vital_to_encounter(
+                encounter_id,
+                tenant_id,
+                type=item.type,
+                value=item.value,
+                unit=item.unit,
+                source=item.source,
+                measured_at=item.measured_at,
+                recorded_by=actor,
+            )
+            created.append(
+                VitalReadingCreatedDTO(
+                    id=reading.id,
+                    patient_link_id=reading.patient_link_id,
+                    type=reading.type,
+                    value=reading.value,
+                    unit=reading.unit,
+                    source=reading.source,
+                    measured_at=reading.measured_at,
+                    recorded_by=reading.recorded_by,
+                )
+            )
+    except _EncounterNotFound as exc:
+        return 404, error_response(str(exc), "not_found")
+    except _EncounterSealed as exc:
+        return 409, error_response(str(exc), "encounter_sealed")
+    except _DuplicateVitalReading as exc:
+        return 409, error_response(str(exc), "duplicate_vital")
+
+    return 200, VitalsAddedResponse(count=len(created), vitals=created)
+
+
+# ---------------------------------------------------------------------------
+# POST /encounters/{encounter_id}/labs — add list of labs
+# ---------------------------------------------------------------------------
+
+@api.post(
+    "/encounters/{encounter_id}/labs",
+    response={
+        200: LabsAddedResponse,
+        404: ErrorSchema,
+        409: ErrorSchema,
+    },
+    auth=_jwt_auth,
+    tags=["encounters"],
+)
+def add_labs(
+    request,
+    encounter_id: int,
+    body: _List[LabIn],
+):
+    """
+    Add one or more lab results to an open encounter.
+
+    Accepts a JSON array of LabIn objects.
+    test_key is a soft FK to lab_test_catalog.test_key — if non-null, the
+    catalog row must already exist (the DB will reject it otherwise).
+    Returns 409 with code='encounter_sealed' if encounter is not open.
+    """
+    tenant_id = request.tenant_id
+    actor = getattr(request.auth, "username", None) or "unknown"
+
+    created = []
+    try:
+        for item in body:
+            lab = _add_lab_to_encounter(
+                encounter_id,
+                tenant_id,
+                test_name=item.test_name,
+                test_key=item.test_key,
+                value=item.value,
+                unit=item.unit,
+                ref_low=item.ref_low,
+                ref_high=item.ref_high,
+                taken_at=item.taken_at,
+                recorded_by=actor,
+            )
+            created.append(
+                LabResultCreatedDTO(
+                    id=lab.id,
+                    patient_link_id=lab.patient_link_id,
+                    encounter_id=lab.encounter_id,
+                    test_name=lab.test_name,
+                    test_key=lab.test_key,
+                    value=lab.value,
+                    unit=lab.unit,
+                    ref_low=lab.ref_low,
+                    ref_high=lab.ref_high,
+                    taken_at=lab.taken_at,
+                    recorded_by=lab.recorded_by,
+                )
+            )
+    except _EncounterNotFound as exc:
+        return 404, error_response(str(exc), "not_found")
+    except _EncounterSealed as exc:
+        return 409, error_response(str(exc), "encounter_sealed")
+
+    return 200, LabsAddedResponse(count=len(created), labs=created)
+
+
+# ---------------------------------------------------------------------------
+# POST /encounters/{encounter_id}/complete — complete an open encounter
+# ---------------------------------------------------------------------------
+
+@api.post(
+    "/encounters/{encounter_id}/complete",
+    response={
+        200: EncounterOut,
+        404: ErrorSchema,
+        409: ErrorSchema,
+    },
+    auth=_jwt_auth,
+    tags=["encounters"],
+)
+def complete_encounter_endpoint(
+    request,
+    encounter_id: int,
+    body: CompleteEncounterIn,
+):
+    """
+    Transition an open encounter to 'completed'.
+
+    Returns 409 with code='invalid_transition' if the encounter is not open.
+    Returns 404 with code='not_found' if the encounter does not exist for this tenant.
+    """
+    tenant_id = request.tenant_id
+    actor = getattr(request.auth, "username", None) or "unknown"
+
+    try:
+        enc = _complete_encounter(
+            encounter_id,
+            tenant_id,
+            summary_note=body.summary_note,
+            completed_by=actor,
+        )
+    except _EncounterNotFound as exc:
+        return 404, error_response(str(exc), "not_found")
+    except _InvalidEncounterTransition as exc:
+        return 409, error_response(str(exc), "invalid_transition")
+
+    return 200, _encounter_to_out(enc)
+
+
+# ---------------------------------------------------------------------------
+# POST /encounters/{encounter_id}/cancel — cancel an open encounter
+# ---------------------------------------------------------------------------
+
+@api.post(
+    "/encounters/{encounter_id}/cancel",
+    response={
+        200: EncounterOut,
+        404: ErrorSchema,
+        409: ErrorSchema,
+    },
+    auth=_jwt_auth,
+    tags=["encounters"],
+)
+def cancel_encounter_endpoint(
+    request,
+    encounter_id: int,
+    body: CancelEncounterIn,
+):
+    """
+    Transition an open encounter to 'cancelled'.
+
+    reason is stored in summary_note (no dedicated cancel_reason column).
+    Returns 409 with code='invalid_transition' if the encounter is not open.
+    Returns 404 with code='not_found' if not found for this tenant.
+    """
+    tenant_id = request.tenant_id
+    actor = getattr(request.auth, "username", None) or "unknown"
+
+    try:
+        enc = _cancel_encounter(
+            encounter_id,
+            tenant_id,
+            reason=body.reason,
+            cancelled_by=actor,
+        )
+    except _EncounterNotFound as exc:
+        return 404, error_response(str(exc), "not_found")
+    except _InvalidEncounterTransition as exc:
+        return 409, error_response(str(exc), "invalid_transition")
+
+    return 200, _encounter_to_out(enc)

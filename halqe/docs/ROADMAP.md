@@ -98,8 +98,15 @@
   not-found، duplicate-vital→DuplicateVitalReading، audit روی هر نوشتن) + سلسله‌خطاهای دامنه
   (نگاشتِ HTTP آمادهٔ قدم ۱۰) + `tests/test_encounter_service.py` (۲۰ تست) + رفعِ flakyِ
   مقایسهٔ timestamp در `test_patient_record.py`. ۱۴۷ تست سبز (۱۲۷+۲۰). ✅
-- [ ] **۱۰. POST encounter + نوشتنِ vital/lab زیرِ encounter** (مرزِ accounting دست‌نخورده؛
+- [x] **۱۰. POST encounter + نوشتنِ vital/lab زیرِ encounter** (مرزِ accounting دست‌نخورده؛
   `accounting_invoice_id` فقط snapshotِ شناسه، نه نوشتنِ مالی) + UIِ ثبتِ ویزیت. — *backend + frontend*
+  **تحویل (backend):** ۶ endpoint روی `config/api.py` (create/vitals/labs/complete/cancel/list)،
+  نازک روی سرویسِ قدم ۹، نگاشتِ خطا→HTTP (۴۰۴/۴۰۹/۴۲۲ با `{detail,code}`) + `test_encounter_api.py`
+  (۱۶ تست). ۱۶۳ تست بک‌اند سبز (۱۴۷+۱۶). **تحویل (frontend):** `api.ts` (۶ تابع + types) +
+  فرمِ «ثبت ویزیت» (create→vitals→complete + refreshِ موازیِ record/suggestions/encounters) +
+  لیستِ «ویزیت‌های اخیر» با تاریخِ جلالی + `encounters.test.tsx`. وب ۱۰۵ سبز (۶۶+۳۹)، tsc پاک. ✅
+
+> **🏁 نیمهٔ گم‌شدهٔ care-loop (نوشتنِ encounter) کامل شد** — از ثبتِ ویزیت تا اندازه‌گیری تا بستن.
 - [ ] **۱۱. مدل + مسیرِ نوشتنِ `Prescription`/`PrescriptionItem`** (نسخهٔ آزادِ غیربیمه‌ای؛
   پلِ بیمه بعداً و **بلاک‌شده**). — *backend-engineer*
 - [ ] **۱۲. تولیدِ خودکارِ `followup_tasks` از موتور** (پورتِ `followup_engine.due_clinical_events`)
@@ -137,5 +144,10 @@
    اندیکاتور (مثل `hba1c`) هم vital و هم lab باشد، پس از strip هر دو به کلیدِ خام نگاشته می‌شوند و
    نسخهٔ vital (به‌خاطرِ ترتیبِ الفبایی) بازنویسی می‌کند — یعنی «vital برنده» نه «جدیدترینِ کلی».
    برای دمو بی‌اثر (هر اندیکاتور از یک منبع)؛ اصلاحِ آینده: dedup روی کلیدِ خام با max(observed_at).
+7. **(قدم ۱۰، follow-up)** `ApiError` در وب فقط `detail` را حمل می‌کند نه `code`؛ نگاشتِ پیامِ خطای
+   ویزیت با heuristicِ substring روی متن کار می‌کند (شکننده اگر متنِ `detail` تغییر کند). اصلاح:
+   `apiFetch` را گسترش بده تا `code` را از body بخواند و `encounterErrorMessage` روی `code` سوییچ کند.
+8. **(قدم ۱۰)** افزودنِ batchِ vital/lab atomic نیست (شکستِ آیتمِ دوم، آیتمِ اول را نگه می‌دارد)؛
+   آگاهانه (هر آیتم مستقل audit)؛ اگر atomicity لازم شد، wrapper تراکنش.
 
 > آخرین به‌روزرسانی: شروعِ حلقهٔ سوم. وضعیتِ هر قدم با ✅ در همین فایل علامت می‌خورد.
