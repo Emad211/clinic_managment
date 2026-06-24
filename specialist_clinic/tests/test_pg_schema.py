@@ -571,3 +571,28 @@ def test_parent_tables_have_composite_unique_tenant_id(admin_conn):
         if not has:
             missing.append(f"{schema}.{table}")
     assert not missing, f"این والدها UNIQUE(tenant_id, id) ندارند: {missing}"
+
+
+# ===========================================================================
+# Batch 2b — FKهای واقعیِ ستون‌های «FK منطقی» (کاتالوگ‌ها + لینک‌های اختیاری)
+# ===========================================================================
+def test_batch2b_logical_fks_exist(admin_conn):
+    """۱۳ FKِ بَچ ۲b باید موجود باشند (ستون‌های منطقیِ آزاد حالا FKِ واقعیِ tenant-safe‌اند)."""
+    expected = {
+        "fk_lab_results_test_key", "fk_condition_lab_tests_test_key",
+        "fk_patient_flags_flag_key", "fk_patient_medications_drug_class",
+        "fk_drug_catalog_drug_class_key", "fk_engagement_dispatch_event_key",
+        "fk_medication_events_medication_id", "fk_appointments_parent_id",
+        "fk_followup_tasks_appointment_id", "fk_engagement_approvals_appointment_id",
+        "fk_prescriptions_followup_task_id", "fk_wallet_transactions_campaign_id",
+        "fk_prescriptions_prescriber_user_id",
+    }
+    found = {
+        r[0]
+        for r in admin_conn.execute(
+            "SELECT conname FROM pg_constraint WHERE contype='f' AND conname = ANY(%s)",
+            (list(expected),),
+        ).fetchall()
+    }
+    missing = expected - found
+    assert not missing, f"این FKهای بَچ ۲b پیدا نشدند: {missing}"
