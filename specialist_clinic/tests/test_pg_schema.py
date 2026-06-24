@@ -303,23 +303,26 @@ def test_money_columns_are_numeric(admin_conn):
 # معیار ۲ — باگِ پرستاری: visit_tariffs.nursing_covers و nursing_tariff هر دو NOT NULL DEFAULT 0
 # ---------------------------------------------------------------------------
 def test_nursing_coverage_bug_preserved(admin_conn):
-    """visit_tariffs.nursing_covers و nursing_tariff باید NOT NULL DEFAULT 0 باشند (باگِ حفظ‌شده)."""
-    cols = admin_conn.execute(
-        """SELECT column_name, is_nullable, column_default
-             FROM information_schema.columns
-            WHERE table_schema = 'accounting'
-              AND table_name = 'visit_tariffs'
-              AND column_name IN ('nursing_covers', 'nursing_tariff')
-            ORDER BY column_name"""
-    ).fetchall()
-    assert len(cols) == 2, f"ستون‌های پرستاری پیدا نشدند؛ یافته‌ها: {cols}"
-    for col_name, is_nullable, col_default in cols:
+    """باگِ حفظ‌شده: visit_tariffs.nursing_covers (BOOLEAN) و nursing_tariff (NUMERIC) هر دو
+    NOT NULL با پیش‌فرضِ falsey (covers=false، tariff=0) — نه nullable، نه «اصلاح‌شده»."""
+    cols = {
+        name: (is_nullable, col_default)
+        for name, is_nullable, col_default in admin_conn.execute(
+            """SELECT column_name, is_nullable, column_default
+                 FROM information_schema.columns
+                WHERE table_schema = 'accounting'
+                  AND table_name = 'visit_tariffs'
+                  AND column_name IN ('nursing_covers', 'nursing_tariff')"""
+        ).fetchall()
+    }
+    assert set(cols) == {"nursing_covers", "nursing_tariff"}, f"ستون‌های پرستاری پیدا نشدند؛ {cols}"
+    for name, (is_nullable, _default) in cols.items():
         assert is_nullable == "NO", (
-            f"visit_tariffs.{col_name} باید NOT NULL باشد (باگِ حفظ‌شده) ولی nullable است"
+            f"visit_tariffs.{name} باید NOT NULL باشد (باگِ حفظ‌شده) ولی nullable است"
         )
-        assert col_default is not None and "0" in col_default, (
-            f"visit_tariffs.{col_name} باید DEFAULT 0 داشته باشد؛ DEFAULT فعلی: {col_default!r}"
-        )
+    # پیش‌فرضِ falsey: covers=false (boolean)، tariff=0 (numeric)
+    assert "false" in (cols["nursing_covers"][1] or "").lower(), cols["nursing_covers"]
+    assert "0" in (cols["nursing_tariff"][1] or ""), cols["nursing_tariff"]
 
 
 # ---------------------------------------------------------------------------

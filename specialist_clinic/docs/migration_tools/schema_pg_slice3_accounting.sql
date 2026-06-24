@@ -23,8 +23,9 @@
 --   * درصدها در payroll_settings (injection/procedure/tax/nursing/nurse_procedure_percent)
 --     → NUMERIC(6,3) (درصدند، نه تومان — هرگز NUMERIC(14,0) نشوند).
 --   * بولی‌های INTEGER (is_active/is_supplementary/is_base_tariff/nursing_covers/is_foreign/
---     covered_by_insurance/patient_provided/is_exception/is_paid) → SMALLINT (نه BOOLEAN —
---     کدِ پایتون `=1` مقایسه می‌کند؛ همان تصمیمِ برشِ ۲. فاز ۱.)
+--     covered_by_insurance/patient_provided/is_exception/is_paid) → BOOLEAN (1→TRUE، 0→FALSE).
+--     اپ Django-from-scratch است (نه کدِ Flaskِ legacy با `=1`)، پس منطقِ مؤجلِ فاز-۱ افتاد؛
+--     همان تصمیمِ برشِ ۲.
 --   * زمان: لحظه‌ای (opened_at/closed_at/visit_date/injection_date/procedure_date/usage_date/
 --     last_login/locked_until/shift_started_at/created_at/updated_at) → TIMESTAMPTZ DEFAULT
 --     now() (جایی که منبع به‌صورتِ تهران-time پیش‌فرض داشت). تاریخِ تقویمیِ متنی (work_date/
@@ -64,7 +65,7 @@ CREATE TABLE IF NOT EXISTS accounting.medical_staff (
     tenant_id   BIGINT NOT NULL DEFAULT 1 REFERENCES platform.tenants(id),
     full_name   TEXT NOT NULL,
     staff_type  TEXT NOT NULL CHECK (staff_type IN ('doctor','nurse')),  -- doctor|nurse
-    is_active   SMALLINT NOT NULL DEFAULT 1,                          -- بولیِ فاز ۱
+    is_active   BOOLEAN NOT NULL DEFAULT TRUE,                        -- بولی
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -78,9 +79,9 @@ CREATE TABLE IF NOT EXISTS accounting.insurance_schemes (
     tenant_id         BIGINT NOT NULL DEFAULT 1 REFERENCES platform.tenants(id),
     code              TEXT NOT NULL,                       -- کلیدِ ماشین‌خوان (مثلِ 'free')
     name              TEXT NOT NULL,                       -- نامِ نمایشی (مثلِ 'آزاد')
-    is_supplementary  SMALLINT NOT NULL DEFAULT 0,         -- بیمهٔ تکمیلی؟ (بولیِ فاز ۱)
-    is_base           SMALLINT NOT NULL DEFAULT 0,         -- تعرفهٔ پایه/آزاد؟ (بولیِ فاز ۱)
-    is_active         SMALLINT NOT NULL DEFAULT 1,
+    is_supplementary  BOOLEAN NOT NULL DEFAULT FALSE,      -- بیمهٔ تکمیلی؟ (بولی)
+    is_base           BOOLEAN NOT NULL DEFAULT FALSE,      -- تعرفهٔ پایه/آزاد؟ (بولی)
+    is_active         BOOLEAN NOT NULL DEFAULT TRUE,
     created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
     CONSTRAINT uq_insurance_schemes_tenant_code UNIQUE (tenant_id, code)
 );
@@ -99,10 +100,10 @@ CREATE TABLE IF NOT EXISTS accounting.visit_tariffs (
     insurance_scheme_id  BIGINT REFERENCES accounting.insurance_schemes(id),  -- forward-link (nullable)
     tariff_price         NUMERIC(14,0) NOT NULL DEFAULT 0,  -- پول → تومانِ صحیح
     nursing_tariff       NUMERIC(14,0) NOT NULL DEFAULT 0,  -- تعرفهٔ پرستاری (۰=رایگان) — باگ حفظ‌شده (NOT NULL)
-    nursing_covers       SMALLINT NOT NULL DEFAULT 0,       -- آیا پرستاری پوشش دارد؟ — باگ حفظ‌شده (NOT NULL)
-    is_active            SMALLINT NOT NULL DEFAULT 1,        -- بولیِ فاز ۱
-    is_supplementary     SMALLINT NOT NULL DEFAULT 0,        -- بولیِ فاز ۱
-    is_base_tariff       SMALLINT NOT NULL DEFAULT 0,        -- تعرفهٔ پایه/آزاد؟ (بولیِ فاز ۱)
+    nursing_covers       BOOLEAN NOT NULL DEFAULT FALSE,    -- آیا پرستاری پوشش دارد؟ — باگ حفظ‌شده (NOT NULL)
+    is_active            BOOLEAN NOT NULL DEFAULT TRUE,      -- بولی
+    is_supplementary     BOOLEAN NOT NULL DEFAULT FALSE,     -- بولی
+    is_base_tariff       BOOLEAN NOT NULL DEFAULT FALSE,     -- تعرفهٔ پایه/آزاد؟ (بولی)
     created_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
     CONSTRAINT uq_visit_tariffs_tenant_insurance UNIQUE (tenant_id, insurance_type)
@@ -205,7 +206,7 @@ CREATE TABLE IF NOT EXISTS accounting.nursing_services (
     tenant_id     BIGINT NOT NULL DEFAULT 1 REFERENCES platform.tenants(id),
     service_name  TEXT NOT NULL,
     unit_price    NUMERIC(14,0) NOT NULL DEFAULT 0,        -- پول → تومان
-    is_active     SMALLINT NOT NULL DEFAULT 1,             -- بولیِ فاز ۱
+    is_active     BOOLEAN NOT NULL DEFAULT TRUE,           -- بولی
     created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
     CONSTRAINT uq_nursing_services_tenant_name UNIQUE (tenant_id, service_name)
 );
@@ -219,7 +220,7 @@ CREATE TABLE IF NOT EXISTS accounting.injection_types (
     tenant_id   BIGINT NOT NULL DEFAULT 1 REFERENCES platform.tenants(id),
     type_name   TEXT NOT NULL,
     base_price  NUMERIC(14,0) NOT NULL DEFAULT 0,          -- پول → تومان
-    is_active   SMALLINT NOT NULL DEFAULT 1,               -- بولیِ فاز ۱
+    is_active   BOOLEAN NOT NULL DEFAULT TRUE,             -- بولی
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
     CONSTRAINT uq_injection_types_tenant_name UNIQUE (tenant_id, type_name)
 );
@@ -227,7 +228,7 @@ CREATE TABLE IF NOT EXISTS accounting.injection_types (
 -- ---------------------------------------------------------------------------
 -- injections — تزریقات/خدماتِ پرستاری. FK patient_id، service_id → nursing_services،
 --   invoice_id → invoices، doctor_id/nurse_id → medical_staff. injection_date لحظه → TIMESTAMPTZ.
---   work_date تقویمی → DATE. همهٔ ستون‌های پولی → NUMERIC(14,0). covered_by_insurance → SMALLINT.
+--   work_date تقویمی → DATE. همهٔ ستون‌های پولی → NUMERIC(14,0). covered_by_insurance → BOOLEAN.
 --   ⚠️ patient_amount/insurance_amount در منبع DEFAULT NULL دارند (تفکیکِ "محاسبه‌نشده") — حفظ شد.
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS accounting.injections (
@@ -244,7 +245,7 @@ CREATE TABLE IF NOT EXISTS accounting.injections (
     total_price           NUMERIC(14,0) NOT NULL DEFAULT 0,  -- پول → تومان
     patient_amount        NUMERIC(14,0) DEFAULT NULL,        -- سهمِ بیمار (NULL=محاسبه‌نشده) → تومان
     insurance_amount      NUMERIC(14,0) DEFAULT NULL,        -- سهمِ بیمه (NULL=محاسبه‌نشده) → تومان
-    covered_by_insurance  SMALLINT NOT NULL DEFAULT 0,       -- بولیِ فاز ۱
+    covered_by_insurance  BOOLEAN NOT NULL DEFAULT FALSE,    -- بولی
     reception_user        TEXT,
     notes                 TEXT,
     invoice_id            BIGINT REFERENCES accounting.invoices(id),
@@ -284,7 +285,7 @@ CREATE TABLE IF NOT EXISTS accounting.procedure_tariffs (
     tenant_id   BIGINT NOT NULL DEFAULT 1 REFERENCES platform.tenants(id),
     name        TEXT NOT NULL,
     unit_price  NUMERIC(14,0) NOT NULL DEFAULT 0,          -- پول → تومان
-    is_active   SMALLINT NOT NULL DEFAULT 1,               -- بولیِ فاز ۱
+    is_active   BOOLEAN NOT NULL DEFAULT TRUE,             -- بولی
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
     CONSTRAINT uq_procedure_tariffs_tenant_name UNIQUE (tenant_id, name)
 );
@@ -292,7 +293,7 @@ CREATE TABLE IF NOT EXISTS accounting.procedure_tariffs (
 -- ---------------------------------------------------------------------------
 -- consumables_ledger — دفترِ مصرفی‌ها/داروها. FK patient_id، invoice_id، doctor_id/nurse_id.
 --   usage_date لحظه → TIMESTAMPTZ. work_date تقویمی → DATE. unit_price/total_cost → NUMERIC(14,0).
---   patient_provided/is_exception → SMALLINT. category TEXT (drug|supply).
+--   patient_provided/is_exception → BOOLEAN. category TEXT (drug|supply).
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS accounting.consumables_ledger (
     id                BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
@@ -303,8 +304,8 @@ CREATE TABLE IF NOT EXISTS accounting.consumables_ledger (
     quantity          NUMERIC(14,3) NOT NULL DEFAULT 1,    -- تعداد (REAL منبع — کسری ممکن: ۰.۵ ویال؛ scale=3 برای وفاداری)
     unit_price        NUMERIC(14,0) NOT NULL DEFAULT 0,    -- پول → تومان
     total_cost        NUMERIC(14,0) NOT NULL DEFAULT 0,    -- پول → تومان
-    patient_provided  SMALLINT NOT NULL DEFAULT 0,         -- بولیِ فاز ۱ (بیمار خودش آورده)
-    is_exception      SMALLINT NOT NULL DEFAULT 0,         -- بولیِ فاز ۱ (قلمِ استثنا/تعریف‌نشده)
+    patient_provided  BOOLEAN NOT NULL DEFAULT FALSE,      -- بولی (بیمار خودش آورده)
+    is_exception      BOOLEAN NOT NULL DEFAULT FALSE,      -- بولی (قلمِ استثنا/تعریف‌نشده)
     usage_date        TIMESTAMPTZ NOT NULL DEFAULT now(),  -- لحظه‌ای
     shift             TEXT,                                -- per-clinic (بدونِ CHECK enum)
     work_date         DATE,                                -- تاریخِ کارِ تقویمی (دستی)
@@ -325,7 +326,7 @@ CREATE TABLE IF NOT EXISTS accounting.consumable_tariffs (
     name           TEXT NOT NULL,
     default_price  NUMERIC(14,0) NOT NULL DEFAULT 0,       -- پول → تومان
     category       TEXT NOT NULL,                          -- supply|drug
-    is_active      SMALLINT NOT NULL DEFAULT 1,            -- بولیِ فاز ۱
+    is_active      BOOLEAN NOT NULL DEFAULT TRUE,          -- بولی
     created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
     CONSTRAINT uq_consumable_tariffs_tenant_name UNIQUE (tenant_id, name)
 );
@@ -349,18 +350,20 @@ CREATE TABLE IF NOT EXISTS accounting.insurance_nursing_exclusions (
 
 -- ---------------------------------------------------------------------------
 -- invoice_item_payments — وضعیتِ پرداختِ هر آیتمِ فاکتور. FK invoice_id → invoices.
---   PKِ مرکبِ منبع (invoice_id, item_type, item_id) → PRIMARY KEY(tenant_id, invoice_id,
---   item_type, item_id). is_paid → SMALLINT. item_type با CHECK یکپارچه‌شده (هر چهار مقدار).
+--   surrogate id (BIGINT IDENTITY PK — Django ORM با PKِ مرکب ناسازگار است)؛ کلیدِ طبیعیِ
+--   منبع (tenant_id, invoice_id, item_type, item_id) اکنون به‌صورتِ CONSTRAINT UNIQUE حفظ
+--   می‌شود. is_paid → BOOLEAN. item_type با CHECK یکپارچه‌شده (هر چهار مقدار).
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS accounting.invoice_item_payments (
+    id            BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
     tenant_id     BIGINT NOT NULL DEFAULT 1 REFERENCES platform.tenants(id),
     invoice_id    BIGINT NOT NULL REFERENCES accounting.invoices(id),
     item_type     TEXT NOT NULL CHECK (item_type IN ('visit','injection','procedure','consumable')),
     item_id       BIGINT NOT NULL,
     payment_type  TEXT,                                    -- cash|card|insurance
-    is_paid       SMALLINT NOT NULL DEFAULT 0,             -- بولیِ فاز ۱
+    is_paid       BOOLEAN NOT NULL DEFAULT FALSE,          -- بولی
     updated_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
-    PRIMARY KEY (tenant_id, invoice_id, item_type, item_id)
+    CONSTRAINT uq_invoice_item_payments UNIQUE (tenant_id, invoice_id, item_type, item_id)
 );
 
 -- ---------------------------------------------------------------------------
@@ -501,7 +504,7 @@ GRANT SELECT ON ALL TABLES IN SCHEMA accounting TO clinical_app;   -- فقط خ�
 --      منتقل نشد — دادهٔ یک کلینیکِ خاص در schemaِ یکپارچهٔ چندمستأجری جا ندارد.)
 -- ============================================================================
 INSERT INTO accounting.insurance_schemes (tenant_id, code, name, is_base)
-    VALUES (1, 'free', 'آزاد', 1)
+    VALUES (1, 'free', 'آزاد', TRUE)
     ON CONFLICT (tenant_id, code) DO NOTHING;
 
 -- ============================================================================
@@ -512,7 +515,8 @@ INSERT INTO accounting.insurance_schemes (tenant_id, code, name, is_base)
 --   ۲) هر ستونِ پولی NUMERIC(14,0) باشد (هیچ REAL/INTEGERِ پول نماند)؛ درصدهای payroll
 --      NUMERIC(6,3) باشند (نه تومان).
 --   ۳) همهٔ UNIQUEهای تک‌ستونیِ منبع به UNIQUE(tenant_id, …) مرکب تبدیل شده باشند؛
---      invoice_item_payments PK مرکبِ (tenant_id, invoice_id, item_type, item_id) باشد.
+--      invoice_item_payments دارای surrogate id (IDENTITY PK) باشد و کلیدِ طبیعیِ
+--      (tenant_id, invoice_id, item_type, item_id) به‌صورتِ CONSTRAINT UNIQUE حفظ شده باشد.
 --   ۴) باگِ پرستاریِ visit_tariffs حفظ شده باشد: nursing_covers و nursing_tariff هر دو
 --      NOT NULL DEFAULT 0 (نه nullable، نه "اصلاح‌شده").
 --   ۵) accounting.invoices دارای UNIQUE(tenant_id, id) باشد (هدفِ FKِ مرکبِ لجرهای بالینی).
