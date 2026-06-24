@@ -922,3 +922,233 @@ def test_procedures_performer_fk_exists_in_catalog(admin_conn):
     assert row is not None, (
         "constraint 'fk_procedures_performer' روی accounting.procedures پیدا نشد (Batch 4a)"
     )
+
+
+# ===========================================================================
+# Batch 4b — domain model additions (encounters · dose · prescription_items)
+# ===========================================================================
+
+# ---------------------------------------------------------------------------
+# (a) clinical.encounters جدول وجود دارد + FKهای کلیدی موجودند
+# ---------------------------------------------------------------------------
+def test_encounters_table_exists(admin_conn):
+    """Batch 4b: جدولِ clinical.encounters باید وجود داشته باشد."""
+    row = admin_conn.execute(
+        """SELECT 1 FROM information_schema.tables
+            WHERE table_schema = 'clinical' AND table_name = 'encounters'"""
+    ).fetchone()
+    assert row is not None, "clinical.encounters پیدا نشد (Batch 4b)"
+
+
+def test_encounters_required_columns(admin_conn):
+    """Batch 4b: clinical.encounters باید ستون‌های کلیدی را داشته باشد."""
+    cols = {
+        row[0]
+        for row in admin_conn.execute(
+            """SELECT column_name FROM information_schema.columns
+                WHERE table_schema = 'clinical' AND table_name = 'encounters'"""
+        ).fetchall()
+    }
+    required = {
+        "id", "tenant_id", "patient_link_id", "doctor_id", "encounter_type",
+        "encounter_at", "chief_complaint", "status", "completed_at",
+        "summary_note", "appointment_id", "accounting_invoice_id",
+        "created_by", "created_at", "updated_at",
+    }
+    missing = required - cols
+    assert not missing, f"clinical.encounters ستون‌های زیر را ندارد: {missing}"
+
+
+def test_encounters_fks_exist(admin_conn):
+    """Batch 4b: FKهای کلیدیِ clinical.encounters باید در pg_constraint موجود باشند."""
+    expected = {
+        "fk_encounters_patient",
+        "fk_encounters_appointment",
+        "fk_encounters_doctor",
+        "fk_encounters_invoice",
+    }
+    found = {
+        r[0]
+        for r in admin_conn.execute(
+            """SELECT conname FROM pg_constraint
+                WHERE conrelid = 'clinical.encounters'::regclass
+                  AND contype = 'f'
+                  AND conname = ANY(%s)""",
+            (list(expected),),
+        ).fetchall()
+    }
+    missing = expected - found
+    assert not missing, f"این FKهای encounters پیدا نشدند: {missing}"
+
+
+def test_encounters_has_composite_unique_tenant_id(admin_conn):
+    """Batch 4b: clinical.encounters باید UNIQUE(tenant_id, id) داشته باشد (هدفِ FKِ مرکبِ childها)."""
+    row = admin_conn.execute(
+        """SELECT c.conname
+             FROM pg_constraint c
+            WHERE c.conrelid = 'clinical.encounters'::regclass
+              AND c.contype = 'u'
+              AND c.conname = 'uq_encounters_tenant_id'"""
+    ).fetchone()
+    assert row is not None, "UNIQUE(tenant_id, id) روی clinical.encounters پیدا نشد (Batch 4b)"
+
+
+# ---------------------------------------------------------------------------
+# (b) vital_reading با encounter_id نامعتبر باید ForeignKeyViolation بدهد
+#     (اثباتِ FK مرکبِ vital_readings → encounters)
+# ---------------------------------------------------------------------------
+def test_vital_reading_bad_encounter_id_rejected(admin_tx, admin_conn):
+    """Batch 4b: درجِ vital_readings با encounter_id نامعتبر (999999) → ForeignKeyViolation."""
+    pid = _test_patient_id(admin_conn)
+    admin_conn.execute(
+        "INSERT INTO clinical.patient_links (tenant_id, patient_id) VALUES (1, %s)"
+        " ON CONFLICT (tenant_id, patient_id) DO NOTHING",
+        (pid,),
+    )
+    link_id = admin_conn.execute(
+        "SELECT id FROM clinical.patient_links WHERE tenant_id=1 AND patient_id=%s", (pid,)
+    ).fetchone()[0]
+
+    with pytest.raises(pgerr.ForeignKeyViolation):
+        admin_tx.execute(
+            """INSERT INTO clinical.vital_readings
+                   (tenant_id, patient_link_id, type, value, encounter_id)
+               VALUES (1, %s, 'hba1c', 7.5, 999999)""",
+            (link_id,),
+        )
+
+
+# ---------------------------------------------------------------------------
+# (c) cross-tenant encounter FK رد می‌شود
+#     patient_link tenant=1 نمی‌تواند به encounter tenant=2 اشاره کند
+# ---------------------------------------------------------------------------
+def test_cross_tenant_encounter_fk_rejected(admin_tx, admin_conn):
+    """Batch 4b: vital_readings با tenant_id=1 نمی‌تواند به encounter با tenant_id=2 اشاره کند."""
+    pid = _test_patient_id(admin_conn)
+    link_id = admin_conn.execute(
+        "SELECT id FROM clinical.patient_links WHERE tenant_id=1 AND patient_id=%s", (pid,)
+    ).fetchone()[0]
+
+    # encounter ساختگیِ tenant=2 (در همین tx وجود ندارد — هر id نامعتبر است)
+    with pytest.raises(pgerr.ForeignKeyViolation):
+        admin_tx.execute(
+            """INSERT INTO clinical.vital_readings
+                   (tenant_id, patient_link_id, type, value, encounter_id)
+               VALUES (1, %s, 'fbs', 130.0, 999998)""",
+            (link_id,),
+        )
+
+
+# ---------------------------------------------------------------------------
+# (d) prescription_items FK به prescriptions کار می‌کند + ردِ orphan
+# ---------------------------------------------------------------------------
+def test_prescription_items_fk_rejects_orphan(admin_tx, admin_conn):
+    """Batch 4b: درجِ prescription_items با prescription_id نامعتبر → ForeignKeyViolation."""
+    with pytest.raises(pgerr.ForeignKeyViolation):
+        admin_tx.execute(
+            """INSERT INTO clinical.prescription_items
+                   (tenant_id, prescription_id, drug_name)
+               VALUES (1, 999999, 'متفورمین ۵۰۰mg')"""
+        )
+
+
+def test_prescription_items_fk_valid_insert(admin_tx, admin_conn):
+    """Batch 4b: درجِ prescription_items با prescription_id معتبر موفق است."""
+    pid = _test_patient_id(admin_conn)
+    link_id = admin_conn.execute(
+        "SELECT id FROM clinical.patient_links WHERE tenant_id=1 AND patient_id=%s", (pid,)
+    ).fetchone()[0]
+
+    rx_id = admin_tx.execute(
+        """INSERT INTO clinical.prescriptions
+               (tenant_id, patient_link_id, kind)
+           VALUES (1, %s, 'free')
+           RETURNING id""",
+        (link_id,),
+    ).fetchone()[0]
+
+    # باید موفق باشد
+    admin_tx.execute(
+        """INSERT INTO clinical.prescription_items
+               (tenant_id, prescription_id, drug_name, dose_value, dose_unit, frequency, route)
+           VALUES (1, %s, 'متفورمین', 500.0, 'mg', 'bid', 'oral')""",
+        (rx_id,),
+    )
+
+
+# ---------------------------------------------------------------------------
+# (e) appointments.doctor_id FK وجود دارد
+# ---------------------------------------------------------------------------
+def test_appointments_doctor_id_fk_exists(admin_conn):
+    """Batch 4b: constraint fk_appointments_doctor روی clinical.appointments باید موجود باشد."""
+    row = admin_conn.execute(
+        """SELECT conname FROM pg_constraint
+            WHERE conrelid = 'clinical.appointments'::regclass
+              AND conname = 'fk_appointments_doctor'"""
+    ).fetchone()
+    assert row is not None, (
+        "constraint 'fk_appointments_doctor' روی clinical.appointments پیدا نشد (Batch 4b)"
+    )
+
+
+def test_appointments_doctor_id_fk_rejects_invalid(admin_tx, admin_conn):
+    """Batch 4b: appointments.doctor_id با مقدارِ نامعتبر (999999) → ForeignKeyViolation."""
+    pid = _test_patient_id(admin_conn)
+    link_id = admin_conn.execute(
+        "SELECT id FROM clinical.patient_links WHERE tenant_id=1 AND patient_id=%s", (pid,)
+    ).fetchone()[0]
+
+    with pytest.raises(pgerr.ForeignKeyViolation):
+        admin_tx.execute(
+            """INSERT INTO clinical.appointments
+                   (tenant_id, patient_link_id, scheduled_at, doctor_id)
+               VALUES (1, %s, now(), 999999)""",
+            (link_id,),
+        )
+
+
+# ---------------------------------------------------------------------------
+# (f) patient_medications.frequency CHECK مقدارِ نامعتبر را رد می‌کند
+# ---------------------------------------------------------------------------
+def test_medications_frequency_check_rejects_invalid(admin_tx, admin_conn):
+    """Batch 4b: patient_medications.frequency CHECK مقدارِ 'every_hour' را رد می‌کند."""
+    pid = _test_patient_id(admin_conn)
+    link_id = admin_conn.execute(
+        "SELECT id FROM clinical.patient_links WHERE tenant_id=1 AND patient_id=%s", (pid,)
+    ).fetchone()[0]
+
+    with pytest.raises(pgerr.CheckViolation):
+        admin_tx.execute(
+            """INSERT INTO clinical.patient_medications
+                   (tenant_id, patient_link_id, drug_name, frequency)
+               VALUES (1, %s, 'متفورمین', 'every_hour')""",
+            (link_id,),
+        )
+
+
+def test_medications_frequency_check_accepts_valid(admin_tx, admin_conn):
+    """Batch 4b: patient_medications.frequency مقادیرِ معتبر و NULL را قبول می‌کند."""
+    pid = _test_patient_id(admin_conn)
+    link_id = admin_conn.execute(
+        "SELECT id FROM clinical.patient_links WHERE tenant_id=1 AND patient_id=%s", (pid,)
+    ).fetchone()[0]
+
+    for freq in ('od', 'bid', 'tid', 'prn', 'with_meal', 'other', None):
+        admin_tx.execute(
+            """INSERT INTO clinical.patient_medications
+                   (tenant_id, patient_link_id, drug_name, frequency)
+               VALUES (1, %s, %s, %s)""",
+            (link_id, f'drug_{freq}', freq),
+        )
+
+
+# ---------------------------------------------------------------------------
+# (g) clinical_app روی encounters و prescription_items گرنتِ INSERT دارد
+# ---------------------------------------------------------------------------
+def test_clinical_app_has_insert_on_new_4b_tables(admin_conn):
+    """Batch 4b: clinical_app باید روی encounters و prescription_items گرنتِ INSERT داشته باشد."""
+    for tbl in ("clinical.encounters", "clinical.prescription_items"):
+        ok = admin_conn.execute(
+            "SELECT has_table_privilege('clinical_app', %s, 'INSERT')", (tbl,)
+        ).fetchone()[0]
+        assert ok is True, f"clinical_app گرنتِ INSERT روی {tbl} ندارد (Batch 4b)"
