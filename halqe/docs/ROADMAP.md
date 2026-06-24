@@ -116,8 +116,15 @@
   نمی‌کرد (کامنتِ غلط: «slice4b فقط به lab اضافه می‌کند»)، در‌حالی‌که slice4b به vital_readings
   هم اضافه کرده — vitalها به encounterشان لینک نمی‌شدند (نقضِ aggregate-root). فیلدِ مدل +
   ست‌کردنِ encounter_id + assertion افزوده شد. ۱۷۸ تست سبز (۱۶۳+۱۵). ✅
-- [ ] **۱۲. تولیدِ خودکارِ `followup_tasks` از موتور** (پورتِ `followup_engine.due_clinical_events`)
+- [x] **۱۲. تولیدِ خودکارِ `followup_tasks` از موتور** (پورتِ `followup_engine.due_clinical_events`)
   — اتصالِ تشخیص→قیف. — *backend-engineer*
+  **تحویل:** پورتِ وفادارِ `clinical/followup_engine.py` (`due_clinical_events`/`generate_for_patient`/
+  `generate_all`؛ از `evaluate_for_patient`ِ گاردِ قدم۶، نه موتورِ خام؛ `_last_done` روی
+  vitals+labs طبقِ ADR-0005؛ dedup/idempotent؛ audit per task) + management command
+  `generate_followups [--tenant]` + `tests/test_followup_engine.py` (۱۱ تست، شاملِ اثباتِ
+  استفاده از evaluate_for_patient). ۱۸۹ تست سبز (۱۷۸+۱۱). ✅
+
+> **🏁 خوشهٔ C (مسیرِ نوشتن / encounter) کامل شد** — مدل‌ها → سرویس → endpoint+UI → نسخه → تشخیص→قیف.
 
 ## خوشهٔ D — خواندنِ مالی/پذیرش (روی Port؛ مرزِ read-only)
 
