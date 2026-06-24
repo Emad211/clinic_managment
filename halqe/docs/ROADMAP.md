@@ -221,4 +221,83 @@
    PgBouncer در حالتِ transaction-pooling می‌تواند بینِ requestها نشت کند. الان pooler نیست و
    middleware در ابتدای هر request پاک می‌کند؛ در ابر (T1) قبل از افزودنِ pooler بازبینی شود.
 
-> آخرین به‌روزرسانی: حلقهٔ چهارم — قدم ۱۹ (RLS) سبز. مانده: قدم ۲۰ (onboarding + e2e ایزولاسیون). وضعیتِ هر قدم با ✅ علامت می‌خورد.
+> آخرین به‌روزرسانی: حلقهٔ چهارم — قدم‌های ۱۹ (RLS) و ۲۰ (onboarding + e2e ایزولاسیون) سبز؛ **خوشهٔ F و کلِ ۲۲ قدم تمام**. حالا فازِ ۴۰ قدمی پایین.
+
+---
+
+# فازِ ۴۰ قدمی (حلقهٔ چهارم) — از «پلتفرمِ اثبات‌شده» تا «محصولِ قابلِ‌فروش»
+
+> سنتزِ **گردهماییِ ۶‌لنزه**: `product-manager` (ارزش/MVP) · `principal-architect` (وابستگی/معماری/بدهیِ عملیاتی) · `clinical-product-advisor` (عمقِ بالینی، صدای هیئت) · `clinical-data-scientist` (سنجشِ پیامد/holdout) · `ux-ui-designer` (IA/دیزاین‌سیستمِ پنل + اپ بیمار) · `marketing-growth-advisor` (بازار/SEO). هر قدم = افزایشِ **منسجم، مستقل‌کامیت‌شدنی، کاملاً‌قابل‌آزمون**؛ همان اصولِ قفل‌شده (مرزِ accounting فقط‌خواندنی، suggestion-only، Jalali/وقتِ ایران، migrationِ افزایشیِ idempotent، **هیچ پیامکِ واقعی**).
+>
+> **یافتهٔ مهمِ گردهمایی:** فرانتِ `halqe/web/` تقریباً **خالی** است (فقط `package.json`) — UIِ پزشک/مدیر greenfield است. بک‌اند با ۳۰۱+۱۲۲+۷۹ تستِ سبز آماده است ولی **بدهیِ عملیاتی** دارد (CI نیست، Dockerfile/health نیست، بوتِ production ناامن، نشتِ GUC با pooling=ریسک #۱۱، error-`code` در کلاینت ناقص=ریسک #۷). پس: **اول بسترِ ارزانِ‌بحرانی، موازی با UIِ visible.**
+>
+> **تصمیمِ scope (هم‌راستا با خواستهٔ مالک «migration مهم نیست، کیفیت اولویت است»):** پورتِ کاملِ *بدنهٔ* accounting به Postgres در این فاز **نیست**؛ پلِ read-only درآمد (قدم ۱۳) کافی است. تمرکز: محصولِ بالینیِ قابلِ‌استفاده + قابلِ‌فروش.
+>
+> **یادداشتِ «قاعدهٔ خاموش» (نه قدم):** سن و lab از قبل به موتور سیم‌کشی‌اند (`rule_engine` از VIEWِ `observations` می‌خواند = vital+lab؛ سن via `suggestion_service.evaluate_for_patient/grouped_for_patient` همیشه inject می‌شود — قدم ۶). کامنتِ «Deferred» در `rule_engine.py:19-23` گمراه‌کننده است (به موتورِ خالص اشاره دارد) — در قدم ۳۵ تمیز می‌شود.
+
+## ترتیبِ اجرا و گِیت‌ها
+ترتیبِ خطیِ ۲۱→۶۰ (وابسته‌محور، value-front-loaded): بسترِ بحرانی (۲۱–۲۳) و اسکلتِ وب (۲۴) اول؛ سپس UI و بسترِ باقی درهم‌تنیده؛ بعد عمقِ بالینی، سنجش، اپ بیمار، تعامل، استقرار، رشد. **گِیتِ مالک/داده** (می‌سازیم و لوکال تست می‌کنیم؛ کلیدِ نهایی با مالک): میزبانِ CI (۲۱)، VPSِ واقعی (۵۵)، KYCِ پیامک (۵۳)، قیمت‌گذاری (۶۰)، تأییدِ نهاییِ آستانه‌های بالینی توسط پزشک (۳۹/۴۰)، دادهٔ چندماههٔ واقعی برای outcome (۴۹).
+
+## خوشهٔ G — بسترِ عملیات و سخت‌سازی (ارزانِ‌بحرانی، اول)
+- [ ] **۲۱. CIِ سبز** روی ۳ سوئیت (backend pytest + web jest + نگهبانِ `test_pg_schema`) با سرویس‌کانتینرِ Postgres؛ push→قرمز/سبز. *(qa-automation-engineer؛ گِیتِ مالک: GitHub Actions یا runnerِ لوکال — فایلِ workflow را می‌سازیم/لوکال validate.)*
+- [ ] **۲۲. سخت‌سازیِ بوتِ production** — پورتِ فلگِ `PRODUCTION` (fail-fastِ `SECRET_KEY`/`DEBUG=False`/`ALLOWED_HOSTS` از env) + `.env.example` + تستِ نگهبان که default-secret در production را رد کند (`settings.py:35-39`). *(api-platform-engineer)*
+- [ ] **۲۳. ADR-0008 + اصلاحِ GUC/pooling (ریسک #۱۱)** — تصمیمِ transaction-scoped GUC (`SET LOCAL` در atomic) یا قراردادِ session-pooling؛ `tenant_context` اصلاح + تستِ نشت با کانکشنِ بازیافتی. *(api-platform-engineer)*
+- [ ] **۲۸. health/readiness + لاگِ ساخت‌یافته** — `/healthz` (بدون DB) و `/readyz` (با DB) ۲۰۰/۵۰۳ + request-id + لاگِ PII-free. *(backend-engineer)*
+- [ ] **۳۳. Dockerfile + gunicorn + compose + entrypoint(`apply_schema`)** — `docker build` سبزِ لوکال؛ بدون runserver در production. *(devops-engineer)*
+- [ ] **۳۴. سخت‌سازیِ auth برای T1 (ریسک #۱۰)** — تابعِ `platform.auth_lookup_user(username)` با `SECURITY DEFINER` که فقط همان ردیف را برگرداند + حذفِ policyِ `tenant_isolation_read USING(true)` + e2e که app-role دیگر `password_hash`ِ مستأجرِ دیگر را نمی‌خواند. *(api-platform-engineer)*
+
+## خوشهٔ H — پنلِ وبِ پزشک/مدیر (greenfield؛ Next.js App Router، RTL/Jalali)
+- [ ] **۲۴. اسکلت + دیزاین‌سیستم + Login + api-client** — AppShell/Sidebar/TopBar، توکن‌های رنگ/تایپ، `dir=rtl`+وزیرمتنِ آفلاین، صفحهٔ `/login` (JWT)، `apiFetch` که **`code` را از body می‌خواند** (رفعِ ریسک #۷) + utilهای `jalali`/`toFa`. *(frontend-web-engineer + ux-ui-designer)*
+- [ ] **۲۵. `/patients`** لیست + جستجوی صفحهٔ جاری → پروندهٔ بیمار. *(frontend-web-engineer)*
+- [ ] **۲۶. `/patients/[uuid]` پایه (record)** — بیماری/داروی فعال + ۱۰ vitalِ اخیر با `VitalTile`/`StatusBadge`. *(frontend-web-engineer)*
+- [ ] **۲۷. پنلِ Suggestions + نگهبانِ معماری** — `SuggestionCard` با هِدرِ **همیشه‌نمایانِ «پیشنهاد — تأیید با پزشک»**، بنرِ red-flag، accept/dismissِ optimistic + `prior_action`؛ **تستِ نگهبان که متنِ «تأیید با پزشک» در DOM می‌ماند**. *(frontend-web-engineer + clinical-product-advisor)*
+- [ ] **۲۹. `/queue`** صفِ پزشک (SWR poll، start→ویزیت). *(frontend-web-engineer)*
+- [ ] **۳۰. ثبتِ ویزیتِ inline** — create→vitals→complete روی صفحهٔ بیمار + رفرشِ suggestions (یک‌پنجره، بدونِ redirect). *(frontend-web-engineer)*
+- [ ] **۳۱. فرمِ نسخهٔ آزاد** — `mode=free`؛ `insurance`→۴۲۲ graceful. *(frontend-web-engineer)*
+- [ ] **۳۲. `/worklist` + `/manager`** — کارتابلِ due + ستونِ درآمدِ **manager-only** (نگهبانِ DOM که staff نمی‌بیند). *(frontend-web-engineer)*
+
+## خوشهٔ I — عمقِ بالینی و ایمنیِ موتور (هیئتِ بالینی هر قدم حاضر)
+- [ ] **۳۵. شفافیتِ «قاعدهٔ خاموش»** — بنرِ «X قاعده به‌خاطرِ دادهٔ ناقص (سن/lab) ارزیابی نشد» تا پزشک بداند موتور همه را ندیده؛ + تمیزکردنِ کامنتِ گمراه‌کنندهٔ `rule_engine.py`. *(backend-engineer + clinical-product-advisor)*
+- [ ] **۳۶. لایهٔ دادهٔ تداخلِ دارویی (DDI)** — جدولِ `ddi_pairs(class_a,class_b,severity,message_fa,evidence)` + سرفیسِ suggestion-only؛ ≤۱۵ جفتِ high-certainty؛ ویرایشِ مدیر. *(backend-engineer + clinical-pharmacist-advisor)*
+- [ ] **۳۷. تقویمِ غربالگری** — `GET /patients/{uuid}/screening-timeline` (آخرین/سررسیدِ بعدی per آیتم) از `due_clinical_events`. *(backend-engineer + gp-family-medicine-advisor)*
+- [ ] **۳۸. ردیابیِ اثرِ دارو** — `GET .../medications/{id}/effect` دلتای پیش/پسِ ۹۰روزه از observations؛ `data_insufficient` به‌جای عددِ ساختگی. *(backend-engineer + clinical-research-advisor)*
+- [ ] **۳۹. گریدِ red-flag per-population** — سالمندِ frail vs جوان؛ gated، suggestion-only، آستانه با تأییدِ هیئت. *(backend-engineer + endocrinology-advisor + cardiology-advisor؛ گِیت: تأییدِ پزشک)*
+- [ ] **۴۰. پاسِ روزآمدیِ آستانه‌ها** — `clinical_indicators` در برابر ADA/KDIGO/ESC + هم‌گامیِ fallbackها و docs (قانونِ threshold-sync). *(backend-engineer + clinical-research-advisor + متخصص‌ها؛ گِیت: تأییدِ پزشک)*
+
+## خوشهٔ K — سنجشِ پیامد و کیفیتِ موتور
+- [ ] **۴۱. آمارِ پیشنهاد + لاگِ رویدادمحور** — endpointِ fire/accept/dismiss per `rule_code`؛ + اصلاحِ `suggestion_log` به **append رویداد** (نه overwrite) تا تاریخچه سنجش‌پذیر شود. *(backend-engineer + clinical-data-scientist)*
+- [ ] **۴۲. اصلاحِ funnel-conversion** — denominator = همهٔ followupهای تولیدشده (نه فقط done) + `cohort_age`. *(backend-engineer)*
+- [ ] **۴۳. فلگِ holdoutِ تعامل** — ستونِ افزایشیِ `engagement_holdout` + skip در dispatcher + تخصیصِ تصادفیِ مدیر؛ stepped-wedge، اخلاقی (مراقبتِ ویزیت دریغ نمی‌شود). *(backend-engineer + clinical-data-scientist)*
+- [ ] **۴۹. جدولِ outcomeِ کوهورت** — per-condition baseline→۳mo→۶mo (A1c/BP) + covariate (frailty/ASCVD). *(data-engineer + clinical-data-scientist؛ گِیتِ داده: نیازمندِ ماه‌ها دادهٔ واقعی)*
+- [ ] **۵۰. داشبوردِ outcomeِ مدیر** — `/manager/outcomes`: acceptance، lapsed→return، funnel، time-seriesِ کنترل؛ **بدونِ ادعای causal تا holdout**. *(frontend-web-engineer + backend-engineer + clinical-data-scientist)*
+
+## خوشهٔ J — اپ بیمار (PWA) و self-report
+- [ ] **۴۴. اسکلتِ PWA + کارتِ بیمار** — `/card/[token]` فقط‌خواندنی، ارقامِ فارسیِ بزرگ + رنگِ وضعیت، بدونِ national_id در URL. *(frontend-web-engineer/mobile-engineer؛ گِیت: LAN-vs-internet)*
+- [ ] **۴۵. endpointِ self-report بیمار** — `POST /patient-report/{token}` (یک‌بارمصرف، TTL)، `source='patient_self'`, `verified=false`؛ **هرگز در موتور تا تأییدِ پزشک**. *(backend-engineer + security-privacy-advisor)*
+- [ ] **۴۶. فرمِ self-reportِ PWA** — BP/FBS/وزن، عددی، آفلاین cache+sync. *(frontend-web-engineer)*
+- [ ] **۴۷. UIِ تأییدِ پزشک برای self-report** — آیتم‌های unverified در encounter، تأیید/رد. *(frontend-web-engineer + gp-family-medicine-advisor)*
+- [ ] **۴۸. کارتِ یادآور/غربالگریِ بیمار** — از screening-timeline؛ لینکِ SMS (گِیتِ KYC). *(frontend-web-engineer)*
+
+## خوشهٔ L — تعامل/پیامک در محیطِ واقعی
+- [ ] **۵۱. schedulerِ تعامل در production** — Celery/Redis یا cronِ مدیریتیِ پایدار؛ idempotent + گاردریل‌ها؛ `run_engagement` قابل‌اعتماد. *(backend-engineer + devops-engineer)*
+- [ ] **۵۲. UIِ صفِ تأیید + تنظیماتِ تعامل** — صفِ مدیر pending→approve/reject→send (NullProvider تا KYC) + quiet-hours/opt-out/daily-cap. *(frontend-web-engineer)*
+- [ ] **۵۳. آمادگیِ provider پیامک + گِیتِ KYC** — اثباتِ NullProvider + مسیرِ liveِ پشتِ فلگ؛ مستندِ KYC. *(integrations-engineer؛ گِیتِ مالک: KYCِ کاوه‌نگار)*
+
+## خوشهٔ M — استقرار و قابلیتِ‌اطمینان
+- [ ] **۵۴. بکاپ + restore** — dumpِ خودکار + مانورِ restoreِ تأییدشده (PITR-ready). *(devops-engineer)*
+- [ ] **۵۵. runbookِ استقرار + اولین staging** — Nginx+HTTPS+compose. *(devops-engineer؛ گِیتِ مالک: VPSِ ایرانی)*
+- [ ] **۵۶. observability + نسخه‌بندیِ API** — متریک/خطایاب/uptime + سیاستِ `v1`→`v2` و typegenِ OpenAPI برای کلاینت. *(devops-engineer + api-platform-engineer)*
+
+## خوشهٔ N — رشد و بازار (بعد از محصولِ قابل‌نمایش)
+- [ ] **۵۷. Demo Sandbox برای فروش** — تک‌فرمان seed + اسکریپتِ دموی ۹۰ثانیه. *(backend-engineer + marketing-growth-advisor)*
+- [ ] **۵۸. Landing + SEOِ فنیِ پایه** — RTL، روایتِ اعتمادِ داده، فرمِ درخواستِ دمو + schema.org (`MedicalClinic`/`SoftwareApplication`)، sitemap، metaِ فارسی، Lighthouse≥۸۰. *(frontend-web-engineer + seo-specialist-advisor)*
+- [ ] **۵۹. آنالیتیکسِ privacy-first** — Plausible/Umamiِ self-hosted (نه Google Analytics). *(devops-engineer + marketing-growth-advisor؛ گِیت: VPS)*
+- [ ] **۶۰. One-pagerِ فروش + منطقِ قیمت‌گذاری** — فقط آنچه اثبات‌شده؛ روایتِ ارزش‌محور. *(marketing-growth-advisor؛ گِیتِ مالک: قیمت)*
+
+### ریسک‌های فاز (از گردهمایی)
+- **A. نشتِ tenant با pooling = قاتلِ ایزولاسیون** (ریسک #۱۱ → قدم ۲۳، ADR-0008). تا حل نشده هیچ poolerِ transaction-mode اضافه نشود.
+- **B. متریکِ گمراه‌کننده:** acceptance-rate بدونِ context = rubber-stamping؛ re-engagement بدونِ holdout = همبستگی نه علیت. تا قدم ۴۳، گزارش‌ها «همبستگی» نامیده شوند نه «lift».
+- **C. ایمنیِ بالینی:** قاعدهٔ خاموشِ بی‌صدا (قدم ۳۵) و self-reportِ unverified که وارد موتور شود (قدم ۴۵) — هر دو با گاردِ صریح بسته شوند.
+- **D. انطباق/بازار:** هر متنِ بازاریابی «هوش/تشخیص» نیازِ بازبینیِ حقوقی؛ قابِ «پیشنهاد — تأیید با پزشک» در همهٔ collateral حفظ شود؛ فقط فیچرِ اثبات‌شده در فروش ادعا شود.
+
+> آخرین به‌روزرسانی: حلقهٔ چهارم — **گردهماییِ ۶‌لنزه انجام شد؛ ۴۰ قدمِ (۲۱–۶۰) قفل شد.** بعدی: اجرای قدم ۲۱ (CI). وضعیتِ هر قدم با ✅ علامت می‌خورد.
