@@ -201,3 +201,145 @@ def seed_data(django_db_setup):
         "user_id": user_id,
         "test_password": test_password,
     }
+
+
+@pytest.fixture(scope="session")
+def seed_clinical_data(seed_data):
+    """
+    Extend the base seed with:
+      - A second patient in a DIFFERENT tenant (tenant 2) — for isolation tests.
+      - Conditions (diabetes + hypertension) linked to tenant-1 patient.
+      - patient_conditions entries (active diabetes, active hypertension).
+      - patient_medications: 2 active + 1 inactive.
+      - Additional vital_readings: 4 more rows (2 types × 2 timestamps).
+
+    Returns the extended seed dict.
+    """
+    test_db_conninfo = (
+        f"host='localhost' port='55432' "
+        f"user='postgres' password='validate_only' "
+        f"dbname='halqe_app_test'"
+    )
+    tenant2_patient_uuid = uuid.UUID("11111111-2222-3333-4444-555555555555")
+
+    with psycopg.connect(test_db_conninfo, autocommit=True) as conn:
+        # ── Tenant 2: insert a second tenant ─────────────────────────────────
+        # platform.tenants real columns: id, name, is_active, created_at (no subdomain)
+        conn.execute("""
+            INSERT INTO platform.tenants (id, name, is_active)
+            VALUES (2, 'درمانگاه تست ۲', TRUE)
+            ON CONFLICT (id) DO NOTHING
+        """)
+
+        # ── Patient in tenant 2 ───────────────────────────────────────────────
+        conn.execute("""
+            INSERT INTO accounting.patients
+                (tenant_id, uuid, name, family_name, national_id, phone_number,
+                 birthdate, gender)
+            VALUES (2, %s, 'سارا', 'محمدی', '9876543210', '09130000002',
+                    '1985-03-20', 'female')
+            ON CONFLICT (uuid) DO NOTHING
+        """, (tenant2_patient_uuid,))
+
+        row = conn.execute(
+            "SELECT id FROM accounting.patients WHERE uuid=%s",
+            (tenant2_patient_uuid,)
+        ).fetchone()
+        tenant2_patient_id = row[0]
+
+        conn.execute("""
+            INSERT INTO clinical.patient_links (tenant_id, patient_id, is_active)
+            VALUES (2, %s, TRUE)
+            ON CONFLICT (tenant_id, patient_id) DO NOTHING
+        """, (tenant2_patient_id,))
+
+        # ── Conditions (diabetes id=1, hypertension id=2 from slice2 seed) ───
+        # We rely on the seeded rows in clinical.conditions from schema slice2.
+        # Fetch them to get real IDs.
+        diabetes_row = conn.execute(
+            "SELECT id FROM clinical.conditions WHERE tenant_id=1 AND code='diabetes'"
+        ).fetchone()
+        htn_row = conn.execute(
+            "SELECT id FROM clinical.conditions WHERE tenant_id=1 AND code='hypertension'"
+        ).fetchone()
+
+        diabetes_id = diabetes_row[0] if diabetes_row else None
+        htn_id = htn_row[0] if htn_row else None
+
+        link_id = seed_data["link_id"]
+
+        # ── patient_conditions ────────────────────────────────────────────────
+        pc_ids = {}
+        if diabetes_id:
+            conn.execute("""
+                INSERT INTO clinical.patient_conditions
+                    (tenant_id, patient_link_id, condition_id, stage,
+                     onset_date, notes, is_active, diagnosed_at)
+                VALUES (1, %s, %s, 'T2DM', '2020-01-15',
+                        'تشخیص اولیه دیابت نوع ۲', TRUE, now())
+                ON CONFLICT DO NOTHING
+                RETURNING id
+            """, (link_id, diabetes_id))
+            row = conn.execute(
+                "SELECT id FROM clinical.patient_conditions "
+                "WHERE patient_link_id=%s AND condition_id=%s AND tenant_id=1",
+                (link_id, diabetes_id)
+            ).fetchone()
+            pc_ids["diabetes"] = row[0] if row else None
+
+        if htn_id:
+            conn.execute("""
+                INSERT INTO clinical.patient_conditions
+                    (tenant_id, patient_link_id, condition_id, stage,
+                     onset_date, notes, is_active, diagnosed_at)
+                VALUES (1, %s, %s, 'stage1', '2021-06-10',
+                        'فشار خون مرحله ۱', TRUE, now())
+                ON CONFLICT DO NOTHING
+            """, (link_id, htn_id))
+            row = conn.execute(
+                "SELECT id FROM clinical.patient_conditions "
+                "WHERE patient_link_id=%s AND condition_id=%s AND tenant_id=1",
+                (link_id, htn_id)
+            ).fetchone()
+            pc_ids["hypertension"] = row[0] if row else None
+
+        # ── patient_medications: 2 active + 1 inactive ────────────────────────
+        conn.execute("""
+            INSERT INTO clinical.patient_medications
+                (tenant_id, patient_link_id, drug_name, dose, schedule,
+                 start_date, drug_class, is_active, created_at)
+            VALUES
+                (1, %s, 'متفورمین', '500mg', 'روزی دو بار',
+                 '2020-02-01', 'metformin', TRUE, now()),
+                (1, %s, 'آملودیپین', '5mg', 'روزی یک بار',
+                 '2021-07-01', 'ccb', TRUE, now()),
+                (1, %s, 'گلیبنکلامید', '5mg', 'صبح',
+                 '2020-03-01', 'su', FALSE, now() - interval '30 days')
+        """, (link_id, link_id, link_id))
+
+        # Fetch medication ids
+        med_rows = conn.execute(
+            "SELECT id, drug_name, is_active FROM clinical.patient_medications "
+            "WHERE patient_link_id=%s AND tenant_id=1",
+            (link_id,)
+        ).fetchall()
+
+        # ── More vitals (hba1c + bp_systolic 2 more rows) ────────────────────
+        conn.execute("""
+            INSERT INTO clinical.vital_readings
+                (tenant_id, patient_link_id, type, value, unit, measured_at, source)
+            VALUES
+                (1, %s, 'hba1c',        6.9, '%%',   now() - interval '3 months', 'clinic'),
+                (1, %s, 'bp_systolic',  132, 'mmHg', now() - interval '7 days',  'clinic'),
+                (1, %s, 'weight',        82, 'kg',   now() - interval '5 days',  'clinic'),
+                (1, %s, 'ldl',           95, 'mg/dL',now() - interval '4 days',  'clinic')
+        """, (link_id, link_id, link_id, link_id))
+
+    return {
+        **seed_data,
+        "tenant2_patient_uuid": tenant2_patient_uuid,
+        "tenant2_patient_id": tenant2_patient_id,
+        "diabetes_condition_id": diabetes_id,
+        "htn_condition_id": htn_id,
+        "pc_ids": pc_ids,
+    }

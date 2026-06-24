@@ -111,8 +111,11 @@ def test_get_latest_vitals_returns_latest_per_type(seed_data):
     assert "hba1c" in types_returned
     assert "bp_systolic" in types_returned
 
-    # Exactly 2 types (latest per type, not all 3 rows)
-    assert len(readings) == 2
+    # Each type appears EXACTLY ONCE (latest-per-type dedup — no duplicates)
+    types_list = [r["type"] for r in readings]
+    assert len(types_list) == len(set(types_list)), (
+        "vitals/latest must return each type at most once — duplicates found"
+    )
 
     # The hba1c returned should be the most recent (value 7.2, not 7.5)
     hba1c_reading = next(r for r in readings if r["type"] == "hba1c")
