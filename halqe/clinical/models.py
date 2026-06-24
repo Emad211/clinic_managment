@@ -829,6 +829,73 @@ class PrescriptionItem(models.Model):
         )
 
 
+class DoctorVisitLog(models.Model):
+    """
+    clinical.doctor_visit_log — physician visit-queue state tracker.
+
+    Boundary ledger: accounting_invoice_id is a snapshot cross-schema reference
+    (FK enforced by slice4 SQL; never written from clinical).  The queue state
+    (waiting → in_progress → done) lives ONLY here — accounting is read-only.
+
+    Schema (schema_pg_slice2_clinical.sql §doctor_visit_log):
+      id, tenant_id, accounting_invoice_id (NOT NULL, snapshot),
+      UNIQUE(tenant_id, accounting_invoice_id),
+      patient_link_id (nullable, composite FK → patient_links),
+      patient_uuid UUID (snapshot; ADR-0007 §2.4 — uuid not national_id),
+      full_name TEXT (snapshot), work_date DATE,
+      status TEXT DEFAULT 'waiting' CHECK IN ('waiting','in_progress','done'),
+      started_at TIMESTAMPTZ, done_at TIMESTAMPTZ,
+      physician_notes TEXT, done_by TEXT, created_at TIMESTAMPTZ DEFAULT now().
+
+    FK conventions (managed=False — real FK lives in slice4 SQL):
+      - accounting_invoice_id: cross-schema snapshot; BigIntegerField(db_constraint=False).
+      - patient_link_id: composite FK (tenant_id, patient_link_id) → clinical.patient_links;
+        expressed as BigIntegerField (nullable — invoice may arrive before enrollment).
+    """
+
+    STATUS_WAITING = "waiting"
+    STATUS_IN_PROGRESS = "in_progress"
+    STATUS_DONE = "done"
+
+    STATUS_CHOICES = [
+        (STATUS_WAITING, "Waiting"),
+        (STATUS_IN_PROGRESS, "In Progress"),
+        (STATUS_DONE, "Done"),
+    ]
+
+    tenant_id = models.BigIntegerField(default=1)
+    # Cross-schema snapshot reference — NOT a real ORM FK (managed=False + cross-schema).
+    # The real composite FK (tenant_id, accounting_invoice_id) → accounting.invoices
+    # is declared in schema_pg_slice4_boundary.sql (fk_doctor_visit_log_acct).
+    accounting_invoice_id = models.BigIntegerField()
+    # Nullable: patient may not be enrolled yet when the invoice first appears.
+    # Composite FK (tenant_id, patient_link_id) → clinical.patient_links (DB enforces).
+    patient_link_id = models.BigIntegerField(null=True, blank=True)
+    # patient_uuid: ADR-0007 §2.4 snapshot — uuid (not national_id)
+    patient_uuid = models.UUIDField(null=True, blank=True)
+    full_name = models.TextField()
+    work_date = models.DateField()
+    status = models.TextField(default="waiting")   # CHECK enforced by DB
+    started_at = models.DateTimeField(null=True, blank=True)
+    done_at = models.DateTimeField(null=True, blank=True)
+    physician_notes = models.TextField(null=True, blank=True)
+    done_by = models.TextField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        managed = False
+        app_label = "clinical"
+        db_table = '"clinical"."doctor_visit_log"'
+        ordering = ["work_date", "id"]
+        # DB-enforced: UNIQUE(tenant_id, accounting_invoice_id)
+
+    def __str__(self):
+        return (
+            f"DoctorVisitLog(invoice={self.accounting_invoice_id}, "
+            f"status={self.status}, work_date={self.work_date})"
+        )
+
+
 class ActivityLog(models.Model):
     """
     clinical.activity_logs — append-only audit trail.

@@ -135,7 +135,12 @@
   visits.price+injections.total_price+procedures.price؛ همه via `accounting_read`، SELECT-only؛
   obligationِ sync سه‌جا مستند) + `tests/test_accounting_revenue_port.py` (۱۵ تست شاملِ ردِ
   invoiceِ باز). ۲۰۴ تست سبز (۱۸۹+۱۵). ✅
-- [ ] **۱۴. صفِ ویزیتِ پزشک** (`doctor_visit_log` snapshotِ مرزی). — *backend-engineer*
+- [x] **۱۴. صفِ ویزیتِ پزشک** (`doctor_visit_log` snapshotِ مرزی). — *backend-engineer*
+  **تحویل:** `accounting_port.fetch_open_visit_invoices` (read-only) + مدلِ `DoctorVisitLog` +
+  `clinical/doctor_queue_service.py` (`get_queue`/`start_visit`/`end_visit`؛ ادغامِ
+  invoiceهای بازِ read-only با وضعیتِ لوکال، نگاشت به patient_link با patient_id، upsert روی
+  UNIQUE(tenant,invoice)، گذارِ waiting→in_progress→done، audit) + ۳ endpoint (GET/start/done)
+  + `tests/test_doctor_queue.py` (۱۳ تست). ۲۱۷ تست سبز (۲۰۴+۱۳). UI موکول. ✅
 - [ ] **۱۵. control-room/cohort** (پورتِ `control_room_service`) + ستونِ درآمدِ manager-only در worklist. — *backend + frontend*
 
 ## خوشهٔ E — تعامل/SMS + صفِ تأیید (روی C)

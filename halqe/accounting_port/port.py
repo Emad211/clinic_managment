@@ -273,6 +273,115 @@ def get_patient_revenue_summary(
     )
 
 
+class OpenVisitInvoiceDTO(BaseModel):
+    """One open invoice that has a visit item — doctor-queue source row."""
+
+    invoice_id: int
+    patient_id: int
+    patient_uuid: uuid_module.UUID
+    full_name: str
+    phone_number: Optional[str] = None
+    opened_at: Optional[str] = None   # ISO datetime string (TIMESTAMPTZ from DB)
+    work_date: Optional[str] = None   # YYYY-MM-DD
+
+
+def fetch_open_visit_invoices(
+    work_date: Optional[str] = None,
+    tenant_id: int = 1,
+    limit: int = 200,
+) -> list[OpenVisitInvoiceDTO]:
+    """
+    Read-only: OPEN invoices that include a visit item — physician-queue source.
+
+    Mirrors specialist_clinic/src/adapters/accounting_bridge.py::fetch_open_visit_invoices
+    but reads from Postgres via the 'accounting_read' connection (SELECT-only at DB level).
+
+    Returns one row per invoice, FIFO by opened_at.  Tenant-scoped via tenant_id.
+    If work_date ('YYYY-MM-DD') is supplied, only invoices for that calendar date are
+    returned (filters on accounting.invoices.work_date).
+
+    NEVER writes accounting.  Returns [] on any DB error (best-effort — the queue
+    must not crash the physician's session).
+
+    Slice-3 column verification (schema_pg_slice3_accounting.sql):
+      accounting.invoices : id, tenant_id, patient_id, status TEXT CHECK('open'|'closed'),
+                             work_date DATE, opened_at TIMESTAMPTZ
+      accounting.visits   : id, tenant_id, invoice_id, patient_id
+      accounting.patients : id, tenant_id, uuid UUID, full_name TEXT (GENERATED STORED),
+                             phone_number TEXT
+    """
+    try:
+        with _accounting_read_cursor() as cur:
+            if work_date:
+                cur.execute(
+                    """
+                    SELECT i.id          AS invoice_id,
+                           i.patient_id,
+                           p.uuid        AS patient_uuid,
+                           p.full_name,
+                           p.phone_number,
+                           i.opened_at,
+                           i.work_date
+                    FROM accounting.invoices i
+                    JOIN accounting.patients p ON p.id = i.patient_id
+                    WHERE i.status = 'open'
+                      AND i.tenant_id = %s
+                      AND i.work_date = %s
+                      AND EXISTS (
+                          SELECT 1 FROM accounting.visits v
+                          WHERE v.invoice_id = i.id
+                            AND v.tenant_id  = i.tenant_id
+                      )
+                    ORDER BY i.opened_at ASC
+                    LIMIT %s
+                    """,
+                    [tenant_id, work_date, limit],
+                )
+            else:
+                cur.execute(
+                    """
+                    SELECT i.id          AS invoice_id,
+                           i.patient_id,
+                           p.uuid        AS patient_uuid,
+                           p.full_name,
+                           p.phone_number,
+                           i.opened_at,
+                           i.work_date
+                    FROM accounting.invoices i
+                    JOIN accounting.patients p ON p.id = i.patient_id
+                    WHERE i.status = 'open'
+                      AND i.tenant_id = %s
+                      AND EXISTS (
+                          SELECT 1 FROM accounting.visits v
+                          WHERE v.invoice_id = i.id
+                            AND v.tenant_id  = i.tenant_id
+                      )
+                    ORDER BY i.opened_at ASC
+                    LIMIT %s
+                    """,
+                    [tenant_id, limit],
+                )
+            rows = cur.fetchall()
+    except Exception:
+        return []
+
+    result = []
+    for row in rows:
+        invoice_id, patient_id, patient_uuid, full_name, phone_number, opened_at, wd = row
+        result.append(
+            OpenVisitInvoiceDTO(
+                invoice_id=int(invoice_id),
+                patient_id=int(patient_id),
+                patient_uuid=patient_uuid,
+                full_name=full_name or "",
+                phone_number=phone_number,
+                opened_at=opened_at.isoformat() if opened_at else None,
+                work_date=wd.isoformat() if wd else None,
+            )
+        )
+    return result
+
+
 def get_daily_revenue_by_patient_ids(
     accounting_patient_ids: list[int],
     date_from: str,
