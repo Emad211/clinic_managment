@@ -59,8 +59,8 @@ DATABASES = {
         "HOST": _PG_HOST,
         "PORT": _PG_PORT,
         "OPTIONS": {
-            # Sets role to clinical_app after connect — DB-level GRANTs apply.
-            # Superuser can SET ROLE to any role.
+            # platform_app: رولِ یکپارچهٔ اپِ پلتفرم — می‌نویسد روی platform+clinical،
+            # فقط می‌خواند از accounting (مرزِ یک‌طرفهٔ DB-level).
             "options": "-c search_path=clinical,platform,accounting,public",
         },
         "TEST": {

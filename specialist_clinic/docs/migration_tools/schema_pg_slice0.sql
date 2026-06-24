@@ -150,6 +150,11 @@ BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'accounting_app') THEN
         CREATE ROLE accounting_app NOLOGIN;
     END IF;
+    -- platform_app: رولِ یکپارچهٔ اپِ پلتفرم — می‌نویسد روی platform+clinical،
+    --   فقط می‌خواند از accounting (مرزِ یک‌طرفهٔ DB-level برای همیشه محفوظ می‌ماند).
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'platform_app') THEN
+        CREATE ROLE platform_app NOLOGIN;
+    END IF;
 END$$;
 
 -- بالینی: نوشتن روی clinical، فقط-خواندنِ محدود روی accounting (AccountingReadPort در سطحِ DB قفل می‌شود).
@@ -176,6 +181,23 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA clinical GRANT USAGE, SELECT ON SEQUENCES TO 
 GRANT USAGE ON SCHEMA accounting, platform TO accounting_app;
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA accounting TO accounting_app;
 GRANT SELECT ON ALL TABLES IN SCHEMA platform TO accounting_app;
+
+-- ---------------------------------------------------------------------------
+-- platform_app: اپِ یکپارچهٔ پلتفرم (halqe) — می‌نویسد روی platform + clinical؛
+--   فقط می‌خواند از accounting (مرزِ یک‌طرفهٔ read-only در سطحِ DB حفظ می‌شود).
+-- ---------------------------------------------------------------------------
+GRANT USAGE ON SCHEMA platform, clinical, accounting TO platform_app;
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA platform   TO platform_app;
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA clinical   TO platform_app;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA platform  TO platform_app;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA clinical  TO platform_app;
+-- accounting: فقط-خواندن (هیچ گرنتِ نوشتن — مرزِ یک‌طرفه در سطحِ DB)
+GRANT SELECT ON ALL TABLES IN SCHEMA accounting TO platform_app;
+-- جداولِ آیندهٔ platform + clinical → platform_app (write); accounting → platform_app (SELECT فقط)
+ALTER DEFAULT PRIVILEGES IN SCHEMA platform GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO platform_app;
+ALTER DEFAULT PRIVILEGES IN SCHEMA platform GRANT USAGE, SELECT ON SEQUENCES TO platform_app;
+ALTER DEFAULT PRIVILEGES IN SCHEMA clinical GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO platform_app;
+ALTER DEFAULT PRIVILEGES IN SCHEMA clinical GRANT USAGE, SELECT ON SEQUENCES TO platform_app;
 
 -- ============================================================================
 -- معیارِ «انجام‌شدهٔ» برشِ ۰ (برای تستِ نگهبان):

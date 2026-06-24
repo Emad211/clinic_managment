@@ -328,6 +328,11 @@ GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA clinical TO clinical_app;
 --   همین‌جا دوباره REVOKE می‌کنیم تا append-only بودنِ جدول حفظ شود (idempotent).
 REVOKE UPDATE, DELETE ON clinical.activity_logs FROM clinical_app;
 
+-- platform_app: همانندِ clinical_app روی جداولِ این برش (clinical schema).
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA clinical TO platform_app;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA clinical TO platform_app;
+REVOKE UPDATE, DELETE ON clinical.activity_logs FROM platform_app;
+
 -- ============================================================================
 -- FKهایِ حذف‌شده (soft — گزارشِ اجباریِ selectivity):
 --

@@ -18,6 +18,7 @@ Note: we do NOT use Django's built-in test runner DB creation because:
 import os
 import uuid
 import psycopg
+import bcrypt
 import pytest
 
 # ---------------------------------------------------------------------------
@@ -81,20 +82,24 @@ def django_db_setup(django_test_environment, django_db_blocker):
         for sf in slice_files:
             conn.execute(sf.read_text(encoding="utf-8"))
 
-        # Ensure the clinical_login_test role exists (tests may need it)
+        # Ensure the platform_login_test role exists and is a member of platform_app.
+        # رفعِ شکنندگی: رمز را هر بار با ALTER ROLE بازنشانی کن — رول کلاستر-level است
+        # و ممکن است از اجرایِ قبلی با رمزِ متفاوت موجود باشد.
         conn.execute("""
             DO $$
             BEGIN
-                IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'clinical_login_test') THEN
-                    CREATE ROLE clinical_login_test LOGIN PASSWORD 'test_pw'
-                        IN ROLE clinical_app;
+                IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'platform_login_test') THEN
+                    CREATE ROLE platform_login_test LOGIN PASSWORD 'test_pw'
+                        IN ROLE platform_app;
                 END IF;
             END$$;
         """)
+        conn.execute("ALTER ROLE platform_login_test PASSWORD 'test_pw'")
+        conn.execute("GRANT platform_app TO platform_login_test")
 
         # Grant the login role privileges on test DB objects
         conn.execute(
-            f"GRANT CONNECT ON DATABASE {TEST_DB_NAME} TO clinical_login_test"
+            f"GRANT CONNECT ON DATABASE {TEST_DB_NAME} TO platform_login_test"
         )
 
     # Allow Django to use the DB (blocker context)
@@ -168,8 +173,31 @@ def seed_data(django_db_setup):
                 (1, %s, 'hba1c',       7.5, '%%',    now() - interval '30 days','clinic')
         """, (link_id, link_id, link_id))
 
+        # Seed a test user in platform.users for auth tests.
+        # Known password 'secret123' — bcrypt hash computed here so tests can verify.
+        test_password = "secret123"
+        pw_hash = bcrypt.hashpw(test_password.encode(), bcrypt.gensalt())
+        conn.execute("""
+            INSERT INTO platform.users
+                (tenant_id, username, password_hash, role, app, is_active,
+                 failed_attempts)
+            VALUES (1, 'testuser', %s, 'staff', 'platform', TRUE, 0)
+            ON CONFLICT (tenant_id, username) DO UPDATE
+                SET password_hash = EXCLUDED.password_hash,
+                    is_active = TRUE,
+                    failed_attempts = 0,
+                    locked_until = NULL
+        """, (pw_hash,))
+
+        user_row = conn.execute(
+            "SELECT id FROM platform.users WHERE tenant_id=1 AND username='testuser'"
+        ).fetchone()
+        user_id = user_row[0]
+
     return {
         "patient_uuid": patient_uuid,
         "patient_id": patient_id,
         "link_id": link_id,
+        "user_id": user_id,
+        "test_password": test_password,
     }

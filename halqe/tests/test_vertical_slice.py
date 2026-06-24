@@ -11,6 +11,7 @@ Coverage:
   5. Boundary: GET on non-existent uuid returns 404
 
 All tests use seed_data fixture (session-scoped seeding outside transaction).
+Endpoints now require a JWT — tests obtain one via POST /auth/login.
 """
 import uuid
 import pytest
@@ -32,16 +33,31 @@ def _api_client():
     return TestClient(api)
 
 
+def _get_token(seed_data):
+    """Obtain a valid JWT for testuser (seeded in conftest)."""
+    client = _api_client()
+    resp = client.post(
+        "/auth/login",
+        json={"username": "testuser", "password": seed_data["test_password"]},
+    )
+    assert resp.status_code == 200, f"Login failed in helper: {resp.text}"
+    return resp.json()["token"]
+
+
 # ---------------------------------------------------------------------------
 # Test: patient endpoint returns correct data
 # ---------------------------------------------------------------------------
 
-@pytest.mark.django_db(databases=["default", "accounting_read"])
+@pytest.mark.django_db(databases=["default", "accounting_read"], transaction=True)
 def test_get_patient_endpoint_returns_correct_data(seed_data):
     """GET /patients/{uuid} → 200 with correct fields from accounting.patients."""
+    token = _get_token(seed_data)
     patient_uuid = seed_data["patient_uuid"]
     client = _api_client()
-    resp = client.get(f"/patients/{patient_uuid}")
+    resp = client.get(
+        f"/patients/{patient_uuid}",
+        headers={"Authorization": f"Bearer {token}"},
+    )
 
     assert resp.status_code == 200, resp.text
     data = resp.json()
@@ -55,12 +71,16 @@ def test_get_patient_endpoint_returns_correct_data(seed_data):
     assert data["gender"] == "male"
 
 
-@pytest.mark.django_db(databases=["default", "accounting_read"])
+@pytest.mark.django_db(databases=["default", "accounting_read"], transaction=True)
 def test_get_patient_endpoint_404_on_unknown_uuid(seed_data):
     """GET /patients/{unknown_uuid} → 404."""
+    token = _get_token(seed_data)
     client = _api_client()
     unknown = "00000000-0000-0000-0000-000000000000"
-    resp = client.get(f"/patients/{unknown}")
+    resp = client.get(
+        f"/patients/{unknown}",
+        headers={"Authorization": f"Bearer {token}"},
+    )
     assert resp.status_code == 404
 
 
@@ -68,7 +88,7 @@ def test_get_patient_endpoint_404_on_unknown_uuid(seed_data):
 # Test: vitals endpoint returns latest per type
 # ---------------------------------------------------------------------------
 
-@pytest.mark.django_db(databases=["default", "accounting_read"])
+@pytest.mark.django_db(databases=["default", "accounting_read"], transaction=True)
 def test_get_latest_vitals_returns_latest_per_type(seed_data):
     """
     GET /patients/{uuid}/vitals/latest → list of latest VitalReading per type.
@@ -76,9 +96,13 @@ def test_get_latest_vitals_returns_latest_per_type(seed_data):
     Seed has: hba1c (1 day ago), bp_systolic (2 days ago), hba1c (30 days ago).
     Expected: 2 items — hba1c (most recent = 1 day ago) + bp_systolic.
     """
+    token = _get_token(seed_data)
     patient_uuid = seed_data["patient_uuid"]
     client = _api_client()
-    resp = client.get(f"/patients/{patient_uuid}/vitals/latest")
+    resp = client.get(
+        f"/patients/{patient_uuid}/vitals/latest",
+        headers={"Authorization": f"Bearer {token}"},
+    )
 
     assert resp.status_code == 200, resp.text
     readings = resp.json()
@@ -95,12 +119,16 @@ def test_get_latest_vitals_returns_latest_per_type(seed_data):
     assert hba1c_reading["value"] == pytest.approx(7.2, abs=0.01)
 
 
-@pytest.mark.django_db(databases=["default", "accounting_read"])
+@pytest.mark.django_db(databases=["default", "accounting_read"], transaction=True)
 def test_get_latest_vitals_404_on_unknown_uuid(seed_data):
     """GET /patients/{unknown_uuid}/vitals/latest → 404."""
+    token = _get_token(seed_data)
     client = _api_client()
     unknown = "00000000-0000-0000-0000-000000000001"
-    resp = client.get(f"/patients/{unknown}/vitals/latest")
+    resp = client.get(
+        f"/patients/{unknown}/vitals/latest",
+        headers={"Authorization": f"Bearer {token}"},
+    )
     assert resp.status_code == 404
 
 
@@ -198,16 +226,16 @@ def test_clinical_vital_readings_readable(seed_data):
 
 def test_db_level_accounting_write_denied(seed_data):
     """
-    As clinical_app (login role clinical_login_test), UPDATE on accounting.patients
-    must raise a DB-level permission error.
-    This test connects directly with psycopg as clinical_login_test.
+    As platform_app (login role platform_login_test), UPDATE on accounting.patients
+    must raise a DB-level permission error (read-only boundary enforced at DB level).
+    This test connects directly with psycopg as platform_login_test.
     """
     import os
     import psycopg
 
     conninfo = (
         f"host='localhost' port='55432' "
-        f"user='clinical_login_test' password='test_pw' "
+        f"user='platform_login_test' password='test_pw' "
         f"dbname='halqe_app_test'"
     )
     with psycopg.connect(conninfo) as conn:

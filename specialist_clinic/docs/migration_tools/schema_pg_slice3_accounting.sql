@@ -593,6 +593,11 @@ GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA accounting TO accounting_app;
 GRANT SELECT ON accounting.patients, accounting.invoices, accounting.visits,
                accounting.injections, accounting.procedures, accounting.consumables_ledger
     TO clinical_app;
+-- platform_app: همانِ دسترسیِ read-only روی جداولِ بیمار/درآمدیِ accounting
+--   (مرزِ یک‌طرفه — هیچ گرنتِ نوشتن؛ accounting فقط توسطِ accounting_app نوشته می‌شود).
+GRANT SELECT ON accounting.patients, accounting.invoices, accounting.visits,
+               accounting.injections, accounting.procedures, accounting.consumables_ledger
+    TO platform_app;
 
 -- ============================================================================
 -- بخش ۶ — Seedِ بوت‌استرپ (فقط راه‌اندازی — هیچ دادهٔ Sib)

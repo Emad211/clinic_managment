@@ -3,3 +3,5 @@ django-ninja
 psycopg[binary]
 pytest
 pytest-django
+bcrypt
+PyJWT

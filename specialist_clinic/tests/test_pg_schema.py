@@ -79,6 +79,9 @@ def admin_conn():
                 END IF;
             END $$;"""
     )
+    # رفعِ شکنندگی: رمزِ رول را هر بار بازنشانی کن — رول ممکن است از اجرایِ قبلی با
+    # رمزِ متفاوت در کلاستر موجود باشد (pg_roles کلاستر-level است، نه DB-level).
+    conn.execute(f"ALTER ROLE {CLINICAL_LOGIN} PASSWORD '{CLINICAL_LOGIN_PW}'")
     conn.execute(f"GRANT clinical_app TO {CLINICAL_LOGIN}")
     yield conn
     conn.close()
@@ -1152,3 +1155,77 @@ def test_clinical_app_has_insert_on_new_4b_tables(admin_conn):
             "SELECT has_table_privilege('clinical_app', %s, 'INSERT')", (tbl,)
         ).fetchone()[0]
         assert ok is True, f"clinical_app گرنتِ INSERT روی {tbl} ندارد (Batch 4b)"
+
+
+# ===========================================================================
+# platform_app — رولِ یکپارچهٔ اپِ پلتفرم (halqe)
+# ===========================================================================
+
+def test_platform_app_role_exists(admin_conn):
+    """platform_app باید به‌عنوانِ رولِ NOLOGIN در pg_roles موجود باشد."""
+    row = admin_conn.execute(
+        "SELECT 1 FROM pg_roles WHERE rolname = 'platform_app'"
+    ).fetchone()
+    assert row is not None, "رولِ platform_app در pg_roles پیدا نشد (slice0)"
+
+
+def test_platform_app_can_read_accounting_patients(admin_conn):
+    """platform_app باید SELECT روی accounting.patients داشته باشد (read-only boundary)."""
+    ok = admin_conn.execute(
+        "SELECT has_table_privilege('platform_app', 'accounting.patients', 'SELECT')"
+    ).fetchone()[0]
+    assert ok is True, "platform_app باید بتواند accounting.patients را SELECT کند"
+
+
+def test_platform_app_cannot_insert_accounting_patients(admin_conn):
+    """platform_app نباید INSERT روی accounting.patients داشته باشد (مرزِ یک‌طرفه)."""
+    ok = admin_conn.execute(
+        "SELECT has_table_privilege('platform_app', 'accounting.patients', 'INSERT')"
+    ).fetchone()[0]
+    assert ok is False, (
+        "platform_app نباید بتواند به accounting.patients درج کند "
+        "(مرزِ یک‌طرفه: accounting فقط توسطِ accounting_app نوشته می‌شود)"
+    )
+
+
+def test_platform_app_cannot_update_accounting_patients(admin_conn):
+    """platform_app نباید UPDATE روی accounting.patients داشته باشد (مرزِ یک‌طرفه)."""
+    ok = admin_conn.execute(
+        "SELECT has_table_privilege('platform_app', 'accounting.patients', 'UPDATE')"
+    ).fetchone()[0]
+    assert ok is False, (
+        "platform_app نباید بتواند accounting.patients را UPDATE کند "
+        "(مرزِ یک‌طرفه حفظ می‌شود)"
+    )
+
+
+def test_platform_app_can_write_clinical(admin_conn):
+    """platform_app باید INSERT روی جداولِ clinical داشته باشد."""
+    ok = admin_conn.execute(
+        "SELECT has_table_privilege('platform_app', 'clinical.patient_links', 'INSERT')"
+    ).fetchone()[0]
+    assert ok is True, "platform_app باید بتواند به clinical.patient_links درج کند"
+
+
+def test_platform_app_can_write_platform_users(admin_conn):
+    """platform_app باید INSERT روی platform.users داشته باشد (auth service می‌نویسد)."""
+    ok = admin_conn.execute(
+        "SELECT has_table_privilege('platform_app', 'platform.users', 'INSERT')"
+    ).fetchone()[0]
+    assert ok is True, "platform_app باید بتواند به platform.users درج کند (auth)"
+
+
+def test_platform_app_activity_logs_append_only(admin_conn):
+    """platform_app مانندِ clinical_app: INSERT روی activity_logs مجاز، UPDATE/DELETE ممنوع."""
+    can_insert = admin_conn.execute(
+        "SELECT has_table_privilege('platform_app', 'clinical.activity_logs', 'INSERT')"
+    ).fetchone()[0]
+    can_update = admin_conn.execute(
+        "SELECT has_table_privilege('platform_app', 'clinical.activity_logs', 'UPDATE')"
+    ).fetchone()[0]
+    can_delete = admin_conn.execute(
+        "SELECT has_table_privilege('platform_app', 'clinical.activity_logs', 'DELETE')"
+    ).fetchone()[0]
+    assert can_insert is True, "platform_app باید بتواند به clinical.activity_logs درج کند"
+    assert can_update is False, "platform_app نباید clinical.activity_logs را UPDATE کند (append-only)"
+    assert can_delete is False, "platform_app نباید از clinical.activity_logs حذف کند (append-only)"

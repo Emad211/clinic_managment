@@ -996,6 +996,12 @@ GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA clinical TO clinical_app;
 --   نداشته خطا نمی‌دهد — فقط no-op می‌شود.
 REVOKE UPDATE, DELETE ON clinical.activity_logs FROM clinical_app;
 
+-- platform_app: همانندِ clinical_app روی جداولِ این برش (clinical schema).
+--   append-only برای activity_logs اعمال می‌شود (REVOKE UPDATE/DELETE).
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA clinical TO platform_app;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA clinical TO platform_app;
+REVOKE UPDATE, DELETE ON clinical.activity_logs FROM platform_app;
+
 -- ============================================================================
 -- معیارِ «انجام‌شدهٔ» برشِ ۲ (برای تستِ نگهبان):
 --   ۱) این فایل روی Postgresِ خالی که برشِ ۰ روی آن اجرا شده، بدونِ خطا اجرا شود
