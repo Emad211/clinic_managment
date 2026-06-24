@@ -1,0 +1,161 @@
+/* Dashboard — حلقه */
+
+.layout {
+  min-height: 100vh;
+  background: var(--color-bg);
+  display: flex;
+  flex-direction: column;
+}
+
+.main {
+  flex: 1;
+  max-width: 900px;
+  width: 100%;
+  margin: 0 auto;
+  padding: var(--space-8) var(--space-6);
+}
+
+/* ── Brand heading ── */
+.hero {
+  margin-bottom: var(--space-8);
+  text-align: center;
+}
+
+.heroTitle {
+  font-size: 2rem;
+  font-weight: 700;
+  color: var(--color-primary);
+  letter-spacing: -0.02em;
+  margin-bottom: var(--space-2);
+}
+
+.heroSub {
+  font-size: 1rem;
+  color: var(--color-text-muted);
+}
+
+/* ── Stats row ── */
+.statsRow {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: var(--space-4);
+  margin-bottom: var(--space-8);
+}
+
+.statCard {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+  padding: var(--space-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  transition: box-shadow 0.15s;
+}
+
+.statCard:hover {
+  box-shadow: var(--shadow-md);
+}
+
+.statLabel {
+  font-size: 0.875rem;
+  color: var(--color-text-muted);
+  font-weight: 500;
+}
+
+.statValue {
+  font-size: 2.25rem;
+  font-weight: 700;
+  color: var(--color-primary);
+  line-height: 1;
+}
+
+.statValueWarn {
+  color: var(--color-warn);
+}
+
+.statLoading {
+  font-size: 1.5rem;
+  color: var(--color-text-muted);
+}
+
+.statError {
+  font-size: 0.875rem;
+  color: var(--color-danger);
+}
+
+/* ── Nav cards ── */
+.navCardRow {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: var(--space-4);
+}
+
+.navCard {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+  padding: var(--space-6);
+  text-decoration: none;
+  color: var(--color-text);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  transition: box-shadow 0.15s, border-color 0.15s;
+}
+
+.navCard:hover {
+  box-shadow: var(--shadow-md);
+  border-color: var(--color-primary);
+  text-decoration: none;
+  color: var(--color-text);
+}
+
+.navCard:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.navCardIcon {
+  font-size: 1.5rem;
+  line-height: 1;
+  color: var(--color-primary);
+}
+
+.navCardTitle {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--color-primary);
+}
+
+.navCardDesc {
+  font-size: 0.875rem;
+  color: var(--color-text-muted);
+}
+
+/* ── Section heading ── */
+.sectionHeading {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: var(--space-3);
+}
+
+/* ── Spinner ── */
+.spinner {
+  display: inline-block;
+  width: 1rem;
+  height: 1rem;
+  border: 2px solid var(--color-border);
+  border-top-color: var(--color-primary);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}

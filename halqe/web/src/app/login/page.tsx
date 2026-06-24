@@ -20,7 +20,7 @@ export default function LoginPage() {
     try {
       const { token } = await apiLogin(username, password);
       saveToken(token);
-      router.push("/patients");
+      router.push("/dashboard");
     } catch (err) {
       if (err instanceof ApiError) {
         if (err.status === 401) {

@@ -19,6 +19,7 @@ interface NavLink {
 }
 
 const NAV_LINKS: NavLink[] = [
+  { href: "/dashboard", label: "داشبورد" },
   { href: "/patients", label: "بیماران" },
   { href: "/worklist", label: "پیگیری‌ها" },
 ];
@@ -35,7 +36,7 @@ interface NavProps {
 export default function Nav({ currentPath, pageTitle, onLogout }: NavProps) {
   return (
     <header className={styles.topbar} role="banner">
-      <Link href="/patients" className={styles.brand} aria-label="صفحه اصلی حلقه">
+      <Link href="/dashboard" className={styles.brand} aria-label="صفحه اصلی حلقه">
         حلقه
       </Link>
 

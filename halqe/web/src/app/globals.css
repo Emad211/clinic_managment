@@ -1,6 +1,39 @@
 /* Halqe platform — global styles */
 /* RTL, Persian-first, no external CDN */
 
+/* Vazirmatn — self-hosted from public/fonts/ (copied from the vazirmatn npm package at build time) */
+@font-face {
+  font-family: "Vazirmatn";
+  src: url("/fonts/Vazirmatn-Regular.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Vazirmatn";
+  src: url("/fonts/Vazirmatn-Medium.woff2") format("woff2");
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Vazirmatn";
+  src: url("/fonts/Vazirmatn-SemiBold.woff2") format("woff2");
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Vazirmatn";
+  src: url("/fonts/Vazirmatn-Bold.woff2") format("woff2");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
 :root {
   /* Brand palette — «حلقه» */
   --color-primary: #1a6e8e;
