@@ -1644,3 +1644,257 @@ def test_rls_isolation_idempotent_re_apply(admin_conn):
     assert slice5_path.exists(), f"فایلِ slice5 پیدا نشد: {slice5_path}"
     # اجرای مجدد — نباید خطا بدهد (DROP POLICY IF EXISTS تضمین می‌کند)
     admin_conn.execute(_read(str(slice5_path)))
+
+
+# ===========================================================================
+# Slice 7 — auth SECURITY DEFINER functions + حذفِ tenant_isolation_read
+# ===========================================================================
+
+# ---------------------------------------------------------------------------
+# fixture کمکی: اطمینان از اینکه slice7 روی همین اتصال اعمال شده است.
+# مستقل از اینکه test_rls_isolation_idempotent_re_apply قبلاً slice5 را
+# re-apply کرده باشد (که tenant_isolation_read را دوباره می‌سازد) —
+# همه‌ی تست‌های slice7 از این fixture استفاده می‌کنند تا وضعِ صحیح تضمین شود.
+# ---------------------------------------------------------------------------
+@pytest.fixture
+def slice7_applied(admin_conn):
+    """اطمینان از اینکه slice7 آخرین writ است (slice5 re-apply آن را باز نمی‌کند)."""
+    import pathlib
+    slice7_path = pathlib.Path(_MIG) / "schema_pg_slice7_auth_lookup.sql"
+    assert slice7_path.exists(), f"فایلِ slice7 پیدا نشد: {slice7_path}"
+    admin_conn.execute(_read(str(slice7_path)))
+    return admin_conn
+
+
+# ---------------------------------------------------------------------------
+# معیار ۱ — platform.users دیگر policyِ tenant_isolation_read ندارد
+#   (تنها policy باقی‌مانده باید tenant_isolation باشد)
+# ---------------------------------------------------------------------------
+def test_slice7_no_tenant_isolation_read_policy(slice7_applied):
+    """Slice 7: policyِ tenant_isolation_read باید از platform.users حذف شده باشد (ریسک #۱۰)."""
+    admin_conn = slice7_applied
+    rows = admin_conn.execute(
+        """SELECT policyname
+             FROM pg_policies
+            WHERE schemaname = 'platform'
+              AND tablename  = 'users'
+              AND policyname = 'tenant_isolation_read'"""
+    ).fetchall()
+    assert not rows, (
+        "Slice 7: policy 'tenant_isolation_read' هنوز روی platform.users وجود دارد — "
+        "این policy cross-tenant SELECT را ممکن می‌کند (OR-aggregation). "
+        "slice7 باید آن را با DROP POLICY IF EXISTS حذف کرده باشد."
+    )
+
+
+def test_slice7_tenant_isolation_policy_still_exists(slice7_applied):
+    """Slice 7: policy اصلیِ tenant_isolation (FOR ALL) باید همچنان روی platform.users باشد."""
+    admin_conn = slice7_applied
+    row = admin_conn.execute(
+        """SELECT policyname
+             FROM pg_policies
+            WHERE schemaname = 'platform'
+              AND tablename  = 'users'
+              AND policyname = 'tenant_isolation'"""
+    ).fetchone()
+    assert row is not None, (
+        "Slice 7: policy 'tenant_isolation' باید روی platform.users باقی بماند "
+        "(WITH CHECK برای نوشتنِ cross-tenant لازم است)."
+    )
+
+
+# ---------------------------------------------------------------------------
+# معیار ۲ — توابعِ SECURITY DEFINER در pg_proc موجودند
+# ---------------------------------------------------------------------------
+def test_slice7_auth_lookup_user_function_exists(admin_conn):
+    """Slice 7: platform.auth_lookup_user(text) باید در pg_proc موجود باشد."""
+    row = admin_conn.execute(
+        """SELECT p.proname, p.prosecdef
+             FROM pg_proc p
+             JOIN pg_namespace n ON n.oid = p.pronamespace
+            WHERE n.nspname = 'platform'
+              AND p.proname = 'auth_lookup_user'"""
+    ).fetchone()
+    assert row is not None, (
+        "Slice 7: تابعِ platform.auth_lookup_user پیدا نشد — slice7 اعمال نشده؟"
+    )
+    assert row[1] is True, (
+        "Slice 7: platform.auth_lookup_user باید SECURITY DEFINER (prosecdef=true) باشد."
+    )
+
+
+def test_slice7_auth_record_attempt_function_exists(admin_conn):
+    """Slice 7: platform.auth_record_attempt(bigint, boolean, integer, integer) باید موجود باشد."""
+    row = admin_conn.execute(
+        """SELECT p.proname, p.prosecdef
+             FROM pg_proc p
+             JOIN pg_namespace n ON n.oid = p.pronamespace
+            WHERE n.nspname = 'platform'
+              AND p.proname = 'auth_record_attempt'"""
+    ).fetchone()
+    assert row is not None, (
+        "Slice 7: تابعِ platform.auth_record_attempt پیدا نشد — slice7 اعمال نشده؟"
+    )
+    assert row[1] is True, (
+        "Slice 7: platform.auth_record_attempt باید SECURITY DEFINER (prosecdef=true) باشد."
+    )
+
+
+# ---------------------------------------------------------------------------
+# معیار ۳ — GRANT صحیح: platform_app EXECUTE دارد، PUBLIC ندارد
+# ---------------------------------------------------------------------------
+def test_slice7_platform_app_can_execute_auth_lookup(admin_conn):
+    """Slice 7: platform_app باید حقِ EXECUTE روی auth_lookup_user داشته باشد."""
+    ok = admin_conn.execute(
+        "SELECT has_function_privilege('platform_app', "
+        "'platform.auth_lookup_user(text)', 'EXECUTE')"
+    ).fetchone()[0]
+    assert ok is True, (
+        "Slice 7: platform_app باید EXECUTE روی platform.auth_lookup_user داشته باشد."
+    )
+
+
+def test_slice7_public_cannot_execute_auth_lookup(admin_conn):
+    """Slice 7: PUBLIC نباید EXECUTE روی auth_lookup_user داشته باشد."""
+    ok = admin_conn.execute(
+        "SELECT has_function_privilege('public', "
+        "'platform.auth_lookup_user(text)', 'EXECUTE')"
+    ).fetchone()[0]
+    assert ok is False, (
+        "Slice 7: PUBLIC نباید EXECUTE روی platform.auth_lookup_user داشته باشد "
+        "(REVOKE ALL FROM PUBLIC باید اعمال شده باشد)."
+    )
+
+
+def test_slice7_platform_app_can_execute_auth_record_attempt(admin_conn):
+    """Slice 7: platform_app باید حقِ EXECUTE روی auth_record_attempt داشته باشد."""
+    ok = admin_conn.execute(
+        "SELECT has_function_privilege('platform_app', "
+        "'platform.auth_record_attempt(bigint, boolean, integer, integer)', 'EXECUTE')"
+    ).fetchone()[0]
+    assert ok is True, (
+        "Slice 7: platform_app باید EXECUTE روی platform.auth_record_attempt داشته باشد."
+    )
+
+
+def test_slice7_public_cannot_execute_auth_record_attempt(admin_conn):
+    """Slice 7: PUBLIC نباید EXECUTE روی auth_record_attempt داشته باشد."""
+    ok = admin_conn.execute(
+        "SELECT has_function_privilege('public', "
+        "'platform.auth_record_attempt(bigint, boolean, integer, integer)', 'EXECUTE')"
+    ).fetchone()[0]
+    assert ok is False, (
+        "Slice 7: PUBLIC نباید EXECUTE روی platform.auth_record_attempt داشته باشد."
+    )
+
+
+# ---------------------------------------------------------------------------
+# معیار ۴ — رفتاری: auth_lookup_user با رولِ platform_app بدونِ GUC کار می‌کند
+#   این اثبات می‌کند که SECURITY DEFINER واقعاً RLS را bypass می‌کند.
+#   از admin_tx با SET ROLE platform_app استفاده می‌کنیم (superuser → platform_app
+#   → اما همچنان EXECUTE دارد چون platform_app GRANT شده).
+#   platform_app BYPASSRLS ندارد → SELECT مستقیم از platform.users با GUCِ خالی صفر ردیف →
+#   اما platform.auth_lookup_user (SECURITY DEFINER/superuser-owner) RLS را bypass می‌کند.
+# ---------------------------------------------------------------------------
+def test_slice7_auth_lookup_user_bypasses_rls(slice7_applied):
+    """
+    Slice 7: SELECT * FROM platform.auth_lookup_user(username) از طریقِ
+    رولِ platform_app (با SET ROLE) بدونِ GUC باید ردیف برگرداند.
+
+    این اثبات می‌کند که SECURITY DEFINER واقعاً RLS را bypass می‌کند:
+      - SELECT مستقیم از platform.users با GUCِ خالی → صفر ردیف (RLS fail-closed)
+      - SELECT از platform.auth_lookup_user → ردیف برمی‌گرداند (SECURITY DEFINER)
+
+    از superuser با SET ROLE platform_app استفاده می‌کنیم چون platform_login_test
+    در این fixture موجود نیست (conftest.py نگهبان فقط clinical_login_test می‌سازد).
+    یک کاربرِ test با superuser می‌سازیم و بعد تمیز می‌کنیم.
+    """
+    import bcrypt as _bcrypt
+
+    admin_conn = slice7_applied
+    _TEST_USERNAME = "slice7_behavior_test_user"
+
+    # ── ساختِ کاربرِ test با superuser (BYPASSRLS) ───────────────────────────
+    pw_hash = _bcrypt.hashpw(b"test_pw", _bcrypt.gensalt())
+    admin_conn.execute(
+        """INSERT INTO platform.users (tenant_id, username, password_hash, role, app)
+           VALUES (1, %s, %s, 'staff', 'platform')
+           ON CONFLICT (tenant_id, username) DO UPDATE SET password_hash = EXCLUDED.password_hash""",
+        (_TEST_USERNAME, pw_hash),
+    )
+
+    try:
+        # ── از اتصالِ جداگانه با SET ROLE platform_app استفاده می‌کنیم ────────
+        with psycopg.connect(PG_DSN, autocommit=True) as conn:
+            # SET ROLE به platform_app — این رول BYPASSRLS ندارد
+            conn.execute("SET ROLE platform_app")
+
+            # تأییدِ GUCِ خالی: SELECT مستقیم باید صفر ردیف بدهد
+            count_direct = conn.execute(
+                "SELECT COUNT(*) FROM platform.users"
+            ).fetchone()[0]
+            assert count_direct == 0, (
+                f"پیش‌شرطِ تست: با GUCِ خالی، SELECT مستقیم از platform.users باید صفر ردیف بدهد. "
+                f"یافته: {count_direct}. این یعنی RLS درست تنظیم نشده."
+            )
+
+            # حالا از تابعِ SECURITY DEFINER استفاده کنیم
+            rows = conn.execute(
+                "SELECT * FROM platform.auth_lookup_user(%s)",
+                [_TEST_USERNAME],
+            ).fetchall()
+
+        # باید دقیقاً یک ردیف باشد
+        assert len(rows) == 1, (
+            f"Slice 7: auth_lookup_user('{_TEST_USERNAME}') باید دقیقاً ۱ ردیف بدهد "
+            f"(SECURITY DEFINER باید RLS را bypass کند). یافته: {len(rows)} ردیف."
+        )
+        # تأیید اینکه api_token_hash در خروجی نیست (least-privilege)
+        # تعداد ستون‌ها باید ۸ باشد: id, tenant_id, username, password_hash, role,
+        # is_active, failed_attempts, locked_until
+        assert len(rows[0]) == 8, (
+            f"Slice 7: auth_lookup_user باید دقیقاً ۸ ستون برگرداند "
+            f"(api_token_hash نباید باشد). یافته: {len(rows[0])} ستون."
+        )
+    finally:
+        # ── تمیزکاری ────────────────────────────────────────────────────────────
+        admin_conn.execute(
+            "DELETE FROM platform.users WHERE tenant_id=1 AND username=%s",
+            (_TEST_USERNAME,),
+        )
+
+
+def test_slice7_direct_users_select_fails_without_guc(admin_conn):
+    """
+    Slice 7: SELECT password_hash FROM platform.users با رولِ کم‌امتیاز و GUCِ خالی
+    → صفر ردیف (fail-closed باقی است — RLS حذف نشده).
+
+    این اثبات می‌کند که حذفِ tenant_isolation_read، ایزولاسیونِ RLS را نشکسته
+    و SELECT مستقیم (بدونِ تابع) همچنان fail-closed است.
+    """
+    from psycopg.conninfo import conninfo_to_dict, make_conninfo
+
+    login_dsn = _login_dsn()
+    with psycopg.connect(login_dsn, autocommit=True) as conn:
+        # GUC را خالی می‌کنیم (fail-closed test)
+        conn.execute("SELECT set_config('app.current_tenant', '', false)")
+        count = conn.execute(
+            "SELECT COUNT(*) FROM platform.users"
+        ).fetchone()[0]
+
+    assert count == 0, (
+        f"Slice 7: SELECT مستقیم از platform.users با GUCِ خالی باید صفر ردیف بدهد "
+        f"(fail-closed). یافته: {count} ردیف. "
+        f"این یعنی tenant_isolation_read هنوز فعال است یا RLS دیگر FORCE نشده."
+    )
+
+
+# ---------------------------------------------------------------------------
+# معیار ۵ — idempotency: اجرای مجددِ slice7 بدونِ خطا
+# ---------------------------------------------------------------------------
+def test_slice7_idempotent_re_apply(admin_conn):
+    """Slice 7: اجرای مجددِ slice7 بدونِ خطا (CREATE OR REPLACE + DROP IF EXISTS)."""
+    import pathlib
+    slice7_path = pathlib.Path(_MIG) / "schema_pg_slice7_auth_lookup.sql"
+    assert slice7_path.exists(), f"فایلِ slice7 پیدا نشد: {slice7_path}"
+    admin_conn.execute(_read(str(slice7_path)))
