@@ -442,7 +442,13 @@ def dispatch_patient(
     dry_run=True: compute and return counts without any DB writes.
     worklist_only=True: skip sms channel entirely (run worklist path only).
     """
-    res: dict = {"sms": 0, "worklist": 0, "skipped": 0, "queued": 0, "errors": 0, "holdout": 0}
+    # observability counters (step 51): skipped is the legacy aggregate (kept for
+    # backward compat); opt_out_skipped + cooldown_skipped break it down so the
+    # run summary can tell *why* sends were suppressed without losing the total.
+    res: dict = {
+        "sms": 0, "worklist": 0, "skipped": 0, "queued": 0, "errors": 0,
+        "holdout": 0, "opt_out_skipped": 0, "cooldown_skipped": 0,
+    }
 
     try:
         link = PatientLink.objects.get(id=patient_link_id, tenant_id=tenant_id)
@@ -569,6 +575,9 @@ def dispatch_patient(
         if not worklist_only and channel in ("sms", "both"):
             if opted_out or not phone:
                 res["skipped"] += 1
+                # opt-out is the actionable subset of skips (no-phone is data gap).
+                if opted_out:
+                    res["opt_out_skipped"] += 1
             elif _already_dispatched(
                 tenant_id, patient_link_id, event_key, period_key, "sms"
             ):
@@ -577,6 +586,7 @@ def dispatch_patient(
                 tenant_id, patient_link_id, event_key, conf.cooldown_days or 0
             ):
                 res["skipped"] += 1
+                res["cooldown_skipped"] += 1
             else:
                 template = conf.sms_template or ""
                 body = sanitize(_personalize(template, full_name))
@@ -637,8 +647,15 @@ def run_all(
         "queued": 0,
         "errors": 0,
         "holdout": 0,  # slice11: events suppressed for holdout patients (auditable denominator)
+        # observability breakdown (step 51) — subsets of `skipped`:
+        "opt_out_skipped": 0,
+        "cooldown_skipped": 0,
     }
 
+    _agg_keys = (
+        "sms", "worklist", "skipped", "queued", "errors", "holdout",
+        "opt_out_skipped", "cooldown_skipped",
+    )
     for pid in links:
         try:
             res = dispatch_patient(
@@ -646,7 +663,7 @@ def run_all(
                 dry_run=dry_run,
                 worklist_only=worklist_only,
             )
-            for k in ("sms", "worklist", "skipped", "queued", "errors", "holdout"):
+            for k in _agg_keys:
                 agg[k] += res.get(k, 0)
             agg["patients"] += 1
         except Exception as exc:
@@ -656,16 +673,23 @@ def run_all(
             )
             agg["errors"] += 1
 
+    # Structured, single-line, machine-parseable summary (aligned with the step-28
+    # key=value production formatter).  PII-free: only counts and tenant_id.
     logger.info(
-        "run_all: tenant=%s patients=%s queued=%s worklist=%s skipped=%s "
-        "holdout=%s errors=%s",
+        "engagement_run_summary tenant_id=%s patients=%s queued=%s worklist=%s "
+        "skipped=%s opt_out_skipped=%s cooldown_skipped=%s holdout=%s errors=%s "
+        "dry_run=%s worklist_only=%s",
         tenant_id,
         agg["patients"],
         agg["queued"],
         agg["worklist"],
         agg["skipped"],
+        agg["opt_out_skipped"],
+        agg["cooldown_skipped"],
         agg["holdout"],
         agg["errors"],
+        dry_run,
+        worklist_only,
     )
     return agg
 
