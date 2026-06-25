@@ -74,11 +74,15 @@ INSTALLED_APPS = [
 ]
 
 MIDDLEWARE = [
-    # TenantGucMiddleware MUST come first: clears app.current_tenant GUC to ''
-    # at the start of every request.  JWTBearer.authenticate() re-sets it to
-    # the real tenant_id for authenticated requests.  Order matters: clearing
-    # before CommonMiddleware ensures even CORS/security middleware runs with
-    # a clean GUC state.  (Step 2 — RLS hook; RLS policy is Step 19.)
+    # RequestIdMiddleware MUST come first (before TenantGucMiddleware) so that
+    # every log line — including those from TenantGucMiddleware itself — carries
+    # a request_id tag.  It sets the contextvar consumed by RequestIdFilter.
+    "platform_core.request_id.RequestIdMiddleware",
+    # TenantGucMiddleware clears app.current_tenant GUC to '' at the start of
+    # every request.  JWTBearer.authenticate() re-sets it to the real tenant_id
+    # for authenticated requests.  Order matters: clearing before CommonMiddleware
+    # ensures even CORS/security middleware runs with a clean GUC state.
+    # (Step 2 — RLS hook; RLS policy is Step 19.)
     "platform_core.middleware.TenantGucMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "corsheaders.middleware.CorsMiddleware",
@@ -198,3 +202,101 @@ SCHEMA_SLICE_DIR = os.environ.get(
     "SCHEMA_SLICE_DIR",
     str(BASE_DIR.parent / "specialist_clinic" / "docs" / "migration_tools"),
 )
+
+# ---------------------------------------------------------------------------
+# Structured logging (Step 28 — observability)
+# ---------------------------------------------------------------------------
+# Two modes gated by PRODUCTION:
+#
+#   Dev  (PRODUCTION unset): human-readable format with timestamp + level +
+#        logger name + request_id + message.  Coloured if colorlog is installed,
+#        plain text otherwise.  DEBUG level so nothing is hidden in dev.
+#
+#   Production (PRODUCTION=1): JSON-like key=value format on a single line,
+#        machine-parseable by log aggregators (Loki, ELK, CloudWatch).
+#        Level INFO+ (DEBUG suppressed in production).
+#
+# RequestIdFilter reads the contextvar set by RequestIdMiddleware and injects
+# request_id into every LogRecord.  If the contextvar is empty (management
+# commands, background threads) request_id defaults to '-'.
+#
+# PII-free contract (enforced at caller level — logging must never receive):
+#   - request/response bodies
+#   - national_id, password, token values
+#   - Any field whose name ends in _hash or _token
+# ---------------------------------------------------------------------------
+
+_LOG_LEVEL = "DEBUG" if not _production else "INFO"
+
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+
+    # ── Filters ──────────────────────────────────────────────────────────────
+    "filters": {
+        "request_id": {
+            "()": "platform_core.request_id.RequestIdFilter",
+        },
+    },
+
+    # ── Formatters ───────────────────────────────────────────────────────────
+    "formatters": {
+        # Human-readable for dev: timestamp | level | logger | [req-id] message
+        "dev": {
+            "format": (
+                "%(asctime)s | %(levelname)-8s | %(name)s | "
+                "[%(request_id)s] %(message)s"
+            ),
+            "datefmt": "%Y-%m-%d %H:%M:%S",
+        },
+        # Structured key=value for production — one line per record,
+        # machine-parseable, no embedded newlines in the message itself.
+        "structured": {
+            "format": (
+                "time=%(asctime)s level=%(levelname)s logger=%(name)s "
+                "request_id=%(request_id)s message=%(message)s"
+            ),
+            "datefmt": "%Y-%m-%dT%H:%M:%S%z",
+        },
+    },
+
+    # ── Handlers ─────────────────────────────────────────────────────────────
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+            "filters": ["request_id"],
+            "formatter": "structured" if _production else "dev",
+        },
+    },
+
+    # ── Loggers ──────────────────────────────────────────────────────────────
+    "loggers": {
+        # Halqe platform loggers — full verbosity in dev, INFO+ in production
+        "platform_core": {
+            "handlers": ["console"],
+            "level": _LOG_LEVEL,
+            "propagate": False,
+        },
+        "clinical": {
+            "handlers": ["console"],
+            "level": _LOG_LEVEL,
+            "propagate": False,
+        },
+        "accounting_port": {
+            "handlers": ["console"],
+            "level": _LOG_LEVEL,
+            "propagate": False,
+        },
+        "config": {
+            "handlers": ["console"],
+            "level": _LOG_LEVEL,
+            "propagate": False,
+        },
+    },
+
+    # Root logger: WARNING+ for third-party noise, handled by console
+    "root": {
+        "handlers": ["console"],
+        "level": "WARNING",
+    },
+}
