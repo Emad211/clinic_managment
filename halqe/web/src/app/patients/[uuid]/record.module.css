@@ -1016,3 +1016,86 @@
   color: var(--color-danger);
   font-size: 0.875rem;
 }
+
+/* ── Prescription fieldset (Step 31) ── */
+.prescriptionFieldset {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-3) var(--space-4);
+}
+
+.prescriptionLegend {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  padding: 0 var(--space-2);
+}
+
+/* Safety framing banner shown above prescription rows */
+.prescriptionFraming {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  background: #fff8e1;
+  border: 1px solid #ffe082;
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-3);
+  font-size: 0.8rem;
+  color: #7b5800;
+  margin-bottom: var(--space-3);
+  line-height: 1.45;
+}
+
+/* Column header row above prescription item rows */
+.rxHeader {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr 1fr 1fr 1fr auto;
+  gap: var(--space-1);
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  margin-bottom: var(--space-2);
+  padding: 0 var(--space-1);
+}
+
+/* One prescription item row */
+.rxRow {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr 1fr 1fr 1fr auto;
+  gap: var(--space-1);
+  margin-bottom: var(--space-2);
+  align-items: start;
+}
+
+.rxRow .formInput,
+.rxRow .formSelect {
+  padding: var(--space-1) var(--space-2);
+  font-size: 0.875rem;
+}
+
+/* Warning shown when a soft-required field is empty on submit attempt */
+.rxFieldWarn {
+  border-color: var(--color-warn) !important;
+}
+
+/* Inline field warning message below the row */
+.rxRowWarn {
+  grid-column: 1 / -1;
+  font-size: 0.75rem;
+  color: #8b5000;
+  background: #fef3e2;
+  border-radius: var(--radius-sm);
+  padding: var(--space-1) var(--space-2);
+  margin-bottom: var(--space-1);
+}
+
+/* Submitted prescription summary (success state) */
+.rxSummary {
+  background: #e6f9ef;
+  border: 1px solid #a8e6c2;
+  border-radius: var(--radius-sm);
+  padding: var(--space-3) var(--space-4);
+  font-size: 0.875rem;
+  color: var(--color-ok);
+  font-weight: 600;
+}
