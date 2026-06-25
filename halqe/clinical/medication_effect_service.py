@@ -213,6 +213,7 @@ def compute_medication_effect(
         observed_at__date__gte=pre_start,
         observed_at__date__lt=pre_end,
         value__isnull=False,
+        verified=True,   # گیتِ مقدس: دادهٔ خوداظهارِ تأییدنشده هرگز در تحلیلِ تصمیم‌یار (هم‌راستا با slice13/قدم۴۷)
     ).values_list("value", flat=True)
 
     # post: از (start+post_start_days) تا (start+post_end_days) inclusive
@@ -223,6 +224,7 @@ def compute_medication_effect(
         observed_at__date__gte=post_start,
         observed_at__date__lte=post_end,
         value__isnull=False,
+        verified=True,   # گیتِ مقدس: دادهٔ خوداظهارِ تأییدنشده هرگز در تحلیلِ تصمیم‌یار (هم‌راستا با slice13/قدم۴۷)
     ).values_list("value", flat=True)
 
     pre_vals  = [float(v) for v in pre_qs  if v is not None]

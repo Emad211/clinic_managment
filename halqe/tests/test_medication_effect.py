@@ -499,6 +499,86 @@ def test_requires_jwt(seed_med_effect_data):
 
 
 # ===========================================================================
+# ۹. گیتِ verified (یافتهٔ گردهماییِ قدم ۴۹): self-reportِ تأییدنشده در تحلیل نیاید
+# ===========================================================================
+@pytest.mark.django_db(databases=["default", "accounting_read"], transaction=True)
+def test_unverified_post_reading_excluded(seed_clinical_data):
+    """
+    گپِ گیتِ مقدس که clinical-data-scientist حین قدم ۴۹ گرفت و من بستم:
+    قرائتِ post با verified=FALSE (خوداظهارِ تأییدنشده) نباید در میانگینِ
+    medication-effect شمرده شود — هم‌راستا با slice13/قدم ۴۷ (دادهٔ تأییدنشده
+    هرگز در تصمیم‌یار تا تأییدِ پزشک).
+
+    سناریو (روی patient_linkِ ایزوله تا از داده‌های seed/fixture مستقل باشد):
+    متفورمین با pre-hba1cِ verified + تنها post-hba1cِ **unverified** در پنجره
+    → چون post تأییدنشده حذف می‌شود → n_post=0 → reason=no_post (نه عددِ آلوده).
+    سرویس مستقیم صدا زده می‌شود (patient_linkِ ایزوله بیمارِ accounting ندارد، پس
+    endpoint با UUID resolve نمی‌شود؛ فیکس هم در همین سرویس است). leak-safe: با id.
+    """
+    from clinical.medication_effect_service import compute_medication_effect
+    from clinical.models import PatientMedication
+    from platform_core.tenant_context import set_tenant_guc
+
+    link_id = seed_clinical_data["link_id"]   # بیمارِ seed (FKِ accountingِ معتبر)
+    today = date.today()
+    # پنجرهٔ ~۶ سال پیش — پیش از بازهٔ دادهٔ seed (~۲ سال) تا هیچ قرائتِ دیگری آلوده نکند
+    start = today - timedelta(days=2190)
+    pre_date = start - timedelta(days=40)          # in [start-180, start)
+    post_date = start + timedelta(days=125)        # in [start+60, start+180]
+
+    with _su_conn() as conn:
+        med_id = conn.execute(
+            """INSERT INTO clinical.patient_medications
+                   (tenant_id, patient_link_id, drug_name, dose, start_date,
+                    drug_class, is_active, created_at)
+               VALUES (1, %s, %s, '1000mg', %s, 'metformin', FALSE, now())
+               RETURNING id""",
+            (link_id, "متفورمین‌گیت‌verified", start),
+        ).fetchone()[0]
+        pre_id = conn.execute(
+            """INSERT INTO clinical.vital_readings
+                   (tenant_id, patient_link_id, type, value, unit, measured_at,
+                    source, verified)
+               VALUES (1, %s, 'hba1c', %s, %s, %s, 'clinic', TRUE)
+               RETURNING id""",
+            (link_id, 9.0, "%", pre_date),
+        ).fetchone()[0]
+        post_id = conn.execute(
+            """INSERT INTO clinical.vital_readings
+                   (tenant_id, patient_link_id, type, value, unit, measured_at,
+                    source, verified)
+               VALUES (1, %s, 'hba1c', %s, %s, %s, 'patient_self', FALSE)
+               RETURNING id""",
+            (link_id, 6.0, "%", post_date),
+        ).fetchone()[0]
+
+    try:
+        set_tenant_guc(1)
+        med = PatientMedication.objects.get(id=med_id)
+        result = compute_medication_effect(med, tenant_id=1)
+        # postِ تأییدنشده حذف شد → n_post=0 → no_post (نه delta آلوده)
+        assert result["n_post"] == 0, (
+            f"قرائتِ postِ تأییدنشده نباید شمرده شود؛ n_post={result['n_post']}"
+        )
+        assert result["status"] == "data_insufficient"
+        assert result["reason"] == "no_post"
+        assert result["delta"] is None
+        # pre verified شمرده شد (اثباتِ اینکه فیلتر فقط unverified را حذف می‌کند، نه همه)
+        assert result["n_pre"] == 1, f"pre verified باید شمرده شود؛ n_pre={result['n_pre']}"
+    finally:
+        # cleanup leak-safe — فقط دو ردیفِ همین تست با id (درسِ قدم ۴۴)
+        with _su_conn() as conn:
+            conn.execute(
+                "DELETE FROM clinical.vital_readings WHERE id = ANY(%s)",
+                ([pre_id, post_id],),
+            )
+            conn.execute(
+                "DELETE FROM clinical.patient_medications WHERE id = %s",
+                (med_id,),
+            )
+
+
+# ===========================================================================
 # ۹. تاریخِ شروع — ISO از بک‌اند (Jalali سمتِ کلاینت فرمت می‌شود، مثلِ بقیهٔ اندپوینت‌ها)
 # ===========================================================================
 @pytest.mark.django_db(databases=["default", "accounting_read"], transaction=True)
