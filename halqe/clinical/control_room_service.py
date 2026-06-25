@@ -45,6 +45,7 @@ from __future__ import annotations
 from datetime import timedelta
 from typing import Optional
 
+from django.db import models
 from django.utils import timezone
 
 from accounting_port.port import get_patients_by_ids, get_revenue_by_patient_ids
@@ -429,18 +430,87 @@ def cohort_ids(cohort_key: str, tenant_id: int, show_value: bool) -> list[int]:
     )
 
 
-def conversion(tenant_id: int) -> dict:
+def conversion(tenant_id: int, window_days: int = 30) -> dict:
     """
     Follow-up → visit conversion funnel for this tenant.
 
-    Of all RESOLVED (status='done') follow-ups, the share linked to a visit
-    (appointment_id IS NOT NULL) measures whether the recall funnel actually
-    lands patients in a scheduled appointment.
+    Three-stage honest funnel (data-scientist design, step-42):
 
-    Returns: {resolved, to_visit, rate}
+      Stage 1 — generated        : all followup_tasks for this tenant (informational).
+      Stage 2 — generated_eligible: tasks whose due_date (or created_at fallback) is
+                                    at least window_days ago. Excludes tasks that have
+                                    not yet had a chance to convert (immortal-time bias).
+      Stage 3 — to_visit         : eligible tasks that are done AND linked to an
+                                    appointment (appointment_id IS NOT NULL).
+
+    Rates are only computed when generated_eligible >= N_SUFFICIENT (30).
+    All rates are NULL when the cohort is too small (not zero — NULL = no claim).
+
+    Framing (caveat, top-level field):
+      "funnel rate without control group — conversion does not prove causal recall
+      efficacy; interpret only after holdout (step 43)."
+
+    Returns dict with:
+      window_days, generated, generated_eligible,
+      resolved_done, resolved_dismissed, open_eligible,
+      to_visit,
+      contact_rate, visit_rate_of_reached, overall_conversion,  ← Optional[float]
+      n_sufficient,
+      framing.
+
+    Invariant: generated_eligible == resolved_done + resolved_dismissed + open_eligible
     """
-    done_qs = FollowupTask.objects.filter(tenant_id=tenant_id, status=FollowupTask.STATUS_DONE)
-    resolved = done_qs.count()
-    to_visit = done_qs.exclude(appointment_id=None).count()
-    rate = round(to_visit * 100 / resolved, 1) if resolved else 0.0
-    return {"resolved": resolved, "to_visit": to_visit, "rate": rate}
+    today = timezone.now().date()
+    cutoff = today - timedelta(days=window_days)
+
+    all_qs = FollowupTask.objects.filter(tenant_id=tenant_id)
+    generated = all_qs.count()
+
+    # eligible = due_date <= cutoff  OR  (due_date IS NULL AND created_at::date <= cutoff)
+    eligible_qs = all_qs.filter(
+        models.Q(due_date__lte=cutoff) |
+        models.Q(due_date__isnull=True, created_at__date__lte=cutoff)
+    )
+    generated_eligible = eligible_qs.count()
+
+    resolved_done      = eligible_qs.filter(status=FollowupTask.STATUS_DONE).count()
+    resolved_dismissed = eligible_qs.filter(status=FollowupTask.STATUS_DISMISSED).count()
+    open_eligible      = eligible_qs.filter(status=FollowupTask.STATUS_OPEN).count()
+
+    to_visit = (
+        eligible_qs
+        .filter(status=FollowupTask.STATUS_DONE)
+        .exclude(appointment_id=None)
+        .count()
+    )
+
+    N_SUFFICIENT = 30
+    n_sufficient = generated_eligible >= N_SUFFICIENT
+
+    def _rate(numerator: int, denominator: int) -> "float | None":
+        """Return rate*100 rounded to 1 decimal, or None when denominator is 0 or cohort small."""
+        if not n_sufficient or denominator == 0:
+            return None
+        return round(numerator * 100 / denominator, 1)
+
+    contact_rate         = _rate(resolved_done + resolved_dismissed, generated_eligible)
+    visit_rate_of_reached = _rate(to_visit, resolved_done)
+    overall_conversion   = _rate(to_visit, generated_eligible)
+
+    return {
+        "window_days":          window_days,
+        "generated":            generated,
+        "generated_eligible":   generated_eligible,
+        "resolved_done":        resolved_done,
+        "resolved_dismissed":   resolved_dismissed,
+        "open_eligible":        open_eligible,
+        "to_visit":             to_visit,
+        "contact_rate":         contact_rate,
+        "visit_rate_of_reached": visit_rate_of_reached,
+        "overall_conversion":   overall_conversion,
+        "n_sufficient":         n_sufficient,
+        "framing": (
+            "funnel rate without control group — conversion does not prove causal "
+            "recall efficacy; interpret only after holdout (step 43)."
+        ),
+    }

@@ -2115,10 +2115,40 @@ class ControlRoomPanelResponse(Schema):
 
 
 class ConversionResponse(Schema):
-    """Follow-up → visit funnel conversion metric."""
-    resolved: int       # total resolved (status='done') tasks
-    to_visit: int       # of those, linked to an appointment
-    rate: float         # to_visit * 100 / resolved (0 if no resolved)
+    """
+    Follow-up → visit funnel conversion metric (step-42 honest funnel).
+
+    window_days            : eligibility window (default 30).
+    generated              : all followups (informational).
+    generated_eligible     : followups with due_date <= today-window_days
+                             (or created_at fallback) — the true denominator.
+    resolved_done          : eligible + done.
+    resolved_dismissed     : eligible + dismissed.
+    open_eligible          : eligible + still open.
+    to_visit               : eligible + done + appointment_id IS NOT NULL.
+
+    Rates are Optional[float] — NULL when generated_eligible < 30 (n_sufficient=False).
+    contact_rate           : (done+dismissed) / eligible * 100.
+    visit_rate_of_reached  : to_visit / done * 100.
+    overall_conversion     : to_visit / eligible * 100  ← headline KPI.
+
+    n_sufficient           : True when generated_eligible >= 30.
+    framing                : honesty caveat (no control group).
+
+    Invariant: generated_eligible == resolved_done + resolved_dismissed + open_eligible.
+    """
+    window_days:             int
+    generated:               int
+    generated_eligible:      int
+    resolved_done:           int
+    resolved_dismissed:      int
+    open_eligible:           int
+    to_visit:                int
+    contact_rate:            Optional[float]
+    visit_rate_of_reached:   Optional[float]
+    overall_conversion:      Optional[float]
+    n_sufficient:            bool
+    framing:                 str
 
 
 class CohortIdsResponse(Schema):
@@ -2211,13 +2241,13 @@ def control_room_panel(request):
 )
 def control_room_conversion(request):
     """
-    Follow-up → visit conversion funnel metric for this tenant.
+    Follow-up → visit conversion funnel metric for this tenant (step-42 honest funnel).
 
-    Of all resolved (status='done') follow-ups, the share linked to an
-    appointment (appointment_id IS NOT NULL) indicates whether the recall
-    funnel actually lands patients in a visit.
+    Uses a 30-day eligibility window to avoid immortal-time bias:
+    only followups whose due_date (or created_at) is at least 30 days ago
+    are counted in the denominator. Rates are NULL when eligible < 30.
 
-    Returns: {resolved, to_visit, rate}.
+    See ConversionResponse schema for full field documentation.
     Requires JWT (tenant-scoped).
     """
     tenant_id = request.tenant_id

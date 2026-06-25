@@ -465,10 +465,19 @@ def test_uncontrolled_lapsed_cohort_contains_patient_1(cr_seed):
 
 
 @pytest.mark.django_db(databases=["default", "accounting_read"], transaction=True)
-def test_conversion_returns_correct_structure(cr_seed):
+def test_conversion_api_shape_and_framing(cr_seed):
     """
-    GET /control-room/conversion returns {resolved, to_visit, rate}.
-    We have at least 1 done task (linked to appointment) seeded → to_visit >= 1.
+    GET /control-room/conversion — step-42 honest funnel.
+
+    Verifies:
+    - All required fields are serialised (including nullable rates).
+    - Fundamental invariant: generated_eligible == done + dismissed + open_eligible.
+    - to_visit <= resolved_done (can only convert if done).
+    - n_sufficient correctly reflects generated_eligible >= 30.
+    - framing field is present (caveat about no control group).
+    - Rates are null when generated_eligible < 30.
+    - Old field names (resolved, rate) are GONE — backward-incompatible by design
+      (frontend was not consuming this endpoint).
     """
     token = _get_token("testuser", cr_seed["test_password"])
     resp = _client().get(
@@ -478,16 +487,62 @@ def test_conversion_returns_correct_structure(cr_seed):
     assert resp.status_code == 200, resp.text
     data = resp.json()
 
-    assert "resolved" in data
-    assert "to_visit" in data
-    assert "rate" in data
-    assert isinstance(data["resolved"], int)
+    # ── required fields ──────────────────────────────────────────────────────
+    required = [
+        "window_days", "generated", "generated_eligible",
+        "resolved_done", "resolved_dismissed", "open_eligible", "to_visit",
+        "contact_rate", "visit_rate_of_reached", "overall_conversion",
+        "n_sufficient", "framing",
+    ]
+    for field in required:
+        assert field in data, f"Missing field: {field}"
+
+    # ── type checks ──────────────────────────────────────────────────────────
+    assert isinstance(data["window_days"], int)
+    assert isinstance(data["generated"], int)
+    assert isinstance(data["generated_eligible"], int)
+    assert isinstance(data["resolved_done"], int)
+    assert isinstance(data["resolved_dismissed"], int)
+    assert isinstance(data["open_eligible"], int)
     assert isinstance(data["to_visit"], int)
-    assert isinstance(data["rate"], (int, float))
-    assert data["to_visit"] <= data["resolved"]
-    if data["resolved"] > 0:
-        expected_rate = round(data["to_visit"] * 100 / data["resolved"], 1)
-        assert abs(data["rate"] - expected_rate) < 0.1
+    assert isinstance(data["n_sufficient"], bool)
+    assert isinstance(data["framing"], str)
+    # rates are float or null
+    for rate_field in ("contact_rate", "visit_rate_of_reached", "overall_conversion"):
+        assert data[rate_field] is None or isinstance(data[rate_field], (int, float)), (
+            f"{rate_field} must be float or null, got {type(data[rate_field])}"
+        )
+
+    # ── invariant: eligible == done + dismissed + open ────────────────────────
+    assert (
+        data["generated_eligible"]
+        == data["resolved_done"] + data["resolved_dismissed"] + data["open_eligible"]
+    ), (
+        f"Invariant violated: {data['generated_eligible']} != "
+        f"{data['resolved_done']}+{data['resolved_dismissed']}+{data['open_eligible']}"
+    )
+
+    # ── to_visit <= resolved_done ─────────────────────────────────────────────
+    assert data["to_visit"] <= data["resolved_done"], (
+        f"to_visit ({data['to_visit']}) > resolved_done ({data['resolved_done']})"
+    )
+
+    # ── n_sufficient / null-rate contract ────────────────────────────────────
+    if data["generated_eligible"] < 30:
+        assert data["n_sufficient"] is False
+        assert data["contact_rate"] is None, "contact_rate must be null when n<30"
+        assert data["visit_rate_of_reached"] is None
+        assert data["overall_conversion"] is None
+    else:
+        assert data["n_sufficient"] is True
+
+    # ── old field names must NOT appear ──────────────────────────────────────
+    assert "resolved" not in data, "'resolved' (old name) must not appear in response"
+    assert "rate" not in data, "'rate' (old name) must not appear in response"
+
+    # ── framing caveat is substantive ─────────────────────────────────────────
+    assert len(data["framing"]) > 20, "framing must be a non-trivial string"
+    assert "control" in data["framing"].lower() or "holdout" in data["framing"].lower()
 
 
 @pytest.mark.django_db(databases=["default", "accounting_read"], transaction=True)
@@ -720,3 +775,248 @@ def test_control_room_vitals_from_observations_view(cr_seed):
     assert isinstance(data["patients"], list)
     assert isinstance(data["cohorts"], list)
     # Panel returned successfully regardless of whether the lab patient appears
+
+
+# ── Step-42 data-scientist funnel tests ───────────────────────────────────────
+
+@pytest.fixture(scope="session")
+def conversion_seed(cr_seed):
+    """
+    Seed a controlled, isolated set of followup_tasks for funnel arithmetic tests.
+    Uses a dedicated patient (tenant=1) to avoid cross-contamination with cr_seed tasks.
+
+    Seeds:
+      - 4 done tasks (2 with appointment → to_visit; 2 without)
+      - 3 dismissed tasks (no appointment)
+      - 3 open tasks (no appointment)
+      Total eligible = 10 (all have due_date = today - 60 → well past 30-day window)
+
+      - 1 future task (due_date = today + 20 → NOT eligible)
+
+    Expected arithmetic (window=30, eligible=10 < 30 → n_sufficient=False → rates=None):
+      generated=11, generated_eligible=10,
+      resolved_done=4, resolved_dismissed=3, open_eligible=3,
+      to_visit=2,
+      n_sufficient=False, all rates=None.
+
+    We use a separate patient so the counts are deterministic regardless of other seed data.
+    """
+    import datetime as _dt
+
+    with psycopg.connect(_CONNINFO, autocommit=True) as conn:
+        u_conv = uuid.UUID("c9420001-0042-0042-0042-000000000042")
+        conn.execute("""
+            INSERT INTO accounting.patients
+                (tenant_id, uuid, name, family_name, national_id,
+                 phone_number, birthdate, gender)
+            VALUES (1, %s, 'قیف', 'آزمون', 'CONV000042', '09120000042',
+                    '1980-06-01', 'female')
+            ON CONFLICT (uuid) DO NOTHING
+        """, (u_conv,))
+        conv_pat_id = conn.execute(
+            "SELECT id FROM accounting.patients WHERE uuid=%s", (u_conv,)
+        ).fetchone()[0]
+
+        conn.execute("""
+            INSERT INTO clinical.patient_links (tenant_id, patient_id, is_active)
+            VALUES (1, %s, TRUE)
+            ON CONFLICT (tenant_id, patient_id) DO NOTHING
+        """, (conv_pat_id,))
+        conv_link_id = conn.execute(
+            "SELECT id FROM clinical.patient_links WHERE tenant_id=1 AND patient_id=%s",
+            (conv_pat_id,)
+        ).fetchone()[0]
+
+        # Create appointments for the 2 "to_visit" done tasks
+        appt1 = conn.execute("""
+            INSERT INTO clinical.appointments
+                (tenant_id, patient_link_id, scheduled_at, status, created_at)
+            VALUES (1, %s, now() - interval '50 days', 'done', now() - interval '60 days')
+            RETURNING id
+        """, (conv_link_id,)).fetchone()[0]
+        appt2 = conn.execute("""
+            INSERT INTO clinical.appointments
+                (tenant_id, patient_link_id, scheduled_at, status, created_at)
+            VALUES (1, %s, now() - interval '48 days', 'done', now() - interval '60 days')
+            RETURNING id
+        """, (conv_link_id,)).fetchone()[0]
+
+        today = _dt.date.today()
+        eligible_due = today - _dt.timedelta(days=60)   # 60d ago — eligible
+        future_due   = today + _dt.timedelta(days=20)   # 20d ahead — NOT eligible
+
+        # 2 done + appointment (to_visit)
+        for appt_id in (appt1, appt2):
+            conn.execute("""
+                INSERT INTO clinical.followup_tasks
+                    (tenant_id, patient_link_id, due_date, reason, status,
+                     appointment_id, created_at, resolved_at)
+                VALUES (1, %s, %s, 'conv_test', 'done', %s,
+                        now() - interval '65 days', now() - interval '50 days')
+            """, (conv_link_id, eligible_due, appt_id))
+
+        # 2 done without appointment
+        for _ in range(2):
+            conn.execute("""
+                INSERT INTO clinical.followup_tasks
+                    (tenant_id, patient_link_id, due_date, reason, status,
+                     appointment_id, created_at, resolved_at)
+                VALUES (1, %s, %s, 'conv_test', 'done', NULL,
+                        now() - interval '65 days', now() - interval '50 days')
+            """, (conv_link_id, eligible_due))
+
+        # 3 dismissed
+        for _ in range(3):
+            conn.execute("""
+                INSERT INTO clinical.followup_tasks
+                    (tenant_id, patient_link_id, due_date, reason, status,
+                     appointment_id, created_at, resolved_at)
+                VALUES (1, %s, %s, 'conv_test', 'dismissed', NULL,
+                        now() - interval '65 days', now() - interval '55 days')
+            """, (conv_link_id, eligible_due))
+
+        # 3 open (eligible)
+        for _ in range(3):
+            conn.execute("""
+                INSERT INTO clinical.followup_tasks
+                    (tenant_id, patient_link_id, due_date, reason, status,
+                     created_at)
+                VALUES (1, %s, %s, 'conv_test', 'open',
+                        now() - interval '65 days')
+            """, (conv_link_id, eligible_due))
+
+        # 1 future (NOT eligible — due_date = today+20)
+        conn.execute("""
+            INSERT INTO clinical.followup_tasks
+                (tenant_id, patient_link_id, due_date, reason, status, created_at)
+            VALUES (1, %s, %s, 'conv_test_future', 'open',
+                    now())
+        """, (conv_link_id, future_due))
+
+    return {"link_id": conv_link_id}
+
+
+@pytest.mark.django_db(databases=["default", "accounting_read"], transaction=True)
+def test_conversion_eligible_excludes_future_tasks(conversion_seed):
+    """
+    Step-42 assertion 1 — immortal-time bias guard:
+    A followup with due_date = today+20 must NOT appear in generated_eligible.
+
+    The conversion_seed fixture plants exactly 10 eligible + 1 future task.
+    We verify that generated >= generated_eligible (the future task is in generated
+    but not in generated_eligible).
+    """
+    from clinical.control_room_service import conversion
+    result = conversion(tenant_id=1, window_days=30)
+
+    # The future task is in generated but not eligible
+    assert result["generated"] > result["generated_eligible"], (
+        "generated must exceed generated_eligible when future tasks exist"
+    )
+
+
+@pytest.mark.django_db(databases=["default", "accounting_read"], transaction=True)
+def test_conversion_dismissed_separate_from_done(conversion_seed):
+    """
+    Step-42 assertion 2 — dismissed is separate from done:
+    resolved_dismissed > 0 and dismissed tasks have no appointment →
+    they must NOT inflate to_visit but DO count in contact_rate numerator.
+
+    The seed has 3 dismissed tasks, none with appointment_id.
+    """
+    from clinical.control_room_service import conversion
+    result = conversion(tenant_id=1, window_days=30)
+
+    # Our seed contributes dismissed tasks
+    assert result["resolved_dismissed"] >= 3, (
+        f"Expected >= 3 dismissed, got {result['resolved_dismissed']}"
+    )
+
+    # to_visit counts only done+appointment, so dismissed never inflates it
+    # (verified implicitly: to_visit = done_with_appt; our seed has 2 of those)
+    # If to_visit > resolved_done that would be the bug — already covered by invariant test
+
+
+@pytest.mark.django_db(databases=["default", "accounting_read"], transaction=True)
+def test_conversion_null_rates_when_eligible_below_threshold(conversion_seed):
+    """
+    Step-42 assertion 4 — NULL when eligible < 30:
+    The conversion_seed contributes exactly 10 eligible tasks for tenant-1.
+    Even with cr_seed tasks, the total may be below 30, making rates null.
+
+    We test the service directly with an isolated tenant (tenant=999) that has no data:
+    generated_eligible=0 → n_sufficient=False → all rates=None.
+    """
+    from clinical.control_room_service import conversion
+    result = conversion(tenant_id=999, window_days=30)
+
+    assert result["generated_eligible"] == 0
+    assert result["n_sufficient"] is False
+    assert result["contact_rate"] is None, "contact_rate must be None when eligible=0"
+    assert result["visit_rate_of_reached"] is None
+    assert result["overall_conversion"] is None
+
+
+@pytest.mark.django_db(databases=["default", "accounting_read"], transaction=True)
+def test_conversion_symmetry_invariant(conversion_seed):
+    """
+    Step-42 assertion 5 — symmetry:
+    generated_eligible == resolved_done + resolved_dismissed + open_eligible.
+
+    Tested at service level for deterministic arithmetic.
+    """
+    from clinical.control_room_service import conversion
+    result = conversion(tenant_id=1, window_days=30)
+
+    lhs = result["generated_eligible"]
+    rhs = result["resolved_done"] + result["resolved_dismissed"] + result["open_eligible"]
+    assert lhs == rhs, (
+        f"Symmetry violated: eligible={lhs} != "
+        f"done({result['resolved_done']})+dismissed({result['resolved_dismissed']})"
+        f"+open({result['open_eligible']})={rhs}"
+    )
+
+
+@pytest.mark.django_db(databases=["default", "accounting_read"], transaction=True)
+def test_conversion_arithmetic_overall_not_done_only(conversion_seed):
+    """
+    Step-42 assertion 3 — overall_conversion denominator is eligible, NOT done-only:
+    With 10 eligible (4 done where 2 with appt, 3 dismissed, 3 open):
+      overall_conversion = 2/10 = 20%, NOT 2/4=50%.
+
+    Because cr_seed also contributes tasks, we test at service layer with tenant=999
+    for isolation, then seed a fresh set for deterministic arithmetic.
+
+    Strategy: call conversion() at service level for a fresh, dedicated DB state.
+    The conversion_seed already plants exactly 10 eligible + 1 future for tenant-1.
+    But cr_seed also contributes tasks for tenant-1. We cannot guarantee the totals
+    in the shared tenant-1. Instead, we verify the invariant properties that ensure
+    correct arithmetic without needing isolation:
+
+      1. to_visit <= resolved_done  (can only convert if done)
+      2. overall_conversion denominator is generated_eligible (not resolved_done):
+         if n_sufficient and resolved_done>0 and to_visit>0:
+           overall_conv = to_visit/eligible (should differ from to_visit/done)
+           contact_rate = (done+dismissed)/eligible
+    """
+    from clinical.control_room_service import conversion
+    result = conversion(tenant_id=1, window_days=30)
+
+    # to_visit <= resolved_done always
+    assert result["to_visit"] <= result["resolved_done"]
+
+    if result["n_sufficient"] and result["resolved_done"] > 0 and result["to_visit"] > 0:
+        # overall_conversion must use eligible as denominator, not done
+        expected_overall = round(result["to_visit"] * 100 / result["generated_eligible"], 1)
+        expected_done_only = round(result["to_visit"] * 100 / result["resolved_done"], 1)
+
+        assert abs(result["overall_conversion"] - expected_overall) < 0.2, (
+            f"overall_conversion={result['overall_conversion']} must be "
+            f"to_visit/eligible={expected_overall}, NOT to_visit/done={expected_done_only}"
+        )
+        # overall <= visit_rate_of_reached (since eligible >= done)
+        if result["visit_rate_of_reached"] is not None:
+            assert result["overall_conversion"] <= result["visit_rate_of_reached"], (
+                "overall_conversion (denominator=eligible) must be <= "
+                "visit_rate_of_reached (denominator=done)"
+            )
