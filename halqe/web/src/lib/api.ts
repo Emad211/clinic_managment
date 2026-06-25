@@ -21,9 +21,47 @@ export function saveToken(token: string): void {
   }
 }
 
+/**
+ * Decode a JWT payload (base64url) without any library.
+ * Returns the parsed claims object, or null on any decode error.
+ * Does NOT verify the signature — used only for the `exp` claim check.
+ */
+function _decodeJwtPayload(token: string): Record<string, unknown> | null {
+  try {
+    const parts = token.split(".");
+    if (parts.length !== 3) return null;
+    // base64url → base64: replace -/_ and pad
+    const b64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+    const pad = b64.length % 4 === 0 ? "" : "=".repeat(4 - (b64.length % 4));
+    const json = atob(b64 + pad);
+    return JSON.parse(json) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Return the stored JWT only if it is present AND not expired.
+ * A token is considered expired when its `exp` claim (Unix seconds) is in
+ * the past. Tokens without an `exp` claim are treated as non-expiring.
+ * Returns null (and clears storage) when the token is missing or expired.
+ */
 export function getToken(): string | null {
   if (typeof window === "undefined") return null;
-  return localStorage.getItem(TOKEN_KEY);
+  const token = localStorage.getItem(TOKEN_KEY);
+  if (!token) return null;
+
+  const claims = _decodeJwtPayload(token);
+  if (claims !== null && typeof claims.exp === "number") {
+    const nowSeconds = Math.floor(Date.now() / 1000);
+    if (claims.exp <= nowSeconds) {
+      // Expired — evict silently so the next getToken call starts clean
+      localStorage.removeItem(TOKEN_KEY);
+      return null;
+    }
+  }
+
+  return token;
 }
 
 export function clearToken(): void {
@@ -40,9 +78,53 @@ class ApiError extends Error {
   constructor(
     public readonly status: number,
     message: string,
+    /** Stable machine-readable error code from backend (e.g. 'not_found', 'encounter_sealed'). */
+    public readonly code: string | null = null,
   ) {
     super(message);
     this.name = "ApiError";
+  }
+}
+
+/**
+ * Map a backend error code to a human-readable Persian message.
+ * Falls back to `fallback` (typically `err.message`) when code is unknown.
+ *
+ * Codes come from `config/errors.py` (halqe backend) — only stable codes that
+ * are declared in that file and actively returned by endpoints are listed here.
+ * Add new entries as new codes are introduced in the backend.
+ */
+export function errorMessageFromCode(
+  code: string | null | undefined,
+  fallback: string,
+): string {
+  switch (code) {
+    // Auth
+    case "invalid_credentials":
+      return "نام کاربری یا رمز عبور اشتباه است.";
+    case "account_locked":
+      return "حساب کاربری قفل شده است. لطفاً ۱۵ دقیقه بعد تلاش کنید.";
+    // Resource not found
+    case "not_found":
+      return "مورد درخواستی پیدا نشد.";
+    // State transition conflicts
+    case "conflict":
+      return "این عملیات در وضعیت فعلی مجاز نیست.";
+    case "encounter_sealed":
+      return "ویزیت بسته شده و امکان ثبت اطلاعات جدید وجود ندارد.";
+    case "invalid_transition":
+      return "تغییر وضعیت مجاز نیست.";
+    // Duplicate data
+    case "duplicate_vital":
+      return "این علامت حیاتی قبلاً برای این ویزیت ثبت شده است.";
+    // Validation
+    case "validation_error":
+      return "مقدار وارد شده معتبر نیست.";
+    // Prescription
+    case "insurance_prescription_not_supported":
+      return "نسخهٔ بیمه‌ای در این نسخه پشتیبانی نمی‌شود.";
+    default:
+      return fallback;
   }
 }
 
@@ -61,13 +143,16 @@ async function apiFetch<T>(
 
   if (!res.ok) {
     let detail = res.statusText;
+    let code: string | null = null;
     try {
       const body = await res.json();
       detail = body?.detail ?? detail;
+      // Read the stable machine-readable code from the backend error contract
+      code = typeof body?.code === "string" ? body.code : null;
     } catch {
-      // ignore parse errors
+      // ignore parse errors — use statusText fallback
     }
-    throw new ApiError(res.status, detail);
+    throw new ApiError(res.status, detail, code);
   }
 
   return res.json() as Promise<T>;

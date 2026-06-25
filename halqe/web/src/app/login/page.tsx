@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, FormEvent } from "react";
+import { useState, useEffect, FormEvent } from "react";
 import { useRouter } from "next/navigation";
-import { apiLogin, saveToken, ApiError } from "@/lib/api";
+import { apiLogin, saveToken, getToken, ApiError, errorMessageFromCode } from "@/lib/api";
 import styles from "./login.module.css";
 
 export default function LoginPage() {
@@ -11,6 +11,17 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  // True while we check whether a valid token already exists
+  const [checking, setChecking] = useState(true);
+
+  // If a valid (non-expired) token already exists, skip login entirely
+  useEffect(() => {
+    if (getToken()) {
+      router.push("/dashboard");
+    } else {
+      setChecking(false);
+    }
+  }, [router]);
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -23,7 +34,12 @@ export default function LoginPage() {
       router.push("/dashboard");
     } catch (err) {
       if (err instanceof ApiError) {
-        if (err.status === 401) {
+        // Use the stable code→message map; fall back to status-based messages
+        // for codes that may not yet be in the map (future-proofing).
+        const codeMsg = err.code ? errorMessageFromCode(err.code, "") : "";
+        if (codeMsg) {
+          setError(codeMsg);
+        } else if (err.status === 401) {
           setError("نام کاربری یا رمز عبور اشتباه است.");
         } else if (err.status === 423) {
           setError("حساب کاربری قفل شده است. لطفاً ۱۵ دقیقه بعد تلاش کنید.");
@@ -36,6 +52,15 @@ export default function LoginPage() {
     } finally {
       setLoading(false);
     }
+  }
+
+  // Show an inline spinner while we check for an existing token
+  if (checking) {
+    return (
+      <main className={styles.container} aria-label="در حال بارگذاری">
+        <span className={styles.spinner} aria-hidden="true" />
+      </main>
+    );
   }
 
   return (

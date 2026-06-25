@@ -24,7 +24,13 @@ Object.defineProperty(globalThis, "localStorage", {
   value: localStorageMock,
 });
 
-import { saveToken, getToken, clearToken, ApiError } from "../src/lib/api";
+import {
+  saveToken,
+  getToken,
+  clearToken,
+  ApiError,
+  errorMessageFromCode,
+} from "../src/lib/api";
 
 // ────────────────────────────────────────────────────────────
 // Token helpers
@@ -1118,5 +1124,221 @@ describe("apiListEncounters", () => {
 
     const { apiListEncounters } = await import("../src/lib/api");
     await expect(apiListEncounters(TEST_UUID)).rejects.toMatchObject({ status: 401 });
+  });
+});
+
+// ────────────────────────────────────────────────────────────
+// ApiError.code — populated from backend error body
+// ────────────────────────────────────────────────────────────
+
+describe("ApiError.code", () => {
+  beforeEach(() => {
+    localStorageMock.clear();
+    jest.resetAllMocks();
+    saveToken("mock-bearer-token");
+  });
+
+  test("ApiError.code is populated from body.code on error response", async () => {
+    globalThis.fetch = jest.fn().mockResolvedValue({
+      ok: false,
+      status: 409,
+      statusText: "Conflict",
+      json: async () => ({
+        detail: "Duplicate vital reading for this encounter.",
+        code: "duplicate_vital",
+      }),
+    }) as jest.Mock;
+
+    const { apiAddVitals } = await import("../src/lib/api");
+    let caught: ApiError | null = null;
+    try {
+      await apiAddVitals(1, [{ type: "FBS", value: 120 }]);
+    } catch (err) {
+      if (err instanceof ApiError) caught = err;
+    }
+    expect(caught).not.toBeNull();
+    expect(caught!.code).toBe("duplicate_vital");
+    expect(caught!.status).toBe(409);
+    expect(caught!.message).toBe("Duplicate vital reading for this encounter.");
+  });
+
+  test("ApiError.code is 'encounter_sealed' for sealed encounter response", async () => {
+    globalThis.fetch = jest.fn().mockResolvedValue({
+      ok: false,
+      status: 409,
+      statusText: "Conflict",
+      json: async () => ({
+        detail: "Encounter is sealed.",
+        code: "encounter_sealed",
+      }),
+    }) as jest.Mock;
+
+    const { apiAddVitals } = await import("../src/lib/api");
+    let caught: ApiError | null = null;
+    try {
+      await apiAddVitals(1, [{ type: "FBS", value: 120 }]);
+    } catch (err) {
+      if (err instanceof ApiError) caught = err;
+    }
+    expect(caught!.code).toBe("encounter_sealed");
+  });
+
+  test("ApiError.code is null when body has no code field", async () => {
+    globalThis.fetch = jest.fn().mockResolvedValue({
+      ok: false,
+      status: 400,
+      statusText: "Bad Request",
+      json: async () => ({ detail: "Bad input" }),
+    }) as jest.Mock;
+
+    const { apiMarkDone } = await import("../src/lib/api");
+    let caught: ApiError | null = null;
+    try {
+      await apiMarkDone(999);
+    } catch (err) {
+      if (err instanceof ApiError) caught = err;
+    }
+    expect(caught!.code).toBeNull();
+  });
+
+  test("ApiError.code is null when body cannot be parsed as JSON", async () => {
+    globalThis.fetch = jest.fn().mockResolvedValue({
+      ok: false,
+      status: 503,
+      statusText: "Service Unavailable",
+      json: async () => { throw new Error("not json"); },
+    }) as jest.Mock;
+
+    const { apiMarkDone } = await import("../src/lib/api");
+    let caught: ApiError | null = null;
+    try {
+      await apiMarkDone(1);
+    } catch (err) {
+      if (err instanceof ApiError) caught = err;
+    }
+    expect(caught!.code).toBeNull();
+    // Falls back to statusText
+    expect(caught!.message).toBe("Service Unavailable");
+  });
+});
+
+// ────────────────────────────────────────────────────────────
+// getToken — JWT expiry check (no external library)
+// ────────────────────────────────────────────────────────────
+
+/**
+ * Build a minimal unsigned JWT (header.payload.sig) with a given exp.
+ * The token is NOT properly signed — we only need the payload for the exp check.
+ */
+function makeJwt(payload: Record<string, unknown>): string {
+  const header = btoa(JSON.stringify({ alg: "HS256", typ: "JWT" }))
+    .replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "");
+  const body = btoa(JSON.stringify(payload))
+    .replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "");
+  return `${header}.${body}.fakesig`;
+}
+
+describe("getToken — JWT expiry", () => {
+  beforeEach(() => localStorageMock.clear());
+
+  test("returns token when exp is in the future", () => {
+    const futureExp = Math.floor(Date.now() / 1000) + 3600; // 1h from now
+    const token = makeJwt({ sub: "1", exp: futureExp });
+    saveToken(token);
+    expect(getToken()).toBe(token);
+  });
+
+  test("returns null and clears storage when token is expired", () => {
+    const pastExp = Math.floor(Date.now() / 1000) - 1; // 1 second ago
+    const token = makeJwt({ sub: "1", exp: pastExp });
+    saveToken(token);
+    // getToken should detect expiry and evict
+    expect(getToken()).toBeNull();
+    // Also confirm it was evicted from storage
+    expect(localStorage.getItem("halqe_token")).toBeNull();
+  });
+
+  test("returns token when there is no exp claim (non-expiring token)", () => {
+    const token = makeJwt({ sub: "1" }); // no exp
+    saveToken(token);
+    expect(getToken()).toBe(token);
+  });
+
+  test("returns null when nothing is stored", () => {
+    expect(getToken()).toBeNull();
+  });
+});
+
+// ────────────────────────────────────────────────────────────
+// errorMessageFromCode — Persian message mapping
+// ────────────────────────────────────────────────────────────
+
+describe("errorMessageFromCode", () => {
+  test("maps 'invalid_credentials' to Persian message", () => {
+    expect(errorMessageFromCode("invalid_credentials", "fallback")).toContain(
+      "نام کاربری یا رمز عبور",
+    );
+  });
+
+  test("maps 'account_locked' to Persian message", () => {
+    expect(errorMessageFromCode("account_locked", "fallback")).toContain(
+      "قفل",
+    );
+  });
+
+  test("maps 'not_found' to Persian message", () => {
+    expect(errorMessageFromCode("not_found", "fallback")).toContain(
+      "پیدا نشد",
+    );
+  });
+
+  test("maps 'conflict' to Persian message", () => {
+    expect(errorMessageFromCode("conflict", "fallback")).toContain(
+      "مجاز نیست",
+    );
+  });
+
+  test("maps 'encounter_sealed' to Persian message", () => {
+    const msg = errorMessageFromCode("encounter_sealed", "fallback");
+    expect(msg).toContain("ویزیت");
+    expect(msg).toContain("بسته");
+  });
+
+  test("maps 'invalid_transition' to Persian message", () => {
+    expect(errorMessageFromCode("invalid_transition", "fallback")).toContain(
+      "وضعیت",
+    );
+  });
+
+  test("maps 'duplicate_vital' to Persian message", () => {
+    expect(errorMessageFromCode("duplicate_vital", "fallback")).toContain(
+      "علامت حیاتی",
+    );
+  });
+
+  test("maps 'validation_error' to Persian message", () => {
+    expect(errorMessageFromCode("validation_error", "fallback")).toContain(
+      "معتبر",
+    );
+  });
+
+  test("maps 'insurance_prescription_not_supported' to Persian message", () => {
+    expect(
+      errorMessageFromCode("insurance_prescription_not_supported", "fallback"),
+    ).toContain("بیمه");
+  });
+
+  test("returns fallback for unknown code", () => {
+    expect(errorMessageFromCode("totally_unknown_code", "خطای ناشناخته")).toBe(
+      "خطای ناشناخته",
+    );
+  });
+
+  test("returns fallback for null code", () => {
+    expect(errorMessageFromCode(null, "خطا")).toBe("خطا");
+  });
+
+  test("returns fallback for undefined code", () => {
+    expect(errorMessageFromCode(undefined, "خطا")).toBe("خطا");
   });
 });

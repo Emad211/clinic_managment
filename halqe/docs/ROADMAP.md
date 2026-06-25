@@ -250,7 +250,8 @@
 - [ ] **۳۴. سخت‌سازیِ auth برای T1 (ریسک #۱۰)** — تابعِ `platform.auth_lookup_user(username)` با `SECURITY DEFINER` که فقط همان ردیف را برگرداند + حذفِ policyِ `tenant_isolation_read USING(true)` + e2e که app-role دیگر `password_hash`ِ مستأجرِ دیگر را نمی‌خواند. *(api-platform-engineer)*
 
 ## خوشهٔ H — پنلِ وبِ پزشک/مدیر (greenfield؛ Next.js App Router، RTL/Jalali)
-- [ ] **۲۴. اسکلت + دیزاین‌سیستم + Login + api-client** — AppShell/Sidebar/TopBar، توکن‌های رنگ/تایپ، `dir=rtl`+وزیرمتنِ آفلاین، صفحهٔ `/login` (JWT)، `apiFetch` که **`code` را از body می‌خواند** (رفعِ ریسک #۷) + utilهای `jalali`/`toFa`. *(frontend-web-engineer + ux-ui-designer)*
+- [x] **۲۴. اسکلت + دیزاین‌سیستم + Login + api-client** — AppShell/Sidebar/TopBar، توکن‌های رنگ/تایپ، `dir=rtl`+وزیرمتنِ آفلاین، صفحهٔ `/login` (JWT)، `apiFetch` که **`code` را از body می‌خواند** (رفعِ ریسک #۷) + utilهای `jalali`/`toFa`. *(ux-ui-designer + frontend-web-engineer)* — **یافتهٔ گراندینگ: اسکلت از قبل بود** (layout RTL، login، dashboard+Nav، `globals.css`ِ توکن‌دار، `jalali.ts`، `api.ts`ِ کامل، ۱۲۲ تست) → این قدم = **سخت‌سازیِ اسکلتِ موجود**، نه بازساخت.
+  **تحویل (مرکزِ ثقل = رفعِ ریسک #۷):** `api.ts` → `ApiError.code` (backward-compatible) + `apiFetch` خواندنِ `body.code` + `errorMessageFromCode(code, fallback)` با کدهای **واقعیِ** `config/errors.py`/`api.py` (`not_found`/`validation_error`/`encounter_sealed`/`duplicate_vital`/`invalid_transition`/auth) تا صفحاتِ بعدی روی `code` سوییچ کنند نه substring (follow-up قدم ۱۰ هم بسته شد). + چکِ انقضای JWT در `getToken` (decodeِ base64urlِ بدون‌کتابخانه، evictِ توکنِ منقضی) + هوکِ `useAuth` (گاردِ متمرکز، `dashboard` مصرف‌کننده) + `login` (redirect-if-authenticated + spinner) + ۳ توکنِ additive. فونت‌های Vazirmatn در `public/fonts/` تأیید. **بازبینیِ مستقلِ من:** کدهای error با grepِ بک‌اند واقعی‌اند؛ `npm test` **۱۴۲ سبز** (۱۲۲+۲۰)، `tsc --noEmit` پاک. ✅
 - [ ] **۲۵. `/patients`** لیست + جستجوی صفحهٔ جاری → پروندهٔ بیمار. *(frontend-web-engineer)*
 - [ ] **۲۶. `/patients/[uuid]` پایه (record)** — بیماری/داروی فعال + ۱۰ vitalِ اخیر با `VitalTile`/`StatusBadge`. *(frontend-web-engineer)*
 - [ ] **۲۷. پنلِ Suggestions + نگهبانِ معماری** — `SuggestionCard` با هِدرِ **همیشه‌نمایانِ «پیشنهاد — تأیید با پزشک»**، بنرِ red-flag، accept/dismissِ optimistic + `prior_action`؛ **تستِ نگهبان که متنِ «تأیید با پزشک» در DOM می‌ماند**. *(frontend-web-engineer + clinical-product-advisor)*
@@ -303,4 +304,4 @@
 - **C. ایمنیِ بالینی:** قاعدهٔ خاموشِ بی‌صدا (قدم ۳۵) و self-reportِ unverified که وارد موتور شود (قدم ۴۵) — هر دو با گاردِ صریح بسته شوند.
 - **D. انطباق/بازار:** هر متنِ بازاریابی «هوش/تشخیص» نیازِ بازبینیِ حقوقی؛ قابِ «پیشنهاد — تأیید با پزشک» در همهٔ collateral حفظ شود؛ فقط فیچرِ اثبات‌شده در فروش ادعا شود.
 
-> آخرین به‌روزرسانی: حلقهٔ چهارم — ۴۰ قدم (۲۱–۶۰) قفل؛ **۲۱ (CI) ✅، ۲۲ (بوتِ امن) ✅، ۲۳ (ADR-0008 GUC/pooling) ✅**. بعدی: قدم ۲۴ (اسکلتِ وبِ Next.js + Login + api-client). وضعیتِ هر قدم با ✅ علامت می‌خورد.
+> آخرین به‌روزرسانی: حلقهٔ چهارم — ۴۰ قدم (۲۱–۶۰) قفل؛ **۲۱ (CI)، ۲۲ (بوتِ امن)، ۲۳ (GUC/pooling)، ۲۴ (اسکلتِ وب + رفعِ ریسک #۷) ✅**. بعدی: قدم ۲۵ (`/patients` لیست + جستجو). وضعیتِ هر قدم با ✅ علامت می‌خورد.

@@ -1,15 +1,14 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { useRouter, usePathname } from "next/navigation";
+import { usePathname } from "next/navigation";
 import Link from "next/link";
 import {
   apiGetPatients,
   apiGetWorklist,
-  clearToken,
-  getToken,
   ApiError,
 } from "@/lib/api";
+import { useAuth } from "@/hooks/useAuth";
 import { toFarsiDigits } from "@/lib/jalali";
 import Nav from "@/components/Nav";
 import styles from "./dashboard.module.css";
@@ -85,7 +84,7 @@ function NavCard({
 // ─────────────────────────────────────────────────────────────
 
 export default function DashboardPage() {
-  const router = useRouter();
+  const { ready, logout } = useAuth();
   const pathname = usePathname();
 
   // Stats state
@@ -97,16 +96,6 @@ export default function DashboardPage() {
   const [worklistLoading, setWorklistLoading] = useState(true);
   const [worklistError, setWorklistError] = useState<string | null>(null);
 
-  const handle401 = useCallback(() => {
-    clearToken();
-    router.push("/login");
-  }, [router]);
-
-  function handleLogout() {
-    clearToken();
-    router.push("/login");
-  }
-
   // Fetch patients total (limit=1 is enough — we only need `total`)
   const fetchPatients = useCallback(async () => {
     setPatientsLoading(true);
@@ -116,14 +105,14 @@ export default function DashboardPage() {
       setPatientsTotal(data.total);
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) {
-        handle401();
+        logout();
         return;
       }
       setPatientsError("خطا در دریافت");
     } finally {
       setPatientsLoading(false);
     }
-  }, [handle401]);
+  }, [logout]);
 
   // Fetch open worklist total (default filter = open/due)
   const fetchWorklist = useCallback(async () => {
@@ -135,30 +124,30 @@ export default function DashboardPage() {
       setWorklistTotal(data.total);
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) {
-        handle401();
+        logout();
         return;
       }
       setWorklistError("خطا در دریافت");
     } finally {
       setWorklistLoading(false);
     }
-  }, [handle401]);
+  }, [logout]);
 
+  // Fire data fetches only once the auth guard has confirmed a valid token
   useEffect(() => {
-    if (!getToken()) {
-      router.push("/login");
-      return;
-    }
-    // Fire both in parallel
+    if (!ready) return;
     fetchPatients();
     fetchWorklist();
-  }, [fetchPatients, fetchWorklist, router]);
+  }, [ready, fetchPatients, fetchWorklist]);
+
+  // Auth guard: render nothing while useAuth is checking/redirecting
+  if (!ready) return null;
 
   return (
     <div className={styles.layout}>
       <Nav
         currentPath={pathname ?? "/dashboard"}
-        onLogout={handleLogout}
+        onLogout={logout}
       />
 
       <main className={styles.main} id="main-content" aria-label="داشبورد حلقه">
