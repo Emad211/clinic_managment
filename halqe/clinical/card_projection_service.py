@@ -34,6 +34,7 @@ from django.utils import timezone as dj_timezone
 from accounting_port.port import get_patients_by_ids as _get_patients_by_ids
 from clinical.models import ClinicalIndicator, Appointment
 from clinical.rule_engine import _evaluate_reading as _eval_reading
+from clinical.followup_engine import screening_timeline as _screening_timeline
 
 # ویتال‌هایِ مجاز روی کارت (ADR-0004 §6 — no raw HbA1c)
 CARD_VITALS = ("fbs", "bp_systolic", "bp_diastolic")
@@ -146,6 +147,73 @@ def _next_appointment(patient_link_id: int, tenant_id: int) -> dict | None:
     }
 
 
+# ---------------------------------------------------------------------------
+# یادآورِ غربالگریِ بیمار-ایمن (خوشهٔ J، قدم ۴۸ — قفل‌شده با GP + security)
+#
+# حریمِ خصوصی اولویتِ #۱: کارتِ عمومیِ توکنی هرگز نباید تشخیص را لو بدهد.
+# screening_timeline (read-only) جزئیاتِ per-item می‌دهد (item_key/label_fa/
+# condition_code/تاریخ) — اما هیچ‌کدام به کارت نمی‌رسد. فقط یک پیامِ خنثیِ
+# server-rendered (مثلِ framing) ساخته می‌شود.
+#
+# قوانینِ قفل‌شده:
+#   - فقط status ∈ {overdue, due_soon}. never_done کاملاً حذف (مثبت‌کاذبِ
+#     بیمارِ تازه‌ثبت‌نام، اضطراب‌زا). ok نیز حذف.
+#   - هرگز item_key/label_fa/condition_code/تاریخ/عددِ دقیقِ شمارش (>۱) فاش نشود.
+#   - count-cap: ۱ آیتم → «یک مورد»؛ ≥۲ → «چند مورد».
+#   - اگر نوبتِ آینده‌ای هست → پیامِ نرم بدونِ CTAِ تماس (در نوبت بررسی می‌شود).
+#   - لحنِ همه‌نرم، بدونِ معادلِ danger، بدونِ نامِ آزمایش/اندام/بیماری.
+#
+# NOTE: این رشته‌ها — مثلِ `framing` و `_STATUS` — فعلاً hardcode‌اند؛
+#       editability (مدیر-قابل-ویرایش) موکول به فازِ بعدی است.
+# ---------------------------------------------------------------------------
+
+_REMINDER_DUE_STATUSES = ("overdue", "due_soon")
+
+# پیامِ نرم وقتی نوبتِ آینده‌ای هست (بدونِ CTAِ تماس — موارد سرِ نوبت بررسی می‌شود)
+_REMINDER_NEXT_VISIT = "در نوبتِ بعدی‌تان موارد مراقبتِ دوره‌ای بررسی می‌شود."
+
+# count-capped CTA — عددِ دقیقِ >۱ هرگز فاش نمی‌شود
+_REMINDER_ONE = (
+    "یک موردِ مراقبتِ دوره‌ایِ سلامتیِ شما وقتش رسیده — "
+    "برای هماهنگی با کلینیک تماس بگیرید."
+)
+_REMINDER_MANY = (
+    "چند موردِ مراقبتِ دوره‌ایِ سلامتیِ شما وقتش رسیده — "
+    "برای هماهنگی با کلینیک تماس بگیرید."
+)
+
+
+def _reminder_message(
+    patient_link_id: int,
+    tenant_id: int,
+    has_next_appointment: bool,
+) -> str | None:
+    """
+    یک پیامِ یادآورِ خنثی و بیمار-ایمن می‌سازد یا None.
+
+    GUC-scoped: screening_timeline همان pid/tenant را با همان GUC می‌خواند
+    (هیچ منبعِ جانبی). read-only by construction — هیچ write.
+
+    خروجی فقط یک رشتهٔ خنثی یا None — هرگز per-item/count/label/تاریخ.
+    """
+    items = _screening_timeline(patient_link_id, tenant_id)
+
+    # فقط آیتم‌هایِ واقعاً سررسیده. never_done و ok کاملاً حذف می‌شوند.
+    due = [it for it in items if it.get("status") in _REMINDER_DUE_STATUSES]
+
+    if not due:
+        return None
+
+    # اگر نوبتِ آینده‌ای هست: پیامِ نرم بدونِ CTAِ تماس.
+    if has_next_appointment:
+        return _REMINDER_NEXT_VISIT
+
+    # وگرنه: count-cap — هرگز عددِ دقیقِ >۱ فاش نشود.
+    if len(due) == 1:
+        return _REMINDER_ONE
+    return _REMINDER_MANY
+
+
 def card_for_patient(patient_link_id: int, tenant_id: int) -> dict | None:
     """
     پروجکشنِ read-only کارتِ عمومی برای یک بیمار.
@@ -164,11 +232,13 @@ def card_for_patient(patient_link_id: int, tenant_id: int) -> dict | None:
          "unit": "mg/dL", "status": "warn"}
       ],
       "next_appointment": "2026-07-15" | null,
-      "framing": "..."
+      "framing": "...",
+      "reminder_message": null | "..."   # یادآورِ خنثیِ غربالگری (بدونِ تشخیص)
     }
 
     هرگز: national_id، تماسِ بیمار، نامِ دارو/دوز، تشخیص/بیماری، HbA1cِ خام،
-            یادداشتِ بالینی، درآمد/کیف‌پول.
+            یادداشتِ بالینی، درآمد/کیف‌پول، نامِ آزمایش/اندام، تاریخ/عددِ
+            دقیقِ آیتمِ غربالگری.
     """
     # دموگرافیک از accounting Port (فقط first_name لازم است — نه نامِ کامل)
     # PatientLink در halqe national_id ندارد (ADR-0007) — باید از Port بگیریم.
@@ -226,6 +296,13 @@ def card_for_patient(patient_link_id: int, tenant_id: int) -> dict | None:
         next_appt["scheduled_at"] if next_appt else None
     )
 
+    # یادآورِ غربالگریِ خنثی (بیمار-ایمن — هیچ تشخیصی فاش نمی‌شود)
+    reminder_message = _reminder_message(
+        patient_link_id,
+        tenant_id,
+        has_next_appointment=next_appt is not None,
+    )
+
     # framing: جملهٔ انگیزشی ساده (بدونِ اطلاعاتِ بالینی)
     framing = "وضعیتِ سلامتِ شما"
     if worst == "danger":
@@ -254,4 +331,5 @@ def card_for_patient(patient_link_id: int, tenant_id: int) -> dict | None:
         "vitals": vitals_out,
         "next_appointment": next_appointment_date,
         "framing": framing,
+        "reminder_message": reminder_message,
     }

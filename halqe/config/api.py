@@ -3273,6 +3273,9 @@ class PublicCardResponse(Schema):
     vitals: list[VitalCardDTO]
     next_appointment: Optional[str]   # ISO date (YYYY-MM-DD) یا None
     framing: str                       # جملهٔ انگیزشیِ ساده
+    # یادآورِ خنثیِ غربالگری (قدم ۴۸): رشتهٔ نرم یا None.
+    # هرگز per-item/count/label/تاریخ — فقط پیامِ count-capped و بدونِ تشخیص.
+    reminder_message: Optional[str] = None
 
 
 class CardTokenOut(Schema):
@@ -3343,6 +3346,7 @@ def get_public_card(request, token: str):
         vitals=[VitalCardDTO(**v) for v in card_data["vitals"]],
         next_appointment=card_data["next_appointment"],
         framing=card_data["framing"],
+        reminder_message=card_data.get("reminder_message"),
     )
 
 

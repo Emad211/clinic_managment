@@ -188,6 +188,41 @@
   color: var(--color-danger, #c0392b);
 }
 
+/* ── یادآورِ غربالگری — informational، خنثی/آبی، هرگز danger ── */
+.reminderSection {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.625rem;
+  background: #eef4fb;
+  border: 1px solid #c7d9ec;
+  border-radius: 12px;
+  padding: 0.875rem 1rem;
+  margin-bottom: 1.5rem;
+  /* عمداً بدونِ هیچ رنگِ قرمز/زرد — صرفاً خنثیِ آبی برای لحنِ informational */
+  color: #2b4a66;
+}
+
+.reminderIcon {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: #d8e6f4;
+  color: #2b6cb0;
+  margin-top: 0.0625rem;
+}
+
+.reminderText {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  line-height: 1.65;
+  color: #2b4a66;
+  margin: 0;
+}
+
 /* ── نوبتِ بعدی ── */
 .appointmentSection {
   background: var(--color-surface, #ffffff);

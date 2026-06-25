@@ -259,7 +259,10 @@ class TestNoPHIInCardResponse:
 
     def test_response_shape_is_minimum_necessary(self, client, card_patient):
         """payload فقط کلیدهایِ مجاز دارد (minimum-necessary)."""
-        ALLOWED_KEYS = {"first_name", "clinic_name", "vitals", "next_appointment", "framing"}
+        ALLOWED_KEYS = {
+            "first_name", "clinic_name", "vitals", "next_appointment",
+            "framing", "reminder_message",
+        }
         link_id = card_patient["link_id"]
         token = _issue_token_via_service(link_id)
         resp = client.get(f"/api/v1/card/{token}")

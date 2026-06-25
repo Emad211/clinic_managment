@@ -1012,6 +1012,23 @@ export interface CardResponse {
   next_appointment: string | null;
   /** Safety framing text, e.g. "پیشنهاد — تأیید با پزشک". */
   framing: string | null;
+  /**
+   * Pre-rendered, patient-safe screening reminder line (step 48, cluster J).
+   *
+   * The backend guarantees this string contains NO patient name, diagnosis,
+   * medication, or exact clinical number — it is a single neutral
+   * informational sentence (e.g. "چند موردِ مراقبتِ دوره‌ای… با کلینیک تماس بگیرید").
+   *
+   * - null  → no reminder is due → render NOTHING (no empty section).
+   * - non-null → render exactly this string, verbatim, in a soft neutral
+   *   (informational) banner. The UI must never add/infer extra detail and
+   *   must never show it with danger styling / at the level of a danger vital.
+   *
+   * Marked optional (`?`) so the UI is forward/backward compatible: the live
+   * backend `PublicCardResponse` may not yet serialise this field — absence is
+   * treated identically to null.
+   */
+  reminder_message?: string | null;
 }
 
 /**
@@ -1041,6 +1058,35 @@ export async function getCard(token: string): Promise<CardResponse> {
   }
 
   return res.json() as Promise<CardResponse>;
+}
+
+// ────────────────────────────────────────────────────────────
+// Patient Card Token (staff — JWT)  — mirrors CardTokenOut
+// POST /api/v1/patients/{uuid}/card-token
+// ────────────────────────────────────────────────────────────
+
+/**
+ * Response from POST /patients/{uuid}/card-token (mirrors CardTokenOut).
+ *
+ * `card_url` is a relative PATH only (e.g. "/card/<token>"), not an absolute
+ * URL — the deployment is LAN-only for now. The UI builds the copy-able link
+ * by prepending window.location.origin.
+ */
+export interface CardTokenOut {
+  token: string;
+  expires_at: string;     // ISO datetime
+  card_url: string;       // relative path, e.g. "/card/<token>"
+}
+
+/**
+ * POST /patients/{uuid}/card-token  (staff JWT) → 201 CardTokenOut
+ * Issues a new public-card token for the patient. one-active-at-a-time:
+ * the backend revokes any previous active token for this patient first.
+ */
+export async function issueCardToken(uuid: string): Promise<CardTokenOut> {
+  return apiFetch<CardTokenOut>(`/patients/${uuid}/card-token`, {
+    method: "POST",
+  });
 }
 
 // ────────────────────────────────────────────────────────────

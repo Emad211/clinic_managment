@@ -35,6 +35,7 @@ import Nav from "@/components/Nav";
 import { SuggestionsPanel } from "@/components/SuggestionsPanel";
 import { ScreeningTimeline } from "@/components/ScreeningTimeline";
 import { VerificationInbox, RecentVitalsTable } from "@/components/VitalsReview";
+import { PatientCardShare } from "@/components/PatientCardShare";
 import styles from "./record.module.css";
 
 // ────────────────────────────────────────────────────────────
@@ -1111,6 +1112,9 @@ export default function PatientDetailPage() {
                 items={screeningTimeline.items}
               />
             )}
+
+            {/* کارتِ عمومیِ بیمار — صدورِ لینک + کپی + دکمهٔ SMSِ گِیت‌شده (قدم ۴۸) */}
+            <PatientCardShare uuid={uuid} />
 
           </div>
 

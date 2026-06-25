@@ -372,6 +372,128 @@ describe("PatientCardPage — vitals خالی", () => {
   });
 });
 
+// ─── (ح) یادآورِ غربالگری — reminder_message (قدم ۴۸، خوشهٔ J) ──
+
+describe("PatientCardPage — یادآورِ غربالگری (reminder_message)", () => {
+  beforeEach(() => {
+    setupToken("abc123");
+  });
+
+  const REMINDER_TEXT =
+    "چند موردِ مراقبتِ دوره‌ای به موعد رسیده است؛ برای هماهنگی با کلینیک تماس بگیرید.";
+
+  // (الف) reminder_message غیرnull → بخشِ یادآور با همان متن رندر شود
+  it("reminder_message غیرnull → بخشِ یادآور با همان متنِ دقیق رندر می‌شود", async () => {
+    mockGetCard.mockResolvedValueOnce(
+      makeCardResponse({ reminder_message: REMINDER_TEXT }),
+    );
+    render(<PatientCardPage />);
+
+    await waitFor(() =>
+      expect(screen.getByTestId("card-reminder-section")).toBeInTheDocument(),
+    );
+
+    // متن دقیقاً همان رشتهٔ بک‌اند — هیچ‌چیز اضافه/استنتاج نشده
+    expect(screen.getByTestId("card-reminder-text")).toHaveTextContent(
+      REMINDER_TEXT,
+    );
+  });
+
+  // (ب) reminder_message=null → بخشِ یادآور نباشد
+  it("reminder_message=null → بخشِ یادآور رندر نمی‌شود", async () => {
+    mockGetCard.mockResolvedValueOnce(
+      makeCardResponse({ reminder_message: null }),
+    );
+    render(<PatientCardPage />);
+
+    // صبر کن صفحه بارگذاری شود (vitals دیده شوند)
+    await waitFor(() =>
+      expect(screen.getByTestId("card-vitals-section")).toBeInTheDocument(),
+    );
+
+    expect(screen.queryByTestId("card-reminder-section")).not.toBeInTheDocument();
+  });
+
+  // (ب-۲) فیلدِ غایب (undefined، backward-compat با بک‌اندِ فعلی) → بخش نباشد
+  it("reminder_message غایب (undefined) → بخشِ یادآور رندر نمی‌شود", async () => {
+    mockGetCard.mockResolvedValueOnce(makeCardResponse());
+    render(<PatientCardPage />);
+
+    await waitFor(() =>
+      expect(screen.getByTestId("card-vitals-section")).toBeInTheDocument(),
+    );
+
+    expect(screen.queryByTestId("card-reminder-section")).not.toBeInTheDocument();
+  });
+
+  // (ب-۳) رشتهٔ خالی → بخش نباشد (خالیِ falsy)
+  it("reminder_message رشتهٔ خالی → بخشِ یادآور رندر نمی‌شود", async () => {
+    mockGetCard.mockResolvedValueOnce(
+      makeCardResponse({ reminder_message: "" }),
+    );
+    render(<PatientCardPage />);
+
+    await waitFor(() =>
+      expect(screen.getByTestId("card-vitals-section")).toBeInTheDocument(),
+    );
+
+    expect(screen.queryByTestId("card-reminder-section")).not.toBeInTheDocument();
+  });
+
+  // (ج) یادآور رنگِ danger/هم‌سطحِ ویتالِ خطر نگیرد — کلاسِ خنثی
+  it("بخشِ یادآور کلاسِ danger نمی‌گیرد و role=note دارد (نه alert)", async () => {
+    mockGetCard.mockResolvedValueOnce(
+      makeCardResponse({ reminder_message: REMINDER_TEXT }),
+    );
+    render(<PatientCardPage />);
+
+    await waitFor(() =>
+      expect(screen.getByTestId("card-reminder-section")).toBeInTheDocument(),
+    );
+
+    const section = screen.getByTestId("card-reminder-section");
+    // CSS modules در jest هش نمی‌شوند → className خامِ کلاس‌هاست (identity-obj-proxy)
+    expect(section.className).not.toMatch(/danger/i);
+    expect(section.className).not.toMatch(/statusDanger/);
+    // لحن informational، نه هشدار
+    expect(section).toHaveAttribute("role", "note");
+    expect(section).not.toHaveAttribute("role", "alert");
+  });
+
+  // یادآور هم‌سطحِ ویتالِ danger نباشد: هیچ data-status=danger روی بخشِ یادآور نباشد
+  it("بخشِ یادآور data-status=danger ندارد", async () => {
+    mockGetCard.mockResolvedValueOnce(
+      makeCardResponse({ reminder_message: REMINDER_TEXT }),
+    );
+    render(<PatientCardPage />);
+
+    await waitFor(() =>
+      expect(screen.getByTestId("card-reminder-section")).toBeInTheDocument(),
+    );
+
+    expect(screen.getByTestId("card-reminder-section")).not.toHaveAttribute(
+      "data-status",
+      "danger",
+    );
+  });
+
+  // یادآور هرگز نام/عدد اضافه نکند: فقط همان رشته، بدونِ first_name در آن
+  it("بخشِ یادآور فقط همان رشته است — نامِ بیمار را تکرار نمی‌کند", async () => {
+    mockGetCard.mockResolvedValueOnce(
+      makeCardResponse({ first_name: "بهرام", reminder_message: REMINDER_TEXT }),
+    );
+    render(<PatientCardPage />);
+
+    await waitFor(() =>
+      expect(screen.getByTestId("card-reminder-text")).toBeInTheDocument(),
+    );
+
+    const text = screen.getByTestId("card-reminder-text").textContent ?? "";
+    expect(text).toBe(REMINDER_TEXT);
+    expect(text).not.toContain("بهرام");
+  });
+});
+
 // ─── (ز) ارقامِ فارسی واقعی ─────────────────────────────────
 
 describe("PatientCardPage — ارقامِ فارسی", () => {
