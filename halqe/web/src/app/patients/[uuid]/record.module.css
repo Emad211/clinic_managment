@@ -646,6 +646,118 @@
   margin-bottom: var(--space-3);
 }
 
+/* ── DDI (Drug-Drug Interaction) section ── */
+
+/* Section wrapper — rendered above regular suggestion cards */
+.ddiSection {
+  margin-bottom: var(--space-4);
+}
+
+.ddiSectionTitle {
+  font-size: 0.8125rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-text-muted);
+  margin-bottom: var(--space-2);
+}
+
+/* One DDI item card */
+.ddiItem {
+  border-radius: var(--radius-sm);
+  padding: var(--space-3) var(--space-4);
+  margin-bottom: var(--space-2);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.ddiItem:last-child {
+  margin-bottom: 0;
+}
+
+/* contraindicated: solid red left-border + red-tinted bg */
+.ddiContraindicated {
+  border: 1px solid var(--color-danger);
+  border-right: 4px solid var(--color-danger);
+  background: #fff8f7;
+}
+
+/* major: solid orange left-border */
+.ddiMajor {
+  border: 1px solid #e07b00;
+  border-right: 4px solid #e07b00;
+  background: #fffdf5;
+}
+
+/* moderate: solid amber left-border */
+.ddiModerate {
+  border: 1px solid var(--color-warn);
+  border-right: 4px solid var(--color-warn);
+  background: #fefce8;
+}
+
+/* Header row: badge + suggestion-only chip */
+.ddiItemHeader {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.ddiSeverityBadge {
+  display: inline-block;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.ddiSeverityBadgeContraindicated {
+  background: #fde8e7;
+  color: var(--color-danger);
+}
+
+.ddiSeverityBadgeMajor {
+  background: #fef3e2;
+  color: #8b5000;
+}
+
+.ddiSeverityBadgeModerate {
+  background: #fef9c3;
+  color: #7b5000;
+}
+
+/* Suggestion-only chip inside DDI items (same visual as RuleCard chip) */
+.ddiSuggestionChip {
+  display: inline-block;
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: #7b5800;
+  background: #fff8e1;
+  border: 1px solid #ffe082;
+  border-radius: 999px;
+  padding: 0.05rem 0.45rem;
+  letter-spacing: 0.02em;
+}
+
+/* Main message text */
+.ddiMessage {
+  font-size: 0.8125rem;
+  color: var(--color-text);
+  line-height: 1.55;
+}
+
+/* Evidence citation — small and muted */
+.ddiEvidence {
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  line-height: 1.45;
+  font-style: italic;
+}
+
 /* ── Register visit section ── */
 .visitSection {
   /* No card wrapper — the form itself provides the visual container */

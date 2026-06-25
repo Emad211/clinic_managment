@@ -320,6 +320,31 @@ export interface DataGapDTO {
   affected_rules: number;
 }
 
+/**
+ * One drug-drug interaction (DDI) flagged by the clinical engine.
+ * Returned in `ddi[]` on GET /patients/{uuid}/suggestions.
+ *
+ * Severity levels (clinical pharmacist contract):
+ *   - contraindicated : absolute two-blocker risk (e.g. dual RAAS) — role="alert"
+ *   - major           : serious interaction requiring physician review — role="note"
+ *   - moderate        : monitor + consider alternatives — role="note"
+ *
+ * `suggestion_only` is always true — no automatic action is taken.
+ */
+export interface DdiDTO {
+  /** Pharmacologic class of the first drug (e.g. "acei"). */
+  class_a: string;
+  /** Pharmacologic class of the second drug (e.g. "arb"). */
+  class_b: string;
+  severity: "contraindicated" | "major" | "moderate";
+  /** Human-readable Persian explanation of the interaction. */
+  message_fa: string;
+  /** Evidence citation, e.g. "ONTARGET 2008؛ ADA 2025 §CKD". Optional. */
+  evidence?: string;
+  /** Always true — the system suggests, the physician decides. */
+  suggestion_only?: boolean;
+}
+
 export interface SuggestionsResponseDTO {
   patient_link_id: number;
   count: number;
@@ -332,6 +357,12 @@ export interface SuggestionsResponseDTO {
    * Displayed as a non-alarming informational transparency banner.
    */
   data_gaps?: DataGapDTO[];
+  /**
+   * Drug-drug interactions detected for this patient's active medications.
+   * Empty array (or absent) = no interactions found.
+   * Rendered above the regular suggestion list, sorted by severity descending.
+   */
+  ddi?: DdiDTO[];
 }
 
 export async function apiGetSuggestions(

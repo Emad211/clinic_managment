@@ -1898,3 +1898,214 @@ def test_slice7_idempotent_re_apply(admin_conn):
     slice7_path = pathlib.Path(_MIG) / "schema_pg_slice7_auth_lookup.sql"
     assert slice7_path.exists(), f"فایلِ slice7 پیدا نشد: {slice7_path}"
     admin_conn.execute(_read(str(slice7_path)))
+
+
+# ===========================================================================
+# برشِ ۸ — DDI catalog (Drug-Drug Interaction)
+# ===========================================================================
+
+# ---------------------------------------------------------------------------
+# معیار ۱ — جدول موجود است + ستون‌های اصلی
+# ---------------------------------------------------------------------------
+def test_slice8_ddi_table_exists(admin_conn):
+    """Slice 8: clinical.ddi_pairs باید وجود داشته باشد."""
+    row = admin_conn.execute(
+        """SELECT table_name FROM information_schema.tables
+            WHERE table_schema='clinical' AND table_name='ddi_pairs'"""
+    ).fetchone()
+    assert row, "clinical.ddi_pairs پیدا نشد — آیا slice8 اعمال شده؟"
+
+
+def test_slice8_ddi_columns(admin_conn):
+    """Slice 8: ستون‌های اصلیِ ddi_pairs باید موجود باشند."""
+    cols = {
+        row[0]
+        for row in admin_conn.execute(
+            """SELECT column_name FROM information_schema.columns
+                WHERE table_schema='clinical' AND table_name='ddi_pairs'"""
+        ).fetchall()
+    }
+    required = {"id", "tenant_id", "class_a", "class_b", "severity",
+                "message_fa", "evidence", "is_active", "created_at"}
+    missing = required - cols
+    assert not missing, f"ستون‌های زیر در ddi_pairs پیدا نشدند: {missing}"
+
+
+# ---------------------------------------------------------------------------
+# معیار ۲ — CHECK canonical order (class_a < class_b)
+# ---------------------------------------------------------------------------
+def test_slice8_ddi_canonical_check_enforced(admin_tx):
+    """Slice 8: INSERT با class_a >= class_b باید رد شود (CHECK constraint)."""
+    # ابتدا یک insert معتبر تست کنیم
+    admin_tx.execute(
+        """INSERT INTO clinical.ddi_pairs
+               (tenant_id, class_a, class_b, severity, message_fa)
+           VALUES (1, 'aaa_class', 'zzz_class', 'moderate', 'test message')"""
+    )
+    # حالا نقضِ CHECK (class_a > class_b) → باید CheckViolation بدهد
+    with pytest.raises(pgerr.CheckViolation):
+        admin_tx.execute(
+            """INSERT INTO clinical.ddi_pairs
+                   (tenant_id, class_a, class_b, severity, message_fa)
+               VALUES (1, 'zzz_class', 'aaa_class', 'moderate', 'wrong order')"""
+        )
+
+
+def test_slice8_ddi_canonical_check_equal_rejected(admin_tx):
+    """Slice 8: class_a == class_b هم باید رد شود (CHECK class_a < class_b)."""
+    with pytest.raises(pgerr.CheckViolation):
+        admin_tx.execute(
+            """INSERT INTO clinical.ddi_pairs
+                   (tenant_id, class_a, class_b, severity, message_fa)
+               VALUES (1, 'same_class', 'same_class', 'moderate', 'same')"""
+        )
+
+
+# ---------------------------------------------------------------------------
+# معیار ۳ — UNIQUE(tenant_id, class_a, class_b) idempotent
+# ---------------------------------------------------------------------------
+def test_slice8_ddi_unique_conflict_do_nothing(admin_tx):
+    """Slice 8: INSERT تکراری با ON CONFLICT DO NOTHING نباید خطا بدهد."""
+    admin_tx.execute(
+        """INSERT INTO clinical.ddi_pairs
+               (tenant_id, class_a, class_b, severity, message_fa)
+           VALUES (1, 'class_x', 'class_z', 'major', 'first insert')"""
+    )
+    # همان جفت دوباره — ON CONFLICT DO NOTHING
+    admin_tx.execute(
+        """INSERT INTO clinical.ddi_pairs
+               (tenant_id, class_a, class_b, severity, message_fa)
+           VALUES (1, 'class_x', 'class_z', 'major', 'duplicate')
+           ON CONFLICT (tenant_id, class_a, class_b) DO NOTHING"""
+    )
+    count = admin_tx.execute(
+        """SELECT COUNT(*) FROM clinical.ddi_pairs
+            WHERE tenant_id=1 AND class_a='class_x' AND class_b='class_z'"""
+    ).fetchone()[0]
+    assert count == 1, f"باید دقیقاً یک ردیف باشد ولی {count} ردیف یافت شد"
+
+
+# ---------------------------------------------------------------------------
+# معیار ۴ — seed: ۱۲ جفت برای tenant_id=1
+# ---------------------------------------------------------------------------
+def test_slice8_ddi_seed_count(admin_conn):
+    """Slice 8: باید دقیقاً ۱۲ جفتِ seed‌شده برای tenant_id=1 وجود داشته باشد."""
+    count = admin_conn.execute(
+        "SELECT COUNT(*) FROM clinical.ddi_pairs WHERE tenant_id=1"
+    ).fetchone()[0]
+    assert count == 12, (
+        f"انتظار ۱۲ جفتِ DDI seed‌شده برای tenant_id=1، ولی {count} یافت شد"
+    )
+
+
+def test_slice8_ddi_seed_has_contraindicated(admin_conn):
+    """Slice 8: باید حداقل ۲ جفتِ contraindicated وجود داشته باشد (acei+arb و finerenone+mra)."""
+    count = admin_conn.execute(
+        "SELECT COUNT(*) FROM clinical.ddi_pairs WHERE tenant_id=1 AND severity='contraindicated'"
+    ).fetchone()[0]
+    assert count == 2, f"انتظار ۲ جفتِ contraindicated، ولی {count} یافت شد"
+
+
+def test_slice8_ddi_acei_arb_present(admin_conn):
+    """Slice 8: جفتِ acei+arb (contraindicated) باید seed شده باشد."""
+    row = admin_conn.execute(
+        """SELECT severity, message_fa FROM clinical.ddi_pairs
+            WHERE tenant_id=1 AND class_a='acei' AND class_b='arb'"""
+    ).fetchone()
+    assert row, "جفتِ acei+arb پیدا نشد"
+    assert row[0] == "contraindicated"
+    assert "RAAS" in row[1]
+
+
+# ---------------------------------------------------------------------------
+# معیار ۵ — RLS: GUC=1 می‌بیند، GUC='' نمی‌بیند (fail-closed)
+# ---------------------------------------------------------------------------
+def test_slice8_ddi_rls_enabled(admin_conn):
+    """Slice 8: clinical.ddi_pairs باید RLS enabled و FORCE داشته باشد."""
+    row = admin_conn.execute(
+        """SELECT relrowsecurity, relforcerowsecurity
+             FROM pg_class c
+             JOIN pg_namespace n ON n.oid=c.relnamespace
+            WHERE n.nspname='clinical' AND c.relname='ddi_pairs'"""
+    ).fetchone()
+    assert row, "ddi_pairs در pg_class پیدا نشد"
+    assert row[0] is True, "relrowsecurity باید True باشد (ENABLE ROW LEVEL SECURITY)"
+    assert row[1] is True, "relforcerowsecurity باید True باشد (FORCE ROW LEVEL SECURITY)"
+
+
+def test_slice8_ddi_rls_policy_exists(admin_conn):
+    """Slice 8: policy tenant_isolation روی ddi_pairs باید موجود باشد."""
+    row = admin_conn.execute(
+        """SELECT polname FROM pg_policy p
+             JOIN pg_class c ON c.oid=p.polrelid
+             JOIN pg_namespace n ON n.oid=c.relnamespace
+            WHERE n.nspname='clinical' AND c.relname='ddi_pairs'
+              AND p.polname='tenant_isolation'"""
+    ).fetchone()
+    assert row, "policy tenant_isolation روی clinical.ddi_pairs پیدا نشد"
+
+
+def test_slice8_ddi_rls_fail_closed(clinical_tx):
+    """Slice 8: کوئری با GUCِ خالی → صفر ردیف از ddi_pairs (fail-closed)."""
+    # GUC را خالی کنیم
+    clinical_tx.execute("SELECT set_config('app.current_tenant', '', false)")
+    count = clinical_tx.execute(
+        "SELECT COUNT(*) FROM clinical.ddi_pairs"
+    ).fetchone()[0]
+    assert count == 0, (
+        f"با GUCِ خالی باید صفر ردیف از ddi_pairs دیده شود، ولی {count} ردیف یافت شد"
+    )
+
+
+def test_slice8_ddi_rls_tenant_scoped(clinical_tx):
+    """Slice 8: کوئری با GUC=1 جفت‌های tenant 1 را می‌بیند."""
+    # GUC tenant_id=1 ست شده در clinical_tx fixture
+    count = clinical_tx.execute(
+        "SELECT COUNT(*) FROM clinical.ddi_pairs WHERE is_active=TRUE"
+    ).fetchone()[0]
+    assert count == 12, (
+        f"با GUC=1 باید ۱۲ جفتِ فعال دیده شود، ولی {count} یافت شد"
+    )
+
+
+# ---------------------------------------------------------------------------
+# معیار ۶ — GRANTها: clinical_app و platform_app دسترسی دارند
+# ---------------------------------------------------------------------------
+def test_slice8_ddi_grant_clinical_app(admin_conn):
+    """Slice 8: clinical_app باید INSERT و SELECT روی ddi_pairs داشته باشد."""
+    can_select = admin_conn.execute(
+        "SELECT has_table_privilege('clinical_app', 'clinical.ddi_pairs', 'SELECT')"
+    ).fetchone()[0]
+    can_insert = admin_conn.execute(
+        "SELECT has_table_privilege('clinical_app', 'clinical.ddi_pairs', 'INSERT')"
+    ).fetchone()[0]
+    assert can_select is True, "clinical_app باید SELECT روی ddi_pairs داشته باشد"
+    assert can_insert is True, "clinical_app باید INSERT روی ddi_pairs داشته باشد"
+
+
+def test_slice8_ddi_grant_platform_app(admin_conn):
+    """Slice 8: platform_app باید INSERT و SELECT روی ddi_pairs داشته باشد."""
+    can_select = admin_conn.execute(
+        "SELECT has_table_privilege('platform_app', 'clinical.ddi_pairs', 'SELECT')"
+    ).fetchone()[0]
+    can_insert = admin_conn.execute(
+        "SELECT has_table_privilege('platform_app', 'clinical.ddi_pairs', 'INSERT')"
+    ).fetchone()[0]
+    assert can_select is True, "platform_app باید SELECT روی ddi_pairs داشته باشد"
+    assert can_insert is True, "platform_app باید INSERT روی ddi_pairs داشته باشد"
+
+
+# ---------------------------------------------------------------------------
+# معیار ۷ — idempotency: اجرای مجددِ slice8 بدونِ خطا
+# ---------------------------------------------------------------------------
+def test_slice8_ddi_idempotent_re_apply(admin_conn):
+    """Slice 8: اجرای مجددِ slice8 بدونِ خطا (IF NOT EXISTS + ON CONFLICT DO NOTHING)."""
+    import pathlib
+    slice8_path = pathlib.Path(_MIG) / "schema_pg_slice8_ddi.sql"
+    assert slice8_path.exists(), f"فایلِ slice8 پیدا نشد: {slice8_path}"
+    admin_conn.execute(_read(str(slice8_path)))  # نباید استثنا بدهد
+    # بعد از اجرای مجدد، شمارش ثابت بماند
+    count = admin_conn.execute(
+        "SELECT COUNT(*) FROM clinical.ddi_pairs WHERE tenant_id=1"
+    ).fetchone()[0]
+    assert count == 12, f"بعد از re-apply، شمارش باید ۱۲ بماند ولی {count} است"

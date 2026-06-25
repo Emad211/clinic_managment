@@ -38,6 +38,7 @@ from clinical.models import (
     ClinicalIndicator,
     PatientFlag,
     Condition,
+    DdiPair,
 )
 
 # ---------------------------------------------------------------------------
@@ -526,6 +527,77 @@ def data_gaps(
 
 
 # ---------------------------------------------------------------------------
+# DDI surface — موازیِ data_gaps، مستقل از evaluate/_eval
+# ---------------------------------------------------------------------------
+
+def ddi_alerts(med_classes: set, tenant_id: int = 1) -> list[dict]:
+    """
+    Return active DDI pairs where BOTH drug classes are present in med_classes.
+
+    Lookup is order-independent: we canonicalize each (class_a, class_b) pair
+    from the patient's medication set using tuple(sorted(...)), then filter
+    clinical.ddi_pairs for rows where both classes are in med_classes.
+
+    Parameters
+    ----------
+    med_classes : set[str]
+        Active medication drug_class values for one patient
+        (from build_facts()["med_classes"]).
+    tenant_id : int
+        Tenant scope.
+
+    Returns
+    -------
+    list[dict] — sorted by severity (contraindicated > major > moderate > minor):
+        {
+            "class_a":        str,
+            "class_b":        str,
+            "severity":       str,   # contraindicated|major|moderate|minor
+            "message_fa":     str,   # verbatim Persian clinical message
+            "evidence":       str | None,
+            "suggestion_only": True,  # always (safety framing)
+        }
+    Empty list when no active interactions found (no false-positives).
+
+    Design notes:
+    - Does NOT touch evaluate() / _eval() / triggered rule catalog.
+    - is_active=False → excluded (manager-edit respects clinical decision).
+    - Only fires when BOTH classes in a pair are in med_classes (no false-positive).
+    - canonical check: class_a < class_b (enforced by DB CHECK; we also filter
+      by class_a__in + class_b__in to leverage the index on (tenant_id, is_active)).
+    """
+    if not med_classes:
+        return []
+
+    # Query only active pairs where BOTH classes are present in the patient's set.
+    # DB canonical order (class_a < class_b) + Python set membership check.
+    qs = DdiPair.objects.filter(
+        tenant_id=tenant_id,
+        is_active=True,
+        class_a__in=med_classes,
+        class_b__in=med_classes,
+    ).order_by("class_a", "class_b")
+
+    _rank = DdiPair.SEVERITY_RANK
+
+    alerts = [
+        {
+            "class_a": pair.class_a,
+            "class_b": pair.class_b,
+            "severity": pair.severity,
+            "message_fa": pair.message_fa,
+            "evidence": pair.evidence,
+            "suggestion_only": True,
+        }
+        for pair in qs
+    ]
+
+    # Sort: contraindicated first → major → moderate → minor
+    alerts.sort(key=lambda x: _rank.get(x["severity"], 99))
+    return alerts
+
+
+# ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
 
@@ -703,6 +775,9 @@ def grouped(patient_link_id: int, demographics=None, tenant_id: int = 1) -> dict
     # Gap detection — reuses the already-materialised rules list (no extra DB query)
     gaps = _compute_data_gaps(facts, rules_list, tenant_id)
 
+    # DDI surface — parallel to data_gaps, independent of the rule engine
+    ddi = ddi_alerts(facts["med_classes"], tenant_id=tenant_id)
+
     return {
         "sections": [
             {"key": s, "label": SECTION_LABELS[s], "rules": groups[s]}
@@ -712,4 +787,5 @@ def grouped(patient_link_id: int, demographics=None, tenant_id: int = 1) -> dict
         "count": len(fired),
         "has_redflag": any(r["section"] == "redflags" for r in fired),
         "data_gaps": gaps,
+        "ddi": ddi,
     }

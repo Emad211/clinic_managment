@@ -561,6 +561,27 @@ class DataGapDTO(Schema):
     affected_rules: int
 
 
+class DdiDTO(Schema):
+    """
+    One drug-drug interaction between two of the patient's ACTIVE medication
+    classes (step 36 — DDI data layer).
+
+    Suggestion-only: surfaces a known class-level interaction for the physician
+    to review; never auto-changes therapy. Curated, evidence-based pairs only.
+
+    class_a / class_b : interacting drug-class codes (canonical, class_a < class_b)
+    severity          : 'contraindicated' | 'major' | 'moderate'
+    message_fa        : Persian clinical message (risk + action)
+    evidence          : source reference (guideline / study), may be null
+    """
+    class_a: str
+    class_b: str
+    severity: str
+    message_fa: str
+    evidence: str | None = None
+    suggestion_only: bool = True
+
+
 class SuggestionsResponseDTO(Schema):
     patient_link_id: int
     count: int
@@ -573,6 +594,10 @@ class SuggestionsResponseDTO(Schema):
     # Each entry describes one missing datum and how many active rules it affects.
     # Display-only: does not reflect or change which rules fired.
     data_gaps: list[DataGapDTO] = []
+    # Drug-drug interactions among the patient's ACTIVE medication classes (step 36).
+    # Empty list when no interacting class-pair is present. Suggestion-only;
+    # sorted by severity (contraindicated → major → moderate).
+    ddi: list[DdiDTO] = []
 
 
 # ---------------------------------------------------------------------------
@@ -684,6 +709,19 @@ def get_suggestions(request, patient_uuid: uuid_module.UUID):
         for g in result.get("data_gaps", [])
     ]
 
+    # 6. Serialise drug-drug interactions from the engine result (step 36)
+    ddi_alerts = [
+        DdiDTO(
+            class_a=d["class_a"],
+            class_b=d["class_b"],
+            severity=d["severity"],
+            message_fa=d["message_fa"],
+            evidence=d.get("evidence"),
+            suggestion_only=d.get("suggestion_only", True),
+        )
+        for d in result.get("ddi", [])
+    ]
+
     return SuggestionsResponseDTO(
         patient_link_id=link.id,
         count=result["count"],
@@ -691,6 +729,7 @@ def get_suggestions(request, patient_uuid: uuid_module.UUID):
         framing="پیشنهاد — تأیید با پزشک",
         sections=sections,
         data_gaps=gaps,
+        ddi=ddi_alerts,
     )
 
 

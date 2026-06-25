@@ -14,11 +14,117 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { type SuggestionsResponseDTO, type DataGapDTO } from "@/lib/api";
+import { type SuggestionsResponseDTO, type DataGapDTO, type DdiDTO } from "@/lib/api";
 import { buildInitialActed, type ActedMap } from "@/lib/suggestion-utils";
 import { toFarsiDigits } from "@/lib/jalali";
 import { RuleCard } from "@/components/RuleCard";
 import styles from "@/app/patients/[uuid]/record.module.css";
+
+/**
+ * Labels for DDI severity levels — shown inside each DDI item badge.
+ */
+const DDI_SEVERITY_LABEL: Record<DdiDTO["severity"], string> = {
+  contraindicated: "منع مصرف همزمان",
+  major: "تداخل مهم",
+  moderate: "تداخل متوسط",
+};
+
+/**
+ * Maps DDI severity to CSS module class names (badge + item card).
+ */
+const DDI_SEVERITY_CLASSES: Record<
+  DdiDTO["severity"],
+  { item: string; badge: string }
+> = {
+  contraindicated: {
+    item: styles.ddiContraindicated,
+    badge: styles.ddiSeverityBadgeContraindicated,
+  },
+  major: {
+    item: styles.ddiMajor,
+    badge: styles.ddiSeverityBadgeMajor,
+  },
+  moderate: {
+    item: styles.ddiModerate,
+    badge: styles.ddiSeverityBadgeModerate,
+  },
+};
+
+/**
+ * DDI severity sort order — lower index = higher priority (rendered first).
+ */
+const DDI_SEVERITY_ORDER: Record<DdiDTO["severity"], number> = {
+  contraindicated: 0,
+  major: 1,
+  moderate: 2,
+};
+
+/**
+ * DdiSection — drug-drug interaction warning section.
+ *
+ * Rendered only when `ddi` is a non-empty array. When empty (or absent),
+ * nothing is added to the DOM.
+ *
+ * Framing contract:
+ *   - Always suggestion-only: no «قطع دارو» buttons or automatic actions.
+ *   - contraindicated → role="alert" (مهم‌ترین — can be assertive)
+ *   - major / moderate → role="note" (آرام‌تر، ضدِ alert-fatigue)
+ *   - Items sorted by severity: contraindicated first, moderate last.
+ *   - evidence shown small/muted below the main message.
+ */
+function DdiSection({ ddi }: { ddi?: DdiDTO[] }) {
+  if (!ddi || ddi.length === 0) return null;
+
+  // Sort by severity: contraindicated → major → moderate
+  const sorted = [...ddi].sort(
+    (a, b) => DDI_SEVERITY_ORDER[a.severity] - DDI_SEVERITY_ORDER[b.severity],
+  );
+
+  return (
+    <section
+      className={styles.ddiSection}
+      aria-label="تداخلات دارویی"
+      data-testid="ddi-section"
+    >
+      <h3 className={styles.ddiSectionTitle}>تداخلات دارویی</h3>
+      {sorted.map((item, idx) => {
+        const cls = DDI_SEVERITY_CLASSES[item.severity];
+        // contraindicated uses role="alert"; others role="note" to reduce alert fatigue
+        const role = item.severity === "contraindicated" ? "alert" : "note";
+        const uniqueKey = `${item.class_a}-${item.class_b}-${idx}`;
+
+        return (
+          <div
+            key={uniqueKey}
+            className={`${styles.ddiItem} ${cls.item}`}
+            role={role}
+            aria-label={`تداخل دارویی: ${DDI_SEVERITY_LABEL[item.severity]}`}
+            data-severity={item.severity}
+            data-testid={`ddi-item-${item.severity}`}
+          >
+            <div className={styles.ddiItemHeader}>
+              <span
+                className={`${styles.ddiSeverityBadge} ${cls.badge}`}
+                aria-hidden="true"
+              >
+                {DDI_SEVERITY_LABEL[item.severity]}
+              </span>
+              <span className={styles.ddiSuggestionChip} aria-hidden="true">
+                پیشنهاد
+              </span>
+            </div>
+            <p className={styles.ddiMessage}>{item.message_fa}</p>
+            {item.evidence && (
+              <p className={styles.ddiEvidence} aria-label={`مرجع: ${item.evidence}`}>
+                {item.evidence}
+              </p>
+            )}
+          </div>
+        );
+      })}
+    </section>
+  );
+}
 
 /**
  * DataGapsBanner — informational transparency banner.
@@ -131,6 +237,8 @@ export function SuggestionsPanel({
               پرچم قرمز: هشدار فوری وجود دارد
             </div>
           )}
+
+          <DdiSection ddi={suggestions.ddi} />
 
           <DataGapsBanner gaps={suggestions.data_gaps} />
 
