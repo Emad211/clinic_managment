@@ -1,9 +1,11 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import { SwRegistrar } from "@/components/SwRegistrar";
 
 export const metadata: Metadata = {
   title: "حلقه — پلتفرم مدیریت بیماری‌های مزمن",
   description: "سامانهٔ هوشمند مراقبت از بیماران مزمن — حلقهٔ مراقبت",
+  manifest: "/manifest.json",
 };
 
 export default function RootLayout({
@@ -15,12 +17,15 @@ export default function RootLayout({
     <html lang="fa" dir="rtl">
       <head>
         {/*
-          Google Fonts is avoided (offline-first).
-          Vazirmatn is the recommended Persian font but must be vendored in a
-          future slice. The CSS stack falls back to system fonts for now.
+          Vazirmatn is vendored in public/fonts/ — @font-face in globals.css.
+          No external CDN. manifest.json is declared via metadata above
+          (Next.js injects the <link rel="manifest"> automatically).
         */}
       </head>
-      <body>{children}</body>
+      <body>
+        <SwRegistrar />
+        {children}
+      </body>
     </html>
   );
 }

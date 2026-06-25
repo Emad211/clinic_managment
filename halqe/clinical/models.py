@@ -1376,3 +1376,50 @@ class ActivityLog(models.Model):
             f"ActivityLog(action_type={self.action_type}, "
             f"user_id={self.user_id}, tenant_id={self.tenant_id})"
         )
+
+
+class PatientCardToken(models.Model):
+    """
+    clinical.patient_card_tokens — per-patient public-card access tokens (slice12).
+
+    One opaque token per patient at a time (one-active-at-a-time enforced at service
+    layer: issuing a new token revokes the previous one via UPDATE revoked_at).
+
+    Security contract (ADR-0004 port / security-privacy-advisor review):
+      - national_id is NEVER stored here or emitted by the card endpoint.
+      - The public /card/{token} endpoint uses card_resolve_token() SECURITY DEFINER
+        function to bypass RLS for the lookup, then sets the GUC for tenant-scoped reads.
+      - Staff issue/revoke goes through the normal JWT + GUC path (RLS enforced).
+      - zero-write on the public GET path (only card_resolve_token SELECT + tenant-scoped reads).
+
+    LAN-vs-internet gate (recorded, internet not yet enabled):
+      The current deployment is LAN-only (QR/tablet). Internet exposure requires
+      TLS + distributed rate-limit + shorter TTL + entropy review. SMS-link path
+      is blocked until Kavenegar KYC is complete and an Iranian VPS is provisioned.
+
+    token: secrets.token_urlsafe(32) → 43-char base64url string (~256 bits of entropy).
+    expires_at: TIMESTAMPTZ; service enforces a default TTL (LAN: 8h, configurable).
+    revoked_at: NULL = active; non-NULL = revoked (soft-delete, audit trail preserved).
+    issued_by: username of the staff member who issued the token.
+    """
+
+    tenant_id = models.BigIntegerField(default=1)
+    patient_link_id = models.BigIntegerField()
+    token = models.TextField(unique=True)
+    issued_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+    revoked_at = models.DateTimeField(null=True, blank=True)
+    issued_by = models.TextField(null=True, blank=True)
+
+    class Meta:
+        managed = False
+        app_label = "clinical"
+        db_table = '"clinical"."patient_card_tokens"'
+        ordering = ["-issued_at"]
+
+    def __str__(self):
+        status = "active" if self.revoked_at is None else "revoked"
+        return (
+            f"PatientCardToken(id={self.id}, patient_link_id={self.patient_link_id}, "
+            f"tenant_id={self.tenant_id}, status={status})"
+        )

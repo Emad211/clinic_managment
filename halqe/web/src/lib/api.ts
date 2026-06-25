@@ -902,4 +902,66 @@ export async function getScreeningTimeline(
   );
 }
 
+// ────────────────────────────────────────────────────────────
+// Patient Card (public — no JWT)  — mirrors CardResponse
+// GET /api/v1/card/{token}  (unauthenticated)
+// ────────────────────────────────────────────────────────────
+
+/**
+ * One vital shown on the public patient card.
+ * status ∈ 'ok' | 'warn' | 'danger'.
+ * value is a number (not a string).
+ */
+export interface CardVital {
+  key: string;
+  label: string;
+  value: number;
+  unit: string;
+  status: "ok" | "warn" | "danger";
+}
+
+/**
+ * Response from GET /api/v1/card/{token}.
+ * Contains no national_id, phone, medications, or diagnoses —
+ * the backend guarantees that only these fields are returned.
+ */
+export interface CardResponse {
+  first_name: string | null;
+  clinic_name: string | null;
+  vitals: CardVital[];
+  /** ISO date YYYY-MM-DD, or null when no appointment is scheduled. */
+  next_appointment: string | null;
+  /** Safety framing text, e.g. "پیشنهاد — تأیید با پزشک". */
+  framing: string | null;
+}
+
+/**
+ * Fetch the public patient card by token.
+ *
+ * This is a PUBLIC endpoint — no Authorization header is attached.
+ * An invalid/expired/revoked token returns ApiError with status 404.
+ */
+export async function getCard(token: string): Promise<CardResponse> {
+  const res = await fetch(`${API_BASE}/card/${encodeURIComponent(token)}`, {
+    method: "GET",
+    headers: { "Content-Type": "application/json" },
+    // No Authorization header — deliberately public
+  });
+
+  if (!res.ok) {
+    let detail = res.statusText;
+    let code: string | null = null;
+    try {
+      const body = await res.json();
+      detail = body?.detail ?? detail;
+      code = typeof body?.code === "string" ? body.code : null;
+    } catch {
+      // ignore parse errors
+    }
+    throw new ApiError(res.status, detail, code);
+  }
+
+  return res.json() as Promise<CardResponse>;
+}
+
 export { ApiError };
