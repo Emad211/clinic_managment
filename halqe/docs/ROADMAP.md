@@ -219,7 +219,12 @@
    چیزی جز authٰ بخواند.
 11. **(قدم ۱۹، follow-up) `set_config(..., is_local=false)`** GUC را روی کانکشن نگه می‌دارد؛ با
    PgBouncer در حالتِ transaction-pooling می‌تواند بینِ requestها نشت کند. الان pooler نیست و
-   middleware در ابتدای هر request پاک می‌کند؛ در ابر (T1) قبل از افزودنِ pooler بازبینی شود.
+   middleware در ابتدای هر request پاک می‌کند؛ در ابر (T1) قبل از افزودنِ pooler بازبینی شود. **✅ حل/مستند شد در قدم ۲۳ (ADR-0008 + گاردِ بوت).**
+12. **(قدم ۳۰، follow-up) normalizeِ نوعِ ویتال در بک‌اند:** فرانت (فرمِ ویزیت) حالا `type` را
+   `toLowerCase` و canonical می‌فرستد، ولی endpointِ `POST /encounters/{id}/vitals` در بک‌اند
+   مقدارِ خام را ذخیره می‌کند. مسیرهای دیگرِ نوشتنِ ویتال (به‌ویژه self-reportِ بیمار، قدم ۴۵) باید
+   `type.lower()` را در serializer/سرویس اعمال کنند تا با `clinical_indicators` بخواند (یک‌خطی،
+   کم‌ریسک؛ مراقبِ سوئیتِ بک‌اند).
 
 > آخرین به‌روزرسانی: حلقهٔ چهارم — قدم‌های ۱۹ (RLS) و ۲۰ (onboarding + e2e ایزولاسیون) سبز؛ **خوشهٔ F و کلِ ۲۲ قدم تمام**. حالا فازِ ۴۰ قدمی پایین.
 
@@ -261,7 +266,8 @@
   (۱) **استخراجِ `RuleCard`/`SuggestionsPanel` به `src/components/`** (export‌شده) تا نگهبان روی **کامپوننتِ واقعی** اجرا شود نه mirror؛ (۲) **نشانهٔ per-card** (chipِ «پیشنهاد» + `data-suggestion-only="true"`) چون بنرِ panel-level برای پزشکِ در‌حالِ‌scroll کافی نیست؛ (۳) **فریمینگِ تصمیمِ پزشک** در دکمه‌ها («تأیید»→«پذیرفتم»، «رد»→«رد کردم»، «تأیید شد»→«پذیرفته شد»)؛ (۴) **تستِ نگهبانِ معماری** `suggestions-guard.test.tsx` (۱۷ تست روی کامپوننتِ واقعی): framing همیشه `role="note"` با «تأیید با پزشک»؛ هر کارت `data-suggestion-only`؛ کلیک فقط `apiSuggestionAction` (هیچ اقدامِ خودکار)؛ acted فقط نمایشی؛ redflag→`role="alert"`. **بازبینیِ من:** importهای کامپوننتِ واقعی + assertها تأیید شد؛ وب **۱۹۲ سبز** (۱۷۵+۱۷)، tsc پاک. ✅
 - [x] **۲۹. `/queue`** صفِ پزشک (SWR poll، start→ویزیت). *(frontend-web-engineer)* — **to-build** (صفحه/توابعِ api نبودند؛ endpointهای بک‌اندِ قدم ۱۴ هستند).
   **تحویل:** `api.ts` (typesِ `DoctorQueueEntry`/`DoctorQueueResponse`/`DoctorVisitLog` + `apiGetDoctorQueue(workDate?)`/`apiStartVisit`/`apiMarkVisitDone(id,notes?)` دقیقاً مطابقِ `config/api.py`) + صفحهٔ `src/app/queue/page.tsx` (گاردِ `useAuth`؛ **pollingِ سبکِ `setInterval(30s)` + `clearInterval` در unmount** — SWR نصب نشد؛ `actionInFlight` ضدِ race؛ بخش‌های «در انتظار»/«انجام‌شده»؛ گذرِ waiting→in_progress→done؛ لینک به پروندهٔ enrolled؛ RTL/Jalali، حالت‌های loading/empty/error) + لینکِ `/queue` در `Nav` + `queue.test.tsx` (۳۷ تست). **بازبینیِ مستقلِ من:** امضای api مطابقِ قرارداد + پاک‌سازیِ timer + useAuth تأیید؛ وب **۲۲۹ سبز** (۱۹۲+۳۷)، tsc پاک. ✅
-- [ ] **۳۰. ثبتِ ویزیتِ inline** — create→vitals→complete روی صفحهٔ بیمار + رفرشِ suggestions (یک‌پنجره، بدونِ redirect). *(frontend-web-engineer)*
+- [x] **۳۰. ثبتِ ویزیتِ inline** — create→vitals→complete روی صفحهٔ بیمار + رفرشِ suggestions (یک‌پنجره، بدونِ redirect). *(gp-family-medicine-advisor → frontend-web-engineer)* — `RegisterVisitForm` از قبل کار می‌کرد (create→vitals→complete + رفرش؛ در ۲۶ به useAuth/`err.code` هم‌سو شد). **شکافِ کیفیتِ دادهٔ بالینی** پر شد: نوعِ ویتال **free-text بود** → اگر با کلیدهای canonicalِ `clinical_indicators` نمی‌خواند، رنگِ وضعیت/موتور/پیگیری کار نمی‌کرد.
+  **تحویل:** `src/lib/vital-catalog.ts` (`VITAL_CATALOG` با ۱۴ کلیدِ canonical — **تأییدشده منطبق با `clinical_indicators` seed**: fbs/hba1c/ppg/bp_systolic/bp_diastolic/pulse/ldl/hdl/triglyceride/egfr/uacr/weight/bmi/tsh) + جایگزینیِ ورودیِ free-textِ «نوع» با **`<select>`ِ canonical + گزینهٔ «دیگر»** (مسیرِ فرار) + **واحدِ خودکارِ read-only** هنگامِ انتخابِ canonical + normalizeِ `toLowerCase` روی همهٔ typeهای ارسالی؛ ویتال‌ها همچنان اختیاری. ۲۹ تستِ نو. **بازبینیِ مستقلِ من:** کلیدهای کاتالوگ با `clinical_indicators` منطبق + select/«دیگر»/auto-unit/normalize تأیید؛ وب **۲۵۸ سبز** (۲۲۹+۲۹)، tsc پاک. **follow-up (ریسک #۱۲):** normalizeِ `type` در بک‌اندِ add-vitals (برای مسیرهای دیگر مثلِ self-reportِ قدم ۴۵). ✅
 - [ ] **۳۱. فرمِ نسخهٔ آزاد** — `mode=free`؛ `insurance`→۴۲۲ graceful. *(frontend-web-engineer)*
 - [ ] **۳۲. `/worklist` + `/manager`** — کارتابلِ due + ستونِ درآمدِ **manager-only** (نگهبانِ DOM که staff نمی‌بیند). *(frontend-web-engineer)*
 
@@ -309,4 +315,4 @@
 - **C. ایمنیِ بالینی:** قاعدهٔ خاموشِ بی‌صدا (قدم ۳۵) و self-reportِ unverified که وارد موتور شود (قدم ۴۵) — هر دو با گاردِ صریح بسته شوند.
 - **D. انطباق/بازار:** هر متنِ بازاریابی «هوش/تشخیص» نیازِ بازبینیِ حقوقی؛ قابِ «پیشنهاد — تأیید با پزشک» در همهٔ collateral حفظ شود؛ فقط فیچرِ اثبات‌شده در فروش ادعا شود.
 
-> آخرین به‌روزرسانی: حلقهٔ چهارم — ۴۰ قدم (۲۱–۶۰) قفل؛ **۲۱–۲۹ ✅** (۹ قدم). ⚠️ **`halqe/web/` بیش از فرضِ ROADMAP** — فرمِ ثبتِ ویزیت (قدم ۳۰) از قبل در `/patients/[uuid]` هست (RegisterVisitForm، در قدم ۲۶ به useAuth/code-switch هم‌سو شد)؛ قدم‌های H را اول گراندینگ کن. بعدی: قدم ۳۰ (ثبتِ ویزیتِ inline — موجود؛ ارزیابی + گپ‌فیل). وضعیتِ هر قدم با ✅ علامت می‌خورد.
+> آخرین به‌روزرسانی: حلقهٔ چهارم — ۴۰ قدم (۲۱–۶۰) قفل؛ **۲۱–۳۰ ✅** (۱۰ قدم). ⚠️ `halqe/web/` بیش از فرضِ ROADMAP ساخته شده — هر قدمِ H را اول گراندینگ کن. بعدی: قدم ۳۱ (فرمِ نسخهٔ آزاد `mode=free`، `insurance`→۴۲۲ graceful — احتمالاً to-build؛ endpointِ `POST /encounters/{id}/prescriptions` از قدم ۱۱ هست). وضعیتِ هر قدم با ✅ علامت می‌خورد.

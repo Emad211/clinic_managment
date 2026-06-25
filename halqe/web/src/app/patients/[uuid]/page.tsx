@@ -20,6 +20,7 @@ import {
 } from "@/lib/api";
 import { formatJalali } from "@/lib/jalali";
 import { vitalLevelDisplay, type VitalLevel } from "@/lib/vital-level";
+import { VITAL_CATALOG, VITAL_CATALOG_MAP } from "@/lib/vital-catalog";
 import { useAuth } from "@/hooks/useAuth";
 import Nav from "@/components/Nav";
 import { SuggestionsPanel } from "@/components/SuggestionsPanel";
@@ -65,9 +66,12 @@ function encounterErrorMessage(err: unknown): string {
 
 interface VitalRow {
   id: number;       // local key only
+  /** Canonical key from VITAL_CATALOG, or raw text when isOther=true. */
   type: string;
   value: string;    // string while typing; parsed to number on submit
   unit: string;
+  /** True when the user chose «دیگر» — shows free-text type + free unit. */
+  isOther: boolean;
 }
 
 // ────────────────────────────────────────────────────────────
@@ -86,7 +90,7 @@ function RegisterVisitForm({
   const [encounterType, setEncounterType] = useState<EncounterType>("visit");
   const [chiefComplaint, setChiefComplaint] = useState("");
   const [vitals, setVitals] = useState<VitalRow[]>([
-    { id: 1, type: "", value: "", unit: "" },
+    { id: 1, type: "", value: "", unit: "", isOther: false },
   ]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -96,7 +100,7 @@ function RegisterVisitForm({
   function addVitalRow() {
     setVitals((prev) => [
       ...prev,
-      { id: nextId.current++, type: "", value: "", unit: "" },
+      { id: nextId.current++, type: "", value: "", unit: "", isOther: false },
     ]);
   }
 
@@ -104,10 +108,34 @@ function RegisterVisitForm({
     setVitals((prev) => prev.filter((r) => r.id !== id));
   }
 
-  function updateVitalRow(id: number, field: keyof Omit<VitalRow, "id">, val: string) {
+  function updateVitalRow(id: number, field: keyof Omit<VitalRow, "id" | "isOther">, val: string) {
     setVitals((prev) =>
       prev.map((r) => (r.id === id ? { ...r, [field]: val } : r)),
     );
+  }
+
+  /**
+   * Handle the vital-type <select> change.
+   * - Canonical key selected: auto-fill unit (read-only), isOther=false.
+   * - «دیگر» selected: clear type text, clear unit, isOther=true.
+   */
+  function handleVitalTypeSelect(id: number, selectedKey: string) {
+    if (selectedKey === "__other__") {
+      setVitals((prev) =>
+        prev.map((r) =>
+          r.id === id ? { ...r, type: "", unit: "", isOther: true } : r,
+        ),
+      );
+    } else {
+      const item = VITAL_CATALOG_MAP[selectedKey];
+      setVitals((prev) =>
+        prev.map((r) =>
+          r.id === id
+            ? { ...r, type: selectedKey, unit: item?.unit ?? "", isOther: false }
+            : r,
+        ),
+      );
+    }
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -115,11 +143,11 @@ function RegisterVisitForm({
     setError(null);
     setBusy(true);
 
-    // Filter out blank rows
+    // Filter out blank rows; normalize type to lowercase canonical key.
     const validVitals: VitalIn[] = vitals
       .filter((r) => r.type.trim() !== "" && r.value.trim() !== "")
       .map((r) => ({
-        type: r.type.trim(),
+        type: r.type.trim().toLowerCase(),   // canonical key is always lowercase
         value: parseFloat(r.value),
         unit: r.unit.trim() || null,
         source: "clinic",
@@ -229,45 +257,94 @@ function RegisterVisitForm({
           <span />
         </div>
 
-        {vitals.map((row) => (
-          <div key={row.id} className={styles.vitalInputRow} role="group" aria-label="ردیف اندازه‌گیری">
-            <input
-              className={styles.formInput}
-              type="text"
-              value={row.type}
-              onChange={(e) => updateVitalRow(row.id, "type", e.target.value)}
-              placeholder="مثال: FBS"
-              aria-label="نوع اندازه‌گیری"
-            />
-            <input
-              className={styles.formInput}
-              type="number"
-              value={row.value}
-              onChange={(e) => updateVitalRow(row.id, "value", e.target.value)}
-              placeholder="مقدار"
-              aria-label="مقدار اندازه‌گیری"
-              step="any"
-              min="0"
-            />
-            <input
-              className={styles.formInput}
-              type="text"
-              value={row.unit}
-              onChange={(e) => updateVitalRow(row.id, "unit", e.target.value)}
-              placeholder="واحد"
-              aria-label="واحد اندازه‌گیری"
-            />
-            <button
-              type="button"
-              className={styles.removeRowBtn}
-              onClick={() => removeVitalRow(row.id)}
-              aria-label="حذف این ردیف"
-              disabled={vitals.length === 1}
-            >
-              −
-            </button>
-          </div>
-        ))}
+        {vitals.map((row) => {
+          // Determine the current select value:
+          //  - canonical key when isOther=false and type is non-empty
+          //  - "__other__" when isOther=true
+          //  - "" (placeholder) when nothing yet selected
+          const selectValue = row.isOther
+            ? "__other__"
+            : row.type !== ""
+            ? row.type
+            : "";
+
+          return (
+            <div key={row.id} className={styles.vitalInputRow} role="group" aria-label="ردیف اندازه‌گیری">
+              {/* ── نوع: select از کاتالوگ canonical ─── */}
+              <div className={styles.vitalTypeCell}>
+                <label
+                  htmlFor={`vital-type-${row.id}`}
+                  className={styles.srOnly}
+                >
+                  نوع اندازه‌گیری
+                </label>
+                <select
+                  id={`vital-type-${row.id}`}
+                  className={styles.formSelect}
+                  value={selectValue}
+                  onChange={(e) => handleVitalTypeSelect(row.id, e.target.value)}
+                  aria-label="نوع اندازه‌گیری"
+                >
+                  <option value="" disabled>
+                    — انتخاب کنید —
+                  </option>
+                  {VITAL_CATALOG.map((item) => (
+                    <option key={item.key} value={item.key}>
+                      {item.label}
+                    </option>
+                  ))}
+                  <option value="__other__">دیگر…</option>
+                </select>
+
+                {/* Free-text input shown only when «دیگر» is selected */}
+                {row.isOther && (
+                  <input
+                    className={styles.formInput}
+                    type="text"
+                    value={row.type}
+                    onChange={(e) => updateVitalRow(row.id, "type", e.target.value)}
+                    placeholder="نام اندازه‌گیری"
+                    aria-label="نام اندازه‌گیری (دیگر)"
+                  />
+                )}
+              </div>
+
+              {/* ── مقدار ──────────────────────────── */}
+              <input
+                className={styles.formInput}
+                type="number"
+                value={row.value}
+                onChange={(e) => updateVitalRow(row.id, "value", e.target.value)}
+                placeholder="مقدار"
+                aria-label="مقدار اندازه‌گیری"
+                step="any"
+                min="0"
+              />
+
+              {/* ── واحد: read-only برای canonical، آزاد برای «دیگر» ── */}
+              <input
+                className={styles.formInput}
+                type="text"
+                value={row.unit}
+                onChange={(e) => updateVitalRow(row.id, "unit", e.target.value)}
+                placeholder="واحد"
+                aria-label="واحد اندازه‌گیری"
+                readOnly={!row.isOther && row.type !== ""}
+              />
+
+              {/* ── دکمه حذف ردیف ──────────────────── */}
+              <button
+                type="button"
+                className={styles.removeRowBtn}
+                onClick={() => removeVitalRow(row.id)}
+                aria-label="حذف این ردیف"
+                disabled={vitals.length === 1}
+              >
+                −
+              </button>
+            </div>
+          );
+        })}
 
         <button
           type="button"
