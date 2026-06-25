@@ -12,6 +12,17 @@ Pattern mirrors specialist_clinic/src/config/settings.py:
 
 Only production=True activates the guards; dev/CI/test runs (PRODUCTION unset)
 keep exactly the old permissive defaults so no existing test breaks.
+
+GUC / pooling guard (ADR-0008):
+  resolve_conn_max_age() — enforces the session-level GUC contract.
+  CONN_MAX_AGE must remain 0 (one fresh connection per request) until
+  the operator explicitly acknowledges session-mode-only pooling via
+  TENANT_GUC_POOLING_ACK=session-mode-only.
+
+  If PRODUCTION=1 and CONN_MAX_AGE > 0 without the ACK env var,
+  the server refuses to start with ImproperlyConfigured pointing to ADR-0008.
+  This turns a silent foot-gun (persistent connection carrying a stale GUC
+  into the next request) into a deliberate, documented decision.
 """
 from django.core.exceptions import ImproperlyConfigured
 
@@ -123,3 +134,86 @@ def resolve_cors_origins(environ: dict, production: bool) -> list:
     if not raw:
         return []
     return [o.strip() for o in raw.split(",") if o.strip()]
+
+
+# ---------------------------------------------------------------------------
+# GUC / pooling invariant (ADR-0008)
+# ---------------------------------------------------------------------------
+
+#: The acknowledgement token an operator must set to allow CONN_MAX_AGE > 0.
+#: Must equal exactly this string (case-sensitive) to be accepted.
+TENANT_GUC_POOLING_ACK_VALUE = "session-mode-only"
+
+
+def resolve_conn_max_age(environ: dict, production: bool) -> int:
+    """
+    Return the CONN_MAX_AGE value for Django DATABASES.
+
+    Invariant (ADR-0008):
+      halqe uses session-scoped GUC set_config('app.current_tenant', id, false)
+      for RLS.  With CONN_MAX_AGE=0 (Django default) each request gets a brand-
+      new connection; the GUC dies when the connection closes, so no cross-request
+      leak is possible.
+
+      With CONN_MAX_AGE > 0 (persistent / pooled connection), the GUC survives
+      across requests on the same thread.  TenantGucMiddleware clears it at
+      request start, but:
+        - transaction-mode poolers (PgBouncer transaction mode) reset the
+          connection mid-flight, so clear() in middleware has no effect.
+        - Even session-mode poolers require careful validation.
+
+      Therefore:
+        Dev / CI (PRODUCTION unset): always 0.  Tests run clean.
+        Production + CONN_MAX_AGE=0 (default): always allowed.
+        Production + CONN_MAX_AGE > 0 + ACK present: allowed (operator
+          has acknowledged the session-mode-only contract from ADR-0008).
+        Production + CONN_MAX_AGE > 0 + NO ACK: fail-fast with a message
+          that points to ADR-0008 and the required acknowledgement.
+
+    Usage in settings.py:
+        CONN_MAX_AGE = resolve_conn_max_age(os.environ, _production)
+        # Then set it on both DATABASES entries via the helper below.
+
+    Changing this value requires reading ADR-0008 and understanding the
+    transaction-pooler constraint.
+    """
+    if not production:
+        # Dev/CI: always fresh connection — no risk, no config.
+        return 0
+
+    raw = environ.get("CONN_MAX_AGE", "0").strip()
+    try:
+        value = int(raw)
+    except ValueError:
+        raise ImproperlyConfigured(
+            f"CONN_MAX_AGE must be an integer, got '{raw}'."
+        )
+
+    if value == 0:
+        # The invariant: zero is always safe, no ACK required.
+        return 0
+
+    # value > 0: persistent connection requested — require explicit ACK.
+    ack = environ.get("TENANT_GUC_POOLING_ACK", "").strip()
+    if ack != TENANT_GUC_POOLING_ACK_VALUE:
+        raise ImproperlyConfigured(
+            f"PRODUCTION is enabled and CONN_MAX_AGE={value} (persistent "
+            f"connection), but TENANT_GUC_POOLING_ACK is not set to "
+            f"'{TENANT_GUC_POOLING_ACK_VALUE}'. "
+            f"halqe uses session-scoped GUC set_config('app.current_tenant', "
+            f"id, false) for RLS tenant isolation. With a persistent connection "
+            f"(CONN_MAX_AGE > 0), a stale tenant GUC can leak into the next "
+            f"request on the same thread if the middleware clear() is bypassed "
+            f"(e.g. transaction-mode pooler). "
+            f"Before enabling persistent connections you MUST: "
+            f"(1) confirm the pooler operates in SESSION mode (not transaction "
+            f"mode) — see ADR-0008 (specialist_clinic/docs/adr/0008-...); "
+            f"(2) set TENANT_GUC_POOLING_ACK=session-mode-only in the "
+            f"environment to acknowledge this contract. "
+            f"If you need transaction-mode pooling (PgBouncer transaction mode "
+            f"or Supavisor), you must first migrate to SET LOCAL + "
+            f"ATOMIC_REQUESTS=True — see ADR-0008 §seam for the migration path."
+        )
+
+    # ACK is present and valid: operator has acknowledged session-mode-only.
+    return value

@@ -45,7 +45,7 @@ from pathlib import Path
 # env.py must be imported AFTER Django internals are importable. It is imported
 # here at module load time because settings.py is only loaded once per process.
 from config.env import is_production, resolve_secret_key, resolve_debug, \
-    resolve_allowed_hosts, resolve_cors_origins
+    resolve_allowed_hosts, resolve_cors_origins, resolve_conn_max_age
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -91,6 +91,19 @@ MIDDLEWARE = [
 CORS_ALLOWED_ORIGINS = resolve_cors_origins(_env, _production)
 CORS_ALLOW_CREDENTIALS = False
 
+# ---------------------------------------------------------------------------
+# GUC / pooling invariant (ADR-0008)
+# ---------------------------------------------------------------------------
+# CONN_MAX_AGE must stay 0: each request opens a fresh connection, the GUC
+# (app.current_tenant) dies with it, and no cross-request tenant leak is
+# possible.  Changing this requires an explicit ACK (TENANT_GUC_POOLING_ACK
+# =session-mode-only) and understanding the session-mode-only contract.
+# See specialist_clinic/docs/adr/0008-tenant-guc-lifecycle-and-pooling.md
+# ---------------------------------------------------------------------------
+_CONN_MAX_AGE = resolve_conn_max_age(_env, _production)
+# Expose as a module-level constant so tests can assert on it.
+CONN_MAX_AGE = _CONN_MAX_AGE
+
 ROOT_URLCONF = "config.urls"
 
 TEMPLATES = []
@@ -134,6 +147,10 @@ DATABASES = {
         "PASSWORD": _PG_APP_PASSWORD,
         "HOST": _PG_HOST,
         "PORT": _PG_PORT,
+        # CONN_MAX_AGE invariant (ADR-0008):
+        # 0 → each request opens a fresh connection; GUC dies with it.
+        # Changing requires resolve_conn_max_age() ACK + reading ADR-0008.
+        "CONN_MAX_AGE": _CONN_MAX_AGE,
         "OPTIONS": {
             # platform_app: می‌نویسد روی platform+clinical، فقط می‌خواند از accounting
             "options": "-c search_path=clinical,platform,accounting,public",
@@ -149,6 +166,8 @@ DATABASES = {
         "PASSWORD": _PG_APP_PASSWORD,
         "HOST": _PG_HOST,
         "PORT": _PG_PORT,
+        # Same CONN_MAX_AGE invariant — accounting_read is also session-GUC-scoped.
+        "CONN_MAX_AGE": _CONN_MAX_AGE,
         "OPTIONS": {
             "options": "-c search_path=accounting,platform,public",
         },

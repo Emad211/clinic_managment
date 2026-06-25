@@ -22,17 +22,29 @@ Coverage:
   15. resolve_cors_origins dev                → localhost origins
   16. resolve_cors_origins production + env   → parsed origins
   17. resolve_cors_origins production no env  → [] (empty, not localhost)
+
+  GUC / pooling guard (ADR-0008) — resolve_conn_max_age():
+  18. Dev → always 0 regardless of CONN_MAX_AGE env         → 0
+  19. Production + CONN_MAX_AGE=0                           → 0  (safe, no ACK needed)
+  20. Production + CONN_MAX_AGE absent                      → 0  (default safe)
+  21. Production + CONN_MAX_AGE>0, no ACK                   → ImproperlyConfigured
+  22. Production + CONN_MAX_AGE>0, wrong ACK                → ImproperlyConfigured
+  23. Production + CONN_MAX_AGE>0, correct ACK              → value returned
+  24. Production + CONN_MAX_AGE invalid (non-int)           → ImproperlyConfigured
+  25. CONN_MAX_AGE=0 in live settings                       → structural invariant
 """
 import pytest
 from django.core.exceptions import ImproperlyConfigured
 
 from config.env import (
     DEV_SECRET_KEY,
+    TENANT_GUC_POOLING_ACK_VALUE,
     is_production,
     resolve_secret_key,
     resolve_debug,
     resolve_allowed_hosts,
     resolve_cors_origins,
+    resolve_conn_max_age,
 )
 
 # ---------------------------------------------------------------------------
@@ -215,3 +227,143 @@ class TestResolveCorsOrigins:
         assert result == []
         # Critical: localhost origins must NOT leak into production
         assert "http://localhost:3000" not in result
+
+
+# ---------------------------------------------------------------------------
+# 18–25: resolve_conn_max_age  (ADR-0008 GUC / pooling guard)
+# ---------------------------------------------------------------------------
+
+class TestResolveConnMaxAge:
+
+    def _prod_env_base(self, **kwargs) -> dict:
+        """Minimal valid production env — extend as needed."""
+        base = {
+            "PRODUCTION": "1",
+            "SECRET_KEY": "super-secret-prod-key-32chars-long!!",
+            "ALLOWED_HOSTS": "api.halqe.ir",
+        }
+        base.update(kwargs)
+        return base
+
+    # 18 — dev always 0
+    def test_dev_always_returns_zero(self):
+        """Dev: CONN_MAX_AGE is always 0 regardless of env var."""
+        assert resolve_conn_max_age({"CONN_MAX_AGE": "60"}, production=False) == 0
+        assert resolve_conn_max_age({"CONN_MAX_AGE": "300"}, production=False) == 0
+        assert resolve_conn_max_age({}, production=False) == 0
+
+    # 19 — production + CONN_MAX_AGE=0 → safe, no ACK
+    def test_production_zero_is_always_allowed(self):
+        """Production + CONN_MAX_AGE=0 → 0, no ACK required."""
+        result = resolve_conn_max_age({"CONN_MAX_AGE": "0"}, production=True)
+        assert result == 0
+
+    # 20 — production + absent CONN_MAX_AGE → default 0
+    def test_production_absent_defaults_to_zero(self):
+        """Production + CONN_MAX_AGE absent → 0 (safe default)."""
+        result = resolve_conn_max_age({}, production=True)
+        assert result == 0
+
+    # 21 — production + CONN_MAX_AGE>0, no ACK → fail-fast
+    def test_production_persistent_without_ack_raises(self):
+        """Production + CONN_MAX_AGE>0 + no ACK → ImproperlyConfigured."""
+        with pytest.raises(ImproperlyConfigured, match="TENANT_GUC_POOLING_ACK"):
+            resolve_conn_max_age({"CONN_MAX_AGE": "60"}, production=True)
+
+    def test_production_persistent_without_ack_message_mentions_adr(self):
+        """Error message must reference ADR-0008 and session-mode-only."""
+        with pytest.raises(ImproperlyConfigured, match="ADR-0008"):
+            resolve_conn_max_age({"CONN_MAX_AGE": "300"}, production=True)
+
+    def test_production_persistent_without_ack_message_mentions_session_mode(self):
+        """Error message must mention session mode to guide the operator."""
+        with pytest.raises(ImproperlyConfigured, match="session.mode"):
+            resolve_conn_max_age({"CONN_MAX_AGE": "60"}, production=True)
+
+    # 22 — production + CONN_MAX_AGE>0, wrong ACK → fail-fast
+    def test_production_persistent_wrong_ack_raises(self):
+        """Production + CONN_MAX_AGE>0 + wrong ACK value → ImproperlyConfigured."""
+        with pytest.raises(ImproperlyConfigured, match="TENANT_GUC_POOLING_ACK"):
+            resolve_conn_max_age(
+                {
+                    "CONN_MAX_AGE": "60",
+                    "TENANT_GUC_POOLING_ACK": "yes-i-know",
+                },
+                production=True,
+            )
+
+    def test_production_persistent_empty_ack_raises(self):
+        """Production + CONN_MAX_AGE>0 + empty ACK string → ImproperlyConfigured."""
+        with pytest.raises(ImproperlyConfigured):
+            resolve_conn_max_age(
+                {"CONN_MAX_AGE": "60", "TENANT_GUC_POOLING_ACK": ""},
+                production=True,
+            )
+
+    # 23 — production + CONN_MAX_AGE>0, correct ACK → value returned
+    def test_production_persistent_with_correct_ack_accepted(self):
+        """Production + CONN_MAX_AGE>0 + correct ACK → value returned (no raise)."""
+        result = resolve_conn_max_age(
+            {
+                "CONN_MAX_AGE": "60",
+                "TENANT_GUC_POOLING_ACK": TENANT_GUC_POOLING_ACK_VALUE,
+            },
+            production=True,
+        )
+        assert result == 60
+
+    def test_production_persistent_with_correct_ack_large_value(self):
+        """ACK allows any positive CONN_MAX_AGE value."""
+        result = resolve_conn_max_age(
+            {
+                "CONN_MAX_AGE": "3600",
+                "TENANT_GUC_POOLING_ACK": TENANT_GUC_POOLING_ACK_VALUE,
+            },
+            production=True,
+        )
+        assert result == 3600
+
+    # 24 — production + CONN_MAX_AGE non-int → fail-fast
+    def test_production_non_integer_conn_max_age_raises(self):
+        """Production + CONN_MAX_AGE='abc' → ImproperlyConfigured."""
+        with pytest.raises(ImproperlyConfigured, match="integer"):
+            resolve_conn_max_age({"CONN_MAX_AGE": "abc"}, production=True)
+
+    def test_production_float_conn_max_age_raises(self):
+        """Production + CONN_MAX_AGE='1.5' → ImproperlyConfigured (not int)."""
+        with pytest.raises(ImproperlyConfigured, match="integer"):
+            resolve_conn_max_age({"CONN_MAX_AGE": "1.5"}, production=True)
+
+    # 25 — structural invariant: live settings have CONN_MAX_AGE=0
+    def test_live_settings_conn_max_age_is_zero(self):
+        """
+        Structural guard: the live Django settings must have CONN_MAX_AGE=0
+        on both DB connections.
+
+        This ensures the test environment itself (and any staging deploy that
+        runs this suite) conforms to the ADR-0008 invariant.  If a CI
+        environment accidentally sets CONN_MAX_AGE>0, this catches it.
+        """
+        from django.conf import settings
+
+        default_cma = settings.DATABASES["default"].get("CONN_MAX_AGE", 0)
+        assert default_cma == 0, (
+            f"DATABASES['default']['CONN_MAX_AGE'] must be 0, got {default_cma}. "
+            f"See ADR-0008."
+        )
+        ar_cma = settings.DATABASES["accounting_read"].get("CONN_MAX_AGE", 0)
+        assert ar_cma == 0, (
+            f"DATABASES['accounting_read']['CONN_MAX_AGE'] must be 0, "
+            f"got {ar_cma}. See ADR-0008."
+        )
+
+    def test_ack_constant_value_is_session_mode_only(self):
+        """
+        The ACK string must be exactly 'session-mode-only'.
+        Changing it would invalidate any existing operator documentation
+        and ADR-0008 references.
+        """
+        assert TENANT_GUC_POOLING_ACK_VALUE == "session-mode-only", (
+            "TENANT_GUC_POOLING_ACK_VALUE changed — update ADR-0008 and "
+            "all operator documentation if this is intentional."
+        )
