@@ -6,7 +6,6 @@ import Link from "next/link";
 import {
   apiGetRecord,
   apiGetSuggestions,
-  apiSuggestionAction,
   apiCreateEncounter,
   apiAddVitals,
   apiCompleteEncounter,
@@ -14,32 +13,17 @@ import {
   errorMessageFromCode,
   type ClinicalRecordDTO,
   type SuggestionsResponseDTO,
-  type SuggestionRuleDTO,
   type EncounterOut,
   type EncounterType,
   type VitalIn,
   ApiError,
 } from "@/lib/api";
 import { formatJalali } from "@/lib/jalali";
-import {
-  buildInitialActed,
-  type ActedState,
-  type ActedMap,
-} from "@/lib/suggestion-utils";
 import { vitalLevelDisplay, type VitalLevel } from "@/lib/vital-level";
 import { useAuth } from "@/hooks/useAuth";
 import Nav from "@/components/Nav";
+import { SuggestionsPanel } from "@/components/SuggestionsPanel";
 import styles from "./record.module.css";
-
-// ────────────────────────────────────────────────────────────
-// Severity helpers
-// ────────────────────────────────────────────────────────────
-
-const SEVERITY_LABEL: Record<string, string> = {
-  urgent: "هشدار",
-  warn: "احتیاط",
-  info: "توجه",
-};
 
 // ────────────────────────────────────────────────────────────
 // Encounter helpers
@@ -416,197 +400,9 @@ function EncountersList({
   );
 }
 
-// ────────────────────────────────────────────────────────────
-// Sub-component: single rule card
-// ────────────────────────────────────────────────────────────
-
-function RuleCard({
-  rule,
-  uuid,
-  acted,
-  onAct,
-}: {
-  rule: SuggestionRuleDTO;
-  uuid: string;
-  acted: ActedState | undefined;
-  onAct: (ruleCode: string, action: "accept" | "dismiss") => void;
-}) {
-  const [busy, setBusy] = useState(false);
-
-  async function handleAction(action: "accept" | "dismiss") {
-    if (busy || acted) return;
-    setBusy(true);
-    try {
-      await apiSuggestionAction(uuid, rule.rule_code, action);
-      onAct(rule.rule_code, action);
-    } catch {
-      // silent fail — the button re-enables so user can retry
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <article
-      className={styles.ruleCard}
-      data-severity={rule.severity}
-      aria-label={rule.title}
-    >
-      <div className={styles.ruleHeader}>
-        <h4 className={styles.ruleTitle}>{rule.title}</h4>
-        <span
-          className={styles.severityBadge}
-          data-severity={rule.severity}
-          aria-label={`شدت: ${SEVERITY_LABEL[rule.severity] ?? rule.severity}`}
-        >
-          {SEVERITY_LABEL[rule.severity] ?? rule.severity}
-        </span>
-      </div>
-
-      {rule.recommendation && (
-        <p className={styles.ruleRec}>{rule.recommendation}</p>
-      )}
-
-      <div className={styles.ruleActions} role="group" aria-label="اقدام روی پیشنهاد">
-        {acted === "accepted" ? (
-          <span className={`${styles.actedState} ${styles.actedAccepted}`} role="status">
-            تأیید شد
-          </span>
-        ) : acted === "dismissed" ? (
-          <span className={`${styles.actedState} ${styles.actedDismissed}`} role="status">
-            رد شد
-          </span>
-        ) : (
-          <>
-            <button
-              className={styles.acceptBtn}
-              onClick={() => handleAction("accept")}
-              disabled={busy}
-              aria-label={`تأیید پیشنهاد: ${rule.title}`}
-            >
-              {busy ? "…" : "تأیید"}
-            </button>
-            <button
-              className={styles.dismissBtn}
-              onClick={() => handleAction("dismiss")}
-              disabled={busy}
-              aria-label={`رد پیشنهاد: ${rule.title}`}
-            >
-              {busy ? "…" : "رد"}
-            </button>
-          </>
-        )}
-      </div>
-    </article>
-  );
-}
-
-// ────────────────────────────────────────────────────────────
-// Sub-component: suggestions panel
-// ────────────────────────────────────────────────────────────
-
-function SuggestionsPanel({
-  uuid,
-  suggestions,
-  suggestionsLoading,
-  suggestionsError,
-}: {
-  uuid: string;
-  suggestions: SuggestionsResponseDTO | null;
-  suggestionsLoading: boolean;
-  suggestionsError: string | null;
-}) {
-  // Per-rule acted state: seeded from server prior_action on load,
-  // then updated optimistically after user acts (no full-page reload).
-  const [acted, setActed] = useState<ActedMap>({});
-
-  // Track which suggestions object we last seeded from, so we only
-  // rebuild the initial map when a genuinely new suggestions payload
-  // arrives (not on every render).
-  const seededForRef = useRef<SuggestionsResponseDTO | null>(null);
-
-  useEffect(() => {
-    if (suggestions && suggestions !== seededForRef.current) {
-      seededForRef.current = suggestions;
-      setActed((prev) => {
-        // Merge server prior_action into local state, but don't overwrite
-        // any action the physician has already taken in this session.
-        const fromServer = buildInitialActed(suggestions);
-        return { ...fromServer, ...prev };
-      });
-    }
-  }, [suggestions]);
-
-  function handleAct(ruleCode: string, action: "accept" | "dismiss") {
-    setActed((prev) => ({
-      ...prev,
-      [ruleCode]: action === "accept" ? "accepted" : "dismissed",
-    }));
-  }
-
-  return (
-    <aside className={`${styles.card} ${styles.suggestionsPanel}`} aria-label="پیشنهادات بالینی">
-      <h2 className={styles.suggestionsPanelTitle}>پیشنهادات بالینی</h2>
-
-      {suggestionsLoading && (
-        <div className={styles.suggestionsLoading} role="status" aria-live="polite">
-          <span className={styles.spinner} aria-hidden="true" />
-          در حال بارگذاری پیشنهادات…
-        </div>
-      )}
-
-      {!suggestionsLoading && suggestionsError && (
-        <p className={styles.ruleRec} role="alert" style={{ color: "var(--color-danger)" }}>
-          {suggestionsError}
-        </p>
-      )}
-
-      {!suggestionsLoading && !suggestionsError && suggestions && (
-        <>
-          {/* Framing banner — always visible, carries the "تأیید با پزشک" obligation */}
-          <div className={styles.framingBanner} role="note" aria-label="این صفحه فقط پیشنهاد است">
-            <span className={styles.framingIcon} aria-hidden="true">!</span>
-            {suggestions.framing}
-          </div>
-
-          {suggestions.has_redflag && (
-            <div className={styles.redflagStrip} role="alert">
-              <span aria-hidden="true">!</span>
-              پرچم قرمز: هشدار فوری وجود دارد
-            </div>
-          )}
-
-          <p className={styles.suggestionsCount}>
-            {suggestions.count} پیشنهاد فعال
-          </p>
-
-          {suggestions.sections.length === 0 && (
-            <p className={styles.emptyNote}>هیچ پیشنهادی یافت نشد.</p>
-          )}
-
-          {suggestions.sections.map((sec) => (
-            <section key={sec.key} className={styles.suggestionSection} aria-label={sec.label}>
-              <h3 className={styles.suggestionSectionLabel}>{sec.label}</h3>
-              {sec.rules.map((rule) => (
-                <RuleCard
-                  key={rule.rule_code}
-                  rule={rule}
-                  uuid={uuid}
-                  acted={acted[rule.rule_code]}
-                  onAct={handleAct}
-                />
-              ))}
-            </section>
-          ))}
-        </>
-      )}
-
-      {!suggestionsLoading && !suggestionsError && !suggestions && (
-        <p className={styles.emptyNote}>داده‌ای موجود نیست.</p>
-      )}
-    </aside>
-  );
-}
+// RuleCard and SuggestionsPanel are imported from @/components/
+// (extracted for testability and reuse — see src/components/RuleCard.tsx,
+// src/components/SuggestionsPanel.tsx)
 
 // ────────────────────────────────────────────────────────────
 // Main page

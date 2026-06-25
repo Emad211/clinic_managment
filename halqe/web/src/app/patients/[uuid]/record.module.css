@@ -565,6 +565,20 @@
   cursor: not-allowed;
 }
 
+/* Suggestion-only chip — per-card marker */
+.suggestionOnlyChip {
+  display: inline-block;
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: #7b5800;
+  background: #fff8e1;
+  border: 1px solid #ffe082;
+  border-radius: 999px;
+  padding: 0.05rem 0.45rem;
+  letter-spacing: 0.02em;
+  margin-bottom: var(--space-1);
+}
+
 /* Acted state indicator */
 .actedState {
   font-size: 0.8125rem;
