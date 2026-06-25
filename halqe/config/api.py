@@ -3493,17 +3493,55 @@ class ReportTokenOut(Schema):
     report_url: str
 
 
+class SelfReportReadingIn(Schema):
+    """یک اندازه‌گیری در batch."""
+    type: str
+    value: float
+
+    class Config:
+        extra = "forbid"   # کلیدِ اضافی reject می‌شود
+
+
 class SelfReportIn(Schema):
-    """بدنهٔ درخواستِ self-report بیمار."""
-    type: str    # fbs | bp_systolic | bp_diastolic
+    """
+    بدنهٔ درخواستِ self-report بیمار.
+
+    دو حالتِ پشتیبانی‌شده:
+    ۱) تکی (سازگار با قبل): {type, value}
+    ۲) batch: {readings: [{type, value}, ...]} — یک تا N خواندن.
+    اگر readings موجود باشد، حالتِ batch اعمال می‌شود (type/value نادیده).
+    """
+    # حالتِ تکی (سازگار با قبل)
+    type: Optional[str] = None
+    value: Optional[float] = None
+    # حالتِ batch
+    readings: Optional[list[SelfReportReadingIn]] = None
+
+    class Config:
+        extra = "forbid"   # کلیدِ اضافی reject می‌شود
+
+
+class SelfReportReadingOut(Schema):
+    """یک اندازه‌گیری در پاسخِ batch."""
+    type: str
     value: float
 
 
 class SelfReportOut(Schema):
-    """پاسخِ موفقِ self-report."""
+    """
+    پاسخِ موفقِ self-report.
+
+    در حالتِ تکی: type/value حاضرند و accepted=[{type, value}].
+    در حالتِ batch: accepted لیستِ همهٔ اندازه‌گیری‌های ثبت‌شده، count=تعداد.
+    سازگار با هر دو حالت.
+    """
     status: str = "ok"
-    type: str
-    value: float
+    # حالتِ تکی (backward-compat)
+    type: Optional[str] = None
+    value: Optional[float] = None
+    # batch (همیشه حاضر — در حالتِ تکی یک آیتم دارد)
+    accepted: list[SelfReportReadingOut] = []
+    count: int = 1
     message: str = "داده دریافت شد — پزشک آن را بررسی خواهد کرد"
 
 
@@ -3591,100 +3629,136 @@ def submit_patient_report(request, token: str, body: SelfReportIn):
       ۳) type در whitelist محدود (fbs | bp_systolic | bp_diastolic).
       ۴) value در بازهٔ فیزیولوژیک — خارج از بازه → ۴۲۲.
       ۵) هیچ PHI در URL / بدنهٔ پاسخ.
-      ۶) یک‌بارمصرف: بعد از استفادهٔ موفق → ۴۰۹ برای درخواست‌های بعدی.
+      ۶) یک‌بارمصرف: بعد از استفادهٔ موفق → ۴۰۴ برای درخواست‌های بعدی.
       ۷) داده با verified=FALSE, source='patient_self' ذخیره می‌شود.
       ۸) rate-limit: یک درخواست per token per minute.
 
+    دو حالتِ بدنه:
+      تکی (سازگار با قبل): {type, value}
+      batch: {readings: [{type, value}, ...]} — یک تا N اندازه‌گیری.
+
+    منطقِ batch:
+      - all-or-nothing: اگر هر reading نامعتبر باشد → ۴۲۲، هیچ insert و هیچ mark-used.
+      - batch خالی → ۴۲۲.
+      - همه reading معتبر: همه insert شوند → توکن یک‌بار mark used شود.
+
     جریانِ کامل:
-      ۱) rate-limit check
-      ۲) report_resolve_token(token) → None → 404 (used) یا 404 (not found/expired)
-         [توکنِ منقضی و توکنِ used هر دو از تابع صفر ردیف می‌گیرند؛
-          تفکیک: پس از resolve، اگر None بود، state توکن را چک می‌کنیم]
-      ۳) validate type + value
-      ۴) set_tenant_guc(tenant_id)
-      ۵) INSERT into vital_readings (verified=FALSE, source='patient_self')
-      ۶) mark_used(token, tenant_id)  — یک‌بارمصرف
-      ۷) return 200
+      ۱) resolve token (SECURITY DEFINER — no GUC)
+      ۲) normalize به لیستِ readings
+      ۳) validate همهٔ readings (all-or-nothing قبل از insert)
+      ۴) rate-limit check
+      ۵) set_tenant_guc(tenant_id)
+      ۶) INSERT همه readings (verified=FALSE, source='patient_self')
+      ۷) mark_used یک‌بار
+      ۸) return 200
 
     Physician verify (step 47, deferred):
       verified=FALSE ردیف تا زمانِ تأییدِ پزشک نامرئی است.
     """
     # 1) Resolve token (SECURITY DEFINER — no GUC needed)
-    # NOTE: rate-limit is applied AFTER resolve so that:
-    #   (a) validation failures (422) do NOT consume the rate-limit slot,
-    #       allowing the caller to retry with a corrected value.
-    #   (b) expired/used tokens return 404 immediately without rate-limit overhead.
-    # Rate-limit is applied to the token only on a successful resolve (step below).
+    # Rate-limit is applied AFTER resolve so that:
+    #   (a) expired/used/unknown tokens return 404 without consuming rate-limit.
+    #   (b) validation failures (422) return 422 without consuming rate-limit,
+    #       so the user can retry with a corrected value (توکن مصرف نمی‌شود).
     resolved = _report_resolve(token)
 
     if resolved is None:
-        # توکن یا ناشناخته است یا منقضی شده یا قبلاً استفاده شده.
-        # برای تفکیکِ used vs. expired vs. not_found، جدول را بررسی می‌کنیم.
-        # این lookup بدونِ GUC — جدولِ توکن RLS دارد (FORCE) → صفر ردیف.
-        # پس باید از SECURITY DEFINER تابع بخوانیم یا raw superuser نداریم.
-        # ساده‌ترین راهِ ایمن: به دلایل امنیتی جزئیات افشا نمی‌کنیم.
-        # Generic 404 — مطابقِ توصیهٔ security-privacy-advisor:
-        # endpoint نباید بداند توکن exist می‌کرد یا نه.
-        # (اگر بخواهیم ۴۰۹/۴۱۰ جداگانه بدهیم، به lookup اضافی نیاز داریم —
-        # این را با یک helper function بدونِ RLS bypass انجام می‌دهیم)
         return _report_distinguish_error(token)
 
     patient_link_id = resolved["patient_link_id"]
     tenant_id = resolved["tenant_id"]
 
-    # 3) Validate type
-    vtype = body.type
-    if vtype not in _REPORT_ALLOWED_TYPES:
-        allowed = ", ".join(_REPORT_ALLOWED_TYPES.keys())
+    # 2) Normalize body به لیستِ (type, value) — سازگار با حالتِ تکی و batch
+    if body.readings is not None:
+        # حالتِ batch
+        raw_readings = [(r.type, r.value) for r in body.readings]
+    elif body.type is not None and body.value is not None:
+        # حالتِ تکی (سازگار با قبل)
+        raw_readings = [(body.type, body.value)]
+    else:
         return 422, error_response(
-            f"نوعِ '{vtype}' مجاز نیست. مقادیرِ مجاز: {allowed}",
+            "باید 'readings' (batch) یا 'type'+'value' (تکی) ارسال شود",
             "validation_error",
         )
 
-    # 4) Validate value range
-    lo, hi = _REPORT_ALLOWED_TYPES[vtype]
-    if not (lo <= body.value <= hi):
+    # 3) batch خالی → ۴۲۲ (قبل از insert، توکن مصرف نمی‌شود)
+    if len(raw_readings) == 0:
         return 422, error_response(
-            f"مقدارِ {body.value} برای '{vtype}' خارج از بازهٔ مجاز ({lo}–{hi}) است",
+            "readings نمی‌تواند خالی باشد (حداقل یک اندازه‌گیری لازم است)",
             "validation_error",
         )
 
-    # 5) Rate-limit — applied here (after token resolve + validation) so that:
-    #    (a) expired/used/unknown tokens return 404 without consuming rate-limit.
-    #    (b) validation failures (type/range) return 422 without consuming rate-limit,
-    #        so the user can retry with a corrected value.
-    #    Only valid, resolved requests consume a rate-limit slot.
+    # 4) Validate همهٔ readings — all-or-nothing: اگر هر کدام نامعتبر باشد →
+    #    ۴۲۲ بدونِ هیچ insert و بدونِ mark-used (توکن هنوز قابلِ استفاده است).
+    _MAX_READINGS = 10
+    if len(raw_readings) > _MAX_READINGS:
+        return 422, error_response(
+            f"حداکثر {_MAX_READINGS} اندازه‌گیری در یک ارسال مجاز است",
+            "validation_error",
+        )
+
+    validated: list[tuple[str, float]] = []
+    for vtype, vvalue in raw_readings:
+        if vtype not in _REPORT_ALLOWED_TYPES:
+            allowed = ", ".join(_REPORT_ALLOWED_TYPES.keys())
+            return 422, error_response(
+                f"نوعِ '{vtype}' مجاز نیست. مقادیرِ مجاز: {allowed}",
+                "validation_error",
+            )
+        lo, hi = _REPORT_ALLOWED_TYPES[vtype]
+        if not (lo <= vvalue <= hi):
+            return 422, error_response(
+                f"مقدارِ {vvalue} برای '{vtype}' خارج از بازهٔ مجاز ({lo}–{hi}) است",
+                "validation_error",
+            )
+        validated.append((vtype, vvalue))
+
+    # 5) Rate-limit — applied after validation (422s don't consume rate-limit slot)
     if not _check_rate_limit(token):
         return 429, error_response("تعداد درخواست‌ها بیش از حد مجاز است", "rate_limit")
 
-    # Set GUC → RLS enforced for all subsequent queries in this connection
+    # 6) Set GUC → RLS enforced for all subsequent queries in this connection
     _set_tenant_guc(tenant_id)
 
-    # INSERT vital_reading with verified=FALSE, source='patient_self'
-    from django.db import connection as _conn
+    # 7) INSERT همهٔ readings با verified=FALSE, source='patient_self'
+    #    all-or-nothing: اگر هر insert خطا دهد، هیچ mark-used نمی‌شود.
+    #    (validated کامل شد، پس error در insert غیرمنتظره است — DB constraint/network)
+    from django.db import connection as _conn, transaction as _txn
     from django.utils import timezone as _tz
     now_ts = _tz.now()
 
+    # 7+8) INSERT all readings AND mark the token used inside ONE transaction.
+    # ATOMIC_REQUESTS is not set (autocommit on, ADR-0008 session-GUC model), so a
+    # mid-batch DB error would otherwise partial-commit; wrapping in atomic() gives
+    # true all-or-nothing — either every reading is stored and the token consumed,
+    # or nothing is and the token stays usable. The session GUC set at step 6
+    # (set_config is_local=false) persists inside this block, so RLS still applies;
+    # a rollback does NOT reset it (only SET LOCAL would).
     try:
-        with _conn.cursor() as cursor:
-            cursor.execute(
-                """
-                INSERT INTO clinical.vital_readings
-                    (tenant_id, patient_link_id, type, value, unit,
-                     measured_at, source, verified, recorded_by)
-                VALUES (%s, %s, %s, %s, %s, %s, 'patient_self', FALSE, 'patient_self_report')
-                """,
-                [
-                    tenant_id,
-                    patient_link_id,
-                    vtype,
-                    body.value,
-                    _REPORT_UNIT.get(vtype, ""),
-                    now_ts,
-                ],
-            )
+        with _txn.atomic():
+            with _conn.cursor() as cursor:
+                for vtype, vvalue in validated:
+                    cursor.execute(
+                        """
+                        INSERT INTO clinical.vital_readings
+                            (tenant_id, patient_link_id, type, value, unit,
+                             measured_at, source, verified, recorded_by)
+                        VALUES (%s, %s, %s, %s, %s, %s, 'patient_self', FALSE, 'patient_self_report')
+                        """,
+                        [
+                            tenant_id,
+                            patient_link_id,
+                            vtype,
+                            vvalue,
+                            _REPORT_UNIT.get(vtype, ""),
+                            now_ts,
+                        ],
+                    )
+            # Mark token used inside the same transaction — rolls back with the
+            # inserts if anything fails, so the token is never consumed on error.
+            _report_mark_used(token, tenant_id)
     except Exception as exc:
-        # بازگشتِ خطای عمومی — جزئیاتِ DB در پاسخ نیست
+        # بازگشتِ خطای عمومی — جزئیاتِ DB در پاسخ نیست، توکن مصرف نمی‌شود (rollback شد)
         import logging as _logging
         _logging.getLogger(__name__).error(
             "submit_patient_report: DB insert failed for patient_link_id=%s: %s",
@@ -3692,12 +3766,16 @@ def submit_patient_report(request, token: str, body: SelfReportIn):
         )
         return 422, error_response("خطا در ثبتِ داده — لطفاً دوباره امتحان کنید", "server_error")
 
-    # Mark token as used (one-time — GUC already set)
-    _report_mark_used(token, tenant_id)
+    # 9) Build response — سازگار با حالتِ تکی و batch
+    accepted_out = [SelfReportReadingOut(type=t, value=v) for t, v in validated]
+    first_type, first_value = validated[0]
 
     return 200, SelfReportOut(
-        type=vtype,
-        value=body.value,
+        # backward-compat: تکی → همان type/value قدیمی
+        type=first_type if len(validated) == 1 else None,
+        value=first_value if len(validated) == 1 else None,
+        accepted=accepted_out,
+        count=len(accepted_out),
     )
 
 

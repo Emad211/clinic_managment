@@ -589,3 +589,218 @@ class TestPgSchemaSentinel:
                  AND conname='fk_report_token_patient_link'"""
         ).fetchone()
         assert row is not None, "FK fk_report_token_patient_link missing on patient_report_tokens"
+
+
+# ---------------------------------------------------------------------------
+# ۸) Batch self-report — step 46
+# ---------------------------------------------------------------------------
+
+class TestBatchSubmit:
+    """
+    قدمِ ۴۶: گسترشِ endpoint به batch.
+    هدف: یک توکن → چند reading در یک ارسال (all-or-nothing).
+    """
+
+    def test_batch_success_three_readings(self, su_conn, client):
+        """
+        batch موفق: sys+dia+fbs در یک ارسال → ۳ ردیفِ verified=False + توکن used.
+        """
+        _, link_id = _make_report_patient(su_conn, prefix="RPTB1")
+        token_str = _issue_report_token(su_conn, link_id, used=False)
+
+        resp = client.post(
+            f"/api/v1/patient-report/{token_str}",
+            data={
+                "readings": [
+                    {"type": "bp_systolic",  "value": 140.0},
+                    {"type": "bp_diastolic", "value": 85.0},
+                    {"type": "fbs",          "value": 120.0},
+                ]
+            },
+            content_type="application/json",
+        )
+        assert resp.status_code == 200, f"batch submit failed: {resp.json()}"
+        data = resp.json()
+        assert data.get("status") == "ok"
+        assert data.get("count") == 3
+        accepted = data.get("accepted", [])
+        assert len(accepted) == 3
+
+        # تأییدِ DB: باید ۳ ردیفِ verified=False + source='patient_self' باشد
+        for vtype, vvalue in [("bp_systolic", 140.0), ("bp_diastolic", 85.0), ("fbs", 120.0)]:
+            row = su_conn.execute(
+                f"""SELECT value, verified, source FROM clinical.vital_readings
+                    WHERE patient_link_id={link_id}
+                      AND type='{vtype}'
+                      AND source='patient_self'
+                    ORDER BY measured_at DESC LIMIT 1"""
+            ).fetchone()
+            assert row is not None, f"Expected vital_reading for {vtype}"
+            val, verified, source = row
+            assert abs(val - vvalue) < 0.01, f"Expected {vtype}={vvalue}, got {val}"
+            assert verified is False, f"{vtype} must be verified=False"
+
+        # توکن باید used شده باشد
+        tok_row = su_conn.execute(
+            f"SELECT used_at FROM clinical.patient_report_tokens WHERE token='{token_str}'"
+        ).fetchone()
+        assert tok_row is not None
+        assert tok_row[0] is not None, "Token must be marked used after batch success"
+
+    def test_batch_invalid_one_reading_no_insert_no_mark_used(self, su_conn, client):
+        """
+        batch با یک مقدارِ نامعتبر (sys=999 خارج از بازه) → ۴۲۲.
+        هیچ ردیفی insert نشود. توکن هنوز usable باشد.
+        """
+        _, link_id = _make_report_patient(su_conn, prefix="RPTB2")
+        token_str = _issue_report_token(su_conn, link_id, used=False)
+
+        resp = client.post(
+            f"/api/v1/patient-report/{token_str}",
+            data={
+                "readings": [
+                    {"type": "bp_systolic",  "value": 999.0},   # خارج از بازه ۵۰–۳۰۰
+                    {"type": "bp_diastolic", "value": 85.0},
+                ]
+            },
+            content_type="application/json",
+        )
+        assert resp.status_code == 422, f"Expected 422 for invalid reading, got {resp.status_code}"
+
+        # هیچ vital_reading نباید insert شده باشد
+        count_row = su_conn.execute(
+            f"""SELECT COUNT(*) FROM clinical.vital_readings
+                WHERE patient_link_id={link_id} AND source='patient_self'"""
+        ).fetchone()
+        assert count_row[0] == 0, (
+            f"No rows must be inserted on partial-invalid batch. Found {count_row[0]}"
+        )
+
+        # توکن هنوز usable (used_at باید NULL باشد)
+        tok_row = su_conn.execute(
+            f"SELECT used_at FROM clinical.patient_report_tokens WHERE token='{token_str}'"
+        ).fetchone()
+        assert tok_row is not None
+        assert tok_row[0] is None, "Token must NOT be marked used after validation failure"
+
+        # بیمار می‌تواند مجدداً submit کند (توکن هنوز valid)
+        resp2 = client.post(
+            f"/api/v1/patient-report/{token_str}",
+            data={
+                "readings": [
+                    {"type": "bp_systolic",  "value": 130.0},
+                    {"type": "bp_diastolic", "value": 82.0},
+                ]
+            },
+            content_type="application/json",
+        )
+        assert resp2.status_code == 200, (
+            f"Token must still work after 422 batch failure. Got {resp2.status_code}: {resp2.json()}"
+        )
+
+    def test_batch_empty_readings_422(self, su_conn, client):
+        """batch خالی → ۴۲۲، توکن intact."""
+        _, link_id = _make_report_patient(su_conn, prefix="RPTB3")
+        token_str = _issue_report_token(su_conn, link_id, used=False)
+
+        resp = client.post(
+            f"/api/v1/patient-report/{token_str}",
+            data={"readings": []},
+            content_type="application/json",
+        )
+        assert resp.status_code == 422, f"Empty batch must be 422, got {resp.status_code}"
+
+        # توکن دست‌نخورده
+        tok_row = su_conn.execute(
+            f"SELECT used_at FROM clinical.patient_report_tokens WHERE token='{token_str}'"
+        ).fetchone()
+        assert tok_row[0] is None, "Token must NOT be consumed after empty-batch 422"
+
+    def test_batch_used_token_409(self, su_conn, client):
+        """used token با batch → ۴۰۴ (مثلِ قبل، generic 404)."""
+        _, link_id = _make_report_patient(su_conn, prefix="RPTB4")
+        used_token = _issue_report_token(su_conn, link_id, used=True)
+
+        resp = client.post(
+            f"/api/v1/patient-report/{used_token}",
+            data={
+                "readings": [
+                    {"type": "fbs", "value": 100.0},
+                ]
+            },
+            content_type="application/json",
+        )
+        assert resp.status_code == 404, (
+            f"used token with batch must return 404, got {resp.status_code}"
+        )
+
+    def test_single_mode_backward_compat(self, su_conn, client):
+        """
+        سازگاریِ قبل: {type, value} تکی همچنان کار کند.
+        پاسخ باید type/value در سطحِ بالا داشته باشد + accepted=[{type,value}], count=1.
+        """
+        _, link_id = _make_report_patient(su_conn, prefix="RPTB5")
+        token_str = _issue_report_token(su_conn, link_id, used=False)
+
+        resp = client.post(
+            f"/api/v1/patient-report/{token_str}",
+            data={"type": "fbs", "value": 105.0},
+            content_type="application/json",
+        )
+        assert resp.status_code == 200, f"Single-mode submit failed: {resp.json()}"
+        data = resp.json()
+        assert data.get("status") == "ok"
+        # backward-compat fields
+        assert data.get("type") == "fbs", f"Expected type='fbs', got {data.get('type')}"
+        assert data.get("value") == 105.0, f"Expected value=105.0, got {data.get('value')}"
+        # batch fields هم باید باشند
+        assert data.get("count") == 1
+        accepted = data.get("accepted", [])
+        assert len(accepted) == 1
+        assert accepted[0]["type"] == "fbs"
+        assert accepted[0]["value"] == 105.0
+
+    def test_batch_all_verified_false_not_in_engine(self, su_conn, client):
+        """
+        گیتِ موتور برای batch: همهٔ readingهای batch باید verified=False باشند
+        و در build_facts ظاهر نشوند (اگر verified قدیمی وجود داشته باشد).
+        """
+        from clinical.rule_engine import build_facts
+
+        _, link_id = _make_report_patient(su_conn, prefix="RPTB6")
+        # verified baseline
+        _insert_vital(su_conn, link_id, "bp_systolic", 120.0, verified=True, source="clinic")
+
+        # batch self-report با مقدارِ بالا
+        token_str = _issue_report_token(su_conn, link_id, used=False)
+        resp = client.post(
+            f"/api/v1/patient-report/{token_str}",
+            data={
+                "readings": [
+                    {"type": "bp_systolic",  "value": 180.0},  # unverified — نباید وارد موتور شود
+                    {"type": "bp_diastolic", "value": 110.0},  # unverified
+                ]
+            },
+            content_type="application/json",
+        )
+        assert resp.status_code == 200
+
+        facts = build_facts(link_id, tenant_id=1)
+        indicator = facts.get("indicator", {})
+
+        # bp_systolic باید از verified baseline (120) بیاید، نه از batch (180)
+        if "bp_systolic" in indicator:
+            val = indicator["bp_systolic"].get("latest")
+            assert val == 120.0, (
+                f"Engine must use verified bp_systolic=120, not batch-unverified=180. Got {val}"
+            )
+
+        # bp_diastolic اگر هیچ verified ندارد، اصلاً در indicator نباشد
+        # (ممکن است indicator وجود نداشته باشد؛ اگر هم هست باید verified باشد)
+        if "bp_diastolic" in indicator:
+            val = indicator["bp_diastolic"].get("latest")
+            # اگر verified وجود ندارد باید None یا غایب باشد
+            # اگر verified دارد، مقدارش نباید 110 باشد
+            assert val != 110.0, (
+                f"Unverified bp_diastolic=110 must NOT enter engine. Got {val}"
+            )
