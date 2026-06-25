@@ -88,6 +88,18 @@ class VitalReading(models.Model):
     # until a physician flips this flag (step 47).
     verified = models.BooleanField(default=True)
 
+    # slice14: physician review metadata (step 47).
+    # State machine:
+    #   pending  : verified=FALSE, rejected_at IS NULL  — self-report awaiting review
+    #   approved : verified=TRUE                        — physician verified
+    #   rejected : verified=FALSE, rejected_at NOT NULL — soft-kept for audit; excluded from engine
+    #
+    # clinic-entered readings (DEFAULT verified=TRUE) leave these NULL (system-implicit, not explicit).
+    verified_by = models.TextField(null=True, blank=True)    # username who verified
+    verified_at = models.DateTimeField(null=True, blank=True) # timestamp of verify
+    rejected_by = models.TextField(null=True, blank=True)    # username who rejected
+    rejected_at = models.DateTimeField(null=True, blank=True) # timestamp of reject; NOT NULL → rejected
+
     class Meta:
         managed = False
         app_label = "clinical"

@@ -29,12 +29,12 @@ import {
   ApiError,
 } from "@/lib/api";
 import { formatJalali } from "@/lib/jalali";
-import { vitalLevelDisplay, type VitalLevel } from "@/lib/vital-level";
 import { VITAL_CATALOG, VITAL_CATALOG_MAP } from "@/lib/vital-catalog";
 import { useAuth } from "@/hooks/useAuth";
 import Nav from "@/components/Nav";
 import { SuggestionsPanel } from "@/components/SuggestionsPanel";
 import { ScreeningTimeline } from "@/components/ScreeningTimeline";
+import { VerificationInbox, RecentVitalsTable } from "@/components/VitalsReview";
 import styles from "./record.module.css";
 
 // ────────────────────────────────────────────────────────────
@@ -922,6 +922,17 @@ export default function PatientDetailPage() {
     fetchSuggestions();
   }
 
+  /**
+   * Called after a successful verify/reject of a self-reported vital:
+   * refetch the record (so the item leaves the inbox / changes state) and the
+   * suggestions (an approved vital may enter the clinical engine). Does NOT
+   * touch the visit form or the encounter list.
+   */
+  function handleVitalReviewed() {
+    fetchRecord();
+    fetchSuggestions();
+  }
+
   const demo = record?.demographics;
 
   return (
@@ -1072,60 +1083,19 @@ export default function PatientDetailPage() {
               )}
             </section>
 
-            {/* Recent vitals */}
+            {/* Verification inbox — صندوقِ تأیید دادهٔ خوداظهار.
+                Renders ONLY when there is at least one pending self-report
+                (the component returns null otherwise — no empty section). */}
+            <VerificationInbox
+              vitals={record.recent_vitals}
+              uuid={uuid}
+              onReviewed={handleVitalReviewed}
+            />
+
+            {/* Recent vitals (three-state aware) */}
             <section className={`${styles.card} ${styles.section}`} aria-label="ویتال‌های اخیر">
               <h2 className={styles.sectionTitle}>ویتال‌های اخیر</h2>
-              {record.recent_vitals.length === 0 ? (
-                <p className={styles.emptyNote}>هیچ ویتالی ثبت نشده است.</p>
-              ) : (
-                <div className={styles.tableWrapper}>
-                  <table className={styles.table} aria-label="جدول ویتال‌های اخیر">
-                    <thead>
-                      <tr>
-                        <th scope="col">نوع</th>
-                        <th scope="col">مقدار</th>
-                        <th scope="col">واحد</th>
-                        <th scope="col">تاریخ اندازه‌گیری</th>
-                        <th scope="col">منبع</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {record.recent_vitals.map((v) => {
-                        const lvl = vitalLevelDisplay(v.level as VitalLevel);
-                        const badgeClass =
-                          lvl.key === "ok" ? styles.vitalLevelOk :
-                          lvl.key === "warn" ? styles.vitalLevelWarn :
-                          lvl.key === "danger" ? styles.vitalLevelDanger :
-                          null;
-                        return (
-                          <tr key={v.id} className={styles.tableRow}>
-                            <td className={styles.vitalType}>{v.type}</td>
-                            <td>
-                              <span
-                                className={styles.vitalValueCell}
-                                aria-label={lvl.ariaLabel || undefined}
-                              >
-                                <span className={styles.vitalValue}>{v.value}</span>
-                                {badgeClass && (
-                                  <span
-                                    className={`${styles.vitalLevelBadge} ${badgeClass}`}
-                                    aria-hidden="true"
-                                  >
-                                    {lvl.label}
-                                  </span>
-                                )}
-                              </span>
-                            </td>
-                            <td>{v.unit ?? "—"}</td>
-                            <td>{formatJalali(v.measured_at)}</td>
-                            <td>{v.source ?? "—"}</td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              )}
+              <RecentVitalsTable vitals={record.recent_vitals} />
             </section>
 
             {/* Recent encounters list */}
