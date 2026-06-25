@@ -41,6 +41,16 @@ class PatientLink(models.Model):
     notes = models.TextField(null=True, blank=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    # slice11: engagement holdout — causal effect measurement (control group)
+    # engagement_holdout=TRUE suppresses automated dispatch (sms + worklist nudge
+    # from the engagement engine) but NEVER clinical care (followup_engine,
+    # rule_engine, visits, prescriptions are unaffected).
+    # ⚠️ ROADMAP: consent/patient-notification policy must be agreed with legal/
+    # responsible physician before live use in production.
+    engagement_holdout = models.BooleanField(default=False)
+    engagement_holdout_since = models.DateField(null=True, blank=True)  # start of holdout window
+    engagement_holdout_until = models.DateField(null=True, blank=True)  # stepped-wedge expiry; NULL=open-ended
+
     class Meta:
         managed = False
         app_label = "clinical"

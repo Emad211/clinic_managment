@@ -188,6 +188,7 @@ def _record_dispatch(
     period_key: str,
     channel: str,
     ref_id: Optional[int] = None,
+    status: str = "done",
 ) -> Optional[EngagementDispatch]:
     """
     Insert a dispatch row.  Returns the row, or None on duplicate (already done).
@@ -195,6 +196,10 @@ def _record_dispatch(
     Uses INSERT with IntegrityError catch rather than get_or_create to avoid a
     race condition: if two workers call this simultaneously, the second gets the
     IntegrityError and treats it as 'already done' — correct behavior.
+
+    status: 'done' (default — normal dispatch) or 'holdout' (patient is in the
+    causal-effect control group — the event is recorded for denominator tracking
+    but no sms/worklist action is taken; see dispatch_patient holdout gate).
     """
     try:
         return EngagementDispatch.objects.create(
@@ -204,14 +209,14 @@ def _record_dispatch(
             period_key=period_key,
             channel=channel,
             ref_id=ref_id,
-            status="done",
+            status=status,
         )
     except IntegrityError:
         # UNIQUE violation — already dispatched; treat as idempotent success
         logger.debug(
             "_record_dispatch: duplicate bucket (tenant=%s, patient=%s, "
-            "event_key=%r, period_key=%r, channel=%r) — already done",
-            tenant_id, patient_link_id, event_key, period_key, channel,
+            "event_key=%r, period_key=%r, channel=%r, status=%r) — already done",
+            tenant_id, patient_link_id, event_key, period_key, channel, status,
         )
         return None
 
@@ -430,12 +435,33 @@ def dispatch_patient(
     dry_run=True: compute and return counts without any DB writes.
     worklist_only=True: skip sms channel entirely (run worklist path only).
     """
-    res: dict = {"sms": 0, "worklist": 0, "skipped": 0, "queued": 0, "errors": 0}
+    res: dict = {"sms": 0, "worklist": 0, "skipped": 0, "queued": 0, "errors": 0, "holdout": 0}
 
     try:
         link = PatientLink.objects.get(id=patient_link_id, tenant_id=tenant_id)
     except PatientLink.DoesNotExist:
         return res
+
+    # ── Engagement holdout gate (slice11) ───────────────────────────────────
+    # Determine whether this patient is in the causal-effect control group.
+    # in_holdout=True → skip ALL automated dispatch (sms + worklist nudge from
+    # the engagement engine) and record an auditable 'holdout' row per due event
+    # so that the denominator is tracked for lift measurement.
+    #
+    # CRITICAL — mraaqbat hargez darigh nashavad:
+    #   followup_engine.generate_for_patient and rule_engine.evaluate are called
+    #   independently by the scheduler and are NOT gated here.  Clinical care
+    #   (followup tasks from the clinical engine, red-flags, visits, prescriptions)
+    #   continues exactly as for treated patients.
+    #
+    # ⚠️ ROADMAP: consent/patient-notification policy must be agreed with
+    # legal/responsible physician before live use in production.
+    _today = dj_timezone.now().date()
+    _until = link.engagement_holdout_until
+    in_holdout = bool(link.engagement_holdout) and (
+        _until is None or _until >= _today
+    )
+    # ── End holdout gate ─────────────────────────────────────────────────────
 
     opted_out = bool(link.sms_opt_out)
     # Phone is in accounting — read via Port
@@ -476,6 +502,27 @@ def dispatch_patient(
         channel = conf.channel
         if channel == "off":
             continue
+
+        # ── Holdout branch — auditable skip for causal denominator ──────────
+        # If the patient is in the control group (in_holdout=True), record a
+        # 'holdout' row in the dispatch ledger (auditable denominator for lift
+        # measurement) and skip both sms and worklist channels.
+        # Clinical care paths (followup_engine, rule_engine) are NOT affected.
+        if in_holdout:
+            if not dry_run:
+                _record_dispatch(
+                    tenant_id, patient_link_id, event_key, period_key,
+                    channel if channel in ("sms", "worklist") else "worklist",
+                    status="holdout",
+                )
+            res["holdout"] += 1
+            logger.debug(
+                "dispatch_patient: holdout suppressed event_key=%r "
+                "patient_link_id=%s tenant=%s",
+                event_key, patient_link_id, tenant_id,
+            )
+            continue
+        # ── End holdout branch ───────────────────────────────────────────────
 
         # ── worklist channel ────────────────────────────────────────────────
         if channel in ("worklist", "both"):
@@ -582,6 +629,7 @@ def run_all(
         "skipped": 0,
         "queued": 0,
         "errors": 0,
+        "holdout": 0,  # slice11: events suppressed for holdout patients (auditable denominator)
     }
 
     for pid in links:
@@ -591,7 +639,7 @@ def run_all(
                 dry_run=dry_run,
                 worklist_only=worklist_only,
             )
-            for k in ("sms", "worklist", "skipped", "queued", "errors"):
+            for k in ("sms", "worklist", "skipped", "queued", "errors", "holdout"):
                 agg[k] += res.get(k, 0)
             agg["patients"] += 1
         except Exception as exc:
@@ -602,12 +650,14 @@ def run_all(
             agg["errors"] += 1
 
     logger.info(
-        "run_all: tenant=%s patients=%s queued=%s worklist=%s skipped=%s errors=%s",
+        "run_all: tenant=%s patients=%s queued=%s worklist=%s skipped=%s "
+        "holdout=%s errors=%s",
         tenant_id,
         agg["patients"],
         agg["queued"],
         agg["worklist"],
         agg["skipped"],
+        agg["holdout"],
         agg["errors"],
     )
     return agg
