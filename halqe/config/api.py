@@ -2852,3 +2852,106 @@ def get_medication_effect(
         caveat=result["caveat"],
         meaningful_threshold=result["meaningful_threshold"],
     )
+
+
+# ===========================================================================
+# Population Threshold Management (Step 39)
+# GET /manager/population-thresholds — list draft overrides for review/approval
+# Manager-only: requires JWT with role='manager'.
+# ===========================================================================
+
+from clinical.models import PopulationThreshold as _PopulationThreshold
+
+
+class PopulationThresholdDTO(Schema):
+    """
+    One population-specific threshold override row (read-only).
+
+    approval_status is always shown so the UI can distinguish draft from approved.
+    framing: fixed label indicating this is a draft awaiting physician review.
+    """
+    id: int
+    tenant_id: int
+    indicator_key: str
+    population_key: str
+    bound: str                              # 'high' | 'low'
+    warn: Optional[float] = None
+    danger: Optional[float] = None
+    target: Optional[float] = None
+    goal_low: Optional[float] = None
+    goal_high: Optional[float] = None
+    rationale: Optional[str] = None
+    evidence: Optional[str] = None
+    approval_status: str                    # 'draft' | 'approved'
+    approved_by: Optional[str] = None
+    approved_at: Optional[datetime] = None
+    created_at: datetime
+
+
+class PopulationThresholdListDTO(Schema):
+    """Response for GET /manager/population-thresholds."""
+    items: list[PopulationThresholdDTO]
+    total: int
+    # Framing label for the UI — makes the draft/review status explicit
+    framing: str
+
+
+@api.get(
+    "/manager/population-thresholds",
+    response={200: PopulationThresholdListDTO, 403: ErrorSchema},
+    auth=_jwt_auth,
+    tags=["manager"],
+)
+def list_population_thresholds(request):
+    """
+    لیستِ override‌های آستانهٔ زیرجمعیتی برای بازبینی و تأییدِ پزشک.
+
+    فقط مدیر (manager) دسترسی دارد.
+    همهٔ ردیف‌ها (draft و approved) برگردانده می‌شوند تا پزشک وضعیت را ببیند.
+
+    framing="پیش‌نویس — نیازمندِ تأییدِ پزشک" همیشه در response است.
+
+    اکشنِ approve در قدمِ بعد پیاده می‌شود.
+    """
+    # Manager-only gate — strict role check
+    user_role = getattr(request.auth, "role", "staff")
+    if user_role != "manager":
+        return 403, error_response(
+            "دسترسی محدود است. فقط مدیر می‌تواند این صفحه را ببیند.",
+            "forbidden",
+        )
+
+    tenant_id = request.tenant_id
+
+    qs = _PopulationThreshold.objects.filter(
+        tenant_id=tenant_id,
+    ).order_by("population_key", "indicator_key", "bound")
+
+    rows = list(qs)
+    items = [
+        PopulationThresholdDTO(
+            id=row.id,
+            tenant_id=row.tenant_id,
+            indicator_key=row.indicator_key,
+            population_key=row.population_key,
+            bound=row.bound,
+            warn=row.warn,
+            danger=row.danger,
+            target=row.target,
+            goal_low=row.goal_low,
+            goal_high=row.goal_high,
+            rationale=row.rationale,
+            evidence=row.evidence,
+            approval_status=row.approval_status,
+            approved_by=row.approved_by,
+            approved_at=row.approved_at,
+            created_at=row.created_at,
+        )
+        for row in rows
+    ]
+
+    return 200, PopulationThresholdListDTO(
+        items=items,
+        total=len(items),
+        framing="پیش‌نویس — نیازمندِ تأییدِ پزشک",
+    )

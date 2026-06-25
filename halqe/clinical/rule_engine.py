@@ -40,6 +40,7 @@ from clinical.models import (
     Condition,
     DdiPair,
 )
+from clinical.population_service import patient_populations, apply_population_overrides
 
 # ---------------------------------------------------------------------------
 # Section / label maps — identical to rule_engine.py in specialist_clinic
@@ -269,6 +270,33 @@ def build_facts(patient_link_id: int, demographics=None, tenant_id: int = 1) -> 
     ).values("flag_key", "value")
     flags: dict = {r["flag_key"]: r["value"] for r in flag_rows}
 
+    # --- population-specific threshold overrides (Step 39) --------------------
+    # Only 'approved' + bound='high' overrides are applied; 'draft' are inert.
+    # This runs AFTER indicator_map and observations are assembled so that
+    # _evaluate_reading in the loop above still uses the base indicator_map.
+    # The effective indicator_map for DSL evaluation (used by _resolve in _leaf)
+    # is produced here and stored in facts["_indicator_map_effective"]:
+    #   - Before any override is approved: same as base indicator_map.
+    #   - After an override is approved: only the approved fields are swapped.
+    # NOTE: indicator_facts (the per-patient observation level/value dict) is
+    # recomputed after the override so that level evaluation also honours
+    # population thresholds.
+    populations = patient_populations(flags, age)
+    effective_indicator_map = apply_population_overrides(
+        indicator_map, populations, tenant_id
+    )
+
+    # Re-evaluate levels for indicator_facts using the effective map.
+    # This re-pass is cheap (small dict; no extra DB query) and ensures that
+    # if an override is approved, the 'level' in indicator_facts reflects it.
+    if effective_indicator_map is not indicator_map:
+        # At least one override was applied — re-evaluate levels
+        for bare_key, fact_entry in indicator_facts.items():
+            new_level = _evaluate_reading(
+                bare_key, fact_entry.get("latest"), effective_indicator_map
+            )
+            fact_entry["level"] = new_level
+
     # --- active medication drug_classes ---------------------------------------
     med_classes: set[str] = set()
     med_rows = PatientMedication.objects.filter(
@@ -286,6 +314,12 @@ def build_facts(patient_link_id: int, demographics=None, tenant_id: int = 1) -> 
         "indicator": indicator_facts,
         "flag": flags,
         "med_classes": med_classes,
+        # Internal: effective indicator_map after population overrides.
+        # Used by _resolve() for threshold-gated DSL leaves (indicator.X.level).
+        # Callers outside rule_engine should not depend on this key.
+        "_indicator_map": effective_indicator_map,
+        # Track which populations were detected (useful for tests + future UI)
+        "_populations": populations,
     }
 
 
