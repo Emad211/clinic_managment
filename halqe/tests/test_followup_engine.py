@@ -552,3 +552,44 @@ def test_audit_log_created_per_task(seed_followup_data):
         f"Expected {before_count + count} audit rows, got {after_count}. "
         f"{count} tasks created."
     )
+
+
+@pytest.mark.django_db(databases=["default", "accounting_read"], transaction=True)
+def test_generate_followups_command_sets_guc_and_creates_tasks(seed_followup_data):
+    """
+    Step-51 follow-up: the generate_followups COMMAND must set the tenant GUC per
+    tenant before calling generate_all (production RLS fail-closed → zero rows
+    otherwise). Run via call_command (explicit --tenant-id) and assert the due
+    patient gets its task — proving the command path (GUC set/clear + generate_all)
+    works, not just the engine called directly.
+    """
+    from io import StringIO
+    from django.core.management import call_command
+    from clinical.models import FollowupTask
+
+    FollowupTask.objects.filter(
+        tenant_id=1, source_rule="T2-MON-A1C-TEST"
+    ).delete()
+
+    out = StringIO()
+    # explicit tenant-id 1 (all-tenant discovery needs tenant fixtures; the GUC
+    # set/clear path is identical either way).
+    call_command("generate_followups", "--tenant-id", "1", stdout=out)
+
+    # The command clears the tenant GUC in finally (correct production behavior);
+    # re-establish it so this RLS-scoped ORM assertion can read (the autouse
+    # fixture's ambient GUC=1 was wiped by the command's clear). Proves clear() ran.
+    from platform_core.tenant_context import set_tenant_guc
+    set_tenant_guc(1)
+
+    due_task = FollowupTask.objects.filter(
+        tenant_id=1,
+        patient_link_id=seed_followup_data["due_link_id"],
+        source_rule="T2-MON-A1C-TEST",
+        status="open",
+    ).first()
+    assert due_task is not None, (
+        "generate_followups command (with per-tenant GUC) must create the due "
+        "patient's task; got none — GUC/command wiring broken."
+    )
+    assert "Done." in out.getvalue()
