@@ -1,0 +1,85 @@
+# .dockerignore — repo root
+# Excludes files/dirs that must NOT be in the Docker build context.
+# Keeps the image lean and prevents accidental secret inclusion.
+
+# ── Python ──────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# ── Virtual environments ─────────────────────────────────────────────────────
+.venv/
+venv/
+env/
+specialist_clinic/.venv/
+webapp/.venv/
+
+# ── Node / Next.js ───────────────────────────────────────────────────────────
+halqe/web/node_modules/
+halqe/web/.next/
+halqe/web/.turbo/
+node_modules/
+
+# ── Git ──────────────────────────────────────────────────────────────────────
+.git/
+.gitignore
+.gitattributes
+
+# ── Databases (never bake real data into an image) ───────────────────────────
+*.db
+*.sqlite
+*.sqlite3
+webapp/clinic_new.db
+specialist_clinic/specialist.db
+backups/
+
+# ── Secrets & local env files ────────────────────────────────────────────────
+.env
+.env.*
+*.env
+secrets/
+
+# ── PyInstaller artifacts ────────────────────────────────────────────────────
+*.spec
+dist/
+halqe_*/
+
+# ── OS / IDE ─────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# ── Test / CI artifacts ───────────────────────────────────────────────────────
+.pytest_cache/
+.coverage
+htmlcov/
+*.lcov
+coverage.xml
+
+# ── Pre-downloaded wheels (offline-build fallback only; not committed) ────────
+# Default Dockerfile installs from PyPI; wheels/ is a local arch-specific artifact
+# used only for restricted-network builds — never in the image context.
+halqe/wheels/
+
+# ── Docs (not needed in image) ────────────────────────────────────────────────
+# Keep specialist_clinic/docs/migration_tools/ — it contains the SQL slices.
+# Exclude everything else under docs/.
+specialist_clinic/docs/adr/
+specialist_clinic/docs/*.md
+halqe/docs/
+docs/
+
+# ── Misc ─────────────────────────────────────────────────────────────────────
+*.zip
+*.tar.gz
+*.log
+kave_tmp.html

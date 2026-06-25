@@ -1,3 +1,6 @@
+# ── Docker offline-build wheels (arch-specific, regenerable; never commit) ──
+halqe/wheels/
+
 # ── Python venvs / caches ──
 platform/.venv/
 ai_service/.venv/
