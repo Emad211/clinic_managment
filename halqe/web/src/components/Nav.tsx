@@ -20,6 +20,7 @@ interface NavLink {
 
 const NAV_LINKS: NavLink[] = [
   { href: "/dashboard", label: "داشبورد" },
+  { href: "/queue", label: "صف ویزیت" },
   { href: "/patients", label: "بیماران" },
   { href: "/worklist", label: "پیگیری‌ها" },
 ];
