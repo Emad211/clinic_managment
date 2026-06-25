@@ -12,6 +12,7 @@ Endpoints:
   GET  /api/v1/worklist                                           → paginated follow-up tasks (requires JWT)
   POST /api/v1/worklist/{task_id}/done                            → mark task done (requires JWT)
   POST /api/v1/patients/{uuid}/suggestions/{rule_code}/action     → accept/dismiss suggestion (requires JWT)
+  GET  /api/v1/manager/suggestion-stats                           → suggestion analytics per rule (manager-only)
 
   Encounter write-path (Step 10):
   POST /api/v1/patients/{uuid}/encounters                         → create encounter (requires JWT) → 201 EncounterOut
@@ -44,6 +45,7 @@ from clinical.models import (
     PatientMedication,
     FollowupTask,
     SuggestionLog,
+    SuggestionEvent,
 )
 import clinical.rule_engine as _rule_engine
 from clinical.rule_engine import _evaluate_reading as _eval_reading
@@ -1070,6 +1072,21 @@ def suggestion_action(
         target_id=log_row.id,
         patient_link_id=link.id,
         description=f"rule_code={rule_code}",
+    )
+
+    # Append-only event to suggestion_events (slice10).
+    # INSERT always (no upsert) — accept-then-dismiss = 2 rows, preserving full history.
+    # suggestion_log (above) keeps the current state/UI; this table is for analytics.
+    SuggestionEvent.objects.create(
+        tenant_id=tenant_id,
+        patient_link_id=link.id,
+        rule_code=rule_code,
+        event_type=SuggestionEvent.EVENT_ACCEPTED if body.action == "accept" else SuggestionEvent.EVENT_DISMISSED,
+        acted_by=actor,
+        suggestion_text=log_row.suggestion_text,
+        evidence_level=log_row.evidence_level,
+        note=body.note,
+        occurred_at=now,
     )
 
     return 200, SuggestionLogDTO(
@@ -2954,4 +2971,182 @@ def list_population_thresholds(request):
         items=items,
         total=len(items),
         framing="پیش‌نویس — نیازمندِ تأییدِ پزشک",
+    )
+
+
+# ===========================================================================
+# Suggestion Stats (Step 41) — GET /manager/suggestion-stats
+# Manager-only: requires JWT with role='manager'.
+# ===========================================================================
+
+_MIN_N_FOR_RATE = 5
+_MIN_IMPRESSIONS_FOR_RATE = 10
+
+
+class SuggestionRuleStatsDTO(Schema):
+    """
+    Stats per rule_code — all rate fields are Optional (NULL when n < min_n).
+
+    Framing principle: rates measure physician behaviour, not rule quality.
+    Correlational, not causal (no holdout).
+    """
+    rule_code: str
+    n_accepted: int
+    n_dismissed: int
+    n_pending: int
+    n_acted: int                                    # = accepted + dismissed
+    n_fired_patient_days: int                       # count of fired_daily events
+    acceptance_rate_of_acted: Optional[float]       # NULL when n_acted < min_n
+    rate_reliable: bool
+    impression_acceptance_rate: Optional[float]     # NULL when n_fired_patient_days < 10
+    impression_rate_reliable: bool
+    last_action_at: Optional[datetime]
+
+
+class SuggestionStatsResponseDTO(Schema):
+    """
+    Response for GET /manager/suggestion-stats.
+
+    framing is mandatory and must be present in every response:
+    it makes explicit that these numbers reflect physician choices,
+    not a measurement of rule quality, and that correlation is not causation.
+    """
+    generated_at: datetime
+    min_n_for_rate: int
+    framing: str
+    rules: list[SuggestionRuleStatsDTO]
+
+
+@api.get(
+    "/manager/suggestion-stats",
+    response={200: SuggestionStatsResponseDTO, 403: ErrorSchema},
+    auth=_jwt_auth,
+    tags=["manager"],
+)
+def suggestion_stats(request):
+    """
+    آمارِ پیشنهادهایِ بالینی به تفکیکِ قاعده — فقط مدیر.
+
+    فیلدهای rate (acceptance_rate_of_acted، impression_acceptance_rate) در صورتی که
+    تعدادِ اقدامات/impressions کمتر از حدِ نصاب باشد NULL برگردانده می‌شود (نه صفر).
+    این اصلِ «NULL نه صفر هنگامِ داده‌ی ناکافی» را اجرا می‌کند.
+
+    framing در هر پاسخ اجباری است:
+      «نرخ‌ها از میانِ اقداماتِ پزشک — نه معیارِ کیفیتِ قاعده؛
+       پیش از holdout همبستگی است نه اثر»
+
+    منطقِ آمار:
+      - suggestion_log: منبعِ n_accepted / n_dismissed / n_pending / last_action_at
+      - suggestion_events WHERE event_type='fired_daily': منبعِ n_fired_patient_days
+      - acceptance_rate_of_acted = accepted / (accepted+dismissed)
+        فقط وقتی n_acted >= 5؛ در غیرِ این صورت NULL.
+      - impression_acceptance_rate = accepted / n_fired_patient_days
+        فقط وقتی n_fired_patient_days >= 10؛ در غیرِ این صورت NULL.
+
+    Manager-only: staff → 403.
+    """
+    user_role = getattr(request.auth, "role", "staff")
+    if user_role != "manager":
+        return 403, error_response(
+            "دسترسی محدود است. فقط مدیر می‌تواند این صفحه را ببیند.",
+            "forbidden",
+        )
+
+    tenant_id = request.tenant_id
+
+    # ── ۱) جمعِ اقدامات از suggestion_log per rule_code ─────────────────────
+    from django.db.models import (
+        Count, Q, Max,
+        Case, When, IntegerField, Sum,
+    )
+
+    log_qs = (
+        SuggestionLog.objects
+        .filter(tenant_id=tenant_id)
+        .values("rule_code")
+        .annotate(
+            n_accepted=Count(Case(
+                When(status="accepted", then=1),
+                output_field=IntegerField(),
+            )),
+            n_dismissed=Count(Case(
+                When(status="dismissed", then=1),
+                output_field=IntegerField(),
+            )),
+            n_pending=Count(Case(
+                When(status="pending", then=1),
+                output_field=IntegerField(),
+            )),
+            last_action_at=Max("acted_at"),
+        )
+    )
+    log_map: dict[str, dict] = {row["rule_code"]: row for row in log_qs}
+
+    # ── ۲) شمارِ fired_daily از suggestion_events per rule_code ─────────────
+    event_qs = (
+        SuggestionEvent.objects
+        .filter(tenant_id=tenant_id, event_type=SuggestionEvent.EVENT_FIRED_DAILY)
+        .values("rule_code")
+        .annotate(n_fired=Count("id"))
+    )
+    fired_map: dict[str, int] = {row["rule_code"]: row["n_fired"] for row in event_qs}
+
+    # ── ۳) اتحادِ همهٔ rule_codeها (log + events) ───────────────────────────
+    all_codes = set(log_map.keys()) | set(fired_map.keys())
+
+    # ── ۴) ساختنِ ردیف‌های آمار ─────────────────────────────────────────────
+    now = timezone.now()
+    rule_stats: list[SuggestionRuleStatsDTO] = []
+
+    for code in sorted(all_codes):
+        log_row = log_map.get(code, {})
+        n_accepted = log_row.get("n_accepted", 0)
+        n_dismissed = log_row.get("n_dismissed", 0)
+        n_pending = log_row.get("n_pending", 0)
+        n_acted = n_accepted + n_dismissed
+        n_fired = fired_map.get(code, 0)
+        last_action_at = log_row.get("last_action_at")
+
+        # acceptance_rate_of_acted: NULL وقتی n_acted < حدِ نصاب
+        if n_acted >= _MIN_N_FOR_RATE:
+            acceptance_rate_of_acted: Optional[float] = (
+                n_accepted / n_acted if n_acted > 0 else None
+            )
+            rate_reliable = True
+        else:
+            acceptance_rate_of_acted = None
+            rate_reliable = False
+
+        # impression_acceptance_rate: NULL وقتی n_fired < حدِ نصاب
+        if n_fired >= _MIN_IMPRESSIONS_FOR_RATE and n_fired > 0:
+            impression_acceptance_rate: Optional[float] = n_accepted / n_fired
+            impression_rate_reliable = True
+        else:
+            impression_acceptance_rate = None
+            impression_rate_reliable = False
+
+        rule_stats.append(
+            SuggestionRuleStatsDTO(
+                rule_code=code,
+                n_accepted=n_accepted,
+                n_dismissed=n_dismissed,
+                n_pending=n_pending,
+                n_acted=n_acted,
+                n_fired_patient_days=n_fired,
+                acceptance_rate_of_acted=acceptance_rate_of_acted,
+                rate_reliable=rate_reliable,
+                impression_acceptance_rate=impression_acceptance_rate,
+                impression_rate_reliable=impression_rate_reliable,
+                last_action_at=last_action_at,
+            )
+        )
+
+    return 200, SuggestionStatsResponseDTO(
+        generated_at=now,
+        min_n_for_rate=_MIN_N_FOR_RATE,
+        framing=(
+            "نرخ‌ها از میانِ اقداماتِ پزشک — نه معیارِ کیفیتِ قاعده؛ "
+            "پیش از holdout همبستگی است نه اثر"
+        ),
+        rules=rule_stats,
     )

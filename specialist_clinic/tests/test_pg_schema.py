@@ -37,8 +37,17 @@ pytestmark = pytest.mark.skipif(
 _HERE = os.path.dirname(__file__)
 _MIG = os.path.join(_HERE, "..", "docs", "migration_tools")
 
-# همهٔ برش‌ها به ترتیبِ نام: slice0 → slice2 → (slice3 در آینده)
-SLICE_FILES = sorted(glob.glob(os.path.join(_MIG, "schema_pg_slice*.sql")))
+# همهٔ برش‌ها به ترتیبِ NUMERIC (نه رشته‌ای): slice2 قبل از slice10.
+# مرتب‌سازیِ رشته‌ایِ ساده "slice10" را قبل از "slice2" می‌گذارد ('1'<'2') که
+# ترتیبِ وابسته به GRANT/REVOKE را می‌شکند. کلید = (major, suffix).
+def _slice_order(path):
+    import re
+    m = re.search(r"schema_pg_slice(\d+)([a-z]*)", os.path.basename(path))
+    return (int(m.group(1)), m.group(2)) if m else (9999, path)
+
+SLICE_FILES = sorted(
+    glob.glob(os.path.join(_MIG, "schema_pg_slice*.sql")), key=_slice_order
+)
 
 CLINICAL_LOGIN = "clinical_login_test"
 CLINICAL_LOGIN_PW = "validate_only_pw"
@@ -1239,6 +1248,32 @@ def test_platform_app_activity_logs_append_only(admin_conn):
     assert can_insert is True, "platform_app باید بتواند به clinical.activity_logs درج کند"
     assert can_update is False, "platform_app نباید clinical.activity_logs را UPDATE کند (append-only)"
     assert can_delete is False, "platform_app نباید از clinical.activity_logs حذف کند (append-only)"
+
+
+def test_slice10_suggestion_events_append_only(admin_conn):
+    """
+    slice10: clinical.suggestion_events باید append-only باشد — INSERT/SELECT مجاز،
+    UPDATE/DELETE برای هر دو رولِ اپ ممنوع. این تستِ رگرسیون هم ترتیبِ numeric برش‌ها
+    را گارد می‌کند: اگر slice10 (به‌خاطرِ مرتب‌سازیِ رشته‌ای) قبل از slice2 اجرا شود،
+    GRANTِ بلنکتِ slice2 این REVOKE را خنثی می‌کند و این تست شکست می‌خورد.
+    """
+    for role in ("clinical_app", "platform_app"):
+        can_insert = admin_conn.execute(
+            f"SELECT has_table_privilege('{role}', 'clinical.suggestion_events', 'INSERT')"
+        ).fetchone()[0]
+        can_select = admin_conn.execute(
+            f"SELECT has_table_privilege('{role}', 'clinical.suggestion_events', 'SELECT')"
+        ).fetchone()[0]
+        can_update = admin_conn.execute(
+            f"SELECT has_table_privilege('{role}', 'clinical.suggestion_events', 'UPDATE')"
+        ).fetchone()[0]
+        can_delete = admin_conn.execute(
+            f"SELECT has_table_privilege('{role}', 'clinical.suggestion_events', 'DELETE')"
+        ).fetchone()[0]
+        assert can_insert is True, f"{role} باید بتواند به suggestion_events درج کند"
+        assert can_select is True, f"{role} باید بتواند suggestion_events را بخواند"
+        assert can_update is False, f"{role} نباید suggestion_events را UPDATE کند (append-only)"
+        assert can_delete is False, f"{role} نباید از suggestion_events حذف کند (append-only)"
 
 
 # ===========================================================================

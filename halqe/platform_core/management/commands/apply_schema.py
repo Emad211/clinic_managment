@@ -62,8 +62,15 @@ class Command(BaseCommand):
                 "Set settings.SCHEMA_SLICE_DIR or the SCHEMA_SLICE_DIR env var."
             )
 
-        # Collect slice files — sorted alphabetically (slice0, slice2, slice2b, …)
-        slice_files = sorted(slice_dir.glob("schema_pg_slice*.sql"))
+        # Collect slice files in NUMERIC-aware order (slice2 before slice10).
+        # Plain string sort would put "slice10" before "slice2" ('1' < '2'),
+        # which breaks ordering-dependent grants/revokes. Key = (major, suffix).
+        def _slice_order(p):
+            import re
+            m = re.search(r"schema_pg_slice(\d+)([a-z]*)", p.name)
+            return (int(m.group(1)), m.group(2)) if m else (9999, p.name)
+
+        slice_files = sorted(slice_dir.glob("schema_pg_slice*.sql"), key=_slice_order)
         if not slice_files:
             raise CommandError(f"No schema_pg_slice*.sql files found in {slice_dir}")
 

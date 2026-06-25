@@ -391,6 +391,56 @@ class SuggestionLog(models.Model):
         )
 
 
+class SuggestionEvent(models.Model):
+    """
+    clinical.suggestion_events — append-only log of suggestion lifecycle events.
+
+    Slice10 (schema_pg_slice10_suggestion_events.sql):
+      tenant_id, patient_link_id, rule_code,
+      event_type CHECK('accepted'|'dismissed'|'fired_daily'),
+      acted_by TEXT nullable (NULL for fired_daily),
+      suggestion_text TEXT nullable (snapshot at time of action),
+      evidence_level TEXT nullable (snapshot),
+      note TEXT nullable,
+      occurred_at TIMESTAMPTZ DEFAULT now().
+
+    Design (locked with data-scientist):
+      - append-only: REVOKE UPDATE, DELETE from app roles — DB-enforced.
+      - fired_daily: one row per (tenant, patient_link, rule_code) per day for
+        pending suggestions — created by the generate_suggestion_fire_events
+        management command.
+      - accepted / dismissed: one INSERT per action; accept-then-dismiss = 2 rows
+        (NOT an overwrite; unlike suggestion_log which is upsert/state).
+      - The suggestion_log (state/UI) is left completely unchanged.
+    """
+
+    EVENT_ACCEPTED = "accepted"
+    EVENT_DISMISSED = "dismissed"
+    EVENT_FIRED_DAILY = "fired_daily"
+
+    tenant_id = models.BigIntegerField(default=1)
+    patient_link_id = models.BigIntegerField()
+    rule_code = models.TextField()
+    event_type = models.TextField()  # CHECK in DB: accepted|dismissed|fired_daily
+    acted_by = models.TextField(null=True, blank=True)
+    suggestion_text = models.TextField(null=True, blank=True)
+    evidence_level = models.TextField(null=True, blank=True)
+    note = models.TextField(null=True, blank=True)
+    occurred_at = models.DateTimeField()
+
+    class Meta:
+        managed = False
+        app_label = "clinical"
+        db_table = '"clinical"."suggestion_events"'
+        ordering = ["-occurred_at"]
+
+    def __str__(self):
+        return (
+            f"SuggestionEvent(patient_link_id={self.patient_link_id}, "
+            f"rule_code={self.rule_code}, event_type={self.event_type})"
+        )
+
+
 class Observation(models.Model):
     """
     clinical.observations — canonical UNION VIEW of vital_readings + lab_results.

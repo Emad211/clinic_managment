@@ -103,7 +103,15 @@ def django_db_setup(django_test_environment, django_db_blocker):
     )
     from pathlib import Path
     slice_dir = Path(SCHEMA_SLICE_DIR)
-    slice_files = sorted(slice_dir.glob("schema_pg_slice*.sql"))
+
+    # NUMERIC-aware order (slice2 before slice10): plain string sort puts
+    # "slice10" before "slice2" ('1' < '2'), breaking ordering-dependent grants.
+    def _slice_order(p):
+        import re
+        m = re.search(r"schema_pg_slice(\d+)([a-z]*)", p.name)
+        return (int(m.group(1)), m.group(2)) if m else (9999, p.name)
+
+    slice_files = sorted(slice_dir.glob("schema_pg_slice*.sql"), key=_slice_order)
     assert slice_files, f"No slice files found in {slice_dir}"
 
     with psycopg.connect(su_test_conninfo, autocommit=True) as conn:
@@ -484,6 +492,259 @@ def seed_act_data(seed_clinical_data):
 #     auth_bearer.py انجام می‌شود.
 #   - yield: پس از تست GUC را به '' برمی‌گرداند — از تداخل بین تست‌ها جلوگیری می‌کند.
 # ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# seed_suggestions_data — shared fixture for suggestion engine tests (step 41)
+# Previously local to test_suggestions.py; moved here so test_suggestion_events.py
+# can also depend on it. test_suggestions.py still defines a local fixture with
+# the same name — pytest resolves local-first, so that file is unaffected.
+# ---------------------------------------------------------------------------
+@pytest.fixture(scope="session")
+def seed_suggestions_data(seed_clinical_data):
+    """
+    Seed two diabetic patients (uncontrolled + controlled) with vitals and
+    a subset of clinical_rules for golden-test assertions.
+
+    Depends on seed_clinical_data so that tenant-2 patient UUID is available.
+    Returns an extended dict with link_ids and patient UUIDs.
+    """
+    import json
+
+    _RULE_SUBSET = [
+        {
+            "rule_code": "T2-DX-01", "title": "تشخیص دیابت", "category": "diagnosis",
+            "condition_code": "diabetes",
+            "trigger_json": {"any": [
+                {"var": "indicator.hba1c.latest", "op": ">=", "value": 6.5},
+                {"var": "indicator.fbs.latest", "op": ">=", "value": 126},
+            ]},
+            "human_if": "A1c ≥۶.۵٪",
+            "recommendation": "معیار تشخیص دیابت مثبت است.",
+            "action_type": "classify",
+            "action_params_json": {"label": "diabetes"},
+            "severity": "warn", "priority": 10, "source_ref": "ADA 2.1a",
+        },
+        {
+            "rule_code": "T2-DX-02", "title": "پیش‌دیابت", "category": "diagnosis",
+            "condition_code": "diabetes",
+            "trigger_json": {"any": [
+                {"var": "indicator.hba1c.latest", "op": "between", "value": [5.7, 6.4]},
+            ]},
+            "human_if": "A1c ۵.۷–۶.۴٪",
+            "recommendation": "برچسب پیش‌دیابت.",
+            "action_type": "classify",
+            "action_params_json": {"label": "prediabetes"},
+            "severity": "info", "priority": 20, "source_ref": "ADA Table 2.2",
+        },
+        {
+            "rule_code": "T2-TGT-BP-01", "title": "هدف فشار خون", "category": "target",
+            "condition_code": "diabetes",
+            "trigger_json": {"all": [
+                {"var": "condition", "op": "has", "value": "diabetes"},
+            ]},
+            "human_if": "دیابت نوع ۲",
+            "recommendation": "هدفِ فشار <۱۳۰/۸۰ mmHg.",
+            "action_type": "set_target",
+            "action_params_json": {"indicator": "bp_systolic", "target": 130},
+            "severity": "info", "priority": 32, "source_ref": "ADA 10.4",
+        },
+        {
+            "rule_code": "T2-MED-FIRST-01", "title": "شروع درمان دارویی", "category": "medication",
+            "condition_code": "diabetes",
+            "trigger_json": {"all": [
+                {"var": "condition", "op": "has", "value": "diabetes"},
+                {"var": "indicator.hba1c.latest", "op": ">=", "value": 8.5},
+            ]},
+            "human_if": "A1c ≥۸.۵٪",
+            "recommendation": "شروع بدون تأخیر.",
+            "action_type": "suggest_med",
+            "action_params_json": None,
+            "severity": "warn", "priority": 40, "source_ref": "ADA 9.6",
+        },
+        {
+            "rule_code": "T2-BP-RX-01", "title": "درمان فشار خون", "category": "bp_rx",
+            "condition_code": "diabetes",
+            "trigger_json": {"all": [
+                {"var": "condition", "op": "has", "value": "diabetes"},
+                {"var": "indicator.bp_systolic.latest", "op": ">=", "value": 130},
+            ]},
+            "human_if": "فشار سیستول ≥۱۳۰",
+            "recommendation": "شروع/تشدید ضدفشار.",
+            "action_type": "suggest_med",
+            "action_params_json": {"classes": ["acei", "arb"]},
+            "severity": "warn", "priority": 60, "source_ref": "ADA 10.6",
+        },
+        {
+            "rule_code": "T2-INS-START-01", "title": "شروع انسولین", "category": "insulin",
+            "condition_code": "diabetes",
+            "trigger_json": {"all": [
+                {"var": "condition", "op": "has", "value": "diabetes"},
+                {"var": "indicator.hba1c.latest", "op": ">", "value": 10},
+            ]},
+            "human_if": "A1c >۱۰٪",
+            "recommendation": "شروع انسولین.",
+            "action_type": "suggest_med",
+            "action_params_json": {"classes": ["insulin_basal"]},
+            "severity": "warn", "priority": 80, "source_ref": "ADA 9.20",
+        },
+        {
+            "rule_code": "T2-REDFLAG-BP", "title": "بحران فشار خون", "category": "redflag",
+            "condition_code": "all",
+            "trigger_json": {"any": [
+                {"var": "indicator.bp_systolic.latest", "op": ">=", "value": 180},
+                {"var": "indicator.bp_diastolic.latest", "op": ">=", "value": 110},
+            ]},
+            "human_if": "فشار ≥۱۸۰/۱۱۰",
+            "recommendation": "نیاز به اقدام سریع.",
+            "action_type": "redflag",
+            "action_params_json": None,
+            "severity": "urgent", "priority": 1, "source_ref": "ADA 10",
+        },
+        {
+            "rule_code": "T2-REDFLAG-SEVERE-HYPER", "title": "هایپرگلیسمی شدید",
+            "category": "redflag", "condition_code": "diabetes",
+            "trigger_json": {"any": [
+                {"var": "indicator.fbs.latest", "op": ">=", "value": 300},
+                {"var": "indicator.hba1c.latest", "op": ">", "value": 12},
+            ]},
+            "human_if": "گلوکز ≥۳۰۰ یا A1c >۱۲٪",
+            "recommendation": "ارزیابی برای DKA.",
+            "action_type": "redflag",
+            "action_params_json": None,
+            "severity": "urgent", "priority": 2, "source_ref": "ADA 9.20",
+        },
+    ]
+
+    seed_data = seed_clinical_data
+    uncontrolled_uuid = uuid.UUID("cccccccc-dddd-eeee-ffff-000000000001")
+    controlled_uuid = uuid.UUID("cccccccc-dddd-eeee-ffff-000000000002")
+
+    su_conninfo = (
+        f"host='{PG_HOST}' port='{PG_PORT}' "
+        f"user='{PG_SU_USER}' password='{PG_SU_PASSWORD}' "
+        f"dbname='{TEST_DB_NAME}'"
+    )
+
+    with psycopg.connect(su_conninfo, autocommit=True) as conn:
+        # Seed rules
+        for r in _RULE_SUBSET:
+            conn.execute("""
+                INSERT INTO clinical.clinical_rules
+                    (tenant_id, rule_code, title, category, condition_code,
+                     trigger_json, human_if, recommendation,
+                     action_type, action_params_json, severity, priority,
+                     source_ref, is_active)
+                VALUES
+                    (1, %(rule_code)s, %(title)s, %(category)s,
+                     %(condition_code)s, %(trigger_json)s::jsonb, %(human_if)s,
+                     %(recommendation)s, %(action_type)s,
+                     %(action_params_json)s::jsonb, %(severity)s, %(priority)s,
+                     %(source_ref)s, TRUE)
+                ON CONFLICT (tenant_id, rule_code) DO NOTHING
+            """, {
+                **r,
+                "trigger_json": json.dumps(r["trigger_json"], ensure_ascii=False),
+                "action_params_json": (
+                    json.dumps(r["action_params_json"], ensure_ascii=False)
+                    if r["action_params_json"] is not None else None
+                ),
+            })
+
+        # Diabetes condition id
+        row = conn.execute(
+            "SELECT id FROM clinical.conditions WHERE tenant_id=1 AND code='diabetes'"
+        ).fetchone()
+        assert row, "diabetes condition must be seeded by SQL slice"
+        diabetes_id = row[0]
+
+        # Uncontrolled patient
+        conn.execute("""
+            INSERT INTO accounting.patients
+                (tenant_id, uuid, name, family_name, national_id,
+                 phone_number, birthdate, gender)
+            VALUES (1, %s, 'محمد', 'کنترل‌نشده', '5555555551', '09110000051',
+                    '1975-03-10', 'male')
+            ON CONFLICT (uuid) DO NOTHING
+        """, (uncontrolled_uuid,))
+        row = conn.execute(
+            "SELECT id FROM accounting.patients WHERE uuid=%s", (uncontrolled_uuid,)
+        ).fetchone()
+        uncontrolled_patient_id = row[0]
+
+        conn.execute("""
+            INSERT INTO clinical.patient_links (tenant_id, patient_id, is_active)
+            VALUES (1, %s, TRUE)
+            ON CONFLICT (tenant_id, patient_id) DO NOTHING
+        """, (uncontrolled_patient_id,))
+        row = conn.execute(
+            "SELECT id FROM clinical.patient_links WHERE tenant_id=1 AND patient_id=%s",
+            (uncontrolled_patient_id,)
+        ).fetchone()
+        uncontrolled_link_id = row[0]
+
+        conn.execute("""
+            INSERT INTO clinical.patient_conditions
+                (tenant_id, patient_link_id, condition_id, is_active, diagnosed_at)
+            VALUES (1, %s, %s, TRUE, now())
+            ON CONFLICT DO NOTHING
+        """, (uncontrolled_link_id, diabetes_id))
+
+        conn.execute("""
+            INSERT INTO clinical.vital_readings
+                (tenant_id, patient_link_id, type, value, unit, measured_at, source)
+            VALUES
+                (1, %s, 'hba1c', 9.0, '%%', now() - interval '1 day', 'clinic'),
+                (1, %s, 'bp_systolic', 145.0, 'mmHg', now() - interval '1 day', 'clinic')
+        """, (uncontrolled_link_id, uncontrolled_link_id))
+
+        # Controlled patient
+        conn.execute("""
+            INSERT INTO accounting.patients
+                (tenant_id, uuid, name, family_name, national_id,
+                 phone_number, birthdate, gender)
+            VALUES (1, %s, 'فاطمه', 'کنترل‌شده', '5555555552', '09110000052',
+                    '1980-07-22', 'female')
+            ON CONFLICT (uuid) DO NOTHING
+        """, (controlled_uuid,))
+        row = conn.execute(
+            "SELECT id FROM accounting.patients WHERE uuid=%s", (controlled_uuid,)
+        ).fetchone()
+        controlled_patient_id = row[0]
+
+        conn.execute("""
+            INSERT INTO clinical.patient_links (tenant_id, patient_id, is_active)
+            VALUES (1, %s, TRUE)
+            ON CONFLICT (tenant_id, patient_id) DO NOTHING
+        """, (controlled_patient_id,))
+        row = conn.execute(
+            "SELECT id FROM clinical.patient_links WHERE tenant_id=1 AND patient_id=%s",
+            (controlled_patient_id,)
+        ).fetchone()
+        controlled_link_id = row[0]
+
+        conn.execute("""
+            INSERT INTO clinical.patient_conditions
+                (tenant_id, patient_link_id, condition_id, is_active, diagnosed_at)
+            VALUES (1, %s, %s, TRUE, now())
+            ON CONFLICT DO NOTHING
+        """, (controlled_link_id, diabetes_id))
+
+        conn.execute("""
+            INSERT INTO clinical.vital_readings
+                (tenant_id, patient_link_id, type, value, unit, measured_at, source)
+            VALUES
+                (1, %s, 'hba1c', 6.4, '%%', now() - interval '1 day', 'clinic'),
+                (1, %s, 'bp_systolic', 120.0, 'mmHg', now() - interval '1 day', 'clinic')
+        """, (controlled_link_id, controlled_link_id))
+
+    return {
+        **seed_data,
+        "uncontrolled_uuid": uncontrolled_uuid,
+        "uncontrolled_link_id": uncontrolled_link_id,
+        "controlled_uuid": controlled_uuid,
+        "controlled_link_id": controlled_link_id,
+    }
+
+
 @pytest.fixture(autouse=True)
 def set_default_tenant_guc(db, request):
     """
