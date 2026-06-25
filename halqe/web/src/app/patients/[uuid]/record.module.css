@@ -426,6 +426,38 @@
   margin-bottom: var(--space-3);
 }
 
+/* Data-gaps transparency banner — informational, not alarming */
+.dataGapsBanner {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  background: #e8f4fb;
+  border: 1px solid #93c5d5;
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-3);
+  font-size: 0.8125rem;
+  color: #0e5a72;
+  margin-bottom: var(--space-3);
+  line-height: 1.5;
+}
+
+.dataGapsIcon {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #93c5d5;
+  color: #0e5a72;
+  font-size: 0.7rem;
+  font-weight: 800;
+  font-style: normal;
+  line-height: 1;
+  margin-top: 1px;
+}
+
 /* ── Section group ── */
 .suggestionSection {
   margin-bottom: var(--space-4);

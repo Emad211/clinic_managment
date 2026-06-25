@@ -14,10 +14,50 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { type SuggestionsResponseDTO } from "@/lib/api";
+import { type SuggestionsResponseDTO, type DataGapDTO } from "@/lib/api";
 import { buildInitialActed, type ActedMap } from "@/lib/suggestion-utils";
+import { toFarsiDigits } from "@/lib/jalali";
 import { RuleCard } from "@/components/RuleCard";
 import styles from "@/app/patients/[uuid]/record.module.css";
+
+/**
+ * DataGapsBanner — informational transparency banner.
+ *
+ * Rendered only when `gaps` is a non-empty array. When empty (or absent),
+ * nothing is added to the DOM — the absence itself signals to the physician
+ * that the engine had all the data it needed.
+ *
+ * Framing contract:
+ *   - Color / tone: info blue — not alarming red or warning amber.
+ *   - role="note": informational, not urgent.
+ *   - suggestion-only: no action buttons, no automatic consequence.
+ *   - Counts shown in Persian digits via toFarsiDigits.
+ */
+function DataGapsBanner({ gaps }: { gaps?: DataGapDTO[] }) {
+  if (!gaps || gaps.length === 0) return null;
+
+  const gapList = gaps
+    .map(
+      (g) =>
+        `${g.label} (${toFarsiDigits(g.affected_rules)} قاعده)`,
+    )
+    .join("، ");
+
+  return (
+    <div
+      className={styles.dataGapsBanner}
+      role="note"
+      aria-label="داده‌های ناقص برای ارزیابی کامل‌تر"
+      data-testid="data-gaps-banner"
+    >
+      <span className={styles.dataGapsIcon} aria-hidden="true">i</span>
+      <span>
+        برای ارزیابیِ کامل‌ترِ پیشنهادها، ثبتِ این داده‌ها کمک می‌کند:{" "}
+        <strong>{gapList}</strong>
+      </span>
+    </div>
+  );
+}
 
 export interface SuggestionsPanelProps {
   uuid: string;
@@ -91,6 +131,8 @@ export function SuggestionsPanel({
               پرچم قرمز: هشدار فوری وجود دارد
             </div>
           )}
+
+          <DataGapsBanner gaps={suggestions.data_gaps} />
 
           <p className={styles.suggestionsCount}>
             {suggestions.count} پیشنهاد فعال

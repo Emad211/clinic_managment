@@ -10,16 +10,22 @@ Every fired rule carries `suggestion_only=True`.
 
 Facts assembled from Postgres via Django ORM:
   - latest observations per obs_key  (clinical.observations VIEW — UNION of
-    vital_readings + lab_results; ADR-0005)
+    vital_readings + lab_results; ADR-0005). Wired since cluster-B (slice4a).
   - active condition codes             (patient_conditions → conditions)
   - patient_flags (categorical/bool)  (patient_flags)
   - active medications' drug_class set (patient_medications)
   - thresholds from clinical_indicators (NOT hardcoded; static map = fallback)
+  - age: derived from demographics.birthdate (PatientDTO), supplied by the
+    caller (suggestion_service.grouped_for_patient / evaluate_for_patient
+    fetch it from the read-only accounting Port). When demographics is None,
+    age=None — age-gated rules are fail-closed (they don't fire rather than
+    producing wrong suggestions). This is intentional safe behaviour, not a bug.
 
-Deferred (not yet wired):
-  - age: patient birthdate lives in accounting.patients — wired via the port
-    if demographics are available; falls back to None (rules that need age
-    simply won't fire; no wrong suggestions).
+Data-gap transparency (data_gaps()):
+  A helper that identifies which vars required by active rules are absent from
+  the current fact bundle. Covers only `age` and `indicator.*` vars — flags,
+  conditions, and med.class are patient state (not missing data). The result
+  list powers the UI "قاعدهٔ خاموش" banner without changing fire behaviour.
 """
 import json
 from datetime import datetime
@@ -362,6 +368,164 @@ def _eval(node, facts: dict) -> bool:
 
 
 # ---------------------------------------------------------------------------
+# Data-gap helpers — "قاعدهٔ خاموش" transparency
+# ---------------------------------------------------------------------------
+
+def _referenced_vars(node) -> set[str]:
+    """
+    Recursively collect all `var` values from a trigger_json node tree.
+
+    Walks the all/any/not combinator tree and returns every leaf `var` string
+    found. Used by data_gaps() to determine which fact keys a rule depends on.
+
+    Parameters
+    ----------
+    node : dict | None
+        A trigger_json node: {"all": [...]} / {"any": [...]} / {"not": ...} /
+        {"var": "...", "op": "...", "value": ...}.
+
+    Returns
+    -------
+    set[str]  — all var strings referenced anywhere in the subtree.
+    """
+    if node is None:
+        return set()
+    if "all" in node:
+        result: set[str] = set()
+        for child in node["all"]:
+            result |= _referenced_vars(child)
+        return result
+    if "any" in node:
+        result = set()
+        for child in node["any"]:
+            result |= _referenced_vars(child)
+        return result
+    if "not" in node:
+        return _referenced_vars(node["not"])
+    if "var" in node:
+        return {node["var"]}
+    return set()
+
+
+def _compute_data_gaps(
+    facts: dict,
+    rules_qs,
+    tenant_id: int,
+) -> list[dict]:
+    """
+    Internal: compute data gaps given an already-assembled facts bundle and rules queryset.
+
+    Separated so grouped() can call this with the same rules_qs it already iterated,
+    avoiding redundant DB queries.
+
+    Parameters
+    ----------
+    facts     : dict from build_facts()
+    rules_qs  : evaluated queryset of ClinicalRule rows (already fetched)
+    tenant_id : for label_map query
+
+    Returns
+    -------
+    list[dict] — same shape as data_gaps() public API.
+    """
+    # Collect all referenced vars across ALL active rules (one pass over the list)
+    var_rule_counts: dict[str, int] = {}
+    for rule in rules_qs:
+        try:
+            trig = rule.trigger_json
+            if trig is None:
+                continue
+            if isinstance(trig, str):
+                try:
+                    trig = json.loads(trig)
+                except (ValueError, TypeError):
+                    continue
+        except Exception:
+            continue
+        for var in _referenced_vars(trig):
+            var_rule_counts[var] = var_rule_counts.get(var, 0) + 1
+
+    # Label map for indicator keys — minimal DB projection (key + label only)
+    label_map: dict[str, str] = {
+        row["key"]: row["label"]
+        for row in ClinicalIndicator.objects.filter(
+            tenant_id=tenant_id, is_active=True
+        ).values("key", "label")
+    }
+
+    # Build gap entries (before dedup)
+    raw_gaps: list[dict] = []
+    for var, count in var_rule_counts.items():
+        if var == "age":
+            if facts.get("age") is None:
+                raw_gaps.append({"datum": "age", "label": "سن", "affected_rules": count})
+        elif var.startswith("indicator."):
+            parts = var.split(".")
+            bare_key = parts[1] if len(parts) > 1 else ""
+            if not bare_key:
+                continue
+            if bare_key not in facts["indicator"]:
+                label = label_map.get(bare_key, bare_key)
+                raw_gaps.append({
+                    "datum": bare_key,
+                    "label": label,
+                    "affected_rules": count,
+                })
+        # flag.*, condition, med.class — patient state, not data gaps
+
+    # Deduplicate by datum (indicator.egfr.latest + indicator.egfr.level → "egfr")
+    merged: dict[str, dict] = {}
+    for g in raw_gaps:
+        d = g["datum"]
+        if d in merged:
+            merged[d]["affected_rules"] += g["affected_rules"]
+        else:
+            merged[d] = dict(g)
+
+    return sorted(merged.values(), key=lambda x: -x["affected_rules"])
+
+
+def data_gaps(
+    patient_link_id: int,
+    demographics=None,
+    tenant_id: int = 1,
+) -> list[dict]:
+    """
+    Identify which data items are missing and affect how many active rules fire.
+
+    This function is DISPLAY-ONLY — it never changes which rules fire.
+    It surfaces the "قاعدهٔ خاموش" (silent-rule) banner in the UI so physicians
+    understand *why* certain rules were not evaluated.
+
+    Scope of «missing data» (per طراحیِ قفل‌شده):
+      - `age`              : None when demographics.birthdate is unavailable.
+      - `indicator.<key>` : key absent from the latest observation facts.
+      *** Excluded from gap detection ***:
+        - `flag.*`         — patient state / categorical decision input, not missing data.
+        - `condition`      — always a set (empty = no conditions registered, not a gap).
+        - `med.class`      — always a set (empty = no active meds, not a gap).
+        - `bmi`            — mapped through `indicator.bmi`; covered by indicator path.
+
+    Returns
+    -------
+    list[dict]:
+        {"datum": str, "label": str, "affected_rules": int}
+    Sorted descending by affected_rules. Empty list when all required data present.
+    """
+    facts = build_facts(patient_link_id, demographics=demographics, tenant_id=tenant_id)
+    patient_conditions = facts["conditions"]
+    condition_filter = list(patient_conditions) + ["all"]
+    rules_qs = list(
+        ClinicalRule.objects.filter(
+            tenant_id=tenant_id,
+            is_active=True,
+            condition_code__in=condition_filter,
+        ).exclude(trigger_json=None).order_by("id")
+    )
+    return _compute_data_gaps(facts, rules_qs, tenant_id)
+
+
+# ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
 
@@ -452,12 +616,93 @@ def grouped(patient_link_id: int, demographics=None, tenant_id: int = 1) -> dict
     """
     Fired rules grouped into UI sections, in display order.
 
-    Mirrors RuleEngine.grouped() exactly.
+    Mirrors RuleEngine.grouped() — extended with `data_gaps` for
+    "قاعدهٔ خاموش" UI transparency (display-only; does not change fire behaviour).
+
+    Returns
+    -------
+    dict:
+      sections     : list of {key, label, rules[]}
+      count        : int — total fired rules
+      has_redflag  : bool
+      data_gaps    : list[{datum, label, affected_rules}] — empty when all data present.
+                     Identifies fact vars that are absent and affect active rules,
+                     so the UI can surface "N قانون به‌خاطر کمبود داده بررسی نشد".
     """
-    fired = evaluate(patient_link_id, demographics=demographics, tenant_id=tenant_id)
+    # Assemble facts once — shared by both fire-evaluation and gap detection
+    facts = build_facts(patient_link_id, demographics=demographics, tenant_id=tenant_id)
+    patient_conditions = facts["conditions"]
+
+    condition_filter = list(patient_conditions) + ["all"]
+    # Materialise the queryset into a list — iterated twice (fire + gap detection)
+    # without hitting the DB a second time.
+    rules_list = list(
+        ClinicalRule.objects.filter(
+            tenant_id=tenant_id,
+            is_active=True,
+            condition_code__in=condition_filter,
+        ).exclude(trigger_json=None).order_by("priority", "id")
+    )
+
+    fired = []
+    for rule in rules_list:
+        try:
+            trig = rule.trigger_json
+            if trig is None:
+                continue
+            if isinstance(trig, str):
+                try:
+                    trig = json.loads(trig)
+                except (ValueError, TypeError):
+                    continue
+        except Exception:
+            continue
+
+        try:
+            if _eval(trig, facts):
+                try:
+                    params = rule.action_params_json or {}
+                    if isinstance(params, str):
+                        params = json.loads(params)
+                except (ValueError, TypeError):
+                    params = {}
+                section = SECTION.get(rule.action_type, "lifestyle")
+                fired.append({
+                    "id": rule.id,
+                    "rule_code": rule.rule_code,
+                    "title": rule.title,
+                    "category": rule.category,
+                    "condition_code": rule.condition_code,
+                    "recommendation": rule.recommendation,
+                    "dosage_titration": rule.dosage_titration,
+                    "monitoring": rule.monitoring,
+                    "contraindications": rule.contraindications,
+                    "evidence_level": rule.evidence_level,
+                    "action_type": rule.action_type,
+                    "params": params,
+                    "severity": rule.severity,
+                    "priority": rule.priority,
+                    "source_ref": rule.source_ref,
+                    "section": section,
+                    "suggestion_only": True,
+                })
+        except Exception:
+            continue
+
+    fired.sort(
+        key=lambda x: (
+            _SEVERITY_RANK.get(x.get("severity"), 3),
+            x.get("priority", 100),
+        )
+    )
+
     groups: dict = {}
     for r in fired:
         groups.setdefault(r["section"], []).append(r)
+
+    # Gap detection — reuses the already-materialised rules list (no extra DB query)
+    gaps = _compute_data_gaps(facts, rules_list, tenant_id)
+
     return {
         "sections": [
             {"key": s, "label": SECTION_LABELS[s], "rules": groups[s]}
@@ -466,4 +711,5 @@ def grouped(patient_link_id: int, demographics=None, tenant_id: int = 1) -> dict
         ],
         "count": len(fired),
         "has_redflag": any(r["section"] == "redflags" for r in fired),
+        "data_gaps": gaps,
     }

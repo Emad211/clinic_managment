@@ -544,6 +544,23 @@ class SuggestionSectionDTO(Schema):
     rules: list[SuggestionRuleDTO]
 
 
+class DataGapDTO(Schema):
+    """
+    One missing data item that prevents some active rules from being evaluated.
+
+    Part of the "قاعدهٔ خاموش" (silent-rule) transparency feature.
+    Display-only — does not change which rules fire.
+
+    datum         : bare key ("age" | "egfr" | "hba1c" | …)
+    label         : Persian display label (from clinical_indicators.label, or "سن" for age)
+    affected_rules: number of active rules that reference this datum but could not
+                    be evaluated because the value is absent from the patient's facts.
+    """
+    datum: str
+    label: str
+    affected_rules: int
+
+
 class SuggestionsResponseDTO(Schema):
     patient_link_id: int
     count: int
@@ -551,6 +568,11 @@ class SuggestionsResponseDTO(Schema):
     # suggestion-only framing label — displayed in the UI
     framing: str
     sections: list[SuggestionSectionDTO]
+    # Data-gap transparency ("قاعدهٔ خاموش" banner).
+    # Empty list when all fact data required by active rules is present.
+    # Each entry describes one missing datum and how many active rules it affects.
+    # Display-only: does not reflect or change which rules fired.
+    data_gaps: list[DataGapDTO] = []
 
 
 # ---------------------------------------------------------------------------
@@ -652,12 +674,23 @@ def get_suggestions(request, patient_uuid: uuid_module.UUID):
         for sec in result["sections"]
     ]
 
+    # 5. Serialise data_gaps from the engine result
+    gaps = [
+        DataGapDTO(
+            datum=g["datum"],
+            label=g["label"],
+            affected_rules=g["affected_rules"],
+        )
+        for g in result.get("data_gaps", [])
+    ]
+
     return SuggestionsResponseDTO(
         patient_link_id=link.id,
         count=result["count"],
         has_redflag=result["has_redflag"],
         framing="پیشنهاد — تأیید با پزشک",
         sections=sections,
+        data_gaps=gaps,
     )
 
 

@@ -307,12 +307,31 @@ export interface SuggestionSectionDTO {
   rules: SuggestionRuleDTO[];
 }
 
+/**
+ * A single missing clinical datum that prevented some rules from being evaluated.
+ * Returned by GET /patients/{uuid}/suggestions when the engine detected gaps.
+ */
+export interface DataGapDTO {
+  /** Machine-readable datum key, e.g. "age", "egfr", "hba1c". */
+  datum: string;
+  /** Human-readable Persian label shown in the transparency banner. */
+  label: string;
+  /** Number of clinical rules that could not be evaluated due to this missing datum. */
+  affected_rules: number;
+}
+
 export interface SuggestionsResponseDTO {
   patient_link_id: number;
   count: number;
   has_redflag: boolean;
   framing: string;
   sections: SuggestionSectionDTO[];
+  /**
+   * Missing data items that prevented some rules from being evaluated.
+   * Empty array (or absent) when the engine had everything it needed.
+   * Displayed as a non-alarming informational transparency banner.
+   */
+  data_gaps?: DataGapDTO[];
 }
 
 export async function apiGetSuggestions(
