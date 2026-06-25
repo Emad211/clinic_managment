@@ -25,6 +25,11 @@ const NAV_LINKS: NavLink[] = [
   { href: "/worklist", label: "پیگیری‌ها" },
 ];
 
+/** Manager-only links — appended only when `showManagerLinks` is true. */
+const MANAGER_LINKS: NavLink[] = [
+  { href: "/manager/outcomes", label: "گزارشِ outcome" },
+];
+
 interface NavProps {
   /** The pathname of the current page — used to highlight the active link. */
   currentPath: string;
@@ -32,9 +37,16 @@ interface NavProps {
   pageTitle?: string;
   /** Called when the user clicks خروج. */
   onLogout: () => void;
+  /**
+   * When true, manager-only nav links (e.g. «گزارشِ outcome») are shown.
+   * The page passes this after reading the role claim — the backend still
+   * enforces the manager gate on every privileged endpoint.
+   */
+  showManagerLinks?: boolean;
 }
 
-export default function Nav({ currentPath, pageTitle, onLogout }: NavProps) {
+export default function Nav({ currentPath, pageTitle, onLogout, showManagerLinks }: NavProps) {
+  const links = showManagerLinks ? [...NAV_LINKS, ...MANAGER_LINKS] : NAV_LINKS;
   return (
     <header className={styles.topbar} role="banner">
       <Link href="/dashboard" className={styles.brand} aria-label="صفحه اصلی حلقه">
@@ -42,7 +54,7 @@ export default function Nav({ currentPath, pageTitle, onLogout }: NavProps) {
       </Link>
 
       <nav className={styles.nav} aria-label="ناوبری اصلی">
-        {NAV_LINKS.map(({ href, label }) => {
+        {links.map(({ href, label }) => {
           // Mark active if the current path starts with the link's href
           // (so /patients/uuid also activates the Patients link)
           const isActive = currentPath === href || currentPath.startsWith(`${href}/`);

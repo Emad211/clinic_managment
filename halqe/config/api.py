@@ -4152,3 +4152,109 @@ def manager_cohort_outcomes(request):
 
     data = _cohort_outcomes(tenant_id=request.tenant_id)
     return 200, data
+
+
+# ===========================================================================
+# Outcome dashboard endpoints (Step 50, cluster K)
+#   GET /manager/lapsed-return   — نرخِ بازگشتِ کوهورتِ lapsed (closed-window)
+#   GET /manager/control-trend   — ۱۲ باکتِ ماهانهٔ ٪کنترل (per-condition + all)
+#
+# هر دو manager-only، on-the-fly، read-only، NULL-not-fabricated، غیرعلّی.
+# روی seed (۱۰ بیمار) باید NULL برگردانند — اثباتِ گِیت، نه شکست.
+# همهٔ فیلدها سریال (درسِ DTOِ قدم ۳۶/۳۸).
+# ===========================================================================
+
+from clinical.outcome_trend_service import (
+    lapsed_return as _lapsed_return,
+    control_trend as _control_trend,
+)
+
+
+class LapsedReturnResponseDTO(Schema):
+    """
+    پاسخِ GET /manager/lapsed-return.
+
+    «رویدادِ معنادار» = Appointment(done) ∪ vital(verified) ∪ FollowupTask(done).
+    خروجیِ SMS/recall عمداً شامل نیست (پرهیز از tautology).
+    return_rate همیشه Optional — NULL وقتی denominator < min_n.
+    """
+    denominator: int                       # کوهورتِ lapsed در زمانِ T0
+    returned: int                          # از مخرج، آن‌ها که در پنجرهٔ بازگشت برگشتند
+    return_rate: Optional[float] = None     # درصد ۱ رقم؛ NULL اگر denominator<min_n
+    lapse_window_days: int                 # 120
+    return_window_days: int                # 120
+    min_n: int                             # 30
+    framing: str                           # غیرعلّی، همیشه
+
+
+class ControlTrendBucketDTO(Schema):
+    """یک باکتِ ماهانه از یک سری (per-condition یا 'all')."""
+    ym: str                                # 'YYYY-MM' میلادی (نمایشِ جلالی در UI)
+    condition: str                         # diabetes|hypertension|...|all
+    assessable_n: int                      # بیمارانِ دارای ≥۱ قرائت تا پایانِ ماه
+    controlled_n: int                      # از assessable، آن‌ها که controlled بودند
+    pct_controlled: Optional[float] = None  # درصد ۱ رقم؛ NULL اگر assessable_n<min_n
+
+
+class ControlTrendResponseDTO(Schema):
+    """
+    پاسخِ GET /manager/control-trend.
+
+    روندِ زمانیِ توصیفی (secular trend، نه اثرِ مداخله). framing همیشه حاضر.
+    """
+    buckets: list[ControlTrendBucketDTO]
+    min_n: int
+    framing: str
+
+
+@api.get(
+    "/manager/lapsed-return",
+    response={200: LapsedReturnResponseDTO, 403: ErrorSchema},
+    auth=_jwt_auth,
+    tags=["manager"],
+)
+def manager_lapsed_return(request):
+    """
+    نرخِ بازگشتِ کوهورتِ lapsed — فقط مدیر.
+
+    closed-window: T0 = now-240d (lapse 120 + return 120) تا پنجرهٔ بازگشت کاملاً
+    سپری شده باشد (رفعِ immortal-time/survivorship). مخرج = بیمارانِ activeِ
+    دارای رویدادِ معنادارِ پیش از T0 که آخرین رویدادشان ≤ T0-120d بوده. صورت =
+    آن‌ها که در (T0, T0+120d] رویدادِ معنادار داشتند. SMS/recall شمرده نمی‌شود.
+    return_rate = NULL اگر denominator < 30 (NULL نه عددِ ساختگی).
+
+    Manager-only: staff → 403.
+    """
+    user_role = getattr(request.auth, "role", "staff")
+    if user_role != "manager":
+        return 403, error_response(
+            "دسترسی محدود است. فقط مدیر می‌تواند این صفحه را ببیند.",
+            "forbidden",
+        )
+    return 200, _lapsed_return(tenant_id=request.tenant_id)
+
+
+@api.get(
+    "/manager/control-trend",
+    response={200: ControlTrendResponseDTO, 403: ErrorSchema},
+    auth=_jwt_auth,
+    tags=["manager"],
+)
+def manager_control_trend(request):
+    """
+    روندِ ماهانهٔ ٪کنترل (۱۲ باکت)، per-condition + سریِ 'all' — فقط مدیر.
+
+    as-of: برای هر ماه، آخرین قرائتِ verified هر vitalِ کنترلی تا پایانِ ماه؛
+    طبقه‌بندیِ control (uncontrolled/borderline/controlled/unknown). مخرجِ هر باکت =
+    assessable (unknown خارج)؛ صورت = controlled. pct_controlled = NULL اگر
+    assessable < 30. روندِ توصیفی — secular trend، نه اثرِ مداخله.
+
+    Manager-only: staff → 403.
+    """
+    user_role = getattr(request.auth, "role", "staff")
+    if user_role != "manager":
+        return 403, error_response(
+            "دسترسی محدود است. فقط مدیر می‌تواند این صفحه را ببیند.",
+            "forbidden",
+        )
+    return 200, _control_trend(tenant_id=request.tenant_id)
