@@ -1,0 +1,198 @@
+/* ScreeningTimeline — تقویمِ غربالگریِ بیمار */
+/* RTL — از توکن‌های مشترک record.module.css استفاده می‌کند */
+
+/* ── Section wrapper (card-like — مشابهِ .card + .section) ── */
+.section {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+  padding: var(--space-6);
+}
+
+/* ── Section header row (title + suggestion chip inline) ── */
+.sectionHeader {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+  padding-bottom: var(--space-3);
+  border-bottom: 2px solid var(--color-primary-light);
+}
+
+.sectionTitle {
+  font-size: 1.0625rem;
+  font-weight: 700;
+  color: var(--color-primary-dark);
+  flex: 1;
+  margin: 0;
+}
+
+/* ── Suggestion-only chip — هم‌سبک با SuggestionsPanel ── */
+.suggestionOnlyChip {
+  display: inline-block;
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: #7b5800;
+  background: #fff8e1;
+  border: 1px solid #ffe082;
+  border-radius: 999px;
+  padding: 0.05rem 0.45rem;
+  letter-spacing: 0.02em;
+  flex-shrink: 0;
+}
+
+/* ── Framing banner — هم‌سبک با .framingBanner در record.module.css ── */
+.framingBanner {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  background: #fff8e1;
+  border: 1px solid #ffe082;
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-3);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: #7b5800;
+  margin-bottom: var(--space-4);
+}
+
+.framingIcon {
+  font-size: 1rem;
+  flex-shrink: 0;
+}
+
+/* ── Empty state ── */
+.emptyNote {
+  color: var(--color-text-muted);
+  font-size: 0.9rem;
+  padding: var(--space-4) 0;
+  text-align: center;
+}
+
+/* ── Items list ── */
+.list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+/* ── Single item card ── */
+.item {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-surface);
+  transition: border-color 0.15s;
+  /* Right-border color set per status below */
+  border-right: 3px solid var(--color-border);
+}
+
+/* never_done — برجسته‌ترین؛ قرمزِ تیره + پس‌زمینهٔ قرمزِ کم‌رنگ */
+.itemNeverDone {
+  border-right-color: var(--color-danger);
+  background: #fff8f7;
+}
+
+/* overdue — قرمز/نارنجی */
+.item[data-status="overdue"] {
+  border-right-color: #e07b00;
+  background: #fffdf5;
+}
+
+/* due_soon — زرد */
+.item[data-status="due_soon"] {
+  border-right-color: var(--color-warn);
+  background: #fefce8;
+}
+
+/* ok — سبز/خنثی */
+.item[data-status="ok"] {
+  border-right-color: var(--color-ok);
+  background: #f7fdf9;
+}
+
+/* ── Item header (label + status badge) ── */
+.itemHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-2);
+}
+
+.itemLabel {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--color-text);
+  flex: 1;
+}
+
+/* ── Status badge ── */
+.statusBadge {
+  display: inline-block;
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* never_done — قرمزِ توپر */
+.statusNeverDone {
+  background: #fde8e7;
+  color: var(--color-danger);
+}
+
+/* overdue — نارنجی */
+.statusOverdue {
+  background: #fef3e2;
+  color: #8b5000;
+}
+
+/* due_soon — زرد */
+.statusDueSoon {
+  background: #fef9c3;
+  color: #7b5000;
+}
+
+/* ok — سبز */
+.statusOk {
+  background: #e6f9ef;
+  color: var(--color-ok);
+}
+
+/* ── Metadata key-value pairs ── */
+.itemMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3) var(--space-5);
+}
+
+.metaRow {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.metaKey {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.metaVal {
+  font-size: 0.875rem;
+  color: var(--color-text);
+  font-variant-numeric: tabular-nums;
+}
+
+/* last_done_at=null: «هرگز» برجسته‌تر از یک تاریخِ معمولی */
+.metaValNever {
+  color: var(--color-danger);
+  font-weight: 600;
+}

@@ -31,7 +31,7 @@ generate_all(tenant_id) -> int
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone, timedelta, date
 from typing import Optional
 
 from django.utils import timezone as dj_timezone
@@ -41,6 +41,9 @@ from clinical.models import (
     VitalReading,
     LabResult,
     PatientFlag,
+    PatientCondition,
+    Condition,
+    ClinicalIndicator,
     FollowupTask,
 )
 from clinical import audit
@@ -101,6 +104,35 @@ ITEM_VITALS: dict[str, list[str]] = {
 ITEM_FLAGS: dict[str, str] = {
     "eye":  "eye_exam_date",
     "foot": "foot_exam_date",
+}
+
+# ---------------------------------------------------------------------------
+# Condition mapping for screening timeline (catalog-driven, GP-confirmed).
+# Maps each periodic screening item → set of condition codes that make it
+# relevant for a patient.  Used by screening_timeline() (Plan B) to filter
+# items to only those whose conditions are active for the patient.
+#
+# Vaccine / one-time items (months==None) and every-visit items (months==0)
+# are explicitly excluded from the timeline (handled in screening_timeline).
+# ---------------------------------------------------------------------------
+ITEM_CONDITIONS: dict[str, list[str]] = {
+    "a1c":            ["diabetes"],
+    "renal":          ["diabetes", "hypertension", "ckd"],
+    "lipid":          ["hyperlipidemia", "diabetes", "hypertension"],
+    "eye":            ["diabetes"],
+    "foot":           ["diabetes"],
+    "neuropathy":     ["diabetes"],
+    "masld":          ["diabetes"],
+    "renal_function": ["diabetes", "hypertension", "ckd"],
+    "tsh":            ["thyroid"],
+}
+
+# Persian display labels for flag-based items (no clinical_indicator.key).
+_FLAG_ITEM_LABEL_FA: dict[str, str] = {
+    "eye":       "معاینهٔ چشم",
+    "foot":      "معاینهٔ پا",
+    "neuropathy": "غربالگری نوروپاتی",
+    "masld":     "غربالگری کبد چرب",
 }
 
 
@@ -362,6 +394,189 @@ def generate_for_patient(pid: int, tenant_id: int) -> int:
 # ---------------------------------------------------------------------------
 # generate_all — batch worklist population across all active patients
 # ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# _add_months — add calendar months to a date (Tehran-aware)
+# ---------------------------------------------------------------------------
+
+def _add_months(d: date, months: int) -> date:
+    """
+    Add `months` calendar months to date `d`.
+    Clamps to the last day of the target month (e.g. Jan 31 + 1m → Feb 28/29).
+    """
+    import calendar
+    target_month = d.month + months
+    target_year  = d.year + (target_month - 1) // 12
+    target_month = ((target_month - 1) % 12) + 1
+    max_day = calendar.monthrange(target_year, target_month)[1]
+    return d.replace(year=target_year, month=target_month, day=min(d.day, max_day))
+
+
+# ---------------------------------------------------------------------------
+# screening_timeline — full timeline view (Plan B: catalog-driven)
+#
+# Returns ALL relevant periodic screening items for a patient with their
+# last-done date, next-due date, and status — whether due or not.
+#
+# Plan A (rule-driven) was rejected because due_clinical_events() filters out
+# not-yet-due items (followup_engine.py line 246), so the full timeline would
+# be invisible for items done recently.  Plan B iterates ITEM_VITALS∪ITEM_FLAGS
+# with ITEM_CONDITIONS mapping, filtered to the patient's active condition codes.
+#
+# Exclusions (per GP specification):
+#   - months == 0  (every-visit items — handled at panel level, not timeline)
+#   - months is None (one-time / on-demand / vaccine — no periodic cycle)
+#
+# Status ladder (GP-confirmed):
+#   never_done  (0) → overdue  (1) → due_soon  (2) → ok  (3)
+# ---------------------------------------------------------------------------
+
+_STATUS_RANK = {"never_done": 0, "overdue": 1, "due_soon": 2, "ok": 3}
+
+
+def screening_timeline(pid: int, tenant_id: int) -> list[dict]:
+    """
+    Return the full periodic screening timeline for one patient.
+
+    Each item carries:
+      item_key, label_fa, last_done_at (ISO date or None),
+      next_due_at (ISO date or None), status, interval_months,
+      condition_code (str | None), suggestion_only=True.
+
+    Deduplicated by item_key (one entry per item).
+    Sorted by status rank (never_done first), then item_key.
+
+    Read-only, no side effects.  Never creates followup_tasks.
+    """
+    # 1. Resolve active condition codes for this patient (single query).
+    cond_ids = list(
+        PatientCondition.objects.filter(
+            tenant_id=tenant_id,
+            patient_link_id=pid,
+            is_active=True,
+        ).values_list("condition_id", flat=True)
+    )
+    active_codes: set[str] = set()
+    if cond_ids:
+        active_codes = set(
+            Condition.objects.filter(id__in=cond_ids)
+            .values_list("code", flat=True)
+        )
+
+    # 2. Fetch patient flags once (for ITEM_FLAGS items).
+    flag_rows = PatientFlag.objects.filter(
+        tenant_id=tenant_id,
+        patient_link_id=pid,
+    ).values("flag_key", "value")
+    flags: dict[str, str] = {r["flag_key"]: r["value"] for r in flag_rows}
+
+    # 3. Build label map from ClinicalIndicator for ITEM_VITALS obs keys
+    #    (one query, keyed by indicator.key).
+    all_obs_keys: list[str] = []
+    for keys in ITEM_VITALS.values():
+        all_obs_keys.extend(keys)
+    indicator_map: dict[str, str] = {}
+    if all_obs_keys:
+        rows = ClinicalIndicator.objects.filter(
+            tenant_id=tenant_id,
+            key__in=all_obs_keys,
+            is_active=True,
+        ).values("key", "label")
+        indicator_map = {r["key"]: r["label"] for r in rows}
+
+    # 4. Current Tehran-aware date.
+    today = dj_timezone.now().astimezone(_TEHRAN_TZ).date()
+
+    # 5. Iterate catalog — ITEM_VITALS union ITEM_FLAGS, minus timeline-redundant
+    #    keys. `renal_function` (egfr-only) overlaps `renal` (egfr+uacr): both would
+    #    resolve to the same eGFR label and render a second, identical-looking kidney
+    #    row. The GP asked for one item per screening with no confusing duplicates,
+    #    so the timeline keeps the broader `renal` item only.
+    _timeline_skip = {"renal_function"}
+    all_items = [
+        k
+        for k in (list(ITEM_VITALS.keys()) + [f for f in ITEM_FLAGS if f not in ITEM_VITALS])
+        if k not in _timeline_skip
+    ]
+
+    seen: set[str] = set()
+    out: list[dict] = []
+
+    for item_key in all_items:
+        if item_key in seen:
+            continue
+
+        # Determine relevant condition codes for this item.
+        item_conds = ITEM_CONDITIONS.get(item_key, [])
+        # Filter: item only appears if at least one of its condition codes
+        # is active for this patient.  Items with empty mapping → always show.
+        if item_conds and not active_codes.intersection(item_conds):
+            continue
+
+        # Pick the dominant condition code (first match with active_codes).
+        condition_code: Optional[str] = None
+        for code in item_conds:
+            if code in active_codes:
+                condition_code = code
+                break
+
+        # Interval — skip one-time (None) and every-visit (0).
+        months: Optional[int] = ITEM_DEFAULT_MONTHS.get(item_key)
+        if months is None or months == 0:
+            continue
+
+        # Last done date (ISO string or None) via the shared _last_done helper.
+        last_str: Optional[str] = _last_done(pid, item_key, flags, tenant_id)
+
+        # Next due date.
+        next_due_at: Optional[str] = None
+        if last_str:
+            try:
+                last_date = datetime.strptime(str(last_str)[:10], "%Y-%m-%d").date()
+                next_due_date = _add_months(last_date, months)
+                next_due_at = next_due_date.isoformat()
+            except (ValueError, TypeError):
+                next_due_at = None
+
+        # Status classification.
+        if last_str is None:
+            status = "never_done"
+        else:
+            if next_due_at is None:
+                status = "ok"      # parse error → conservative
+            else:
+                delta = (next_due_date - today).days  # type: ignore[possibly-undefined]
+                if delta < 0:
+                    status = "overdue"
+                elif delta <= 30:
+                    status = "due_soon"
+                else:
+                    status = "ok"
+
+        # Persian label: prefer clinical_indicators.label for primary obs key.
+        label_fa: str
+        if item_key in _FLAG_ITEM_LABEL_FA:
+            label_fa = _FLAG_ITEM_LABEL_FA[item_key]
+        else:
+            primary_key = (ITEM_VITALS.get(item_key) or [""])[0]
+            label_fa = indicator_map.get(primary_key, item_key)
+
+        out.append({
+            "item_key":        item_key,
+            "label_fa":        label_fa,
+            "last_done_at":    last_str,
+            "next_due_at":     next_due_at,
+            "status":          status,
+            "interval_months": months,
+            "condition_code":  condition_code,
+            "suggestion_only": True,
+        })
+        seen.add(item_key)
+
+    # Sort: by status rank asc, then item_key asc.
+    out.sort(key=lambda x: (_STATUS_RANK.get(x["status"], 9), x["item_key"]))
+    return out
+
 
 def generate_all(tenant_id: int) -> int:
     """

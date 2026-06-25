@@ -2605,3 +2605,117 @@ def send_engagement_approval(
         approval_id=approval_id,
         status=approval_obj.status,
     )
+
+
+# ===========================================================================
+# Screening timeline (Step 37 — cluster I)
+#
+# GET /patients/{uuid}/screening-timeline
+#
+# Read-only, suggestion-only.  Returns the FULL periodic screening timeline
+# for one patient — all relevant items with last-done / next-due / status,
+# regardless of whether they are currently due.
+#
+# Design: Plan B (catalog-driven) because the underlying clinical rules use
+# condition-only triggers (e.g. {"all": [DM]}) with NO due-gating in the
+# trigger_json. due_clinical_events() applies a due filter, so items done
+# recently would be invisible in a rule-driven approach.  Plan B iterates
+# ITEM_VITALS ∪ ITEM_FLAGS filtered by the patient's active condition codes.
+#
+# No side effects: no followup_tasks created, no audit rows, no writes.
+# ===========================================================================
+
+from clinical.followup_engine import screening_timeline as _screening_timeline
+
+
+class ScreeningItemDTO(Schema):
+    """
+    One periodic screening item in the patient's timeline.
+
+    All dates are ISO YYYY-MM-DD strings (frontend converts to Jalali as needed).
+    suggestion_only is always True — the physician decides; the app only reminds.
+    """
+    item_key: str
+    label_fa: str
+    last_done_at: Optional[str] = None
+    next_due_at: Optional[str] = None
+    status: str                       # never_done | overdue | due_soon | ok
+    interval_months: int
+    condition_code: Optional[str] = None
+    suggestion_only: bool = True
+
+
+class ScreeningTimelineResponseDTO(Schema):
+    patient_link_id: int
+    framing: str
+    items: list[ScreeningItemDTO]
+
+
+@api.get(
+    "/patients/{patient_uuid}/screening-timeline",
+    response=ScreeningTimelineResponseDTO,
+    auth=_jwt_auth,
+    tags=["clinical"],
+)
+def get_screening_timeline(request, patient_uuid: uuid_module.UUID):
+    """
+    Full periodic screening timeline for one enrolled patient.
+
+    Returns ALL relevant periodic screening items — not just those currently
+    due — with last-done date, next-due date, and status.
+
+    Status values:
+      never_done  — item was never recorded for this patient
+      overdue     — next due date has passed (today > next_due)
+      due_soon    — next due date within 30 days (0 <= days_until <= 30)
+      ok          — done recently, within the recall window
+
+    Items with interval_months=0 (every-visit) and interval_months=None
+    (one-time / vaccine) are excluded.
+
+    Output is SUGGESTION-ONLY: every item carries suggestion_only=True and
+    the response carries framing="یادآوریِ غربالگری — تأیید با پزشک".
+
+    Requires JWT. Tenant-scoped: 404 if patient has no enrollment for this tenant.
+    Read-only: no side effects, no tasks created.
+    """
+    tenant_id = request.tenant_id
+
+    # 1. Resolve uuid → accounting patient (read-only Port).
+    demo = get_patient_by_uuid(patient_uuid)
+    if demo is None:
+        raise Http404(f"Patient with uuid={patient_uuid} not found.")
+
+    # 2. Find clinical enrollment for THIS tenant.
+    try:
+        link = PatientLink.objects.get(
+            tenant_id=tenant_id,
+            patient_id=demo.id,
+        )
+    except PatientLink.DoesNotExist:
+        raise Http404(
+            f"Patient uuid={patient_uuid} has no enrollment for this tenant."
+        )
+
+    # 3. Build the timeline (pure computation, no writes).
+    items_raw = _screening_timeline(link.id, tenant_id)
+
+    items = [
+        ScreeningItemDTO(
+            item_key=it["item_key"],
+            label_fa=it["label_fa"],
+            last_done_at=it["last_done_at"],
+            next_due_at=it["next_due_at"],
+            status=it["status"],
+            interval_months=it["interval_months"],
+            condition_code=it["condition_code"],
+            suggestion_only=it["suggestion_only"],
+        )
+        for it in items_raw
+    ]
+
+    return ScreeningTimelineResponseDTO(
+        patient_link_id=link.id,
+        framing="یادآوریِ غربالگری — تأیید با پزشک",
+        items=items,
+    )

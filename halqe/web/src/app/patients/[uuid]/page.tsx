@@ -11,6 +11,7 @@ import {
   apiCompleteEncounter,
   apiListEncounters,
   apiAddPrescription,
+  getScreeningTimeline,
   errorMessageFromCode,
   ALLOWED_FREQUENCIES,
   ALLOWED_ROUTES,
@@ -18,6 +19,7 @@ import {
   ROUTE_LABEL,
   type ClinicalRecordDTO,
   type SuggestionsResponseDTO,
+  type ScreeningTimelineResponse,
   type EncounterOut,
   type EncounterType,
   type VitalIn,
@@ -32,6 +34,7 @@ import { VITAL_CATALOG, VITAL_CATALOG_MAP } from "@/lib/vital-catalog";
 import { useAuth } from "@/hooks/useAuth";
 import Nav from "@/components/Nav";
 import { SuggestionsPanel } from "@/components/SuggestionsPanel";
+import { ScreeningTimeline } from "@/components/ScreeningTimeline";
 import styles from "./record.module.css";
 
 // ────────────────────────────────────────────────────────────
@@ -830,6 +833,8 @@ export default function PatientDetailPage() {
   const [suggestionsLoading, setSuggestionsLoading] = useState(true);
   const [suggestionsError, setSuggestionsError] = useState<string | null>(null);
 
+  const [screeningTimeline, setScreeningTimeline] = useState<ScreeningTimelineResponse | null>(null);
+
   // Register-visit form visibility + encounter list refresh trigger
   const [showVisitForm, setShowVisitForm] = useState(false);
   const [encounterRefreshKey, setEncounterRefreshKey] = useState(0);
@@ -880,13 +885,27 @@ export default function PatientDetailPage() {
     }
   }, [uuid, logout]);
 
+  // Fetch screening timeline (independent — runs in parallel; graceful on 404/error)
+  const fetchScreeningTimeline = useCallback(async () => {
+    if (!uuid) return;
+    try {
+      const data = await getScreeningTimeline(uuid);
+      setScreeningTimeline(data);
+    } catch {
+      // Screening timeline is supplementary — silently omit on error.
+      // Backend may return 404 if no screenings are configured; that is not an error.
+      setScreeningTimeline(null);
+    }
+  }, [uuid]);
+
   // Gate fetches on auth readiness
   useEffect(() => {
     if (!ready) return;
-    // Fire both requests in parallel
+    // Fire all three requests in parallel
     fetchRecord();
     fetchSuggestions();
-    // fetchRecord and fetchSuggestions are stable useCallback refs; re-run only on ready change
+    fetchScreeningTimeline();
+    // Stable useCallback refs; re-run only on ready change
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready]);
 
@@ -1114,6 +1133,14 @@ export default function PatientDetailPage() {
               <h2 className={styles.sectionTitle}>ویزیت‌های اخیر</h2>
               <EncountersList uuid={uuid} refreshKey={encounterRefreshKey} />
             </section>
+
+            {/* Screening timeline — only render when data is available */}
+            {screeningTimeline && (
+              <ScreeningTimeline
+                framing={screeningTimeline.framing}
+                items={screeningTimeline.items}
+              />
+            )}
 
           </div>
 
