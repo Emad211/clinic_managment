@@ -1,16 +1,15 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { useRouter, usePathname } from "next/navigation";
+import { usePathname } from "next/navigation";
 import Link from "next/link";
 import {
   apiGetWorklist,
   apiMarkDone,
-  clearToken,
-  getToken,
   type WorklistItem,
   ApiError,
 } from "@/lib/api";
+import { useAuth } from "@/hooks/useAuth";
 import { formatJalali, formatToman } from "@/lib/jalali";
 import Nav from "@/components/Nav";
 import styles from "./worklist.module.css";
@@ -43,7 +42,7 @@ function statusLabel(status: string): string {
 }
 
 export default function WorklistPage() {
-  const router = useRouter();
+  const { ready, logout } = useAuth();
   const pathname = usePathname();
 
   const [items, setItems] = useState<WorklistItem[]>([]);
@@ -55,16 +54,6 @@ export default function WorklistPage() {
 
   // Per-row optimistic state
   const [rowStates, setRowStates] = useState<RowState>({});
-
-  function handle401() {
-    clearToken();
-    router.push("/login");
-  }
-
-  function handleLogout() {
-    clearToken();
-    router.push("/login");
-  }
 
   const fetchPage = useCallback(
     async (pageOffset: number, status: FilterStatus) => {
@@ -82,7 +71,7 @@ export default function WorklistPage() {
         setRowStates({});
       } catch (err) {
         if (err instanceof ApiError && err.status === 401) {
-          handle401();
+          logout();
           return;
         }
         setError(
@@ -94,20 +83,16 @@ export default function WorklistPage() {
         setLoading(false);
       }
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [],
+    [logout],
   );
 
-  // Auth guard + initial fetch
+  // Fire initial fetch only once the auth guard has confirmed a valid token
   useEffect(() => {
-    if (!getToken()) {
-      router.push("/login");
-      return;
-    }
+    if (!ready) return;
     fetchPage(0, filterStatus);
-  // Run only on mount — filter changes are handled by handleFilterChange
+  // Run only on mount (after ready) — filter changes handled by handleFilterChange
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [ready]);
 
   function handleFilterChange(status: FilterStatus) {
     if (status === filterStatus) return;
@@ -149,7 +134,7 @@ export default function WorklistPage() {
         if (err.status === 404) msg = "تسک یافت نشد";
         else if (err.status === 409) msg = "قبلاً انجام شده";
         else if (err.status === 401) {
-          handle401();
+          logout();
           return;
         } else {
           msg = err.message;
@@ -161,6 +146,9 @@ export default function WorklistPage() {
       }));
     }
   }
+
+  // Auth guard: render nothing while useAuth is checking/redirecting
+  if (!ready) return null;
 
   const currentPage = Math.floor(offset / PAGE_SIZE) + 1;
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
@@ -174,7 +162,7 @@ export default function WorklistPage() {
       <Nav
         currentPath={pathname ?? "/worklist"}
         pageTitle="لیست پیگیری‌ها"
-        onLogout={handleLogout}
+        onLogout={logout}
       />
 
       <main className={styles.main} id="main-content">
