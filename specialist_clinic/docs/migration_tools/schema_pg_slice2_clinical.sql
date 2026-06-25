@@ -822,7 +822,13 @@ CREATE INDEX IF NOT EXISTS idx_clinical_activity_logs_tenant_time
 --   ۱) این VIEW را DROP و با SECURITY BARRIER تعریف کن، یا
 --   ۲) یک WHERE tenant_id = current_setting('app.current_tenant_id')::bigint اضافه کن.
 --   فعلاً این WHERE اضافه نمی‌شود چون GUC وجود ندارد و کوئری‌های جاری را می‌شکند.
-CREATE OR REPLACE VIEW clinical.observations AS
+-- DROP + CREATE (not CREATE OR REPLACE): a later slice (slice13) ADDS a column
+-- (verified) to this view. On idempotent re-apply, CREATE OR REPLACE here would
+-- try to revert the live view to FEWER columns and fail with "cannot drop columns
+-- from view". DROP IF EXISTS makes re-apply safe regardless of the live column set;
+-- slice4a/slice5/slice13 then rebuild the final view + re-set security_invoker.
+DROP VIEW IF EXISTS clinical.observations;
+CREATE VIEW clinical.observations AS
     SELECT
         'vital'::text          AS source_table,
         v.id                   AS source_id,

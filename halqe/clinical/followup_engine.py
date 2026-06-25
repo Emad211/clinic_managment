@@ -158,11 +158,16 @@ def _last_done(
     """
     keys = ITEM_VITALS.get(item)
     if keys:
-        # Vital readings max measured_at
+        # slice13 safety gate: only verified readings close a recall window.
+        # An unverified self-report (verified=FALSE, source='patient_self')
+        # must NOT silently satisfy a monitoring recall — the physician has not
+        # reviewed it yet. Only readings that have been verified (clinic-entered
+        # or physician-approved self-report) count as "last done".
         vr_qs = VitalReading.objects.filter(
             tenant_id=tenant_id,
             patient_link_id=pid,
             type__in=keys,
+            verified=True,
         ).order_by("-measured_at").values_list("measured_at", flat=True)
         vital_max: Optional[datetime] = vr_qs.first()
 

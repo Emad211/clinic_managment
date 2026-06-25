@@ -237,10 +237,15 @@ def build_facts(patient_link_id: int, demographics=None, tenant_id: int = 1) -> 
     # whose test_key is NULL → obs_key = 'lab:<Persian test_name>'), _evaluate_reading
     # returns the fail-safe level='ok' — but the value still lands in indicator_facts
     # so value-based DSL leaves (indicator.X.latest >=/>/<...) still fire correctly.
+    # slice13 safety gate: ONLY verified observations enter the engine.
+    # verified=FALSE rows are patient self-report pending physician review.
+    # They must NEVER influence clinical decision support until a physician
+    # explicitly verifies them (step 47). This filter is the "گیتِ ایمنی".
     latest_per_obs_key_qs = (
         Observation.objects.filter(
             patient_link_id=patient_link_id,
             tenant_id=tenant_id,
+            verified=True,
         )
         .order_by("obs_key", "-observed_at")
         .distinct("obs_key")

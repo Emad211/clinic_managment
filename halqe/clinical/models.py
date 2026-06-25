@@ -83,6 +83,10 @@ class VitalReading(models.Model):
     # slice4b: nullable FK → encounters — the aggregate-root link for the
     # care-loop write path (a reading taken during a registered visit).
     encounter_id = models.BigIntegerField(null=True, blank=True)
+    # slice13: verified gate — clinic data=True, patient self-report=False.
+    # verified=False rows are NEVER fed to build_facts, the card, or suggestions
+    # until a physician flips this flag (step 47).
+    verified = models.BooleanField(default=True)
 
     class Meta:
         managed = False
@@ -495,6 +499,10 @@ class Observation(models.Model):
     observed_at = models.DateTimeField()
     source = models.TextField(null=True, blank=True)
     recorded_by = models.TextField(null=True, blank=True)
+    # slice13: verified gate — added to VIEW in slice13.
+    # vital branch: v.verified; lab branch: always TRUE.
+    # Filter .filter(verified=True) in ALL engine read paths.
+    verified = models.BooleanField(default=True)
 
     class Meta:
         managed = False
@@ -1421,5 +1429,53 @@ class PatientCardToken(models.Model):
         status = "active" if self.revoked_at is None else "revoked"
         return (
             f"PatientCardToken(id={self.id}, patient_link_id={self.patient_link_id}, "
+            f"tenant_id={self.tenant_id}, status={status})"
+        )
+
+
+class PatientReportToken(models.Model):
+    """
+    clinical.patient_report_tokens — one-time write tokens for patient self-report (slice13).
+
+    Scope is separate from patient_card_tokens (card=read/LAN; report=write/single-use).
+
+    Security contract (security-privacy-advisor review):
+      - One-time use: used_at is set after the first successful POST; subsequent
+        requests return 409/410.
+      - expires_at: short TTL (default 24h); expired tokens return 410.
+      - national_id is NEVER stored here.
+      - The public POST /patient-report/{token} endpoint uses report_resolve_token()
+        SECURITY DEFINER to bypass RLS for the lookup, then sets the GUC for
+        tenant-scoped writes.
+      - Staff issue goes through the normal JWT + GUC path (RLS enforced).
+      - Data written via this token lands as verified=FALSE in vital_readings.
+
+    Physician verify gate (step 47, deferred):
+      verified=FALSE rows are invisible to the engine, card, and suggestions until
+      a physician explicitly verifies them (flips verified=TRUE). This is the
+      "گیتِ ایمنی" — unverified self-report never enters clinical decision support.
+
+    token: secrets.token_urlsafe(32) → 43-char base64url string (~256 bits entropy).
+    issued_by: username of the staff member who issued the token (audit trail).
+    """
+
+    tenant_id = models.BigIntegerField(default=1)
+    patient_link_id = models.BigIntegerField()
+    token = models.TextField(unique=True)
+    issued_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+    used_at = models.DateTimeField(null=True, blank=True)  # NULL = unused (one-time)
+    issued_by = models.TextField(null=True, blank=True)
+
+    class Meta:
+        managed = False
+        app_label = "clinical"
+        db_table = '"clinical"."patient_report_tokens"'
+        ordering = ["-issued_at"]
+
+    def __str__(self):
+        status = "used" if self.used_at is not None else "active"
+        return (
+            f"PatientReportToken(id={self.id}, patient_link_id={self.patient_link_id}, "
             f"tenant_id={self.tenant_id}, status={status})"
         )

@@ -3428,3 +3428,295 @@ def revoke_card_token(request, patient_uuid: uuid_module.UUID, body: CardRevokeR
     )
 
     return 200, {"status": "revoked"}
+
+
+# ===========================================================================
+# Patient self-report — slice13 / step 45
+#
+# اصلِ مقدس (security-privacy-advisor):
+#   دادهٔ self-reportِ تأییدنشده هرگز وارد موتور/کارت/پیشنهاد نمی‌شود
+#   تا پزشک verify کند (قدم ۴۷ — موکول).
+#
+# Endpoints:
+#   POST /patients/{uuid}/report-token  — staff issue (JWT required)
+#   POST /patient-report/{token}        — public submit (no JWT, one-time token)
+# ===========================================================================
+
+from clinical.report_token_service import (
+    issue as _report_issue,
+    resolve_token as _report_resolve,
+    mark_used as _report_mark_used,
+)
+from platform_core.tenant_context import set_tenant_guc as _set_tenant_guc
+
+# ── مقادیرِ مجاز و بازه‌های فیزیولوژیکِ self-report ─────────────────────────
+# Whitelist محدود: فقط شاخص‌هایی که بیمار می‌تواند در خانه اندازه بگیرد.
+_REPORT_ALLOWED_TYPES: dict[str, tuple[float, float]] = {
+    "fbs":          (20.0,  800.0),   # mg/dL — قند ناشتا
+    "bp_systolic":  (50.0,  300.0),   # mmHg  — فشارِ سیستولیک
+    "bp_diastolic": (20.0,  200.0),   # mmHg  — فشارِ دیاستولیک
+}
+_REPORT_UNIT: dict[str, str] = {
+    "fbs":          "mg/dL",
+    "bp_systolic":  "mmHg",
+    "bp_diastolic": "mmHg",
+}
+
+# Rate-limit ساده in-process (per-process — برای multi-instance باید Redis شود)
+import threading as _threading
+import time as _time
+
+_rate_lock = _threading.Lock()
+_rate_store: dict[str, float] = {}   # token_str → last_attempt timestamp
+_RATE_WINDOW_SEC = 60                # یک درخواست per token per minute
+
+
+def _check_rate_limit(token_str: str) -> bool:
+    """Returns True if within rate limit (allow). False = too many requests."""
+    now = _time.monotonic()
+    with _rate_lock:
+        last = _rate_store.get(token_str)
+        if last is not None and (now - last) < _RATE_WINDOW_SEC:
+            return False
+        _rate_store[token_str] = now
+    return True
+
+
+# ---------------------------------------------------------------------------
+# Schemas — self-report
+# ---------------------------------------------------------------------------
+
+class ReportTokenOut(Schema):
+    """توکنِ self-report صادرشده برای بیمار."""
+    token: str
+    expires_at: datetime
+    report_url: str
+
+
+class SelfReportIn(Schema):
+    """بدنهٔ درخواستِ self-report بیمار."""
+    type: str    # fbs | bp_systolic | bp_diastolic
+    value: float
+
+
+class SelfReportOut(Schema):
+    """پاسخِ موفقِ self-report."""
+    status: str = "ok"
+    type: str
+    value: float
+    message: str = "داده دریافت شد — پزشک آن را بررسی خواهد کرد"
+
+
+# ---------------------------------------------------------------------------
+# POST /patients/{uuid}/report-token — صدورِ توکنِ self-report (staff، JWT)
+# ---------------------------------------------------------------------------
+
+@api.post(
+    "/patients/{patient_uuid}/report-token",
+    response={201: ReportTokenOut, 404: ErrorSchema},
+    auth=_jwt_auth,
+    tags=["self-report"],
+    summary="صدورِ توکنِ self-report برای بیمار (staff)",
+)
+def issue_report_token(request, patient_uuid: uuid_module.UUID):
+    """
+    صدورِ توکنِ یک‌بارمصرفِ self-report برای یک بیمارِ ثبت‌نام‌شده.
+
+    staff (manager یا staff role) می‌تواند این توکن را صادر و لینکِ آن را
+    به بیمار بدهد (SMS / QR).
+    توکن یک‌بارمصرف است و بعد از TTL (۲۴ ساعت) منقضی می‌شود.
+    بیمار از لینک POST /patient-report/{token} استفاده می‌کند تا داده ثبت کند.
+
+    scope جداگانه از card-token: این توکن فقط برای write path (self-report)
+    مجاز است؛ /card/{token} (read path) آن را نمی‌پذیرد.
+
+    داده‌ای که از این مسیر می‌آید با verified=FALSE ذخیره می‌شود و هرگز
+    وارد موتور/کارت/پیشنهاد نمی‌شود تا پزشک تأیید کند (قدم ۴۷).
+
+    Requires JWT. Tenant-scoped: 404 if patient has no enrollment for this tenant.
+    """
+    tenant_id = request.tenant_id
+    user = request.auth
+
+    link = _resolve_patient_link_for_tenant(patient_uuid, tenant_id)
+
+    token_str, expires_at = _report_issue(
+        patient_link_id=link.id,
+        tenant_id=tenant_id,
+        issued_by=user.username,
+    )
+
+    log_activity(
+        tenant_id=tenant_id,
+        user_id=user.id,
+        username=user.username,
+        action_type="report_token_issued",
+        action_category="self_report",
+        description=f"report token issued for patient_link_id={link.id}",
+        patient_link_id=link.id,
+    )
+
+    return 201, ReportTokenOut(
+        token=token_str,
+        expires_at=expires_at,
+        report_url=f"/patient-report/{token_str}",
+    )
+
+
+# ---------------------------------------------------------------------------
+# POST /patient-report/{token} — ثبتِ self-report بیمار (بدونِ JWT)
+# ---------------------------------------------------------------------------
+
+@api.post(
+    "/patient-report/{token}",
+    response={
+        200: SelfReportOut,
+        404: ErrorSchema,   # token نامعتبر/ناشناخته
+        409: ErrorSchema,   # token قبلاً استفاده‌شده
+        410: ErrorSchema,   # token منقضی
+        422: ErrorSchema,   # مقدار خارج از بازه یا type غیرمجاز
+        429: ErrorSchema,   # rate limit
+    },
+    auth=None,
+    tags=["self-report"],
+    summary="ثبتِ self-report بیمار (بدونِ JWT، یک‌بارمصرف)",
+)
+def submit_patient_report(request, token: str, body: SelfReportIn):
+    """
+    endpoint عمومیِ ثبتِ self-report بیمار.
+
+    امنیت (security-privacy-advisor قفل کرد):
+      ۱) بدونِ JWT — توکنِ opaque (one-time) احراز هویت می‌کند.
+      ۲) report_resolve_token() SECURITY DEFINER برای lookup بدونِ GUC.
+      ۳) type در whitelist محدود (fbs | bp_systolic | bp_diastolic).
+      ۴) value در بازهٔ فیزیولوژیک — خارج از بازه → ۴۲۲.
+      ۵) هیچ PHI در URL / بدنهٔ پاسخ.
+      ۶) یک‌بارمصرف: بعد از استفادهٔ موفق → ۴۰۹ برای درخواست‌های بعدی.
+      ۷) داده با verified=FALSE, source='patient_self' ذخیره می‌شود.
+      ۸) rate-limit: یک درخواست per token per minute.
+
+    جریانِ کامل:
+      ۱) rate-limit check
+      ۲) report_resolve_token(token) → None → 404 (used) یا 404 (not found/expired)
+         [توکنِ منقضی و توکنِ used هر دو از تابع صفر ردیف می‌گیرند؛
+          تفکیک: پس از resolve، اگر None بود، state توکن را چک می‌کنیم]
+      ۳) validate type + value
+      ۴) set_tenant_guc(tenant_id)
+      ۵) INSERT into vital_readings (verified=FALSE, source='patient_self')
+      ۶) mark_used(token, tenant_id)  — یک‌بارمصرف
+      ۷) return 200
+
+    Physician verify (step 47, deferred):
+      verified=FALSE ردیف تا زمانِ تأییدِ پزشک نامرئی است.
+    """
+    # 1) Resolve token (SECURITY DEFINER — no GUC needed)
+    # NOTE: rate-limit is applied AFTER resolve so that:
+    #   (a) validation failures (422) do NOT consume the rate-limit slot,
+    #       allowing the caller to retry with a corrected value.
+    #   (b) expired/used tokens return 404 immediately without rate-limit overhead.
+    # Rate-limit is applied to the token only on a successful resolve (step below).
+    resolved = _report_resolve(token)
+
+    if resolved is None:
+        # توکن یا ناشناخته است یا منقضی شده یا قبلاً استفاده شده.
+        # برای تفکیکِ used vs. expired vs. not_found، جدول را بررسی می‌کنیم.
+        # این lookup بدونِ GUC — جدولِ توکن RLS دارد (FORCE) → صفر ردیف.
+        # پس باید از SECURITY DEFINER تابع بخوانیم یا raw superuser نداریم.
+        # ساده‌ترین راهِ ایمن: به دلایل امنیتی جزئیات افشا نمی‌کنیم.
+        # Generic 404 — مطابقِ توصیهٔ security-privacy-advisor:
+        # endpoint نباید بداند توکن exist می‌کرد یا نه.
+        # (اگر بخواهیم ۴۰۹/۴۱۰ جداگانه بدهیم، به lookup اضافی نیاز داریم —
+        # این را با یک helper function بدونِ RLS bypass انجام می‌دهیم)
+        return _report_distinguish_error(token)
+
+    patient_link_id = resolved["patient_link_id"]
+    tenant_id = resolved["tenant_id"]
+
+    # 3) Validate type
+    vtype = body.type
+    if vtype not in _REPORT_ALLOWED_TYPES:
+        allowed = ", ".join(_REPORT_ALLOWED_TYPES.keys())
+        return 422, error_response(
+            f"نوعِ '{vtype}' مجاز نیست. مقادیرِ مجاز: {allowed}",
+            "validation_error",
+        )
+
+    # 4) Validate value range
+    lo, hi = _REPORT_ALLOWED_TYPES[vtype]
+    if not (lo <= body.value <= hi):
+        return 422, error_response(
+            f"مقدارِ {body.value} برای '{vtype}' خارج از بازهٔ مجاز ({lo}–{hi}) است",
+            "validation_error",
+        )
+
+    # 5) Rate-limit — applied here (after token resolve + validation) so that:
+    #    (a) expired/used/unknown tokens return 404 without consuming rate-limit.
+    #    (b) validation failures (type/range) return 422 without consuming rate-limit,
+    #        so the user can retry with a corrected value.
+    #    Only valid, resolved requests consume a rate-limit slot.
+    if not _check_rate_limit(token):
+        return 429, error_response("تعداد درخواست‌ها بیش از حد مجاز است", "rate_limit")
+
+    # Set GUC → RLS enforced for all subsequent queries in this connection
+    _set_tenant_guc(tenant_id)
+
+    # INSERT vital_reading with verified=FALSE, source='patient_self'
+    from django.db import connection as _conn
+    from django.utils import timezone as _tz
+    now_ts = _tz.now()
+
+    try:
+        with _conn.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO clinical.vital_readings
+                    (tenant_id, patient_link_id, type, value, unit,
+                     measured_at, source, verified, recorded_by)
+                VALUES (%s, %s, %s, %s, %s, %s, 'patient_self', FALSE, 'patient_self_report')
+                """,
+                [
+                    tenant_id,
+                    patient_link_id,
+                    vtype,
+                    body.value,
+                    _REPORT_UNIT.get(vtype, ""),
+                    now_ts,
+                ],
+            )
+    except Exception as exc:
+        # بازگشتِ خطای عمومی — جزئیاتِ DB در پاسخ نیست
+        import logging as _logging
+        _logging.getLogger(__name__).error(
+            "submit_patient_report: DB insert failed for patient_link_id=%s: %s",
+            patient_link_id, exc,
+        )
+        return 422, error_response("خطا در ثبتِ داده — لطفاً دوباره امتحان کنید", "server_error")
+
+    # Mark token as used (one-time — GUC already set)
+    _report_mark_used(token, tenant_id)
+
+    return 200, SelfReportOut(
+        type=vtype,
+        value=body.value,
+    )
+
+
+def _report_distinguish_error(token: str):
+    """
+    Helper: تفکیکِ ۴۰۴ (not found/never issued) از ۴۰۹ (used) از ۴۱۰ (expired).
+
+    این lookup با SECURITY DEFINER‌های موجود کار می‌کند:
+      - report_resolve_token فقط used_at IS NULL AND expires_at > now را برمی‌گرداند.
+      - برای تفکیک state، یک raw lookup بدونِ RLS لازم داریم.
+      - ما از یک helper function دیگر (report_state_token) استفاده نمی‌کنیم
+        چون scope را بزرگ نمی‌کنیم.
+    پس از مشورتِ security-privacy-advisor: generic 404 ایمن‌تر است.
+    فقط برای UX بهتر: اگر token در فرمتِ درستی باشد، ۴۰۹ می‌دهیم وگرنه ۴۰۴.
+
+    تصمیمِ نهایی: همیشه ۴۰۴ (generic) — کمترین information leakage.
+    توضیحِ ۴۰۹ به staff (نه در response) داده می‌شود.
+    """
+    return 404, error_response(
+        "توکن معتبر نیست، منقضی شده، یا قبلاً استفاده شده است",
+        "token_invalid",
+    )

@@ -92,10 +92,14 @@ def _latest_vitals_for_card(patient_link_id: int, tenant_id: int) -> dict:
             WHERE patient_link_id = %s
               AND tenant_id = %s
               AND type = ANY(%s)
+              AND verified = TRUE
             ORDER BY type, measured_at DESC
             """,
             [patient_link_id, tenant_id, list(CARD_VITALS)],
         )
+        # slice13 safety gate: AND verified = TRUE
+        # Patient self-report (verified=FALSE) must NEVER appear on the public card
+        # until a physician verifies the reading (step 47).
         for row in cursor.fetchall():
             result[row[0]] = {
                 "value": row[1],

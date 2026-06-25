@@ -330,6 +330,8 @@ def _collect_due_events(
             })
 
     # 4) Lapsed (no vital reading in 120 days) — once per month
+    # slice13 safety gate: only verified readings count as "recent contact".
+    # An unverified self-report cannot mask a truly lapsed patient.
     if "lapsed" in cfg:
         from clinical.models import VitalReading
         cutoff_dt = dj_tz.now() - timedelta(days=120)
@@ -337,6 +339,7 @@ def _collect_due_events(
             patient_link_id=patient_link_id,
             tenant_id=tenant_id,
             measured_at__gte=cutoff_dt,
+            verified=True,
         ).exists()
         if not has_recent:
             events.append({
@@ -364,11 +367,14 @@ def _collect_due_events(
         except Exception:
             pass
 
+        # slice13 safety gate: only verified readings determine "uncontrolled" status.
+        # An unverified self-report (verified=FALSE) must NOT trigger clinical alerts.
         latest_hba1c = (
             VitalReading.objects.filter(
                 patient_link_id=patient_link_id,
                 tenant_id=tenant_id,
                 type="hba1c",
+                verified=True,
             )
             .order_by("-measured_at")
             .values_list("value", flat=True)
@@ -379,6 +385,7 @@ def _collect_due_events(
                 patient_link_id=patient_link_id,
                 tenant_id=tenant_id,
                 type="bp_systolic",
+                verified=True,
             )
             .order_by("-measured_at")
             .values_list("value", flat=True)
