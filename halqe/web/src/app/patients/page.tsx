@@ -1,42 +1,60 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { useRouter, usePathname } from "next/navigation";
+import { usePathname } from "next/navigation";
 import Link from "next/link";
 import {
   apiGetPatients,
-  clearToken,
-  getToken,
+  ApiError,
   type EnrolledPatient,
 } from "@/lib/api";
-import { ApiError } from "@/lib/api";
+import { useAuth } from "@/hooks/useAuth";
 import { formatJalali } from "@/lib/jalali";
 import Nav from "@/components/Nav";
 import styles from "./patients.module.css";
 
 const PAGE_SIZE = 20;
 
+/**
+ * Normalize a string for search comparison:
+ * - Lowercase
+ * - Persian/Arabic-Indic digits (۰–۹ and ٠–٩) → ASCII 0–9
+ * This lets a user type either Persian or Latin digits and match either form.
+ */
+function normalizeForSearch(s: string): string {
+  return s
+    .toLowerCase()
+    // Eastern Arabic-Indic (۰–۹, U+06F0–U+06F9)
+    .replace(/[۰-۹]/g, (c) => String(c.charCodeAt(0) - 0x06f0))
+    // Arabic-Indic (٠–٩, U+0660–U+0669)
+    .replace(/[٠-٩]/g, (c) => String(c.charCodeAt(0) - 0x0660));
+}
+
 export default function PatientsPage() {
-  const router = useRouter();
+  const { ready, logout } = useAuth();
   const pathname = usePathname();
+
   const [patients, setPatients] = useState<EnrolledPatient[]>([]);
   const [total, setTotal] = useState(0);
   const [offset, setOffset] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Client-side search state — filters the current fetched page
+  const [search, setSearch] = useState("");
+
   const fetchPage = useCallback(
     async (pageOffset: number) => {
       setLoading(true);
       setError(null);
+      setSearch(""); // clear search on page navigation
       try {
         const data = await apiGetPatients(PAGE_SIZE, pageOffset);
         setPatients(data.items);
         setTotal(data.total);
       } catch (err) {
         if (err instanceof ApiError && err.status === 401) {
-          clearToken();
-          router.push("/login");
+          logout();
           return;
         }
         setError(
@@ -48,22 +66,17 @@ export default function PatientsPage() {
         setLoading(false);
       }
     },
-    [router],
+    [logout],
   );
 
+  // Fire only once auth guard confirms a valid token
   useEffect(() => {
-    // Guard: redirect to login if no token
-    if (!getToken()) {
-      router.push("/login");
-      return;
-    }
+    if (!ready) return;
     fetchPage(0);
-  }, [fetchPage, router]);
+  }, [ready, fetchPage]);
 
-  function handleLogout() {
-    clearToken();
-    router.push("/login");
-  }
+  // Auth guard: render nothing while useAuth is checking/redirecting
+  if (!ready) return null;
 
   function handlePrev() {
     const newOffset = Math.max(0, offset - PAGE_SIZE);
@@ -82,11 +95,31 @@ export default function PatientsPage() {
   const currentPage = Math.floor(offset / PAGE_SIZE) + 1;
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
+  // Client-side filter over the current page's items
+  const normalizedSearch = normalizeForSearch(search.trim());
+  const filtered: EnrolledPatient[] =
+    normalizedSearch === ""
+      ? patients
+      : patients.filter((p) => {
+          const name = normalizeForSearch(p.full_name ?? "");
+          const nid = normalizeForSearch(p.national_id ?? "");
+          const phone = normalizeForSearch(p.phone_number ?? "");
+          return (
+            name.includes(normalizedSearch) ||
+            nid.includes(normalizedSearch) ||
+            phone.includes(normalizedSearch)
+          );
+        });
+
+  const hasPatients = patients.length > 0;
+  const searchActive = normalizedSearch !== "";
+  const noSearchResults = searchActive && filtered.length === 0;
+
   return (
     <div className={styles.layout}>
       <Nav
         currentPath={pathname ?? "/patients"}
-        onLogout={handleLogout}
+        onLogout={logout}
       />
 
       {/* Main content */}
@@ -99,6 +132,26 @@ export default function PatientsPage() {
             </span>
           )}
         </div>
+
+        {/* Search box — shown whenever we have data (or just finished loading) */}
+        {!error && (
+          <div className={styles.searchRow}>
+            <label htmlFor="patient-search" className={styles.searchLabel}>
+              جستجو
+            </label>
+            <input
+              id="patient-search"
+              type="search"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="جستجو در نام، کد ملی، شماره تماس… (در این صفحه)"
+              aria-label="جستجو در بیماران — نام، کد ملی یا شماره تماس"
+              className={styles.searchInput}
+              disabled={loading}
+              dir="rtl"
+            />
+          </div>
+        )}
 
         {/* Loading state */}
         {loading && (
@@ -121,15 +174,22 @@ export default function PatientsPage() {
           </div>
         )}
 
-        {/* Empty state */}
-        {!loading && !error && patients.length === 0 && (
+        {/* Empty state — no patients at all (distinct from no-search-results) */}
+        {!loading && !error && !hasPatients && (
           <div className={styles.stateBox} role="status">
             هیچ بیماری ثبت‌نام نشده است.
           </div>
         )}
 
+        {/* No search results — patients exist but filter returned nothing */}
+        {!loading && !error && hasPatients && noSearchResults && (
+          <div className={styles.noResultsBox} role="status" aria-live="polite">
+            نتیجه‌ای برای «{search}» یافت نشد.
+          </div>
+        )}
+
         {/* Patient table */}
-        {!loading && !error && patients.length > 0 && (
+        {!loading && !error && filtered.length > 0 && (
           <>
             <div className={styles.tableWrapper}>
               <table className={styles.table} aria-label="لیست بیماران">
@@ -143,7 +203,7 @@ export default function PatientsPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {patients.map((p) => (
+                  {filtered.map((p) => (
                     <tr key={p.link_id} className={styles.tableRow}>
                       <td className={styles.nameCell}>
                         {p.patient_uuid ? (
@@ -177,31 +237,33 @@ export default function PatientsPage() {
               </table>
             </div>
 
-            {/* Pagination */}
-            <nav
-              className={styles.pagination}
-              aria-label="صفحه‌بندی"
-            >
-              <button
-                onClick={handleNext}
-                disabled={offset + PAGE_SIZE >= total}
-                className={styles.pageBtn}
-                aria-label="صفحه بعد"
+            {/* Pagination — shown only when not actively searching (search covers full page) */}
+            {!searchActive && (
+              <nav
+                className={styles.pagination}
+                aria-label="صفحه‌بندی"
               >
-                بعدی
-              </button>
-              <span className={styles.pageInfo} aria-live="polite">
-                صفحهٔ {currentPage} از {totalPages}
-              </span>
-              <button
-                onClick={handlePrev}
-                disabled={offset === 0}
-                className={styles.pageBtn}
-                aria-label="صفحه قبل"
-              >
-                قبلی
-              </button>
-            </nav>
+                <button
+                  onClick={handleNext}
+                  disabled={offset + PAGE_SIZE >= total}
+                  className={styles.pageBtn}
+                  aria-label="صفحه بعد"
+                >
+                  بعدی
+                </button>
+                <span className={styles.pageInfo} aria-live="polite">
+                  صفحهٔ {currentPage} از {totalPages}
+                </span>
+                <button
+                  onClick={handlePrev}
+                  disabled={offset === 0}
+                  className={styles.pageBtn}
+                  aria-label="صفحه قبل"
+                >
+                  قبلی
+                </button>
+              </nav>
+            )}
           </>
         )}
       </main>
