@@ -46,6 +46,8 @@ from clinical.models import (
     SuggestionLog,
 )
 import clinical.rule_engine as _rule_engine
+from clinical.rule_engine import _evaluate_reading as _eval_reading
+from clinical.models import ClinicalIndicator as _ClinicalIndicator
 from clinical.suggestion_service import grouped_for_patient as _grouped_for_patient
 from clinical.audit import log_activity
 from platform_core.auth_bearer import JWTBearer
@@ -123,6 +125,10 @@ class VitalReadingDTO(Schema):
     measured_at: datetime
     source: Optional[str]
     notes: Optional[str]
+    # Server-evaluated threshold level (from clinical_indicators — never hardcoded).
+    # 'ok' | 'warn' | 'danger' | None (None when no clinical_indicators row exists
+    # for this vital type, so the UI renders it without a colour badge).
+    level: Optional[str] = None
 
 
 # ---------------------------------------------------------------------------
@@ -411,6 +417,28 @@ def get_patient_record(request, patient_uuid: uuid_module.UUID):
         ).order_by("-measured_at")[:10]
     )
 
+    # 6. Build threshold indicator map once (one query) for level evaluation.
+    #    Source of truth: clinical_indicators table (never hardcoded thresholds).
+    #    Falls back to _evaluate_reading's own static fallback if indicator row
+    #    is absent — returning 'ok' when no threshold exists (shown as level=None
+    #    below for vital types with no clinical_indicators row at all).
+    _indicator_map: dict = {
+        row.key: row
+        for row in _ClinicalIndicator.objects.filter(
+            tenant_id=tenant_id, is_active=True
+        )
+    }
+
+    def _vital_level(vtype: str, value: float) -> Optional[str]:
+        """
+        Return 'ok'|'warn'|'danger' when a clinical_indicators row exists for
+        this vital type; return None when no indicator row is present (the UI
+        renders the vital without a colour badge).
+        """
+        if vtype not in _indicator_map:
+            return None
+        return _eval_reading(vtype, value, _indicator_map)
+
     return ClinicalRecordDTO(
         patient_link_id=link.id,
         demographics=demo,
@@ -426,6 +454,7 @@ def get_patient_record(request, patient_uuid: uuid_module.UUID):
                 measured_at=v.measured_at,
                 source=v.source,
                 notes=v.notes,
+                level=_vital_level(v.type, v.value),
             )
             for v in recent_vitals
         ],

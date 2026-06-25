@@ -257,6 +257,8 @@ export interface VitalReadingDTO {
   measured_at: string;        // ISO datetime
   source: string | null;
   notes: string | null;
+  /** Server-evaluated status from clinical_indicators thresholds. null = no threshold defined. */
+  level?: "ok" | "warn" | "danger" | null;
 }
 
 export interface ClinicalRecordDTO {

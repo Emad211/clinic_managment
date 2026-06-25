@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
-import { useRouter, useParams, usePathname } from "next/navigation";
+import { useParams, usePathname } from "next/navigation";
 import Link from "next/link";
 import {
   apiGetRecord,
@@ -11,8 +11,7 @@ import {
   apiAddVitals,
   apiCompleteEncounter,
   apiListEncounters,
-  clearToken,
-  getToken,
+  errorMessageFromCode,
   type ClinicalRecordDTO,
   type SuggestionsResponseDTO,
   type SuggestionRuleDTO,
@@ -27,6 +26,8 @@ import {
   type ActedState,
   type ActedMap,
 } from "@/lib/suggestion-utils";
+import { vitalLevelDisplay, type VitalLevel } from "@/lib/vital-level";
+import { useAuth } from "@/hooks/useAuth";
 import Nav from "@/components/Nav";
 import styles from "./record.module.css";
 
@@ -60,23 +61,16 @@ const ENCOUNTER_STATUS_LABEL: Record<string, string> = {
 /** Map backend error codes to human-readable Farsi messages. */
 function encounterErrorMessage(err: unknown): string {
   if (err instanceof ApiError) {
-    // The apiFetch wrapper puts `detail` into err.message
-    const msg = err.message;
-    if (msg.includes("encounter_sealed") || err.status === 409) {
-      // try to parse the `code` field — but our wrapper only stores detail
-      // so we fall back to heuristic on the detail text
-      if (msg.toLowerCase().includes("duplicate")) {
-        return "این اندازه‌گیری قبلاً در این ویزیت ثبت شده.";
-      }
-      if (msg.toLowerCase().includes("sealed") || msg.toLowerCase().includes("complete")) {
-        return "این ویزیت قبلاً بسته شده است.";
-      }
-      return "تعارض داده — ممکن است این ویزیت قبلاً ثبت شده باشد.";
+    // Primary path: use stable code from ApiError.code (set from backend body.code).
+    if (err.code) {
+      return errorMessageFromCode(err.code, `خطا: ${err.message}`);
     }
+    // Fallback for older responses without a code field: status-based.
     if (err.status === 401) return "لطفاً دوباره وارد شوید.";
     if (err.status === 404) return "بیمار یا ویزیت یافت نشد.";
+    if (err.status === 409) return "تعارض داده — ممکن است این ویزیت قبلاً ثبت شده باشد.";
     if (err.status === 422) return "داده‌های وارد‌شده معتبر نیستند.";
-    return `خطا: ${msg}`;
+    return `خطا: ${err.message}`;
   }
   return "عملیات ناموفق بود. دوباره امتحان کنید.";
 }
@@ -619,7 +613,7 @@ function SuggestionsPanel({
 // ────────────────────────────────────────────────────────────
 
 export default function PatientDetailPage() {
-  const router = useRouter();
+  const { ready, logout } = useAuth();
   const params = useParams<{ uuid: string }>();
   const pathname = usePathname();
   const uuid = params?.uuid ?? "";
@@ -636,12 +630,6 @@ export default function PatientDetailPage() {
   const [showVisitForm, setShowVisitForm] = useState(false);
   const [encounterRefreshKey, setEncounterRefreshKey] = useState(0);
 
-  // Handle 401 uniformly
-  const handle401 = useCallback(() => {
-    clearToken();
-    router.push("/login");
-  }, [router]);
-
   // Fetch record
   const fetchRecord = useCallback(async () => {
     if (!uuid) return;
@@ -652,7 +640,7 @@ export default function PatientDetailPage() {
       setRecord(data);
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) {
-        handle401();
+        logout();
         return;
       }
       setRecordError(
@@ -663,7 +651,7 @@ export default function PatientDetailPage() {
     } finally {
       setRecordLoading(false);
     }
-  }, [uuid, handle401]);
+  }, [uuid, logout]);
 
   // Fetch suggestions (independent of record — runs in parallel)
   const fetchSuggestions = useCallback(async () => {
@@ -675,7 +663,7 @@ export default function PatientDetailPage() {
       setSuggestions(data);
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) {
-        handle401();
+        logout();
         return;
       }
       setSuggestionsError(
@@ -686,22 +674,20 @@ export default function PatientDetailPage() {
     } finally {
       setSuggestionsLoading(false);
     }
-  }, [uuid, handle401]);
+  }, [uuid, logout]);
 
+  // Gate fetches on auth readiness
   useEffect(() => {
-    if (!getToken()) {
-      router.push("/login");
-      return;
-    }
+    if (!ready) return;
     // Fire both requests in parallel
     fetchRecord();
     fetchSuggestions();
-  }, [fetchRecord, fetchSuggestions, router]);
+    // fetchRecord and fetchSuggestions are stable useCallback refs; re-run only on ready change
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready]);
 
-  function handleLogout() {
-    clearToken();
-    router.push("/login");
-  }
+  // Auth guard: render nothing while useAuth is checking/redirecting
+  if (!ready) return null;
 
   /** Called when a visit is successfully registered: refresh both record + suggestions + encounters list. */
   function handleVisitSuccess() {
@@ -720,7 +706,7 @@ export default function PatientDetailPage() {
       <Nav
         currentPath={pathname ?? `/patients/${uuid}`}
         pageTitle={demo?.full_name ?? undefined}
-        onLogout={handleLogout}
+        onLogout={logout}
       />
 
       {/* Loading state */}
@@ -881,15 +867,38 @@ export default function PatientDetailPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {record.recent_vitals.map((v) => (
-                        <tr key={v.id} className={styles.tableRow}>
-                          <td className={styles.vitalType}>{v.type}</td>
-                          <td className={styles.vitalValue}>{v.value}</td>
-                          <td>{v.unit ?? "—"}</td>
-                          <td>{formatJalali(v.measured_at)}</td>
-                          <td>{v.source ?? "—"}</td>
-                        </tr>
-                      ))}
+                      {record.recent_vitals.map((v) => {
+                        const lvl = vitalLevelDisplay(v.level as VitalLevel);
+                        const badgeClass =
+                          lvl.key === "ok" ? styles.vitalLevelOk :
+                          lvl.key === "warn" ? styles.vitalLevelWarn :
+                          lvl.key === "danger" ? styles.vitalLevelDanger :
+                          null;
+                        return (
+                          <tr key={v.id} className={styles.tableRow}>
+                            <td className={styles.vitalType}>{v.type}</td>
+                            <td>
+                              <span
+                                className={styles.vitalValueCell}
+                                aria-label={lvl.ariaLabel || undefined}
+                              >
+                                <span className={styles.vitalValue}>{v.value}</span>
+                                {badgeClass && (
+                                  <span
+                                    className={`${styles.vitalLevelBadge} ${badgeClass}`}
+                                    aria-hidden="true"
+                                  >
+                                    {lvl.label}
+                                  </span>
+                                )}
+                              </span>
+                            </td>
+                            <td>{v.unit ?? "—"}</td>
+                            <td>{formatJalali(v.measured_at)}</td>
+                            <td>{v.source ?? "—"}</td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>

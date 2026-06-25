@@ -288,3 +288,182 @@ def test_tenant_isolation_record_404_for_other_tenant_patient(seed_clinical_data
     assert resp.status_code == 404, (
         f"Expected 404 for cross-tenant record access, got {resp.status_code}: {resp.text}"
     )
+
+
+# ---------------------------------------------------------------------------
+# 8. Vital level evaluation — server-side, driven by clinical_indicators
+#
+# آستانه‌های خوانده‌شده از seed در schema_pg_slice2_clinical.sql (tenant 1):
+#   hba1c:       warn=7.0,  danger=8.0,  direction=high
+#   bp_systolic: warn=130,  danger=140,  direction=high
+#   ldl:         warn=70,   danger=100,  direction=high
+#   weight:      warn=NULL, danger=NULL  (ردیف هست اما آستانه ندارد → ok)
+#   'temperature': هیچ ردیفی در clinical_indicators ندارد → None
+#
+# هشدار drift: اگر seedهای clinical_indicators تغییر کنند، اعداد زیر باید
+# هم‌خوان به‌روز شوند. اعداد اینجا از slice2 seed خوانده شده‌اند (2026-06-25).
+# ---------------------------------------------------------------------------
+
+@pytest.mark.django_db(databases=["default", "accounting_read"], transaction=True)
+def test_vital_level_warn_hba1c(seed_clinical_data):
+    """
+    Unit-style test of level evaluation (بدون insert جدید، از vitals موجود).
+
+    seed_clinical_data vitals برای این بیمار شامل hba1c=7.2 است.
+    آستانه از clinical_indicators slice2 seed (tenant 1):
+      direction=high, warn=7.0, danger=8.0.
+    → 7.2 >= warn=7.0 و 7.2 < danger=8.0 → 'warn'.
+
+    تست مستقیم منطقِ _evaluate_reading را از DB می‌خواند (نه hardcode).
+    """
+    from clinical.rule_engine import _evaluate_reading
+    from clinical.models import ClinicalIndicator
+
+    # خواندن indicator map از DB (منبع حقیقت — همان کاری که endpoint می‌کند)
+    indicator_map = {
+        row.key: row
+        for row in ClinicalIndicator.objects.filter(tenant_id=1, is_active=True)
+    }
+    assert "hba1c" in indicator_map, (
+        "hba1c must be seeded in clinical_indicators for tenant 1"
+    )
+
+    # محدودهٔ warn (>= warn و < danger)
+    ind = indicator_map["hba1c"]
+    warn_val = float(ind.warn)
+    danger_val = float(ind.danger)
+
+    # مقدار مرزیِ warn: کمی بالاتر از warn و کمی کمتر از danger
+    test_val = warn_val + (danger_val - warn_val) / 2   # درست در وسط محدودهٔ warn
+
+    level = _evaluate_reading("hba1c", test_val, indicator_map)
+    assert level == "warn", (
+        f"hba1c={test_val} (between warn={warn_val} and danger={danger_val}) "
+        f"should return 'warn'; got {level!r}"
+    )
+
+
+@pytest.mark.django_db(databases=["default", "accounting_read"], transaction=True)
+def test_vital_level_danger_hba1c(seed_clinical_data):
+    """
+    Unit-style: مقدار >= danger باید 'danger' برگرداند.
+    آستانه از clinical_indicators slice2 seed: danger=8.0.
+    """
+    from clinical.rule_engine import _evaluate_reading
+    from clinical.models import ClinicalIndicator
+
+    indicator_map = {
+        row.key: row
+        for row in ClinicalIndicator.objects.filter(tenant_id=1, is_active=True)
+    }
+    ind = indicator_map["hba1c"]
+    danger_val = float(ind.danger)
+
+    # مقدار بالاتر از danger
+    test_val = danger_val + 1.0   # e.g. 9.0 when danger=8.0
+
+    level = _evaluate_reading("hba1c", test_val, indicator_map)
+    assert level == "danger", (
+        f"hba1c={test_val} (>= danger={danger_val}) should return 'danger'; got {level!r}"
+    )
+
+
+@pytest.mark.django_db(databases=["default", "accounting_read"], transaction=True)
+def test_vital_level_ok_bp_systolic(seed_clinical_data):
+    """
+    Unit-style: مقدار کمتر از warn باید 'ok' برگرداند.
+    آستانه از clinical_indicators slice2 seed: bp_systolic warn=130.
+    """
+    from clinical.rule_engine import _evaluate_reading
+    from clinical.models import ClinicalIndicator
+
+    indicator_map = {
+        row.key: row
+        for row in ClinicalIndicator.objects.filter(tenant_id=1, is_active=True)
+    }
+    assert "bp_systolic" in indicator_map, "bp_systolic must be seeded"
+    ind = indicator_map["bp_systolic"]
+    warn_val = float(ind.warn)
+
+    # مقدار پایین‌تر از warn
+    test_val = warn_val - 5.0   # e.g. 125 when warn=130
+
+    level = _evaluate_reading("bp_systolic", test_val, indicator_map)
+    assert level == "ok", (
+        f"bp_systolic={test_val} (< warn={warn_val}) should return 'ok'; got {level!r}"
+    )
+
+
+@pytest.mark.django_db(databases=["default", "accounting_read"], transaction=True)
+def test_vital_level_none_for_unknown_type(seed_clinical_data):
+    """
+    وقتی کلیدی در clinical_indicators نباشد، _vital_level باید None برگرداند.
+
+    این تست مستقیم همان شرط در endpoint را تست می‌کند:
+      if vtype not in _indicator_map: return None
+
+    'temperature' در clinical_indicators slice2 seed نشده‌است.
+    """
+    from clinical.models import ClinicalIndicator
+
+    indicator_map = {
+        row.key: row
+        for row in ClinicalIndicator.objects.filter(tenant_id=1, is_active=True)
+    }
+
+    # تأیید که 'temperature' واقعاً وجود ندارد (نه فرض می‌کنیم)
+    assert "temperature" not in indicator_map, (
+        "temperature must NOT be in clinical_indicators seed — "
+        "if it was added, choose another unmapped key for this test"
+    )
+
+    # شبیه‌سازیِ منطقِ endpoint: if vtype not in _indicator_map → None
+    def _vital_level(vtype: str, value: float):
+        if vtype not in indicator_map:
+            return None
+        from clinical.rule_engine import _evaluate_reading
+        return _evaluate_reading(vtype, value, indicator_map)
+
+    result = _vital_level("temperature", 37.5)
+    assert result is None, (
+        f"vital type 'temperature' not in clinical_indicators → level must be None; "
+        f"got {result!r}"
+    )
+
+
+@pytest.mark.django_db(databases=["default", "accounting_read"], transaction=True)
+def test_vital_level_field_present_in_record_response(seed_clinical_data):
+    """
+    Integration: GET /patients/{uuid}/record باید `level` را در هر vital برگرداند.
+    تأیید می‌کند که فیلد در JSON وجود دارد (نه فقط بدون خطا بودن).
+    """
+    token = _get_token(seed_clinical_data)
+    patient_uuid = seed_clinical_data["patient_uuid"]
+    resp = _client().get(
+        f"/patients/{patient_uuid}/record",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 200, resp.text
+    data = resp.json()
+
+    vitals = data["recent_vitals"]
+    assert len(vitals) >= 1, "At least one vital must be in recent_vitals"
+
+    for v in vitals:
+        assert "level" in v, (
+            f"VitalReadingDTO must include 'level' field; missing in vital type={v.get('type')}"
+        )
+        # مقدار باید یکی از ok/warn/danger/None باشد
+        lvl = v["level"]
+        assert lvl in (None, "ok", "warn", "danger"), (
+            f"level must be one of ok/warn/danger/None; got {lvl!r} for type={v.get('type')}"
+        )
+
+    # vitals با کلید shناخته‌شده (مثل hba1c) نباید None level داشته باشند
+    hba1c_vitals = [v for v in vitals if v["type"] == "hba1c"]
+    if hba1c_vitals:
+        for v in hba1c_vitals:
+            assert v["level"] is not None, (
+                f"hba1c has a clinical_indicators row → level must not be None; "
+                f"got None for value={v.get('value')}"
+            )

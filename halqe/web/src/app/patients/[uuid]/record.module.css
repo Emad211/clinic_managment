@@ -313,6 +313,63 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* ── Vital level badge ── */
+/* Wraps the numeric value + a small non-color indicator */
+.vitalValueCell {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.vitalLevelBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 0.05rem 0.4rem;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  white-space: nowrap;
+  /* Shape indicator — filled circle before text */
+}
+
+.vitalLevelBadge::before {
+  content: "";
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+/* ok: green */
+.vitalLevelOk {
+  background: #e6f9ef;
+  color: var(--color-ok);
+}
+.vitalLevelOk::before {
+  background: var(--color-ok);
+}
+
+/* warn: amber */
+.vitalLevelWarn {
+  background: #fef3e2;
+  color: var(--color-warn);
+}
+.vitalLevelWarn::before {
+  background: var(--color-warn);
+}
+
+/* danger: red */
+.vitalLevelDanger {
+  background: #fde8e7;
+  color: var(--color-danger);
+}
+.vitalLevelDanger::before {
+  background: var(--color-danger);
+}
+
 /* ── Right column: suggestions ── */
 .suggestionsColumn {
   display: flex;
