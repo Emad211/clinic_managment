@@ -2719,3 +2719,136 @@ def get_screening_timeline(request, patient_uuid: uuid_module.UUID):
         framing="یادآوریِ غربالگری — تأیید با پزشک",
         items=items,
     )
+
+
+# ===========================================================================
+# Medication Effect (Step 38 — cluster I)
+#
+# GET /patients/{uuid}/medications/{med_id}/effect
+#
+# Read-only, suggestion-only. محاسبهٔ اثرِ دارو با مقایسهٔ پیش/پسِ شروع.
+# اصلِ مقدس: هرگز عددِ ساختگی — data_insufficient با reason اگر ناکافی.
+# ===========================================================================
+
+from clinical.medication_effect_service import compute_medication_effect as _compute_med_effect
+from clinical.models import PatientMedication as _PatientMedication
+
+
+class MedEffectWindowDTO(Schema):
+    """بازهٔ زمانیِ pre یا post."""
+    from_date: Optional[str] = None   # alias: "from" کلمهٔ رزرو Python است
+    to_date: Optional[str] = None
+
+    class Config:
+        populate_by_name = True
+
+
+class MedicationEffectDTO(Schema):
+    """
+    پاسخِ GET /patients/{uuid}/medications/{id}/effect.
+
+    status='ok' : محاسبه انجام شد — pre_value/post_value/delta/direction_of_change حاضرند.
+    status='data_insufficient': دادهٔ ناکافی — pre_value/post_value/delta همه null.
+
+    suggestion_only همیشه True.
+    caveat در حالتِ ok همیشه حاضر (مطالعهٔ تک‌گروهی disclaimer).
+    """
+    status: str                               # 'ok' | 'data_insufficient'
+    reason: Optional[str] = None             # دلیلِ ناکافی بودن
+    suggestion_only: bool = True             # همیشه True
+    drug_name: str
+    drug_class: Optional[str] = None
+    indicator: Optional[str] = None          # label فارسی
+    indicator_key: Optional[str] = None      # کلیدِ فنی (hba1c / ldl / ...)
+    unit: Optional[str] = None
+    pre_value: Optional[float] = None
+    post_value: Optional[float] = None
+    delta: Optional[float] = None
+    direction_of_change: Optional[str] = None  # 'improved' | 'worsened' | 'unchanged'
+    n_pre: int = 0
+    n_post: int = 0
+    pre_window: Optional[dict] = None
+    post_window: Optional[dict] = None
+    start_date: Optional[str] = None        # ISO date — UI formats Jalali client-side
+    caveat: Optional[str] = None
+    meaningful_threshold: Optional[float] = None
+
+
+@api.get(
+    "/patients/{patient_uuid}/medications/{med_id}/effect",
+    response={200: MedicationEffectDTO, 404: ErrorSchema},
+    auth=_jwt_auth,
+    tags=["clinical"],
+)
+def get_medication_effect(
+    request,
+    patient_uuid: uuid_module.UUID,
+    med_id: int,
+):
+    """
+    ردیابیِ اثرِ دارو: مقایسهٔ میانگینِ اندیکاتورِ مرتبط در پنجرهٔ pre و post.
+
+    اصلِ مقدس: هرگز عددِ ساختگی — دادهٔ ناکافی ⇒ status='data_insufficient' + reason.
+
+    حالت‌های data_insufficient:
+      - no_start_date         : start_date دارو ثبت نشده
+      - no_indicator_for_class: drug_class این دارو indicator قابل‌ردیابی ندارد
+                               (aspirin / other / loop_diuretic)
+      - post_window_not_elapsed: زمانِ کافی از شروعِ دارو نگذشته (پنجرهٔ post هنوز باز نشده)
+      - no_pre                : هیچ اندازه‌گیریِ پیش از شروع وجود ندارد
+      - no_post               : هیچ اندازه‌گیریِ پس از شروع در پنجره وجود ندارد
+
+    suggestion_only=True در **هر** پاسخ — «پیشنهاد، تأیید با پزشک».
+    فقط read-only: هیچ نوشتنی ندارد.
+    Tenant-scoped: 404 اگر بیمار یا دارو در این tenant نباشد.
+    """
+    tenant_id = request.tenant_id
+
+    # ── ۱. resolve patient ───────────────────────────────────────────────────
+    demo = get_patient_by_uuid(patient_uuid)
+    if demo is None:
+        raise Http404(f"Patient with uuid={patient_uuid} not found.")
+
+    try:
+        link = PatientLink.objects.get(tenant_id=tenant_id, patient_id=demo.id)
+    except PatientLink.DoesNotExist:
+        raise Http404(
+            f"Patient uuid={patient_uuid} has no enrollment for this tenant."
+        )
+
+    # ── ۲. resolve medication ────────────────────────────────────────────────
+    try:
+        med = _PatientMedication.objects.get(
+            id=med_id,
+            patient_link_id=link.id,
+            tenant_id=tenant_id,
+        )
+    except _PatientMedication.DoesNotExist:
+        raise Http404(
+            f"Medication id={med_id} not found for this patient/tenant."
+        )
+
+    # ── ۳. compute effect (read-only, no writes) ─────────────────────────────
+    result = _compute_med_effect(med=med, tenant_id=tenant_id)
+
+    return 200, MedicationEffectDTO(
+        status=result["status"],
+        reason=result["reason"],
+        suggestion_only=result["suggestion_only"],
+        drug_name=result["drug_name"],
+        drug_class=result["drug_class"],
+        indicator=result["indicator"],
+        indicator_key=result["indicator_key"],
+        unit=result["unit"],
+        pre_value=result["pre_value"],
+        post_value=result["post_value"],
+        delta=result["delta"],
+        direction_of_change=result["direction_of_change"],
+        n_pre=result["n_pre"],
+        n_post=result["n_post"],
+        pre_window=result["pre_window"],
+        post_window=result["post_window"],
+        start_date=result["start_date"],
+        caveat=result["caveat"],
+        meaningful_threshold=result["meaningful_threshold"],
+    )
