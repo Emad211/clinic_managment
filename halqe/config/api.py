@@ -4046,3 +4046,109 @@ def reject_vital(request, patient_uuid: uuid_module.UUID, vital_id: int):
     )
 
     return 200, _vital_to_review_out(vital)
+
+
+# ===========================================================================
+# Cohort Outcomes (Step 49, cluster K) — GET /manager/cohort-outcomes
+# Manager-only: requires JWT with role='manager'.
+#
+# نمای توصیفیِ تک‌گروهیِ outcome per-condition. on-the-fly، read-only، NULL نه عددِ ساختگی.
+# framing/caveat همیشه حاضر؛ تمایزِ engagement-holdout صریح. هیچ ادعای علّی.
+# همهٔ فیلدها سریال می‌شوند (درسِ DTOِ قدم ۳۶/۳۸) — تستِ API-shape این را اثبات می‌کند.
+# ===========================================================================
+
+from clinical.cohort_outcome_service import cohort_outcomes as _cohort_outcomes
+
+
+class CohortWindowDTO(Schema):
+    """یک پنجره (۳ یا ۶ ماه) از یک متریک — همهٔ rateها Optional (NULL هنگامِ n کم)."""
+    n: int                              # تعدادِ بیمارانِ دارای قرائت در پنجره
+    mean: Optional[float] = None        # میانگین/٪ in-range across-patient؛ NULL اگر n<min_n
+    n_paired: int                       # زیرمجموعهٔ paired (baseline + این پنجره)
+    delta: Optional[float] = None       # تغییر روی subsetِ paired؛ NULL اگر n_paired<min_n
+    reason: Optional[str] = None        # window_n_insufficient | paired_n_insufficient | None
+
+
+class CohortMetricDTO(Schema):
+    """یک متریکِ یک بیماری (hba1c/ldl/egfr/uacr/tsh/…)."""
+    metric_key: str
+    metric_type: str                    # mean_delta | relative_median | percent_in_range
+    unit: Optional[str] = None
+    direction: str                      # high | low
+    n_baseline: int
+    m3: CohortWindowDTO
+    m6: CohortWindowDTO
+
+
+class CohortSubgroupDTO(Schema):
+    """یک زیرگروهِ stratification (frail/non_frail یا ascvd/non_ascvd)."""
+    key: str
+    metric: CohortMetricDTO
+
+
+class CohortStratificationDTO(Schema):
+    """نتیجهٔ stratification یک بیماری (مشروط به n_subgroup>=min_n)."""
+    by: str                             # frailty | ascvd
+    reason: Optional[str] = None        # subgroup_too_small | None
+    subgroups: Optional[list[CohortSubgroupDTO]] = None
+    n_positive: Optional[int] = None
+    n_negative: Optional[int] = None
+
+
+class CohortConditionDTO(Schema):
+    """outcomeِ توصیفیِ یک بیماری."""
+    condition_code: str
+    condition_label: str
+    anchor: str                         # indicatorِ کلیدیِ baseline
+    n_cohort: int                       # کلِ بیمارانِ فعالِ این بیماری
+    n_baseline: int                     # دارایِ baselineِ کافی
+    reason: Optional[str] = None        # cohort_too_small | None
+    metrics: Optional[list[CohortMetricDTO]] = None   # NULL اگر cohort_too_small
+    stratification: Optional[CohortStratificationDTO] = None
+
+
+class CohortOutcomesResponseDTO(Schema):
+    """
+    پاسخِ GET /manager/cohort-outcomes.
+
+    framing و caveat اجباری‌اند و در هر پاسخ حاضرند:
+      - framing: غیرعلّی بودنِ نمای تک‌گروهی (regression-to-mean، سوگیری، Simpson).
+      - caveat: تمایزِ حیاتیِ engagement-holdout از clinical-holdout.
+    """
+    tenant_id: int
+    framing: str
+    caveat: str
+    n_sufficient: int
+    conditions: list[CohortConditionDTO]
+
+
+@api.get(
+    "/manager/cohort-outcomes",
+    response={200: CohortOutcomesResponseDTO, 403: ErrorSchema},
+    auth=_jwt_auth,
+    tags=["manager"],
+)
+def manager_cohort_outcomes(request):
+    """
+    نمای توصیفیِ outcomeِ کوهورت per-condition — فقط مدیر.
+
+    on-the-fly، read-only مطلق، بدونِ slice. NULL نه عددِ ساختگی:
+      - کوهورتِ کوچک (n_baseline<۳۰) → reason='cohort_too_small'، metrics=null.
+      - پنجرهٔ کم‌داده (n<۳۰) → mean=null + reason='window_n_insufficient'.
+      - paired کم (n_paired<۳۰) → delta=null + reason='paired_n_insufficient'.
+      - زیرگروهِ کوچک → stratification.subgroups=null + reason='subgroup_too_small'.
+
+    metricهای خاص: uacr کاهشِ نسبیِ میانه (٪)، tsh ٪ in-range (نه mean delta).
+    verified=True در همهٔ queryها. هیچ ادعای علّی — framing/caveat همیشه.
+
+    Manager-only: staff → 403.
+    """
+    user_role = getattr(request.auth, "role", "staff")
+    if user_role != "manager":
+        return 403, error_response(
+            "دسترسی محدود است. فقط مدیر می‌تواند این صفحه را ببیند.",
+            "forbidden",
+        )
+
+    data = _cohort_outcomes(tenant_id=request.tenant_id)
+    return 200, data
