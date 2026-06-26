@@ -16,6 +16,8 @@ What lives here (cross-domain only — single-domain helpers stay in their route
   - ``_resolve_patient_link_for_tenant`` — used by encounters, vitals (verify/
     reject) and self-report (which previously lazy-imported it from
     ``config.api``; step 7 makes that a normal import from here).
+  - ``_assert_manager`` — the manager-role 403 gate shared by the manager
+    analytics domain and the engagement approval domain (cleanup step 62).
   - ``VitalReadingDTO`` — the read-side vital DTO used by both the patients
     domain (GET /patients/{uuid}/record) and the vitals domain
     (GET /patients/{uuid}/vitals/latest).
@@ -31,19 +33,24 @@ from django.http import Http404
 
 from accounting_port.port import get_patient_by_uuid
 from clinical.models import PatientLink
+from config.errors import error_response
 
 
 # ---------------------------------------------------------------------------
 # Cross-domain helper — uuid → accounting patient → clinical PatientLink (tenant)
 # ---------------------------------------------------------------------------
 
-def _resolve_patient_link_for_tenant(
+def _resolve_patient_link_and_demo_for_tenant(
     patient_uuid: uuid_module.UUID,
     tenant_id: int,
-) -> "PatientLink":
+):
     """
-    Resolve patient_uuid → accounting patient → clinical PatientLink for tenant.
-    Raises Http404 at each step (handled by the global handler).
+    Resolve patient_uuid → accounting patient → clinical PatientLink for tenant,
+    returning BOTH the ``link`` and the accounting ``demo`` (PatientDTO) so a
+    caller that also needs demographics does not re-fetch from the Port.
+
+    Raises Http404 at each step (handled by the global handler) — identical
+    messages to the link-only helper below.
     """
     demo = get_patient_by_uuid(patient_uuid)
     if demo is None:
@@ -57,7 +64,49 @@ def _resolve_patient_link_for_tenant(
         raise Http404(
             f"Patient uuid={patient_uuid} has no enrollment for this tenant."
         )
+    return link, demo
+
+
+def _resolve_patient_link_for_tenant(
+    patient_uuid: uuid_module.UUID,
+    tenant_id: int,
+) -> "PatientLink":
+    """
+    Resolve patient_uuid → accounting patient → clinical PatientLink for tenant.
+    Raises Http404 at each step (handled by the global handler).
+
+    Thin wrapper over ``_resolve_patient_link_and_demo_for_tenant`` that drops
+    the demographics when the caller only needs the link.
+    """
+    link, _demo = _resolve_patient_link_and_demo_for_tenant(patient_uuid, tenant_id)
     return link
+
+
+# ---------------------------------------------------------------------------
+# Cross-domain helper — manager-role 403 gate
+# Shared by the manager analytics domain (clinical.api.manager) and the
+# engagement approval domain (clinical.api.engagement). The canonical 403 body
+# is the Persian message + code 'forbidden' used by manager.py (cleanup step 62
+# unified both call sites onto this single gate).
+# ---------------------------------------------------------------------------
+
+def _assert_manager(request) -> Optional[tuple]:
+    """
+    Return (403, error_response(...)) if the authenticated user is not a manager,
+    else None.
+
+    Usage in an endpoint:
+        guard = _assert_manager(request)
+        if guard:
+            return guard
+    """
+    user_role = getattr(request.auth, "role", "staff")
+    if user_role != "manager":
+        return 403, error_response(
+            "دسترسی محدود است. فقط مدیر می‌تواند این صفحه را ببیند.",
+            "forbidden",
+        )
+    return None
 
 
 # ---------------------------------------------------------------------------

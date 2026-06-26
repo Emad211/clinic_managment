@@ -30,7 +30,8 @@ from ninja import Router, Schema
 from django.utils import timezone
 
 from config.api_base import _jwt_auth
-from config.errors import ErrorSchema, error_response
+from config.errors import ErrorSchema
+from clinical.api._shared import _assert_manager
 
 from clinical.models import (
     SuggestionLog,
@@ -102,13 +103,10 @@ def list_population_thresholds(request):
 
     اکشنِ approve در قدمِ بعد پیاده می‌شود.
     """
-    # Manager-only gate — strict role check
-    user_role = getattr(request.auth, "role", "staff")
-    if user_role != "manager":
-        return 403, error_response(
-            "دسترسی محدود است. فقط مدیر می‌تواند این صفحه را ببیند.",
-            "forbidden",
-        )
+    # Manager-only gate — strict role check (shared gate, cleanup step 62)
+    guard = _assert_manager(request)
+    if guard:
+        return guard
 
     tenant_id = request.tenant_id
 
@@ -217,12 +215,9 @@ def suggestion_stats(request):
 
     Manager-only: staff → 403.
     """
-    user_role = getattr(request.auth, "role", "staff")
-    if user_role != "manager":
-        return 403, error_response(
-            "دسترسی محدود است. فقط مدیر می‌تواند این صفحه را ببیند.",
-            "forbidden",
-        )
+    guard = _assert_manager(request)
+    if guard:
+        return guard
 
     tenant_id = request.tenant_id
 
@@ -416,12 +411,9 @@ def manager_cohort_outcomes(request):
 
     Manager-only: staff → 403.
     """
-    user_role = getattr(request.auth, "role", "staff")
-    if user_role != "manager":
-        return 403, error_response(
-            "دسترسی محدود است. فقط مدیر می‌تواند این صفحه را ببیند.",
-            "forbidden",
-        )
+    guard = _assert_manager(request)
+    if guard:
+        return guard
 
     data = _cohort_outcomes(tenant_id=request.tenant_id)
     return 200, data
@@ -492,12 +484,9 @@ def manager_lapsed_return(request):
 
     Manager-only: staff → 403.
     """
-    user_role = getattr(request.auth, "role", "staff")
-    if user_role != "manager":
-        return 403, error_response(
-            "دسترسی محدود است. فقط مدیر می‌تواند این صفحه را ببیند.",
-            "forbidden",
-        )
+    guard = _assert_manager(request)
+    if guard:
+        return guard
     return 200, _lapsed_return(tenant_id=request.tenant_id)
 
 
@@ -518,10 +507,7 @@ def manager_control_trend(request):
 
     Manager-only: staff → 403.
     """
-    user_role = getattr(request.auth, "role", "staff")
-    if user_role != "manager":
-        return 403, error_response(
-            "دسترسی محدود است. فقط مدیر می‌تواند این صفحه را ببیند.",
-            "forbidden",
-        )
+    guard = _assert_manager(request)
+    if guard:
+        return guard
     return 200, _control_trend(tenant_id=request.tenant_id)

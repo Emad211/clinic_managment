@@ -61,33 +61,18 @@ from clinical.api.self_report import router as self_report_router
 
 # ---------------------------------------------------------------------------
 # Test-facing re-exports.  No endpoint/schema/helper is defined in this module
-# any more, so these re-exports keep the public `config.api` import surface
-# stable for tests and any indirect consumer (same noqa pattern throughout).
+# any more, so this re-export keeps the public `config.api` import surface
+# stable for the one test consumer that imports it.
+#
+# Cleanup step 62: the previously-re-exported patient-card / self-report symbols
+# and ``_resolve_patient_link_for_tenant`` were removed — a whole-repo grep
+# found ZERO consumers importing them via ``config.api`` (real consumers import
+# from ``clinical.api.patient_card`` / ``clinical.api.self_report`` /
+# ``clinical.api._shared`` directly, and the test files use their own local
+# helpers). Only ``_MIN_N_FOR_RATE`` has a live ``config.api`` consumer.
 # ---------------------------------------------------------------------------
 # tests/test_suggestion_events.py: `from config.api import _MIN_N_FOR_RATE`
 from clinical.api.manager import _MIN_N_FOR_RATE  # noqa: F401  (re-export)
-# Cross-domain helper now lives in clinical.api._shared; re-export here so any
-# `from config.api import _resolve_patient_link_for_tenant` consumer keeps working.
-from clinical.api._shared import _resolve_patient_link_for_tenant  # noqa: F401  (re-export)
-# Patient-card / self-report test-facing symbols (cleanup step 6).
-from clinical.api.patient_card import (  # noqa: F401  (re-export)
-    PublicCardResponse,
-    VitalCardDTO,
-    CardTokenOut,
-    get_public_card,
-    issue_card_token,
-    revoke_card_token,
-    _card_allow,
-)
-from clinical.api.self_report import (  # noqa: F401  (re-export)
-    ReportTokenOut,
-    SelfReportIn,
-    SelfReportOut,
-    issue_report_token,
-    submit_patient_report,
-    _check_rate_limit,
-    _REPORT_ALLOWED_TYPES,
-)
 
 # ---------------------------------------------------------------------------
 # Router wiring.  Every router uses prefix "" except manager (prefix "/manager")

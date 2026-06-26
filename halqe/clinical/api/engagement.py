@@ -25,6 +25,7 @@ from ninja import Router, Schema
 
 from config.api_base import _jwt_auth
 from config.errors import ErrorSchema, error_response
+from clinical.api._shared import _assert_manager
 from clinical.models import EngagementApproval as _EngagementApproval
 from clinical.engagement_approval_service import (
     list_pending as _list_pending_approvals,
@@ -100,22 +101,9 @@ def _approval_to_dto(approval: "_EngagementApproval") -> EngagementApprovalDTO:
     )
 
 
-def _assert_manager(request) -> Optional[tuple]:
-    """
-    Return (403, error_response(...)) if the authenticated user is not a manager.
-
-    Usage in an endpoint:
-        guard = _assert_manager(request)
-        if guard:
-            return guard
-    """
-    user_role = getattr(request.auth, "role", "staff")
-    if user_role != "manager":
-        return 403, error_response(
-            "This action requires manager role.",
-            "forbidden",
-        )
-    return None
+# The manager-role 403 gate is now the shared ``_assert_manager`` imported from
+# ``clinical.api._shared`` (cleanup step 62). Its canonical body is the Persian
+# message + code 'forbidden' (unified with the manager analytics domain).
 
 
 # ---------------------------------------------------------------------------

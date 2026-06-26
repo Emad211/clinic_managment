@@ -33,10 +33,9 @@ from django.utils import timezone
 
 from config.api_base import _jwt_auth
 from config.errors import ErrorSchema, error_response
+from clinical.api._shared import _resolve_patient_link_for_tenant
 
-from accounting_port.port import get_patient_by_uuid
 from clinical.models import (
-    PatientLink,
     SuggestionLog,
     SuggestionEvent,
     PatientMedication as _PatientMedication,
@@ -162,29 +161,18 @@ def get_suggestions(request, patient_uuid: uuid_module.UUID):
     """
     tenant_id = request.tenant_id
 
-    # 1. Resolve uuid → accounting patient
-    demo = get_patient_by_uuid(patient_uuid)
-    if demo is None:
-        raise Http404(f"Patient with uuid={patient_uuid} not found.")
-
-    # 2. Find clinical enrollment for THIS tenant
-    try:
-        link = PatientLink.objects.get(
-            tenant_id=tenant_id,
-            patient_id=demo.id,
-        )
-    except PatientLink.DoesNotExist:
-        raise Http404(
-            f"Patient uuid={patient_uuid} has no enrollment for this tenant."
-        )
+    # 1-2. Resolve uuid → accounting patient → clinical enrollment for THIS
+    #      tenant (shared helper; same Http404 messages as before, step 62).
+    link = _resolve_patient_link_for_tenant(patient_uuid, tenant_id)
 
     # 3. Run the suggestion engine via the canonical bridge helper.
     # grouped_for_patient resolves demographics from the Port internally,
     # ensuring age-gated rules always have a birthdate — even when this
     # endpoint is refactored or reused in batch/non-HTTP contexts.
-    # Note: demo was already fetched above (step 1) to locate the PatientLink.
-    # grouped_for_patient performs one additional Port fetch (same patient,
-    # single indexed PK lookup) — acceptable overhead for centralisation.
+    # Note: demographics were already fetched while resolving the PatientLink
+    # (inside the shared helper above). grouped_for_patient performs one
+    # additional Port fetch (same patient, single indexed PK lookup) —
+    # acceptable overhead for centralisation.
     result = _grouped_for_patient(
         patient_link_id=link.id,
         tenant_id=tenant_id,
@@ -330,21 +318,9 @@ def suggestion_action(
             "validation_error",
         )
 
-    # 2. Resolve uuid → accounting patient (read-only via Port)
-    demo = get_patient_by_uuid(patient_uuid)
-    if demo is None:
-        raise Http404(f"Patient with uuid={patient_uuid} not found.")
-
-    # 3. Find clinical enrollment for THIS tenant
-    try:
-        link = PatientLink.objects.get(
-            tenant_id=tenant_id,
-            patient_id=demo.id,
-        )
-    except PatientLink.DoesNotExist:
-        raise Http404(
-            f"Patient uuid={patient_uuid} has no enrollment for this tenant."
-        )
+    # 2-3. Resolve uuid → accounting patient (read-only via Port) → clinical
+    #      enrollment for THIS tenant (shared helper, same 404s — step 62).
+    link = _resolve_patient_link_for_tenant(patient_uuid, tenant_id)
 
     # 4. Map action → status
     new_status = (
@@ -501,21 +477,9 @@ def get_screening_timeline(request, patient_uuid: uuid_module.UUID):
     """
     tenant_id = request.tenant_id
 
-    # 1. Resolve uuid → accounting patient (read-only Port).
-    demo = get_patient_by_uuid(patient_uuid)
-    if demo is None:
-        raise Http404(f"Patient with uuid={patient_uuid} not found.")
-
-    # 2. Find clinical enrollment for THIS tenant.
-    try:
-        link = PatientLink.objects.get(
-            tenant_id=tenant_id,
-            patient_id=demo.id,
-        )
-    except PatientLink.DoesNotExist:
-        raise Http404(
-            f"Patient uuid={patient_uuid} has no enrollment for this tenant."
-        )
+    # 1-2. Resolve uuid → accounting patient (read-only Port) → clinical
+    #      enrollment for THIS tenant (shared helper, same 404s — step 62).
+    link = _resolve_patient_link_for_tenant(patient_uuid, tenant_id)
 
     # 3. Build the timeline (pure computation, no writes).
     items_raw = _screening_timeline(link.id, tenant_id)
@@ -620,17 +584,8 @@ def get_medication_effect(
     """
     tenant_id = request.tenant_id
 
-    # ── ۱. resolve patient ───────────────────────────────────────────────────
-    demo = get_patient_by_uuid(patient_uuid)
-    if demo is None:
-        raise Http404(f"Patient with uuid={patient_uuid} not found.")
-
-    try:
-        link = PatientLink.objects.get(tenant_id=tenant_id, patient_id=demo.id)
-    except PatientLink.DoesNotExist:
-        raise Http404(
-            f"Patient uuid={patient_uuid} has no enrollment for this tenant."
-        )
+    # ── ۱. resolve patient (shared helper, same 404s — step 62) ──────────────
+    link = _resolve_patient_link_for_tenant(patient_uuid, tenant_id)
 
     # ── ۲. resolve medication ────────────────────────────────────────────────
     try:

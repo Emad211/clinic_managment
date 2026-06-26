@@ -32,7 +32,10 @@ from django.http import Http404
 
 from config.api_base import _jwt_auth
 from config.pagination import paginate
-from clinical.api._shared import VitalReadingDTO
+from clinical.api._shared import (
+    VitalReadingDTO,
+    _resolve_patient_link_and_demo_for_tenant,
+)
 
 from accounting_port.port import (
     get_patient_by_uuid,
@@ -201,21 +204,11 @@ def get_patient_record(request, patient_uuid: uuid_module.UUID):
     """
     tenant_id = request.tenant_id
 
-    # 1. Resolve uuid → accounting patient
-    demo = get_patient_by_uuid(patient_uuid)
-    if demo is None:
-        raise Http404(f"Patient with uuid={patient_uuid} not found.")
-
-    # 2. Find clinical enrollment for THIS tenant
-    try:
-        link = PatientLink.objects.get(
-            tenant_id=tenant_id,
-            patient_id=demo.id,
-        )
-    except PatientLink.DoesNotExist:
-        raise Http404(
-            f"Patient uuid={patient_uuid} has no enrollment for this tenant."
-        )
+    # 1-2. Resolve uuid → accounting patient → clinical enrollment for THIS
+    #      tenant (shared helper; same Http404 messages as before, step 62).
+    #      We need the demographics (`demo`) below, so use the demo-returning
+    #      variant — avoids a redundant second Port fetch.
+    link, demo = _resolve_patient_link_and_demo_for_tenant(patient_uuid, tenant_id)
 
     # 3. Active conditions with condition metadata (IN query — no N+1)
     patient_conditions = list(
