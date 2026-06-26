@@ -26,14 +26,15 @@ SACRED SECURITY INVARIANTS (preserved verbatim — این حساس‌ترین ق
     physician verifies it (step 47). all-or-nothing insert + single mark-used
     inside one transaction.
 
-``_resolve_patient_link_for_tenant`` is shared with NON-migrated domains
-(encounters, vital-review), so per the cleanup rule it STAYS in ``config.api``
-and is imported lazily here (function-level) to avoid an import cycle — the
-helper is defined in ``config.api`` *after* this router is imported, so a
-module-level import would fail.
+``_resolve_patient_link_for_tenant`` is shared with other domains (encounters,
+vitals/vital-review).  As of cleanup step 7 it lives in ``clinical.api._shared``
+(``_shared`` imports only services/models/``config.*``/``api_base`` — never a
+router), so this module imports it normally at module level — no cycle. (Before
+step 7 it lived in ``config.api`` and was imported lazily to avoid a cycle.)
 
-This module imports FROM ``config.api_base`` (shared ``_jwt_auth``); nothing in
-``api_base`` imports a router, so the package stays free of cycles.
+This module imports FROM ``config.api_base`` (shared ``_jwt_auth``) and
+``clinical.api._shared``; nothing in either imports a router, so the package
+stays free of cycles.
 """
 from __future__ import annotations
 
@@ -47,6 +48,7 @@ from ninja import Router, Schema
 
 from config.api_base import _jwt_auth
 from config.errors import ErrorSchema, error_response
+from clinical.api._shared import _resolve_patient_link_for_tenant
 
 from clinical.audit import log_activity
 from clinical.report_token_service import (
@@ -192,10 +194,6 @@ def issue_report_token(request, patient_uuid: uuid_module.UUID):
 
     Requires JWT. Tenant-scoped: 404 if patient has no enrollment for this tenant.
     """
-    # _resolve_patient_link_for_tenant is shared with non-migrated domains and
-    # lives in config.api; import lazily (function-level) to avoid a cycle.
-    from config.api import _resolve_patient_link_for_tenant
-
     tenant_id = request.tenant_id
     user = request.auth
 
