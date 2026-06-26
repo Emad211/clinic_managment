@@ -157,4 +157,4 @@ cursor.execute(
 
 ## مبنا (ارجاعِ کد — راستی‌آزمایی‌شده)
 
-`halqe/platform_core/tenant_context.py:48,73` (set/clear با `false`) · `halqe/platform_core/middleware.py:47-60` (leading+trailing clear) · `halqe/platform_core/auth_bearer.py:36` (set در authenticate، خارجِ atomic) · `halqe/config/settings.py:108-165` (DATABASES بدونِ CONN_MAX_AGE قبل، با بعد) · `halqe/config/env.py:resolve_conn_max_age` · `halqe/tests/test_guc_leak.py` · `halqe/tests/test_prod_config.py:TestResolveConnMaxAge` · `specialist_clinic/docs/migration_tools/schema_pg_slice5_rls.sql` (FORCE RLS + NULLIF).
+`halqe/platform_core/tenant_context.py:48,73` (set/clear با `false`) · `halqe/platform_core/middleware.py:47-60` (leading+trailing clear) · `halqe/platform_core/auth_bearer.py:36` (set در authenticate، خارجِ atomic) · `halqe/config/settings.py:108-165` (DATABASES بدونِ CONN_MAX_AGE قبل، با بعد) · `halqe/config/env.py:resolve_conn_max_age` · `halqe/tests/test_guc_leak.py` · `halqe/tests/test_prod_config.py:TestResolveConnMaxAge` · `halqe/db/schema/schema_pg_slice5_rls.sql` (FORCE RLS + NULLIF).

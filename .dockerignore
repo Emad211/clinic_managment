@@ -72,8 +72,7 @@ halqe/wheels/
 
 # ── Docs (not needed in image) ────────────────────────────────────────────────
 # The SQL slices live under halqe/db/schema/ (NOT under docs/), so they stay in
-# the build context. Exclude all docs trees.
-specialist_clinic/docs/adr/
+# the build context. Exclude all docs trees (incl. halqe/docs/adr + architecture).
 specialist_clinic/docs/*.md
 halqe/docs/
 docs/

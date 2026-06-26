@@ -15,22 +15,25 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this repository is
 
-Two **independent Flask + SQLite desktop apps** for an Iranian clinic. They share the same architecture and conventions but run as separate processes on different ports with different databases. They are linked only by patient `national_id`, through a strictly **read-only** bridge.
+**Three trees:** two **independent Flask + SQLite desktop apps** (the production apps), plus **`halqe/`** — the unified cloud platform they are evolving into (Django 6 + django-ninja + Postgres; Evolve-not-Rewrite). The two Flask apps share the same architecture and conventions but run as separate processes on different ports with different databases, linked only by patient `national_id` through a strictly **read-only** bridge. `halqe/` is greenfield, multi-tenant, and self-contained (its own deep docs + roadmap).
 
-| App | Path | Purpose | Port | Database |
+| Tree | Path | Purpose | Port | Database |
 |-----|------|---------|------|----------|
 | **Hesabdari (Accounting)** | `webapp/` | Reception, invoicing, visits, injections, procedures, consumables, payroll, reports | 8080 | `webapp/clinic_new.db` |
 | **Specialist Clinic** | `specialist_clinic/` | Chronic-disease management (diabetes, hypertension): vitals, appointments, follow-up worklist, SMS campaigns, ADA clinical decision support | 8090 | `specialist_clinic/specialist.db` |
+| **حلقه (Halqe) — unified platform** | `halqe/` | Multi-tenant cloud platform superseding both Flask apps: schema-first Postgres (platform/accounting/clinical schemas + RLS), ninja API, Next.js web panel + patient PWA | — | Postgres (multi-schema) |
 
-`specialist_clinic` reads patient demographics and revenue **live and read-only** from the accounting DB via `specialist_clinic/src/adapters/accounting_bridge.py` (opens `clinic_new.db` with the sqlite3 URI `mode=ro`). **Never write to the accounting DB from the specialist app.** The path defaults to `../webapp/clinic_new.db` and is overridable with the `ACCOUNTING_DB_PATH` env var.
+`specialist_clinic` reads patient demographics and revenue **live and read-only** from the accounting DB via `specialist_clinic/src/adapters/accounting_bridge.py` (opens `clinic_new.db` with the sqlite3 URI `mode=ro`). **Never write to the accounting DB from the specialist app.** The path defaults to `../webapp/clinic_new.db` and is overridable with the `ACCOUNTING_DB_PATH` env var. `halqe` likewise reads accounting **read-only**, through its own `accounting_port` boundary.
 
 Most domain comments and UI strings are Persian. The product is RTL/Jalali throughout.
 
-> **Project scope note:** this repo currently holds exactly these two apps. Earlier exploratory trees (`platform/`, `ai_service/`, `docs/`) were intentionally removed and are **not** part of the project — do not resurrect them from git history or describe them as if they exist.
+> **Project scope note:** this repo holds the two production Flask apps **and `halqe/`** (the unified platform under active development). Earlier exploratory trees (`platform/`, `ai_service/`, a root `docs/`) were intentionally removed and are **not** part of the project — do not resurrect them from git history or describe them as if they exist. **`halqe/` is the real platform evolution and is distinct from the removed `platform/` tree** (do not create a root `docs/`; halqe's docs live under `halqe/docs/`).
 
 ## Per-app deep docs
 
 [`specialist_clinic/CLAUDE.md`](specialist_clinic/CLAUDE.md) is the authoritative guide for the Specialist Clinic app (its layering, the ADA clinical engine, the `patient_links` model, conventions, gotchas). Read it before working there. `webapp/` follows the same conventions described below but has no separate CLAUDE.md yet.
+
+For **`halqe/`** (the unified platform) the authoritative docs are [`halqe/README.md`](halqe/README.md), the roadmap [`halqe/docs/ROADMAP.md`](halqe/docs/ROADMAP.md), and the **architecture decision records** [`halqe/docs/adr/`](halqe/docs/adr/) (ADR-0001 … ADR-0008) + [`halqe/docs/architecture/`](halqe/docs/architecture/). halqe keeps the same strict layering and sacred constraints (read-only accounting boundary, suggestion-only engine, verified-gate, no PHI in URLs, Jalali/Iran-time, additive idempotent migrations).
 
 ## Running
 

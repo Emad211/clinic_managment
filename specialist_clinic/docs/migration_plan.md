@@ -1,6 +1,6 @@
 # نقشهٔ مهاجرت — پلتفرمِ ابریِ یکپارچه (ADR-0006)
 
-> **سند مرجعِ اجرایی.** این نقشه، تجزیهٔ شش‌حوزه‌ای (architecture · data · security · ops · backend · frontend · qa · clinical-product · marketing · devils-advocate) را در یک بک‌لاگِ واحدِ ریز ادغام کرده و **تضادهای دورِ دومِ بحثِ متقابل را حل‌شده** منعکس می‌کند. مبنا: [`adr/0006-cloud-unification-and-data-trust.md`](adr/0006-cloud-unification-and-data-trust.md) · [`data_trust_story.md`](data_trust_story.md) · [`owner_inputs_needed.md`](owner_inputs_needed.md) · ADRهای 0001..0005.
+> **سند مرجعِ اجرایی.** این نقشه، تجزیهٔ شش‌حوزه‌ای (architecture · data · security · ops · backend · frontend · qa · clinical-product · marketing · devils-advocate) را در یک بک‌لاگِ واحدِ ریز ادغام کرده و **تضادهای دورِ دومِ بحثِ متقابل را حل‌شده** منعکس می‌کند. مبنا: [`adr/0006-cloud-unification-and-data-trust.md`](../../halqe/docs/adr/0006-cloud-unification-and-data-trust.md) · [`data_trust_story.md`](data_trust_story.md) · [`owner_inputs_needed.md`](owner_inputs_needed.md) · ADRهای 0001..0005.
 >
 > هر تسک با `id` حوزه‌ای حفظ شده (ARCH/DATA/SECU/OPS/BACK/FRON/QA/PROD/MARK/DEVI). تسک‌های هم‌موضوعِ چندحوزه‌ای **ادغام** شده‌اند (مالکِ واحد + ارجاع به idهای آینه).
 

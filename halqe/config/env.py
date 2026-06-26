@@ -207,7 +207,7 @@ def resolve_conn_max_age(environ: dict, production: bool) -> int:
             f"(e.g. transaction-mode pooler). "
             f"Before enabling persistent connections you MUST: "
             f"(1) confirm the pooler operates in SESSION mode (not transaction "
-            f"mode) — see ADR-0008 (specialist_clinic/docs/adr/0008-...); "
+            f"mode) — see ADR-0008 (halqe/docs/adr/0008-...); "
             f"(2) set TENANT_GUC_POOLING_ACK=session-mode-only in the "
             f"environment to acknowledge this contract. "
             f"If you need transaction-mode pooling (PgBouncer transaction mode "

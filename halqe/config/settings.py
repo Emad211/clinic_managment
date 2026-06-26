@@ -102,7 +102,7 @@ CORS_ALLOW_CREDENTIALS = False
 # (app.current_tenant) dies with it, and no cross-request tenant leak is
 # possible.  Changing this requires an explicit ACK (TENANT_GUC_POOLING_ACK
 # =session-mode-only) and understanding the session-mode-only contract.
-# See specialist_clinic/docs/adr/0008-tenant-guc-lifecycle-and-pooling.md
+# See halqe/docs/adr/0008-tenant-guc-lifecycle-and-pooling.md
 # ---------------------------------------------------------------------------
 _CONN_MAX_AGE = resolve_conn_max_age(_env, _production)
 # Expose as a module-level constant so tests can assert on it.

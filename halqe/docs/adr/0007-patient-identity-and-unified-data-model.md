@@ -2,7 +2,7 @@
 
 - **وضعیت:** پیشنهادی (Proposed) — ۱۴۰۵/۰۳/۳۱. نیازمندِ تصمیمِ مالک روی «پرسش‌های بازِ بلوکه‌کننده» (§۷).
 - **تصمیم‌گیرنده:** مالک + `data-architect` + `principal-architect` (طرحِ همگرا، مبتنی بر کد).
-- **مرتبط:** [ADR-0006](0006-cloud-unification-and-data-trust.md) (تصمیمِ ابریِ یکپارچه؛ این ADR لایهٔ دادهٔ آن را قطعی می‌کند) · [ADR-0002](0002-context-boundaries.md) (مالکیتِ هویت/وابستگیِ یک‌طرفه — این ADR آن را از فایل‌محور به schema-محور می‌برد) · [ADR-0005](0005-observation-canonical-concept.md) · [`migration_plan.md`](../migration_plan.md) (ARCH-01/02/04/08).
+- **مرتبط:** [ADR-0006](0006-cloud-unification-and-data-trust.md) (تصمیمِ ابریِ یکپارچه؛ این ADR لایهٔ دادهٔ آن را قطعی می‌کند) · [ADR-0002](0002-context-boundaries.md) (مالکیتِ هویت/وابستگیِ یک‌طرفه — این ADR آن را از فایل‌محور به schema-محور می‌برد) · [ADR-0005](0005-observation-canonical-concept.md) · [`migration_plan.md`](../../../specialist_clinic/docs/migration_plan.md) (ARCH-01/02/04/08).
 
 > **این ADR چه را قطعی می‌کند:** ADR-0006 «یک Postgres با دو schema» را تصمیم گرفت ولی **هویتِ بیمار را باز گذاشت** (§۱۴). اینجا آن را + مرزِ cross-schema + اولین برشِ ساخت‌شدنی + پاسخِ صریح به «آیا داریم زیادی زود می‌سازیم؟» قطعی می‌کنیم. **هیچ کدِ schema تا تصمیم‌های §۷ نوشته نمی‌شود.**
 

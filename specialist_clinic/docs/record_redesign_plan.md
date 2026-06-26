@@ -112,7 +112,7 @@
 
 ## کارتِ بیمار (#۲) — ADR-0004 (کدِ سمتِ‌اپ ساخته‌شد؛ تحویلِ اینترنتی بلاک)
 
-> سندِ کامل: [`adr/0004-patient-card-channel.md`](adr/0004-patient-card-channel.md). دو دورِ مشورتِ **خصمانهٔ** تیم (security · architect · clinical · delivery).
+> سندِ کامل: [`adr/0004-patient-card-channel.md`](../../halqe/docs/adr/0004-patient-card-channel.md). دو دورِ مشورتِ **خصمانهٔ** تیم (security · architect · clinical · delivery).
 
 **کارت = Channel / پروجکشنِ فقط‌خواندنی** (نه Context چهارم). قفلِ read-only **در سطحِ کد** + **تستِ نگهبانِ سه‌لایه** (مسیرِ GET-only · اسکنِ استاتیکِ projection · گاردِ SHA-256 صفر-نوشتن). محتوا (تصمیمِ بالین، برندهٔ تضادِ محتوا): نامِ کوچک + آخرین قند/فشار با **وضعیتِ رنگیِ سادهٔ فارسی** + نوبتِ بعدی + تلفنِ کلینیک؛ **بدونِ دارو/تشخیص/national_id**.
 

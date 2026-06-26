@@ -2,7 +2,7 @@
 
 > **هدف این سند:** سندِ زندهٔ مرجع برای هر چیزی که **آگاهانه موکول** شده — نه فراموش‌شده. در شروعِ هر فاز (و در هر بازبینیِ ADR) به این سند سر بزنیم و ستونِ «تریگرِ بازبینی» را در برابرِ وضعِ واقعیِ پروژه چک کنیم. هر ردیف یک قرارداد است: **تا تریگرش فعال نشده، نزدنش یک تصمیمِ معماری است، نه بدهی.**
 >
-> **مبنا:** سنتزِ `deferredRoadmap`های ۱۰ عضو (architecture · data · security · ops · backend · frontend · qa · clinical-product · marketing · devils-advocate)، حذفِ تکرار، و گره‌زدن به [ADR-0006](adr/0006-cloud-unification-and-data-trust.md) §۲/§۴/§۶/§۷/§۱۰/§۱۴ + [ADR-0001](adr/0001-evolve-not-rewrite.md) (تریگرهای T1..T4) + [owner_inputs_needed.md](owner_inputs_needed.md) + [data_trust_story.md](data_trust_story.md).
+> **مبنا:** سنتزِ `deferredRoadmap`های ۱۰ عضو (architecture · data · security · ops · backend · frontend · qa · clinical-product · marketing · devils-advocate)، حذفِ تکرار، و گره‌زدن به [ADR-0006](../../halqe/docs/adr/0006-cloud-unification-and-data-trust.md) §۲/§۴/§۶/§۷/§۱۰/§۱۴ + [ADR-0001](../../halqe/docs/adr/0001-evolve-not-rewrite.md) (تریگرهای T1..T4) + [owner_inputs_needed.md](owner_inputs_needed.md) + [data_trust_story.md](data_trust_story.md).
 >
 > **این سند فقط موکول‌شده‌هاست.** کارهای فعالِ مهاجرت (فاز ۰..E) جای دیگری ردیابی می‌شوند؛ این‌جا فقط چیزهایی است که **عمداً بیرونِ scopeِ فعلی** گذاشته شده‌اند.
 

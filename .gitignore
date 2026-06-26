@@ -2,23 +2,17 @@
 halqe/wheels/
 
 # ── Python venvs / caches ──
-platform/.venv/
-ai_service/.venv/
-ai_service/*.db
-ai_service/ai_service.db
+# (per-app venvs are also covered by nested .gitignore files; this is the
+#  repo-wide safety net. The removed platform/ and ai_service/ trees are gone.)
+**/.venv/
 **/__pycache__/
 .pytest_cache/
 *.py[cod]
 *.egg-info/
-.pytest_cache/
 
-# Local env & secrets
-platform/.env
+# ── Local env & secrets ── (NOTE: .env.example IS committed — see halqe step 22)
 .env
-
-# Django local DB (if SQLite ever used for a quick local run)
-platform/*.sqlite3
-platform/db.sqlite3
+**/.env
 
 # ── Research / scratch ──
 tmp_*.txt
