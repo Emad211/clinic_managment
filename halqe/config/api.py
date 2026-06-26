@@ -26,10 +26,19 @@ import uuid as uuid_module
 from typing import Optional
 from datetime import datetime, date
 
-from ninja import NinjaAPI, Schema, Query
+from ninja import Schema, Query
 from django.http import Http404
 from django.utils import timezone
 
+# Shared API base — the single NinjaAPI instance, JWT auth dependency, the
+# Http404 exception handler and the SYSTEM_TENANT_ID sentinel now live in
+# config.api_base (cleanup step 3).  This module wires domain routers onto
+# `api` and still holds the not-yet-extracted endpoints (steps 4-7 move them).
+#
+# SYSTEM_TENANT_ID is re-exported here (not used by the endpoints still in this
+# module) so that existing `from config.api import SYSTEM_TENANT_ID` consumers
+# (e.g. tests/test_tenant_context.py) keep working unchanged.
+from config.api_base import api, _jwt_auth, SYSTEM_TENANT_ID  # noqa: F401  (re-export)
 from config.errors import ErrorSchema, error_response
 from config.pagination import paginate
 from accounting_port.port import (
@@ -52,71 +61,20 @@ from clinical.rule_engine import _evaluate_reading as _eval_reading
 from clinical.models import ClinicalIndicator as _ClinicalIndicator
 from clinical.suggestion_service import grouped_for_patient as _grouped_for_patient
 from clinical.audit import log_activity
-from platform_core.auth_bearer import JWTBearer
-from platform_core.auth_service import (
-    login,
-    InvalidCredentials,
-    AccountLocked,
-    AccountInactive,
-)
 
 # ---------------------------------------------------------------------------
-# System sentinel for audit rows where no real tenant can be resolved.
-#
-# Used ONLY for failed-login audit rows when the supplied username does not
-# exist in the DB (User.DoesNotExist or ambiguous multi-tenant collision).
-# In those cases there is no user object to extract a real tenant_id from.
-#
-# We use 1 rather than 0 because clinical.activity_logs.tenant_id has a
-# FOREIGN KEY REFERENCES platform.tenants(id), and the schema seeds tenant 1
-# as the "پیش‌فرض" (default) tenant (slice0.sql).  Using 0 would violate the
-# FK unless a system tenant row is inserted — a schema change deferred to a
-# future step.  The constant name makes the intent explicit and distinguishable
-# from any accidental hardcoded literal '1' elsewhere.
-#
-# When real tenant routing (subdomain / host-based) is implemented in a future
-# step, these audit rows should carry the resolved tenant or be stored in a
-# dedicated "platform audit" table without the FK constraint.
+# Domain routers (cleanup step 3+).  Each is wired below with add_router using
+# a prefix that keeps the full URL byte-identical to the pre-split paths.
 # ---------------------------------------------------------------------------
-SYSTEM_TENANT_ID: int = 1
+from clinical.api.auth import router as auth_router
 
-api = NinjaAPI(title="Halqe Platform API", version="0.1.0")
-
-_jwt_auth = JWTBearer()
-
-
-# ---------------------------------------------------------------------------
-# Global exception handler — Http404 → uniform error contract
-#
-# django-ninja converts Http404 to {"detail": "Not Found"} by default,
-# which lacks the `code` field the contract requires.  By registering a
-# handler here, every `raise Http404(...)` in any endpoint of *this* API
-# returns the standard ErrorSchema shape, so the web client still reads
-# `detail` and new consumers can branch on `code`.
-# ---------------------------------------------------------------------------
-from django.http import JsonResponse as _JsonResponse
-
-
-@api.exception_handler(Http404)
-def _handle_404(request, exc):
-    return _JsonResponse(
-        error_response(str(exc) or "Not Found", "not_found"),
-        status=404,
-    )
+# auth domain: route is "/auth/login"; prefix "" → /api/v1/auth/login (unchanged).
+api.add_router("", auth_router)
 
 
 # ---------------------------------------------------------------------------
 # Schemas
 # ---------------------------------------------------------------------------
-
-class LoginRequest(Schema):
-    username: str
-    password: str
-
-
-class TokenResponse(Schema):
-    token: str
-
 
 class VitalReadingDTO(Schema):
     id: int
@@ -208,60 +166,9 @@ class ClinicalRecordDTO(Schema):
 
 
 # ---------------------------------------------------------------------------
-# Auth endpoint — POST /auth/login
+# Auth endpoint — POST /auth/login — MOVED to clinical/api/auth.py (step 3).
+# Wired above via api.add_router("", auth_router); URL unchanged.
 # ---------------------------------------------------------------------------
-
-@api.post("/auth/login", response={200: TokenResponse, 401: ErrorSchema, 423: ErrorSchema}, auth=None, tags=["auth"])
-def auth_login(request, body: LoginRequest):
-    """
-    Verify credentials against platform.users (bcrypt).
-    Returns a signed JWT (8h) on success.
-    401 on wrong credentials or inactive account.
-    423 on locked account.
-    """
-    try:
-        token = login(body.username, body.password)
-        # Resolve user_id from the token claims for the audit row.
-        # We decode here rather than issuing a second DB query — the JWT was
-        # just signed by auth_service.login so it is guaranteed valid.
-        from platform_core.auth_service import decode_jwt
-        claims = decode_jwt(token)
-        log_activity(
-            tenant_id=claims.get("tenant_id", SYSTEM_TENANT_ID),
-            user_id=claims.get("user_id"),
-            username=body.username,
-            action_type="login",
-            action_category="auth",
-            description="successful login",
-        )
-        return 200, {"token": token}
-    except AccountLocked as exc:
-        # exc.tenant_id is set when the user WAS found (wrong password triggers
-        # lockout after 5 attempts — user object was resolved before the lock).
-        # Falls back to SYSTEM_TENANT_ID only if tenant is truly unknown.
-        audit_tenant = exc.tenant_id if exc.tenant_id is not None else SYSTEM_TENANT_ID
-        log_activity(
-            tenant_id=audit_tenant,
-            user_id=None,
-            username=body.username,
-            action_type="login_failed",
-            action_category="auth",
-            description="account locked",
-        )
-        return 423, error_response(str(exc), "account_locked")
-    except (InvalidCredentials, AccountInactive) as exc:
-        # exc.tenant_id is set when the user WAS found (wrong password case).
-        # It is None when the username does not exist or is ambiguous (multi-tenant).
-        audit_tenant = exc.tenant_id if exc.tenant_id is not None else SYSTEM_TENANT_ID
-        log_activity(
-            tenant_id=audit_tenant,
-            user_id=None,
-            username=body.username,
-            action_type="login_failed",
-            action_category="auth",
-            description=str(exc),
-        )
-        return 401, error_response(str(exc), "invalid_credentials")
 
 
 # ---------------------------------------------------------------------------
