@@ -50,8 +50,12 @@ def test_list_patients_returns_enrolled_patient_with_demographics(seed_clinical_
     The seeded tenant-1 patient must appear in the list with correct demographics.
     """
     token = _get_token(seed_clinical_data)
+    # Use the max page size: the session seeds many patients across all test
+    # modules, and /patients is ordered newest-first, so the original (oldest)
+    # seeded patient is NOT on the default first page. Request all rows so this
+    # assertion verifies *presence + demographics*, not page placement.
     resp = _client().get(
-        "/patients",
+        "/patients?limit=200",
         headers={"Authorization": f"Bearer {token}"},
     )
     assert resp.status_code == 200, resp.text
@@ -467,3 +471,110 @@ def test_vital_level_field_present_in_record_response(seed_clinical_data):
                 f"hba1c has a clinical_indicators row → level must not be None; "
                 f"got None for value={v.get('value')}"
             )
+
+
+# ---------------------------------------------------------------------------
+# 9. verified-gate on the record surface (Step-61)
+#
+# The /record endpoint is the physician verify surface — it MUST show unverified
+# self-report rows (that powers the verify inbox). But the clinical level badge
+# (ok/warn/danger) is a decision-support derivation; per the SACRED verified-gate
+# it must NOT be computed for unverified (verified=FALSE) data. We compute `level`
+# only when verified=TRUE; the raw value + verified flag are always serialised.
+# ---------------------------------------------------------------------------
+
+@pytest.mark.django_db(databases=["default", "accounting_read"], transaction=True)
+def test_record_no_clinical_level_for_unverified_self_report(seed_clinical_data):
+    """
+    Step-61 verified-gate regression (record surface):
+
+    Seed a dedicated patient with two danger-range hba1c readings:
+      - a VERIFIED hba1c=9.0 (clinic)        → level MUST be 'danger'
+      - an UNVERIFIED self-report hba1c=9.5  → level MUST be None (gate),
+        while the raw value + verified=False are still serialised (verify inbox).
+
+    Without the gate, the unverified self-report would carry a 'danger' clinical
+    badge before any physician verified it — a forbidden decision-support bleed.
+    """
+    import uuid as _uuid
+    import psycopg as _psycopg
+
+    _CONNINFO = (
+        "host='localhost' port='55432' "
+        "user='postgres' password='validate_only' "
+        "dbname='halqe_app_test'"
+    )
+    u = _uuid.UUID("d1000061-0000-0000-0000-000000000061")
+    with _psycopg.connect(_CONNINFO, autocommit=True) as conn:
+        conn.execute("""
+            INSERT INTO accounting.patients
+                (tenant_id, uuid, name, family_name, national_id,
+                 phone_number, birthdate, gender)
+            VALUES (1, %s, 'گیت', 'تأیید', 'REC0000061', '09100000061',
+                    '1971-01-01', 'male')
+            ON CONFLICT (uuid) DO NOTHING
+        """, (u,))
+        pat_id = conn.execute(
+            "SELECT id FROM accounting.patients WHERE uuid=%s", (u,)
+        ).fetchone()[0]
+        conn.execute("""
+            INSERT INTO clinical.patient_links (tenant_id, patient_id, is_active)
+            VALUES (1, %s, TRUE)
+            ON CONFLICT (tenant_id, patient_id) DO NOTHING
+        """, (pat_id,))
+        link_id = conn.execute(
+            "SELECT id FROM clinical.patient_links WHERE tenant_id=1 AND patient_id=%s",
+            (pat_id,)
+        ).fetchone()[0]
+        # VERIFIED danger reading (verified column defaults TRUE)
+        conn.execute("""
+            INSERT INTO clinical.vital_readings
+                (tenant_id, patient_link_id, type, value, unit, measured_at, source)
+            VALUES (1, %s, 'hba1c', 9.0, '%%', now() - interval '5 days', 'clinic')
+            ON CONFLICT DO NOTHING
+        """, (link_id,))
+        # UNVERIFIED self-report danger reading
+        conn.execute("""
+            INSERT INTO clinical.vital_readings
+                (tenant_id, patient_link_id, type, value, unit, measured_at,
+                 source, verified)
+            VALUES (1, %s, 'hba1c', 9.5, '%%', now() - interval '1 days',
+                    'patient_self', FALSE)
+            ON CONFLICT DO NOTHING
+        """, (link_id,))
+
+    token = _get_token(seed_clinical_data)
+    resp = _client().get(
+        f"/patients/{u}/record",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 200, resp.text
+    vitals = resp.json()["recent_vitals"]
+
+    verified_rows = [
+        v for v in vitals if v["type"] == "hba1c" and v["verified"] is True
+    ]
+    unverified_rows = [
+        v for v in vitals if v["type"] == "hba1c" and v["verified"] is False
+    ]
+
+    assert verified_rows, "Expected the verified hba1c row in the record"
+    assert unverified_rows, (
+        "Expected the unverified self-report hba1c row (it must be shown for the "
+        "verify inbox — do NOT filter it out of /record)"
+    )
+
+    # verified danger reading → clinical level computed
+    assert any(v["level"] == "danger" for v in verified_rows), (
+        "Verified danger hba1c must still get its clinical level badge"
+    )
+
+    # unverified self-report → NO clinical level (gate); raw value preserved
+    for v in unverified_rows:
+        assert v["level"] is None, (
+            f"Unverified self-report must NOT get a clinical level badge "
+            f"(verified-gate); got level={v['level']!r}"
+        )
+        assert v["value"] == 9.5, (
+            "Raw self-reported value must still be serialised for the verify inbox"
+        )

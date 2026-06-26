@@ -897,6 +897,100 @@ def conversion_seed(cr_seed):
 
 
 @pytest.mark.django_db(databases=["default", "accounting_read"], transaction=True)
+def test_control_room_excludes_unverified_self_report(cr_seed):
+    """
+    Step-61 verified-gate regression (SACRED INVARIANT, locked w/ security-privacy):
+
+    Unverified patient self-report (verified=FALSE) must NEVER influence EITHER
+    control-room query:
+      (1) the DISTINCT-ON latest-per-key classification query, and
+      (2) the MAX(observed_at) lapsed-detection query.
+
+    Seed a dedicated patient with:
+      - an OLD VERIFIED hba1c=6.5 (ok), 200 days ago        → verified=TRUE
+      - a NEW UNVERIFIED self-report hba1c=10.0 (danger), 2 days ago → verified=FALSE
+
+    With the gate (correct behaviour this test locks in):
+      - latest VERIFIED hba1c = 6.5 → control='controlled' (NOT 'uncontrolled');
+      - last VERIFIED observation = 200 days ago → lapsed=True;
+      - score = lapsed(2) = 2 → patient appears in the panel.
+    Without the gate (the bug this guards):
+      - DISTINCT ON would pick the newer unverified 10.0 → control='uncontrolled';
+      - MAX(observed_at) would see the 2-day-old self-report → lapsed=False.
+    """
+    with psycopg.connect(_CONNINFO, autocommit=True) as conn:
+        u_sr = uuid.UUID("c1000001-0000-0000-0000-000000000077")
+        conn.execute("""
+            INSERT INTO accounting.patients
+                (tenant_id, uuid, name, family_name, national_id,
+                 phone_number, birthdate, gender)
+            VALUES (1, %s, 'خوداظهار', 'تأییدنشده', 'CR0000077', '09100000077',
+                    '1972-01-01', 'male')
+            ON CONFLICT (uuid) DO NOTHING
+        """, (u_sr,))
+        sr_pat_id = conn.execute(
+            "SELECT id FROM accounting.patients WHERE uuid=%s", (u_sr,)
+        ).fetchone()[0]
+        conn.execute("""
+            INSERT INTO clinical.patient_links (tenant_id, patient_id, is_active)
+            VALUES (1, %s, TRUE)
+            ON CONFLICT (tenant_id, patient_id) DO NOTHING
+        """, (sr_pat_id,))
+        sr_link_id = conn.execute(
+            "SELECT id FROM clinical.patient_links WHERE tenant_id=1 AND patient_id=%s",
+            (sr_pat_id,)
+        ).fetchone()[0]
+
+        # OLD VERIFIED ok reading (200 days ago) — verified column defaults TRUE
+        conn.execute("""
+            INSERT INTO clinical.vital_readings
+                (tenant_id, patient_link_id, type, value, unit, measured_at, source)
+            VALUES (1, %s, 'hba1c', 6.5, '%%',
+                    now() - interval '200 days', 'clinic')
+            ON CONFLICT DO NOTHING
+        """, (sr_link_id,))
+
+        # NEW UNVERIFIED danger self-report (2 days ago) — verified=FALSE
+        conn.execute("""
+            INSERT INTO clinical.vital_readings
+                (tenant_id, patient_link_id, type, value, unit, measured_at,
+                 source, verified)
+            VALUES (1, %s, 'hba1c', 10.0, '%%',
+                    now() - interval '2 days', 'patient_self', FALSE)
+            ON CONFLICT DO NOTHING
+        """, (sr_link_id,))
+
+    token = _get_token("testuser", cr_seed["test_password"])
+    resp = _client().get("/control-room", headers={"Authorization": f"Bearer {token}"})
+    assert resp.status_code == 200, resp.text
+    data = resp.json()
+
+    entries = [p for p in data["patients"] if p["id"] == sr_link_id]
+    assert entries, (
+        "Patient with an old verified ok reading should still appear (lapsed). "
+        "If absent, the lapsed-detection query saw the unverified self-report "
+        "and treated the patient as recently-seen."
+    )
+    p = entries[0]
+
+    # (1) classification query gate: control reflects the VERIFIED ok value
+    assert p["control"] != "uncontrolled", (
+        f"control={p['control']!r} — the unverified danger self-report (10.0) leaked "
+        f"into the DISTINCT-ON classification query (verified-gate violated)."
+    )
+    assert p["control"] == "controlled", (
+        f"control should be 'controlled' from the verified 6.5 reading, got {p['control']!r}"
+    )
+
+    # (2) lapsed-detection query gate: the 2-day-old unverified report must NOT
+    #     mask the lapse — the only verified observation is 200 days old.
+    assert p["lapsed"] is True, (
+        "lapsed=False — the unverified self-report leaked into the MAX(observed_at) "
+        "lapsed-detection query and falsely marked the patient as recently-seen."
+    )
+
+
+@pytest.mark.django_db(databases=["default", "accounting_read"], transaction=True)
 def test_conversion_eligible_excludes_future_tasks(conversion_seed):
     """
     Step-42 assertion 1 — immortal-time bias guard:

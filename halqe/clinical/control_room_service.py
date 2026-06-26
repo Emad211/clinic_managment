@@ -185,6 +185,9 @@ def panel(tenant_id: int, show_value: bool) -> dict:
               AND  tenant_id = %s
               AND  obs_key   = ANY(%s)
               AND  value IS NOT NULL
+              -- verified-gate (مقدس): دادهٔ self-reportِ تأییدنشده هرگز در طبقه‌بندیِ
+              -- کنترل/امتیازِ کوهورت وارد نشود؛ هم‌راستا با ۶ مسیرِ دیگرِ موتور.
+              AND  verified = TRUE
             ORDER  BY patient_link_id, obs_key, observed_at DESC
             """,
             [list(link_ids_tuple), tenant_id, list(obs_keys_tuple)],
@@ -210,6 +213,9 @@ def panel(tenant_id: int, show_value: bool) -> dict:
             FROM   clinical.observations
             WHERE  patient_link_id = ANY(%s)
               AND  tenant_id = %s
+              -- verified-gate: یک self-reportِ تأییدنشده نباید بیمارِ lapsed را
+              -- به‌دروغ «اخیراً دیده‌شده» جلوه دهد و از فهرستِ پیگیری حذف کند.
+              AND  verified = TRUE
             GROUP  BY patient_link_id
             """,
             [list(link_ids_tuple), tenant_id],

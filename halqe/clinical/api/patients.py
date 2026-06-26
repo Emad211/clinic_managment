@@ -318,7 +318,11 @@ def get_patient_record(request, patient_uuid: uuid_module.UUID):
                 measured_at=v.measured_at,
                 source=v.source,
                 notes=v.notes,
-                level=_vital_level(v.type, v.value),
+                # verified-gate (مقدس): badgeِ سطحِ بالینی (ok/warn/danger) یک
+                # مشتقِ تصمیم‌یار است؛ برای دادهٔ تأییدنشده (self-reportِ pending یا
+                # rejected) محاسبه نمی‌شود. ردیفِ خام + پرچمِ verified همچنان
+                # سریال می‌شود تا صندوقِ تأییدِ پزشک کار کند.
+                level=(_vital_level(v.type, v.value) if v.verified else None),
                 # slice14: always serialise review state so UI can distinguish
                 # pending / approved / rejected without extra round-trips.
                 verified=v.verified,
