@@ -631,10 +631,9 @@ class TestSlice14SchemaSentinel:
         """اجرایِ مجددِ slice14 بدونِ خطا (idempotent DDL)."""
         import pathlib
         slice_path = (
-            pathlib.Path(__file__).resolve().parent.parent.parent
-            / "specialist_clinic"
-            / "docs"
-            / "migration_tools"
+            pathlib.Path(__file__).resolve().parent.parent
+            / "db"
+            / "schema"
             / "schema_pg_slice14_vital_review.sql"
         )
         assert slice_path.exists(), f"Slice14 file not found at {slice_path}"

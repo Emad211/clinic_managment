@@ -4,9 +4,9 @@
 #   postgres  — Postgres 16, throwaway dev/CI DB (no production data here)
 #   halqe     — Django backend built from halqe/Dockerfile (context = repo root)
 #
-# Build context is the repo root so the Dockerfile can COPY both:
-#   halqe/  (the Django app)
-#   specialist_clinic/docs/migration_tools/  (SQL schema slices)
+# Build context is the repo root so the Dockerfile can COPY:
+#   halqe/           (the Django app)
+#   halqe/db/schema/ (SQL schema slices, copied into /slices)
 #
 # OWNER GATE (Step 55): when deploying to a real VPS in Iran, replace the
 # dummy SECRET_KEY below with a real secret (min 50 random chars), set

@@ -35,7 +35,9 @@ pytestmark = pytest.mark.skipif(
 )
 
 _HERE = os.path.dirname(__file__)
-_MIG = os.path.join(_HERE, "..", "docs", "migration_tools")
+# اسکیمای منبعِ حقیقت زیرِ halqe زندگی می‌کند (از زیرِ این اپ منتقل شد).
+# نگهبان همین‌جا می‌ماند، فقط مسیرِ خواندنِ slices به halqe/db/schema اشاره می‌کند.
+_MIG = os.path.join(_HERE, "..", "..", "halqe", "db", "schema")
 
 # همهٔ برش‌ها به ترتیبِ NUMERIC (نه رشته‌ای): slice2 قبل از slice10.
 # مرتب‌سازیِ رشته‌ایِ ساده "slice10" را قبل از "slice2" می‌گذارد ('1'<'2') که

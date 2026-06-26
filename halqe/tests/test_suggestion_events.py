@@ -724,10 +724,11 @@ def test_slice10_idempotent(seed_events_data):
     """
     from pathlib import Path
 
-    sql = Path(
-        "C:/Users/Emad Karimi/Desktop/projects/hesabdari_darmangah"
-        "/specialist_clinic/docs/migration_tools"
-        "/schema_pg_slice10_suggestion_events.sql"
+    sql = (
+        Path(__file__).resolve().parent.parent
+        / "db"
+        / "schema"
+        / "schema_pg_slice10_suggestion_events.sql"
     ).read_text(encoding="utf-8")
 
     with psycopg.connect(_SU_CONNINFO, autocommit=True) as conn:

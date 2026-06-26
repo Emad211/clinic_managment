@@ -719,7 +719,7 @@ class TestSchemaGuard:
         import os
         slice_path = os.path.join(
             os.path.dirname(__file__),
-            "..", "..", "specialist_clinic", "docs", "migration_tools",
+            "..", "db", "schema",
             "schema_pg_slice12_patient_card_tokens.sql",
         )
         slice_path = os.path.normpath(slice_path)

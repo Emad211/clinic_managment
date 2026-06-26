@@ -730,7 +730,7 @@ def test_h12_slice11_is_idempotent(django_db_setup):
     from pathlib import Path
     import re
 
-    slice_dir = Path(__file__).resolve().parent.parent.parent / "specialist_clinic" / "docs" / "migration_tools"
+    slice_dir = Path(__file__).resolve().parent.parent / "db" / "schema"
     slice11 = slice_dir / "schema_pg_slice11_engagement_holdout.sql"
     assert slice11.exists(), f"slice11 SQL file not found at {slice11}"
 

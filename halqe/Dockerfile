@@ -3,8 +3,8 @@
 # docker build -f halqe/Dockerfile -t halqe-backend .
 #
 # Two source trees are copied:
-#   halqe/                              — the Django app
-#   specialist_clinic/docs/migration_tools/  — SQL schema slices
+#   halqe/                  — the Django app
+#   halqe/db/schema/        — SQL schema slices
 #     (SCHEMA_SLICE_DIR points here; apply_schema reads them at startup)
 #
 # Dependencies install from PyPI by default (portable, no committed binaries).
@@ -59,7 +59,7 @@ COPY halqe/ /app/
 # Copy SQL schema slices into the image.
 # The path inside the image: /slices/schema_pg_slice*.sql
 # SCHEMA_SLICE_DIR is set to /slices via ENV below.
-COPY specialist_clinic/docs/migration_tools/ /slices/
+COPY halqe/db/schema/ /slices/
 
 # Tell apply_schema where to find the slices (overrides the source-tree default
 # that points one level above halqe/ — not valid inside the container).

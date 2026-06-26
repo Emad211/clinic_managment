@@ -195,12 +195,13 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # ---------------------------------------------------------------------------
 # Schema slice directory — used by apply_schema management command.
-# Points to specialist_clinic/docs/migration_tools/ relative to BASE_DIR.
+# Points to halqe/db/schema/ relative to BASE_DIR (the slices now live under
+# this app, not under the sibling specialist_clinic app).
 # Override with env var SCHEMA_SLICE_DIR for different layouts.
 # ---------------------------------------------------------------------------
 SCHEMA_SLICE_DIR = os.environ.get(
     "SCHEMA_SLICE_DIR",
-    str(BASE_DIR.parent / "specialist_clinic" / "docs" / "migration_tools"),
+    str(BASE_DIR / "db" / "schema"),
 )
 
 # ---------------------------------------------------------------------------

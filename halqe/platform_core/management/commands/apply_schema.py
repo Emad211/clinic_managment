@@ -3,7 +3,7 @@ Management command: apply_schema
 
 Applies the 7 SQL slice files in sorted order to the configured database.
 Reads slices from settings.SCHEMA_SLICE_DIR (defaults to
-../specialist_clinic/docs/migration_tools/).
+halqe/db/schema/).
 
 Usage:
   python manage.py apply_schema                  # apply to default db

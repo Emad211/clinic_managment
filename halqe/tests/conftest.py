@@ -53,10 +53,9 @@ SCHEMA_SLICE_DIR = os.environ.get(
     "SCHEMA_SLICE_DIR",
     str(
         (
-            __import__("pathlib").Path(__file__).resolve().parent.parent.parent
-            / "specialist_clinic"
-            / "docs"
-            / "migration_tools"
+            __import__("pathlib").Path(__file__).resolve().parent.parent
+            / "db"
+            / "schema"
         )
     ),
 )

@@ -71,8 +71,8 @@ coverage.xml
 halqe/wheels/
 
 # ── Docs (not needed in image) ────────────────────────────────────────────────
-# Keep specialist_clinic/docs/migration_tools/ — it contains the SQL slices.
-# Exclude everything else under docs/.
+# The SQL slices live under halqe/db/schema/ (NOT under docs/), so they stay in
+# the build context. Exclude all docs trees.
 specialist_clinic/docs/adr/
 specialist_clinic/docs/*.md
 halqe/docs/

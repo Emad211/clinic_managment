@@ -4,7 +4,7 @@
 Reviewer: clinical-research-advisor (evidence currency across ADA / KDIGO / ESC / ACC-AHA).
 
 > **Nothing in this document changes a live threshold.** The seed values in
-> `specialist_clinic/docs/migration_tools/schema_pg_slice2_clinical.sql`
+> `halqe/db/schema/schema_pg_slice2_clinical.sql`
 > (`clinical_indicators`) remain unchanged. The ⚠️ items below are **proposals
 > pending physician sign-off**, not edits. The code↔seed *consistency* guard
 > (`tests/test_threshold_sync.py`) is the only firm deliverable of this step.

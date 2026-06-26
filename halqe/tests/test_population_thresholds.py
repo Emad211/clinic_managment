@@ -570,10 +570,9 @@ class TestSchemaGuardSlice9:
 
         # re-apply slice9
         slice_path = (
-            pathlib.Path(__file__).resolve().parent.parent.parent
-            / "specialist_clinic"
-            / "docs"
-            / "migration_tools"
+            pathlib.Path(__file__).resolve().parent.parent
+            / "db"
+            / "schema"
             / "schema_pg_slice9_population_thresholds.sql"
         )
         sql = slice_path.read_text(encoding="utf-8")
