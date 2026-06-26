@@ -688,8 +688,13 @@ describe("(ح) نبودِ PHI / ایمنیِ معماری", () => {
   it("submitReport عمومی است (بدونِ Authorization در api.ts)", () => {
     const fs = require("fs");
     const path = require("path");
+    // Cleanup step 8: submitReport now lives in its own per-domain module
+    // (src/lib/api/self-report.ts); the public `@/lib/api` barrel re-exports it.
+    // This source-level architecture guard reads the module that actually
+    // DEFINES submitReport so the invariant (no apiFetch / no Authorization)
+    // is still enforced on the real implementation.
     const apiSource = fs.readFileSync(
-      path.resolve(__dirname, "../src/lib/api.ts"),
+      path.resolve(__dirname, "../src/lib/api/self-report.ts"),
       "utf-8",
     ) as string;
 
