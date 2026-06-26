@@ -22,6 +22,10 @@ platform/db.sqlite3
 
 # ── Research / scratch ──
 tmp_*.txt
+# one-off scratch artifacts (kept on disk, never committed)
+*.zip
+specialist_clinic/kave_tmp.html
+specialist_clinic/docs/migration_tools/devi04_out/
 
 # ── Editor / OS ──
 .DS_Store
