@@ -1,9 +1,16 @@
 """
 Management command: apply_schema
 
-Applies the 7 SQL slice files in sorted order to the configured database.
-Reads slices from settings.SCHEMA_SLICE_DIR (defaults to
+Applies all `schema_pg_slice*.sql` files (in numeric-sorted order) to the
+configured database. Reads slices from settings.SCHEMA_SLICE_DIR (defaults to
 halqe/db/schema/).
+
+After applying every slice it records each applied file (filename + sha256
+checksum) into a small bookkeeping table `platform.schema_version` — the
+command's OWN ledger (created/populated here, not by any slice). The table is
+created after the slice loop because the `platform` schema only exists once
+slice0 has run. Re-running is idempotent: the ledger is UPSERTed (checksum +
+applied_at refreshed), never duplicated.
 
 Usage:
   python manage.py apply_schema                  # apply to default db
@@ -16,6 +23,7 @@ NOTHING), so re-running is safe.
 Optionally create a login role for tests:
   python manage.py apply_schema --create-login-role clinical_login --role-password secret
 """
+import hashlib
 import os
 from pathlib import Path
 
@@ -100,10 +108,14 @@ class Command(BaseCommand):
             )
         )
 
+        # (filename, sha256-checksum) for each slice applied this run → ledger.
+        applied_slices: list[tuple[str, str]] = []
+
         with psycopg.connect(conninfo, autocommit=True) as conn:
             for slice_path in slice_files:
                 self.stdout.write(f"  → {slice_path.name}")
-                sql = slice_path.read_text(encoding="utf-8")
+                sql_bytes = slice_path.read_bytes()
+                sql = sql_bytes.decode("utf-8")
                 try:
                     # Execute entire file; autocommit=True so DO blocks work.
                     conn.execute(sql)
@@ -111,6 +123,8 @@ class Command(BaseCommand):
                     raise CommandError(
                         f"Error applying {slice_path.name}: {exc}"
                     ) from exc
+                checksum = hashlib.sha256(sql_bytes).hexdigest()
+                applied_slices.append((slice_path.name, checksum))
                 self.stdout.write(self.style.SUCCESS(f"     OK"))
 
             # Optionally create a login role for test use
@@ -141,6 +155,69 @@ class Command(BaseCommand):
                     raise CommandError(
                         f"Failed to create login role '{login_role}': {exc}"
                     ) from exc
+
+            # ────────────────────────────────────────────────────────────────
+            # Schema-version LEDGER (apply_schema's OWN bookkeeping).
+            #
+            # Created HERE, after the slice loop, because the `platform` schema
+            # only exists once slice0 has been applied (a fresh DB has none).
+            # This is NOT a slice — it is the command's record of which slice
+            # files were applied this run, with a sha256 of each file's bytes.
+            # Idempotent: UPSERT keyed on filename refreshes checksum+applied_at,
+            # so re-running never errors or duplicates rows.
+            #
+            # Only the superuser (this command) writes it; app roles get SELECT
+            # so a future /readyz or version endpoint can read it under the app
+            # role. clinical_app may or may not exist → guard like other slices.
+            # ────────────────────────────────────────────────────────────────
+            try:
+                conn.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS platform.schema_version (
+                        filename   TEXT PRIMARY KEY,
+                        checksum   TEXT NOT NULL,
+                        applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
+                    )
+                    """
+                )
+                conn.execute(
+                    "GRANT SELECT ON platform.schema_version TO platform_app"
+                )
+                # clinical_app may not exist — grant only if the role is present.
+                conn.execute(
+                    """
+                    DO $$
+                    BEGIN
+                        IF EXISTS (
+                            SELECT 1 FROM pg_roles WHERE rolname = 'clinical_app'
+                        ) THEN
+                            GRANT SELECT ON platform.schema_version TO clinical_app;
+                        END IF;
+                    END$$;
+                    """
+                )
+                for filename, checksum in applied_slices:
+                    conn.execute(
+                        """
+                        INSERT INTO platform.schema_version (filename, checksum)
+                        VALUES (%s, %s)
+                        ON CONFLICT (filename) DO UPDATE
+                            SET checksum   = EXCLUDED.checksum,
+                                applied_at = now()
+                        """,
+                        (filename, checksum),
+                    )
+            except Exception as exc:
+                raise CommandError(
+                    f"Failed to update platform.schema_version ledger: {exc}"
+                ) from exc
+
+            self.stdout.write(
+                self.style.SUCCESS(
+                    f"  ledger: recorded {len(applied_slices)} slice(s) "
+                    f"in platform.schema_version"
+                )
+            )
 
         self.stdout.write(self.style.SUCCESS("Schema applied successfully."))
 
