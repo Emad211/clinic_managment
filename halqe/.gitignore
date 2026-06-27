@@ -10,3 +10,8 @@ build/
 *.sqlite3
 *.log
 .env
+
+# DB backups — dumps contain PHI and must NEVER enter git (see docs/backup_restore.md)
+backups/
+*.dump
+*.dump.sha256
