@@ -68,8 +68,29 @@ router = Router()
 # ===========================================================================
 
 # ---------------------------------------------------------------------------
-# Rate-limit in-process — SECU-13 (per-process، مثلِ specialist_clinic).
-# برای deployment چند-instance، Redis/DB-backed لازم است.
+# Rate-limit in-process — SECU-13 (step 66 hardening).
+#
+# BEST-EFFORT, PER-WORKER — NOT the security boundary. The REAL rate-limit
+# boundary is nginx ``limit_req`` (deploy runbook, step 55): it enforces the
+# hard per-IP limit and strips/overwrites client-supplied X-Forwarded-For so
+# the app never trusts a spoofed XFF. With N gunicorn workers the effective
+# rate of THIS limiter is N× the per-process limit — that is accepted because
+# nginx enforces the hard limit; this layer only damps obvious abuse cheaply.
+#
+# Keyed by TOKEN, not IP: behind a proxy the client IP is spoofable (XFF) and
+# meaningless (everyone shares the proxy's REMOTE_ADDR), so per-IP keying here
+# is worthless. Per-token keying caps how fast a single leaked token can be
+# scraped — which is the thing this layer can actually help with.
+#
+# Memory-bounded so it can never become a DoS vector itself:
+#   - periodic window-sweep drops keys whose window has fully drained (no
+#     unbounded growth from one-shot keys / empty lists lingering),
+#   - hard cap ``_RL_MAX_KEYS``: once reached the limiter FAILS OPEN (allow +
+#     ``logging.warning``) instead of refusing new keys — a non-boundary
+#     control must never deny legitimate patients; nginx still caps the rate.
+#
+# ZERO-WRITE: never touches the DB (preserves the card's zero-write invariant —
+# guarded by ``TestZeroWriteOnPublicCard``).
 # ---------------------------------------------------------------------------
 _rl_lock = _threading.Lock()
 _rl_hits: dict[str, list[float]] = {}
@@ -77,15 +98,54 @@ _rl_hits: dict[str, list[float]] = {}
 _CARD_RATE_LIMIT = 30   # درخواست
 _CARD_RATE_WINDOW = 60  # ثانیه
 
+# Memory-bound knobs (step 66). Both bounds are intentionally generous: they
+# exist to stop unbounded growth, not to throttle traffic (nginx does that).
+_RL_MAX_KEYS = 10_000   # سقفِ سختِ تعدادِ کلید — پس از آن fail-open
+_RL_SWEEP_EVERY = 512   # هر چند فراخوانی یک‌بار سوییپِ کلیدهای خالی
+
+_rl_calls = 0           # شمارندهٔ فراخوانی (under _rl_lock) برای سوییپِ دوره‌ای
+
 
 def _card_allow(key: str) -> bool:
-    """Sliding window rate-limiter (in-process). Returns True if request is allowed."""
+    """
+    Sliding-window rate-limiter (in-process, best-effort). True = allowed.
+
+    NOT the security boundary — see the block comment above. Zero-write.
+    Memory-bounded: periodic window-sweep + hard ``_RL_MAX_KEYS`` cap with
+    fail-open (a best-effort control must never become a denial vector).
+    """
+    global _rl_calls
     t = _time.monotonic()
     cutoff = t - _CARD_RATE_WINDOW
     with _rl_lock:
-        q = _rl_hits.setdefault(key, [])
-        while q and q[0] < cutoff:
-            q.pop(0)
+        # Prune the current key's window first.
+        q = _rl_hits.get(key)
+        if q is not None:
+            while q and q[0] < cutoff:
+                q.pop(0)
+
+        # Periodic sweep: drop every key whose window has fully drained. No
+        # daemon thread — amortised over calls. Runs before the cap check so a
+        # burst of distinct keys gets a chance to be reclaimed first.
+        _rl_calls += 1
+        if _rl_calls % _RL_SWEEP_EVERY == 0:
+            for k in [k for k, v in _rl_hits.items() if not v or v[-1] < cutoff]:
+                del _rl_hits[k]
+            q = _rl_hits.get(key)  # may have been swept if it was empty/stale
+
+        # Hard cap → FAIL OPEN. Never add a new key past the cap, and never
+        # deny: the real limit is nginx; denying here would turn a best-effort
+        # control into a DoS vector.
+        if q is None and len(_rl_hits) >= _RL_MAX_KEYS:
+            import logging as _logging
+            _logging.getLogger(__name__).warning(
+                "card rate-limiter at _RL_MAX_KEYS=%d — failing open "
+                "(nginx is the real boundary)", _RL_MAX_KEYS,
+            )
+            return True
+
+        if q is None:
+            q = _rl_hits[key] = []
         if len(q) >= _CARD_RATE_LIMIT:
             return False
         q.append(t)
@@ -141,7 +201,8 @@ class CardTokenOut(Schema):
 #      ۵) Return PublicCardResponse.
 #
 #    zero-write: هیچ INSERT/UPDATE/DELETE در این مسیر وجود ندارد.
-#    rate-limit: ≤ 30 درخواست/۶۰ ثانیه per IP (in-process).
+#    rate-limit: ≤ 30 درخواست/۶۰ ثانیه per TOKEN (in-process, best-effort).
+#                مرزِ سختِ per-IP در nginx است (limit_req، قدم ۵۵).
 # ---------------------------------------------------------------------------
 
 @router.get(
@@ -154,19 +215,17 @@ class CardTokenOut(Schema):
 def get_public_card(request, token: str):
     """
     سطحِ عمومیِ رو-به-بیمار: آخرین ویتال‌ها + نوبتِ بعدی.
-    بدونِ JWT. rate-limit: ۳۰ req/min per IP (in-process).
+    بدونِ JWT. rate-limit: ۳۰ req/min per TOKEN (in-process, best-effort).
 
     zero-write: این endpoint هیچ چیزی نمی‌نویسد.
 
     LAN-vs-internet note:
       این endpoint فعلاً LAN-only (QR/tablet در مطب) است.
-      internet exposure نیازِ TLS + rate-limitِ توزیع‌شده دارد (هنوز فعال نیست).
+      internet exposure نیازِ TLS + nginx limit_req (مرزِ واقعیِ rate-limit) دارد.
     """
-    client_ip = (
-        request.META.get("HTTP_X_FORWARDED_FOR", "").split(",")[0].strip()
-        or request.META.get("REMOTE_ADDR", "?")
-    )
-    if not _card_allow(f"card:{client_ip}"):
+    # Keyed by token, NOT IP: behind a proxy the client IP is spoofable (XFF)
+    # and meaningless. The real per-IP boundary is nginx limit_req (step 55).
+    if not _card_allow(f"card:{token}"):
         return 429, error_response("تعدادِ درخواست بیش از حد مجاز است", "rate_limited")
 
     resolved = _card_resolve_token(token)

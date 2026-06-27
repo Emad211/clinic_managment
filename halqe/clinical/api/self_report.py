@@ -86,19 +86,72 @@ _REPORT_UNIT: dict[str, str] = {
     "bp_diastolic": "mmHg",
 }
 
-# Rate-limit ساده in-process (per-process — برای multi-instance باید Redis شود)
+# ---------------------------------------------------------------------------
+# Rate-limit in-process — step 66 hardening.
+#
+# BEST-EFFORT, PER-WORKER — NOT the security boundary. The REAL rate-limit
+# boundary is nginx ``limit_req`` (deploy runbook, step 55): it enforces the
+# hard per-IP limit and strips/overwrites client-supplied X-Forwarded-For so
+# the app never trusts a spoofed XFF. With N gunicorn workers the effective
+# rate of THIS limiter is N× the per-process limit — accepted, because nginx
+# enforces the hard limit; this layer only damps obvious replay cheaply.
+#
+# Keyed per-TOKEN (correct: a one-time token authenticates the request). The
+# one-time token + resolve-before-write already bound abuse on this path.
+#
+# Memory-bounded so it can never become a DoS vector itself:
+#   - periodic window-sweep drops entries older than the window (a one-shot
+#     token won't return, so the entry is dead — no unbounded growth),
+#   - hard cap ``_RL_MAX_KEYS``: once reached the limiter FAILS OPEN (allow +
+#     ``logging.warning``) instead of refusing — a non-boundary control should
+#     never deny a patient's self-report; the one-time token + resolve-before-
+#     write bound abuse, and nginx still caps the rate.
+# ---------------------------------------------------------------------------
 _rate_lock = _threading.Lock()
 _rate_store: dict[str, float] = {}   # token_str → last_attempt timestamp
 _RATE_WINDOW_SEC = 60                # یک درخواست per token per minute
 
+# Memory-bound knobs (step 66) — bound growth, not throttle (nginx throttles).
+_RL_MAX_KEYS = 10_000   # سقفِ سختِ تعدادِ کلید — پس از آن fail-open
+_RL_SWEEP_EVERY = 512   # هر چند فراخوانی یک‌بار سوییپِ ورودی‌های مرده
+
+_rate_calls = 0         # شمارندهٔ فراخوانی (under _rate_lock) برای سوییپِ دوره‌ای
+
 
 def _check_rate_limit(token_str: str) -> bool:
-    """Returns True if within rate limit (allow). False = too many requests."""
+    """
+    Per-token rate-limiter (in-process, best-effort). True = within limit (allow).
+
+    NOT the security boundary — see the block comment above. Memory-bounded:
+    periodic window-sweep of dead entries + hard ``_RL_MAX_KEYS`` cap with
+    fail-open (a best-effort control must never deny a patient's self-report).
+    """
+    global _rate_calls
     now = _time.monotonic()
     with _rate_lock:
+        # Periodic sweep: drop entries whose window has fully elapsed. A
+        # one-time token won't come back, so such an entry is dead. No daemon
+        # thread — amortised over calls.
+        _rate_calls += 1
+        if _rate_calls % _RL_SWEEP_EVERY == 0:
+            for k in [k for k, ts in _rate_store.items()
+                      if (now - ts) >= _RATE_WINDOW_SEC]:
+                del _rate_store[k]
+
         last = _rate_store.get(token_str)
         if last is not None and (now - last) < _RATE_WINDOW_SEC:
             return False
+
+        # Hard cap → FAIL OPEN: never refuse a self-report because the table is
+        # full. The real limit is nginx; the one-time token bounds abuse.
+        if token_str not in _rate_store and len(_rate_store) >= _RL_MAX_KEYS:
+            import logging as _logging
+            _logging.getLogger(__name__).warning(
+                "self-report rate-limiter at _RL_MAX_KEYS=%d — failing open "
+                "(nginx is the real boundary)", _RL_MAX_KEYS,
+            )
+            return True
+
         _rate_store[token_str] = now
     return True
 

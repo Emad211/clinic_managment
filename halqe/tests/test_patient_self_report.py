@@ -804,3 +804,91 @@ class TestBatchSubmit:
             assert val != 110.0, (
                 f"Unverified bp_diastolic=110 must NOT enter engine. Got {val}"
             )
+
+
+# ---------------------------------------------------------------------------
+# ۹) نگهبانِ rate-limiterِ self-report — قدم ۶۶ (سخت‌سازیِ in-process limiter)
+#
+# تست‌های واحدِ سریع روی ``_check_rate_limit`` — تابعِ خالص، نیازی به DB ندارد.
+# اثبات: (۱) memory-bound؛ (۲) window-eviction؛ (۳) قراردادِ ۴۲۹؛ (۴) fail-open.
+# ---------------------------------------------------------------------------
+
+@pytest.fixture()
+def _rpt_rl_reset():
+    """state ماژولیِ rate-limiter را قبل و بعدِ هر تست پاک می‌کند (globalها)."""
+    import clinical.api.self_report as sr
+    sr._rate_store.clear()
+    sr._rate_calls = 0
+    yield sr
+    sr._rate_store.clear()
+    sr._rate_calls = 0
+
+
+class TestSelfReportRateLimiterHardening:
+    """قدم ۶۶: memory-bound + window-sweep + per-token + fail-open."""
+
+    def test_memory_bounded_under_cap(self, _rpt_rl_reset):
+        """feedِ هزاران توکنِ متمایز → len(_rate_store) از _RL_MAX_KEYS بیشتر نشود (F1)."""
+        sr = _rpt_rl_reset
+        n = sr._RL_MAX_KEYS + 5_000
+        for i in range(n):
+            sr._check_rate_limit(f"tok-{i}")
+        assert len(sr._rate_store) <= sr._RL_MAX_KEYS, (
+            f"_rate_store باید زیرِ سقف بماند؛ شد {len(sr._rate_store)} > {sr._RL_MAX_KEYS}"
+        )
+
+    def test_fail_open_at_cap(self, _rpt_rl_reset, monkeypatch):
+        """در سقف، توکنِ جدید fail-open می‌شود (allow=True) و ورودیِ نو اضافه نمی‌شود."""
+        sr = _rpt_rl_reset
+        monkeypatch.setattr(sr, "_RL_MAX_KEYS", 10)
+        monkeypatch.setattr(sr, "_RL_SWEEP_EVERY", 10_000_000)
+        for i in range(10):
+            assert sr._check_rate_limit(f"k{i}") is True
+        assert len(sr._rate_store) == 10
+        # توکنِ جدید پس از سقف → allow (fail-open)، بدونِ افزودنِ ورودی
+        assert sr._check_rate_limit("overflow") is True
+        assert "overflow" not in sr._rate_store
+        assert len(sr._rate_store) == 10
+
+    def test_window_eviction_frees_slots(self, _rpt_rl_reset, monkeypatch):
+        """با جلو بردنِ time source، ورودی‌های مردهٔ قدیمی سوییپ شده و جا آزاد می‌شود."""
+        sr = _rpt_rl_reset
+        monkeypatch.setattr(sr, "_RL_SWEEP_EVERY", 100)
+        fake = {"t": 5000.0}
+        monkeypatch.setattr(sr._time, "monotonic", lambda: fake["t"])
+
+        # ۹۹ توکنِ یکتا در زمانِ t=5000 (هر کدام یک‌بارمصرف، دیگر برنمی‌گردند)
+        for i in range(99):
+            sr._check_rate_limit(f"old-{i}")
+        assert len(sr._rate_store) == 99
+
+        # زمان را بعد از پنجره جلو ببر؛ فراخوانیِ ۱۰۰ام سوییپ را تریگر می‌کند
+        fake["t"] = 5000.0 + sr._RATE_WINDOW_SEC + 1
+        sr._check_rate_limit("fresh")
+        assert "fresh" in sr._rate_store
+        for i in range(99):
+            assert f"old-{i}" not in sr._rate_store, "ورودیِ مردهٔ کهنه باید سوییپ می‌شد"
+
+    def test_per_token_independent(self, _rpt_rl_reset):
+        """دو توکنِ متفاوت مستقل‌اند؛ یکی اشباع نمی‌کند دیگری را."""
+        sr = _rpt_rl_reset
+        assert sr._check_rate_limit("TOKEN_A") is True   # اولین — allow
+        assert sr._check_rate_limit("TOKEN_A") is False  # دومین در پنجره — deny
+        # TOKEN_B مستقل است — اولین فراخوانی باید allow شود
+        assert sr._check_rate_limit("TOKEN_B") is True
+
+    def test_429_contract_preserved(self, _rpt_rl_reset):
+        """دومین درخواستِ همان توکن در پنجره همچنان False برمی‌گرداند (endpoint → ۴۲۹)."""
+        sr = _rpt_rl_reset
+        assert sr._check_rate_limit("same") is True
+        assert sr._check_rate_limit("same") is False
+
+    def test_window_allows_after_expiry(self, _rpt_rl_reset, monkeypatch):
+        """پس از گذشتِ پنجره، همان توکن دوباره allow می‌شود."""
+        sr = _rpt_rl_reset
+        fake = {"t": 0.0}
+        monkeypatch.setattr(sr._time, "monotonic", lambda: fake["t"])
+        assert sr._check_rate_limit("t1") is True
+        assert sr._check_rate_limit("t1") is False
+        fake["t"] = sr._RATE_WINDOW_SEC + 1
+        assert sr._check_rate_limit("t1") is True

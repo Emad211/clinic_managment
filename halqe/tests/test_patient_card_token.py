@@ -728,3 +728,101 @@ class TestSchemaGuard:
             sql = f.read()
         # بدونِ خطا اجرا شود
         pg_schema_conn.execute(sql)
+
+
+# ===========================================================================
+# ۷) نگهبانِ rate-limiterِ کارت — قدم ۶۶ (سخت‌سازیِ in-process limiter)
+#
+# این‌ها تست‌های واحدِ سریع روی تابعِ ``_card_allow`` هستند — بدونِ DB، بدونِ PG.
+# اثبات می‌کنند: (۱) memory-bound؛ (۲) window-eviction؛ (۳) کلید per-token (IP بی‌اثر)؛
+# (۴) قراردادِ ۴۲۹ حفظ شده؛ (۵) مسیرِ limiter zero-write است (هیچ DB call).
+# ===========================================================================
+
+@pytest.fixture()
+def _card_rl_reset():
+    """state ماژولیِ rate-limiter را قبل و بعدِ هر تست پاک می‌کند (globalها)."""
+    import clinical.api.patient_card as pc
+    pc._rl_hits.clear()
+    pc._rl_calls = 0
+    yield pc
+    pc._rl_hits.clear()
+    pc._rl_calls = 0
+
+
+class TestCardRateLimiterHardening:
+    """قدم ۶۶: memory-bound + window-sweep + token-keying + fail-open."""
+
+    def test_memory_bounded_under_cap(self, _card_rl_reset):
+        """feedِ هزاران کلیدِ متمایز → len(_rl_hits) از _RL_MAX_KEYS بیشتر نشود (F1)."""
+        pc = _card_rl_reset
+        # بیش از سقف، کلیدِ یکتا بفرست (هر کدام یک hit)
+        n = pc._RL_MAX_KEYS + 5_000
+        for i in range(n):
+            pc._card_allow(f"card:tok-{i}")
+        assert len(pc._rl_hits) <= pc._RL_MAX_KEYS, (
+            f"_rl_hits باید زیرِ سقف بماند؛ شد {len(pc._rl_hits)} > {pc._RL_MAX_KEYS}"
+        )
+
+    def test_fail_open_at_cap(self, _card_rl_reset, monkeypatch):
+        """در سقف، کلیدِ جدید fail-open می‌شود (allow=True) و کلیدِ نو اضافه نمی‌شود."""
+        pc = _card_rl_reset
+        # سقف را کوچک کن تا سریع پر شود؛ سوییپ را عملاً غیرفعال کن
+        monkeypatch.setattr(pc, "_RL_MAX_KEYS", 10)
+        monkeypatch.setattr(pc, "_RL_SWEEP_EVERY", 10_000_000)
+        for i in range(10):
+            assert pc._card_allow(f"card:k{i}") is True
+        assert len(pc._rl_hits) == 10
+        # کلیدِ جدید پس از سقف → allow (fail-open) و اضافه نمی‌شود
+        assert pc._card_allow("card:overflow") is True
+        assert "card:overflow" not in pc._rl_hits
+        assert len(pc._rl_hits) == 10
+
+    def test_window_eviction_frees_slots(self, _card_rl_reset, monkeypatch):
+        """با جلو بردنِ time source، باکت‌های قدیمی سوییپ شده و جا آزاد می‌شود."""
+        pc = _card_rl_reset
+        monkeypatch.setattr(pc, "_RL_SWEEP_EVERY", 100)
+        fake = {"t": 1000.0}
+        monkeypatch.setattr(pc._time, "monotonic", lambda: fake["t"])
+
+        # ۹۹ کلیدِ یکتا در زمانِ t=1000
+        for i in range(99):
+            pc._card_allow(f"card:old-{i}")
+        assert len(pc._rl_hits) == 99
+
+        # زمان را بعد از پنجره جلو ببر؛ فراخوانیِ ۱۰۰ام (مضربِ _RL_SWEEP_EVERY) سوییپ را تریگر می‌کند
+        fake["t"] = 1000.0 + pc._CARD_RATE_WINDOW + 1
+        pc._card_allow("card:fresh")
+        # همهٔ ۹۹ کلیدِ کهنه باید رفته باشند؛ فقط کلیدِ تازه بماند
+        assert "card:fresh" in pc._rl_hits
+        for i in range(99):
+            assert f"card:old-{i}" not in pc._rl_hits, "باکتِ کهنه باید سوییپ می‌شد"
+
+    def test_keyed_by_token_not_ip(self, _card_rl_reset):
+        """دو توکنِ متفاوت باکتِ مستقل دارند؛ IP در کلید نقشی ندارد."""
+        pc = _card_rl_reset
+        # دو توکنِ متفاوت — هرکدام باید مستقل تا سقف اجازه بگیرند
+        for _ in range(pc._CARD_RATE_LIMIT):
+            assert pc._card_allow("card:TOKEN_A") is True
+        # TOKEN_A اشباع شد ولی TOKEN_B باید هنوز اجازه بگیرد (باکتِ مجزا)
+        assert pc._card_allow("card:TOKEN_B") is True
+        assert pc._card_allow("card:TOKEN_A") is False
+        # کلیدها فقط بر اساسِ توکن‌اند — هیچ ردپایی از IP در _rl_hits نیست
+        assert set(pc._rl_hits.keys()) == {"card:TOKEN_A", "card:TOKEN_B"}
+
+    def test_429_contract_preserved(self, _card_rl_reset):
+        """عبور از سقفِ within-window همچنان False برمی‌گرداند (endpoint → ۴۲۹)."""
+        pc = _card_rl_reset
+        for _ in range(pc._CARD_RATE_LIMIT):
+            assert pc._card_allow("card:same") is True
+        # درخواستِ بعدی در همان پنجره → False
+        assert pc._card_allow("card:same") is False
+
+    def test_limiter_path_is_zero_write_static(self):
+        """نگهبانِ static: بدنهٔ _card_allow هیچ INSERT/UPDATE/DELETE/cursor ندارد."""
+        import inspect
+        import clinical.api.patient_card as pc
+        src = inspect.getsource(pc._card_allow).lower()
+        for needle in ("insert", "update", "delete", "cursor", "execute", ".save(", "objects."):
+            assert needle not in src, (
+                f"_card_allow نباید شاملِ '{needle}' باشد — مسیرِ limiter باید zero-write بماند"
+            )
