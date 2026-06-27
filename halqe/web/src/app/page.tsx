@@ -93,6 +93,27 @@ export default function LandingPage() {
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
       />
 
+      {/*
+        Privacy-first analytics (step 59) — DEFAULT OFF, public landing ONLY.
+
+        Rendered ONLY when BOTH env vars are set at build time, pointing at the
+        owner's SELF-HOSTED Plausible/Umami instance (NOT Google Analytics, no
+        external third party — see docs/analytics.md + the data-trust ADR-0006).
+        With no env (dev / not configured) NOTHING is loaded → zero tracking,
+        zero third-party request, offline-clean. This lives on the public
+        marketing page only — it is NEVER placed in the shared layout, so the
+        authenticated panel (/dashboard, /patients, …) is never tracked and no
+        PII/patient data ever reaches it.
+      */}
+      {process.env.NEXT_PUBLIC_ANALYTICS_SRC &&
+        process.env.NEXT_PUBLIC_ANALYTICS_DOMAIN && (
+          <script
+            defer
+            data-domain={process.env.NEXT_PUBLIC_ANALYTICS_DOMAIN}
+            src={process.env.NEXT_PUBLIC_ANALYTICS_SRC}
+          />
+        )}
+
       {/* ── Top bar ── */}
       <header className={styles.topbar}>
         <span className={styles.topbarBrand}>حلقه</span>

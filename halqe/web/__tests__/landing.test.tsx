@@ -116,6 +116,22 @@ describe("Public landing page", () => {
     expect(raw).not.toMatch(/"offers"/i);
   });
 
+  it("loads NO analytics by default (privacy-first, env-gated, no third party)", () => {
+    // step 59: the analytics script renders ONLY when NEXT_PUBLIC_ANALYTICS_SRC
+    // + NEXT_PUBLIC_ANALYTICS_DOMAIN are set at build time. In the test env they
+    // are unset → there must be NO tracking script and NO third-party request.
+    const { container } = render(<LandingPage />);
+
+    // No Plausible/Umami-style script (identified by data-domain or an external
+    // src). The only <script> present should be the JSON-LD (type=…/ld+json).
+    expect(container.querySelector("script[data-domain]")).toBeNull();
+    expect(container.querySelector("script[src]")).toBeNull();
+    const scripts = Array.from(container.querySelectorAll("script"));
+    scripts.forEach((s) =>
+      expect(s.getAttribute("type")).toBe("application/ld+json"),
+    );
+  });
+
   it("contains NO forbidden hype/AI/ROI claims", () => {
     const { container } = render(<LandingPage />);
     const text = container.textContent ?? "";
