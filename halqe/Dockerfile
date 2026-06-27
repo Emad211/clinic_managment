@@ -12,11 +12,11 @@
 # OFFLINE FALLBACK — restricted networks (e.g. an Iranian VPS that cannot reach
 # PyPI directly; this was the validation host's situation too). On a connected
 # machine, pre-download wheels for the TARGET platform, then switch the deps RUN:
-#   pip download -r halqe/requirements.txt gunicorn --dest halqe/wheels \
+#   pip download -r halqe/requirements.txt gunicorn==23.0.0 --dest halqe/wheels \
 #       --platform manylinux2014_x86_64 --python-version 313 \
 #       --implementation cp --only-binary=:all:
 #   # then: COPY halqe/wheels/ /tmp/wheels/  +  pip install --no-index
-#           --find-links=/tmp/wheels -r /tmp/requirements.txt gunicorn
+#           --find-links=/tmp/wheels -r /tmp/requirements.txt gunicorn==23.0.0
 # The wheels are platform/arch-specific build artifacts — NOT committed to git
 # (see .dockerignore). The step-55 deploy runbook handles the target-arch build.
 #
@@ -33,8 +33,10 @@ WORKDIR /app
 COPY halqe/requirements.txt /tmp/requirements.txt
 
 # Install the app dependencies + gunicorn (production WSGI server) from PyPI.
+# gunicorn is pinned here (deploy-only dep, not in the dev/test venv → not in
+# requirements.txt); bump it deliberately alongside the offline wheel rebuild.
 # For restricted networks, see the OFFLINE FALLBACK note in the header above.
-RUN pip install --no-cache-dir -r /tmp/requirements.txt gunicorn
+RUN pip install --no-cache-dir -r /tmp/requirements.txt gunicorn==23.0.0
 
 # ---------------------------------------------------------------------------
 # Stage 2: runtime image
