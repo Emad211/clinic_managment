@@ -39,6 +39,7 @@ Wallet credit framing («اعتبار هدیه») is the lawful alternative.
 from __future__ import annotations
 
 import json
+import logging
 import socket
 import urllib.error
 import urllib.parse
@@ -47,6 +48,8 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 from django.conf import settings
+
+logger = logging.getLogger("clinical")
 
 
 # ---------------------------------------------------------------------------
@@ -304,15 +307,32 @@ def get_provider() -> SmsProvider:
       KAVENEGAR_API_KEY: str (required for Kavenegar)
       KAVENEGAR_SENDER : str (optional; uses account default if blank)
       KAVENEGAR_TIMEOUT: int seconds (default 45)
+      SMS_LIVE_ENABLED : bool (default False) — the EXPLICIT live opt-in gate.
 
-    Falls back to NullProvider when:
-      - No KAVENEGAR_API_KEY is set (the practical default — KYC blocked)
+    TWO-GATE LIVE POLICY (default-safe):
+      A real KavenegarProvider is returned ONLY when ALL THREE hold:
+        1. SMS_PROVIDER == 'kavenegar'
+        2. KAVENEGAR_API_KEY is non-empty
+        3. SMS_LIVE_ENABLED is True
+      In EVERY other case NullProvider is returned (simulation, no HTTP).
+
+    Why a second gate?  Merely setting KAVENEGAR_API_KEY in the environment
+    MUST NOT be enough to start sending real SMS.  Live sending is a deliberate
+    operator decision that happens only AFTER the clinic owner completes
+    Kavenegar KYC.  SMS_LIVE_ENABLED defaults to False and stays off until then.
+
+    So get_provider() falls back to NullProvider when:
       - SMS_PROVIDER is explicitly 'null'
+      - No KAVENEGAR_API_KEY is set (the practical default — not yet configured)
+      - SMS_LIVE_ENABLED is False (the KYC/owner gate — key configured but
+        live sending NOT yet authorised)
       - Any exception occurs during provider construction
 
     KAVENEGAR KYC GATE: even with a valid key, Kavenegar returns code 430
-    (KYC not completed) until the owner finishes verification.  NullProvider
-    is the correct choice during development and testing.
+    (KYC not completed) until the owner finishes verification.  This is the
+    real-world reason SMS_LIVE_ENABLED defaults off.  NullProvider is the
+    correct choice during development, testing, and pending owner KYC.
+    See halqe/docs/sms_go_live.md for the go-live checklist.
 
     NEVER returns a real provider in tests — inject NullProvider directly:
         provider = NullProvider()
@@ -326,13 +346,27 @@ def get_provider() -> SmsProvider:
         if provider_name == "kavenegar":
             api_key = (getattr(settings, "KAVENEGAR_API_KEY", None) or "").strip()
             if not api_key:
-                # No key → NullProvider (KYC gate or not yet configured)
+                # No key → NullProvider (not yet configured / KYC gate)
                 return NullProvider()
+
+            # SECOND GATE: a configured key is NOT sufficient. Live sending
+            # requires an explicit, deliberate opt-in that the owner flips only
+            # AFTER Kavenegar KYC is complete. Default is OFF (default-safe).
+            live_enabled = bool(getattr(settings, "SMS_LIVE_ENABLED", False))
+            if not live_enabled:
+                logger.warning(
+                    "[sms] key configured but SMS_LIVE_ENABLED=False -> "
+                    "simulating (NullProvider); flip only after owner KYC"
+                )
+                return NullProvider()
+
             timeout = int(getattr(settings, "KAVENEGAR_TIMEOUT", 45) or 45)
             sender = (getattr(settings, "KAVENEGAR_SENDER", None) or "").strip() or None
             return KavenegarProvider(api_key=api_key, sender=sender, timeout=timeout)
 
     except Exception as exc:
-        print(f"[sms] provider init failed, falling back to NullProvider: {exc}")
+        logger.warning(
+            "[sms] provider init failed, falling back to NullProvider: %s", exc
+        )
 
     return NullProvider()

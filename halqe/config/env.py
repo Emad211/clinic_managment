@@ -36,6 +36,25 @@ def _env_flag(environ: dict, name: str) -> bool:
     return environ.get(name, "").strip().lower() in ("1", "true", "yes", "on")
 
 
+def resolve_sms_live_enabled(environ: dict) -> bool:
+    """
+    Return the SMS_LIVE_ENABLED gate (default False — default-safe).
+
+    This is the EXPLICIT second gate for live SMS sending in halqe.  A
+    configured KAVENEGAR_API_KEY is NOT sufficient to send real SMS; the
+    operator must ALSO set SMS_LIVE_ENABLED to a truthy value, and only
+    AFTER the clinic owner completes Kavenegar KYC (the code-430 gate).
+
+    Truthy values (case-insensitive): '1', 'true', 'yes', 'on'.
+    Anything else — including absent, '', '0', 'false' — yields False so the
+    system stays on NullProvider (simulation) by default.  Reuses the same
+    _env_flag parser used for PRODUCTION so the truthy contract is identical.
+
+    See clinical/sms/provider.get_provider() and halqe/docs/sms_go_live.md.
+    """
+    return _env_flag(environ, "SMS_LIVE_ENABLED")
+
+
 def is_production(environ: dict) -> bool:
     """
     True when PRODUCTION=1/true/yes/on is set in the environment.

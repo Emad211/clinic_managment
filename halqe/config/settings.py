@@ -45,7 +45,8 @@ from pathlib import Path
 # env.py must be imported AFTER Django internals are importable. It is imported
 # here at module load time because settings.py is only loaded once per process.
 from config.env import is_production, resolve_secret_key, resolve_debug, \
-    resolve_allowed_hosts, resolve_cors_origins, resolve_conn_max_age
+    resolve_allowed_hosts, resolve_cors_origins, resolve_conn_max_age, \
+    resolve_sms_live_enabled
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -301,3 +302,31 @@ LOGGING = {
         "level": "WARNING",
     },
 }
+
+# ---------------------------------------------------------------------------
+# SMS provider (Kavenegar) — clinical.sms.provider.get_provider() reads these.
+# ---------------------------------------------------------------------------
+# DEFAULT-SAFE: with no env configuration the system is NullProvider
+# (simulation — NEVER sends a real SMS).  Going live requires BOTH a key AND
+# the explicit SMS_LIVE_ENABLED gate flipped on — and only AFTER the clinic
+# owner completes Kavenegar KYC (the account currently returns code 430).
+#
+#   SMS_PROVIDER      'kavenegar' (default) | 'null'
+#   KAVENEGAR_API_KEY the live key (KEEP OUT OF GIT — set via env/.env only)
+#   KAVENEGAR_SENDER  optional dedicated line; blank → account default line
+#   KAVENEGAR_TIMEOUT seconds for each HTTP call (timeout → pending, not failed)
+#   SMS_LIVE_ENABLED  the SECOND gate. MUST stay False until owner KYC.
+#                     A configured key alone is NOT enough to send real SMS.
+#
+# See clinical/sms/provider.get_provider() and halqe/docs/sms_go_live.md.
+# ---------------------------------------------------------------------------
+SMS_PROVIDER = os.environ.get("SMS_PROVIDER", "kavenegar")
+KAVENEGAR_API_KEY = os.environ.get("KAVENEGAR_API_KEY", "")
+KAVENEGAR_SENDER = os.environ.get("KAVENEGAR_SENDER", "")
+try:
+    KAVENEGAR_TIMEOUT = int(os.environ.get("KAVENEGAR_TIMEOUT", "45") or "45")
+except ValueError:
+    KAVENEGAR_TIMEOUT = 45
+# Parsed via the shared truthy-flag helper: only '1'/'true'/'yes'/'on' → True.
+# Defaults to False (default-safe). The OWNER KYC gate lives here.
+SMS_LIVE_ENABLED = resolve_sms_live_enabled(_env)
