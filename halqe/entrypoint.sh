@@ -61,10 +61,20 @@ echo "entrypoint: ensure_app_role done."
 # ---------------------------------------------------------------------------
 WORKERS="${GUNICORN_WORKERS:-3}"
 echo "entrypoint: starting gunicorn with ${WORKERS} workers ..."
+# Access-log format: host, request LINE, status, bytes, response time
+# (%(L)s, seconds) and the X-Request-ID echoed by RequestIdMiddleware.
+# %({x-request-id}o)s reads the RESPONSE header (the 'o' variant), which the
+# middleware always sets — even when the request arrived without one — so every
+# access line carries the same rid as the Django structured logs
+# (request_id=…), letting an operator join the two for a single request.
+# PII-free: only the request LINE is logged — never Authorization/cookies or any
+# request/response body.
+GUNICORN_ACCESS_FMT='%(h)s "%(r)s" %(s)s %(b)s %(L)s rid=%({x-request-id}o)s'
 exec gunicorn config.wsgi:application \
     --bind 0.0.0.0:8000 \
     --workers "${WORKERS}" \
     --timeout 120 \
     --worker-tmp-dir /tmp \
     --access-logfile - \
+    --access-logformat "${GUNICORN_ACCESS_FMT}" \
     --error-logfile -

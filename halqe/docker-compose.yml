@@ -105,6 +105,17 @@ services:
       timeout: 5s
       retries: 5
       start_period: 40s
+    # Bound the on-disk log footprint. gunicorn streams access+error logs to
+    # stdout/stderr (entrypoint.sh: --access-logfile - / --error-logfile -) and
+    # Django's structured logging goes to the console handler — all captured by
+    # Docker's json-file driver, which is UNBOUNDED by default. On a single VPS
+    # that can silently fill the disk. Cap it: keep 5 × 20 MB per container.
+    # `docker compose logs app` / `docker logs <id>` still read these files.
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
 
   # ---------------------------------------------------------------------------
   # nginx — the ONLY public ingress. Terminates TLS, redirects 80→443, proxies
