@@ -181,6 +181,71 @@ def _in_cooldown(
     ).exists()
 
 
+def _today_tehran_bounds() -> tuple:
+    """
+    Return (start, end) aware datetimes spanning the current Tehran calendar day.
+
+    Used by the daily-cap gate: an SMS dispatch is "today's" if its created_at
+    falls within these bounds.  Bounds are computed in Tehran local time then
+    kept as aware datetimes so the DB comparison is timezone-correct regardless
+    of the stored TIMESTAMPTZ offset.
+    """
+    now_tehran = dj_timezone.now().astimezone(_TEHRAN)
+    start_tehran = now_tehran.replace(hour=0, minute=0, second=0, microsecond=0)
+    end_tehran = start_tehran + timedelta(days=1)
+    return start_tehran, end_tehran
+
+
+def _sms_dispatched_today(tenant_id: int) -> int:
+    """
+    Count SMS-channel dispatch rows for this tenant within the current Tehran day.
+
+    This is the daily-cap LEDGER denominator (step 52): the ledger records one
+    'sms' dispatch row per actually-sent message (send_approved_sms →
+    _record_dispatch), so this counts real sends for the calendar day, tenant-wide.
+    """
+    start, end = _today_tehran_bounds()
+    return EngagementDispatch.objects.filter(
+        tenant_id=tenant_id,
+        channel="sms",
+        created_at__gte=start,
+        created_at__lt=end,
+    ).count()
+
+
+def _sms_enqueued_today_unsent(tenant_id: int) -> int:
+    """
+    Count SMS approvals ENQUEUED today that have not yet been sent.
+
+    These are pending/approved sms-channel approval rows created within the
+    current Tehran day.  They will (likely) become real sends, so they count
+    against the daily cap NOW — otherwise a single run_all could enqueue far
+    more than the cap before any of them lands in the dispatch ledger.
+    Rejected/sent rows are excluded (sent ones are already counted via the ledger).
+    """
+    start, end = _today_tehran_bounds()
+    return EngagementApproval.objects.filter(
+        tenant_id=tenant_id,
+        channel="sms",
+        status__in=(
+            EngagementApproval.STATUS_PENDING,
+            EngagementApproval.STATUS_APPROVED,
+        ),
+        created_at__gte=start,
+        created_at__lt=end,
+    ).count()
+
+
+def _sms_used_today_count(tenant_id: int) -> int:
+    """
+    Daily-cap "used" count = real sends today (ledger) + enqueued-today-unsent.
+
+    Combined denominator for the step-52 daily-cap gate.  See the two helpers
+    above for the rationale of each half.
+    """
+    return _sms_dispatched_today(tenant_id) + _sms_enqueued_today_unsent(tenant_id)
+
+
 def _record_dispatch(
     tenant_id: int,
     patient_link_id: int,
@@ -448,12 +513,27 @@ def dispatch_patient(
     res: dict = {
         "sms": 0, "worklist": 0, "skipped": 0, "queued": 0, "errors": 0,
         "holdout": 0, "opt_out_skipped": 0, "cooldown_skipped": 0,
+        # step 52 — SMS suppressed because the tenant hit its daily cap.
+        "daily_cap_skipped": 0,
     }
 
     try:
         link = PatientLink.objects.get(id=patient_link_id, tenant_id=tenant_id)
     except PatientLink.DoesNotExist:
         return res
+
+    # ── Daily-cap gate (step 52) ─────────────────────────────────────────────
+    # Read the per-tenant cap from settings (default 50; 0 = unlimited → inert).
+    # The "used" count combines real sends for today (engagement_dispatch ledger,
+    # channel='sms') PLUS approvals enqueued today that have not yet been sent
+    # (pending/approved) — so the cap holds within a single run_all pass too, not
+    # only after sends land in the ledger.  A live local counter is incremented as
+    # this dispatch_patient call enqueues more, keeping the gate exact per call.
+    # Local import avoids a circular import at module load time.
+    from clinical.engagement_settings import get_engagement_settings
+    _daily_cap = int(get_engagement_settings(tenant_id).get("daily_cap", 0) or 0)
+    _sms_used_today = _sms_used_today_count(tenant_id) if _daily_cap > 0 else 0
+    # ── End daily-cap gate setup ─────────────────────────────────────────────
 
     # ── Engagement holdout gate (slice11) ───────────────────────────────────
     # Determine whether this patient is in the causal-effect control group.
@@ -587,6 +667,17 @@ def dispatch_patient(
             ):
                 res["skipped"] += 1
                 res["cooldown_skipped"] += 1
+            elif _daily_cap > 0 and _sms_used_today >= _daily_cap:
+                # Daily-cap gate (step 52): the tenant already hit its SMS budget
+                # for today (Tehran). Suppress the enqueue (like opt_out/cooldown)
+                # and record an auditable skip. cap=0 → unlimited → gate inert.
+                res["skipped"] += 1
+                res["daily_cap_skipped"] += 1
+                logger.debug(
+                    "dispatch_patient: daily_cap reached (cap=%s used=%s) — "
+                    "sms suppressed event_key=%r patient_link_id=%s tenant=%s",
+                    _daily_cap, _sms_used_today, event_key, patient_link_id, tenant_id,
+                )
             else:
                 template = conf.sms_template or ""
                 body = sanitize(_personalize(template, full_name))
@@ -609,6 +700,11 @@ def dispatch_patient(
                             )
                             res["errors"] += 1
                             continue
+                    # Count this enqueue against the cap immediately so subsequent
+                    # events in this call (and later patients in the run, which
+                    # re-read the count) respect the budget. Increment even on
+                    # dry_run so dry-run counts reflect the true gate behaviour.
+                    _sms_used_today += 1
                     res["queued"] += 1
 
     return res
@@ -650,11 +746,13 @@ def run_all(
         # observability breakdown (step 51) — subsets of `skipped`:
         "opt_out_skipped": 0,
         "cooldown_skipped": 0,
+        # step 52 — subset of `skipped`: SMS suppressed by the daily cap.
+        "daily_cap_skipped": 0,
     }
 
     _agg_keys = (
         "sms", "worklist", "skipped", "queued", "errors", "holdout",
-        "opt_out_skipped", "cooldown_skipped",
+        "opt_out_skipped", "cooldown_skipped", "daily_cap_skipped",
     )
     for pid in links:
         try:
@@ -677,8 +775,8 @@ def run_all(
     # key=value production formatter).  PII-free: only counts and tenant_id.
     logger.info(
         "engagement_run_summary tenant_id=%s patients=%s queued=%s worklist=%s "
-        "skipped=%s opt_out_skipped=%s cooldown_skipped=%s holdout=%s errors=%s "
-        "dry_run=%s worklist_only=%s",
+        "skipped=%s opt_out_skipped=%s cooldown_skipped=%s daily_cap_skipped=%s "
+        "holdout=%s errors=%s dry_run=%s worklist_only=%s",
         tenant_id,
         agg["patients"],
         agg["queued"],
@@ -686,6 +784,7 @@ def run_all(
         agg["skipped"],
         agg["opt_out_skipped"],
         agg["cooldown_skipped"],
+        agg["daily_cap_skipped"],
         agg["holdout"],
         agg["errors"],
         dry_run,
@@ -779,8 +878,14 @@ def send_approved_sms(
         approval.save(update_fields=["status", "decided_by", "decided_at"])
         return {"ok": False, "reason": "no_phone", "provider_msgid": None, "pending": False}
 
-    # Quiet-hours guard
-    if _quiet_now() and not override_quiet:
+    # Quiet-hours guard — read the window from per-tenant settings (step 52).
+    # Falls back to QUIET_START_DEFAULT/QUIET_END_DEFAULT when no key is set,
+    # so behaviour is identical to before until a manager edits the window.
+    # Local import avoids a circular import (engagement_settings imports the
+    # QUIET_*_DEFAULT constants from this module at load time).
+    from clinical.engagement_settings import get_quiet_window
+    q_start, q_end = get_quiet_window(tenant_id)
+    if _quiet_now(q_start, q_end) and not override_quiet:
         # Leave approval as 'approved' — it stays in the queue for later
         return {"ok": False, "reason": "quiet", "provider_msgid": None, "pending": False}
 

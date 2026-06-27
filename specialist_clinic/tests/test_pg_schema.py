@@ -2363,3 +2363,94 @@ def test_slice15_idempotent_re_apply(admin_conn):
     slice15_path = pathlib.Path(_MIG) / "schema_pg_slice15_tenant_indexes.sql"
     assert slice15_path.exists(), f"فایلِ slice15 پیدا نشد: {slice15_path}"
     admin_conn.execute(_read(str(slice15_path)))  # نباید استثنا بدهد
+
+
+# ===========================================================================
+# Slice 16 — جدولِ key/value تنظیماتِ هر-مستأجر (platform.settings) — قدم ۵۲ (خوشهٔ L)
+#   جدولِ tenant-scopedِ K/V با PK (tenant_id, key)؛ schema platform بدونِ RLS
+#   (scoping در سطحِ اپلیکیشن، مثلِ platform.users). unlockِ خواندنِ clinic_name
+#   در card_projection_service + تنظیماتِ گاردریلِ تعامل (quiet hours + daily cap).
+# ===========================================================================
+
+# ---------------------------------------------------------------------------
+# معیار ۱ — جدولِ platform.settings وجود دارد با ستون‌های صحیح + PK مرکب
+# ---------------------------------------------------------------------------
+def test_slice16_platform_settings_table_exists(admin_conn):
+    """Slice 16: جدولِ platform.settings باید با ستون‌های tenant_id/key/value/updated_at/updated_by وجود داشته باشد."""
+    row = admin_conn.execute(
+        """
+        SELECT 1 FROM information_schema.tables
+        WHERE table_schema = 'platform' AND table_name = 'settings'
+        """
+    ).fetchone()
+    assert row is not None, "جدولِ platform.settings پیدا نشد (slice16)"
+
+    cols = {
+        r[0]: r[1]
+        for r in admin_conn.execute(
+            """
+            SELECT column_name, is_nullable
+            FROM information_schema.columns
+            WHERE table_schema = 'platform' AND table_name = 'settings'
+            """
+        ).fetchall()
+    }
+    for expected in ("tenant_id", "key", "value", "updated_at", "updated_by"):
+        assert expected in cols, (
+            f"ستونِ '{expected}' در platform.settings پیدا نشد (slice16). موجود: {sorted(cols)}"
+        )
+    # tenant_id و key باید NOT NULL باشند (اجزای PK)
+    assert cols["tenant_id"] == "NO", "platform.settings.tenant_id باید NOT NULL باشد"
+    assert cols["key"] == "NO", "platform.settings.key باید NOT NULL باشد"
+
+
+# ---------------------------------------------------------------------------
+# معیار ۲ — PRIMARY KEY مرکب (tenant_id, key)
+# ---------------------------------------------------------------------------
+def test_slice16_platform_settings_composite_pk(admin_conn):
+    """Slice 16: PRIMARY KEY باید مرکب (tenant_id, key) باشد."""
+    pk_cols = [
+        r[0]
+        for r in admin_conn.execute(
+            """
+            SELECT kcu.column_name
+            FROM information_schema.table_constraints tc
+            JOIN information_schema.key_column_usage kcu
+              ON tc.constraint_name = kcu.constraint_name
+             AND tc.table_schema = kcu.table_schema
+            WHERE tc.table_schema = 'platform'
+              AND tc.table_name = 'settings'
+              AND tc.constraint_type = 'PRIMARY KEY'
+            ORDER BY kcu.ordinal_position
+            """
+        ).fetchall()
+    ]
+    assert pk_cols == ["tenant_id", "key"], (
+        f"PRIMARY KEY باید (tenant_id, key) باشد؛ یافت شد: {pk_cols} (slice16)"
+    )
+
+
+# ---------------------------------------------------------------------------
+# معیار ۳ — platform_app دارای SELECT/INSERT/UPDATE روی platform.settings است
+# ---------------------------------------------------------------------------
+def test_slice16_platform_app_can_read_write_settings(admin_conn):
+    """Slice 16: platform_app باید SELECT, INSERT, UPDATE روی platform.settings داشته باشد (engagement_settings می‌نویسد)."""
+    for priv in ("SELECT", "INSERT", "UPDATE"):
+        ok = admin_conn.execute(
+            "SELECT has_table_privilege('platform_app', 'platform.settings', %s)",
+            (priv,),
+        ).fetchone()[0]
+        assert ok is True, (
+            f"platform_app باید {priv} روی platform.settings داشته باشد (slice16)"
+        )
+
+
+# ---------------------------------------------------------------------------
+# معیار ۴ — idempotency: اجرای مجددِ slice16 بدونِ خطا
+# ---------------------------------------------------------------------------
+def test_slice16_idempotent_re_apply(admin_conn):
+    """Slice 16: اجرای مجددِ slice16 بدونِ خطا (CREATE TABLE IF NOT EXISTS + GRANTهای امن)."""
+    import pathlib
+    slice16_path = pathlib.Path(_MIG) / "schema_pg_slice16_platform_settings.sql"
+    assert slice16_path.exists(), f"فایلِ slice16 پیدا نشد: {slice16_path}"
+    admin_conn.execute(_read(str(slice16_path)))  # نباید استثنا بدهد

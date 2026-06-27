@@ -544,7 +544,14 @@ def test_tenant_isolation_approve_wrong_tenant(django_db_setup, approval_seed):
 # 12. GET /engagement/approvals — returns pending queue, not approved/rejected
 # ===========================================================================
 
-@pytest.mark.django_db
+# step 52a: GET /engagement/approvals now enriches each row with patient
+# demographics via the accounting Port (the 'accounting_read' alias) — see
+# clinical/api/engagement.py::_enrich_approvals. This list test therefore must
+# declare that alias (like test_control_room.py) or pytest-django blocks it.
+# transaction=True is used for the same reason as the config test: it commits
+# the ORM writes so the start-of-next-test autocommit cleanup never deadlocks
+# on uncommitted row locks.
+@pytest.mark.django_db(databases=["default", "accounting_read"], transaction=True)
 def test_get_approvals_returns_only_pending(django_db_setup, approval_seed):
     """
     GET /engagement/approvals returns only status='pending' rows.
