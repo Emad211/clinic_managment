@@ -2305,3 +2305,61 @@ def test_slice11_idempotent_re_apply(admin_conn):
     slice11_path = pathlib.Path(_MIG) / "schema_pg_slice11_engagement_holdout.sql"
     assert slice11_path.exists(), f"فایلِ slice11 پیدا نشد: {slice11_path}"
     admin_conn.execute(_read(str(slice11_path)))  # نباید استثنا بدهد
+
+
+# ===========================================================================
+# Slice 15 — ایندکس‌های tenant-time برای مقیاسِ چندمستأجری (قدم ۶۴)
+#   دو ایندکسِ مرکبِ tenant-LED روی تنها دو مسیرِ داغِ واقعاً tenant-محور:
+#     R1) clinical.patient_links (tenant_id, enrolled_at DESC) — list_patients
+#     R2) clinical.followup_tasks (tenant_id, status, due_date) — worklist/dispatcher
+#   (بقیهٔ مسیرها patient_link_id-پیشرو و از قبل ایندکس‌شده‌اند؛ data-architect
+#    عمداً ایندکسِ بیشتری اضافه نکرد تا write-amplification نشود.)
+# ===========================================================================
+
+# ---------------------------------------------------------------------------
+# معیار ۱ — ایندکسِ idx_patient_links_tenant_enrolled وجود دارد (R1)
+# ---------------------------------------------------------------------------
+def test_slice15_patient_links_tenant_enrolled_index_exists(admin_conn):
+    """Slice 15: ایندکسِ idx_patient_links_tenant_enrolled روی clinical.patient_links باید وجود داشته باشد."""
+    row = admin_conn.execute(
+        """
+        SELECT indexname
+        FROM pg_indexes
+        WHERE schemaname = 'clinical'
+          AND tablename = 'patient_links'
+          AND indexname = 'idx_patient_links_tenant_enrolled'
+        """
+    ).fetchone()
+    assert row is not None, (
+        "ایندکسِ 'idx_patient_links_tenant_enrolled' روی clinical.patient_links پیدا نشد (slice15)"
+    )
+
+
+# ---------------------------------------------------------------------------
+# معیار ۲ — ایندکسِ idx_followup_tenant_status_due وجود دارد (R2)
+# ---------------------------------------------------------------------------
+def test_slice15_followup_tenant_status_due_index_exists(admin_conn):
+    """Slice 15: ایندکسِ idx_followup_tenant_status_due روی clinical.followup_tasks باید وجود داشته باشد."""
+    row = admin_conn.execute(
+        """
+        SELECT indexname
+        FROM pg_indexes
+        WHERE schemaname = 'clinical'
+          AND tablename = 'followup_tasks'
+          AND indexname = 'idx_followup_tenant_status_due'
+        """
+    ).fetchone()
+    assert row is not None, (
+        "ایندکسِ 'idx_followup_tenant_status_due' روی clinical.followup_tasks پیدا نشد (slice15)"
+    )
+
+
+# ---------------------------------------------------------------------------
+# معیار ۳ — idempotency: اجرای مجددِ slice15 بدونِ خطا
+# ---------------------------------------------------------------------------
+def test_slice15_idempotent_re_apply(admin_conn):
+    """Slice 15: اجرای مجددِ slice15 بدونِ خطا (CREATE INDEX IF NOT EXISTS)."""
+    import pathlib
+    slice15_path = pathlib.Path(_MIG) / "schema_pg_slice15_tenant_indexes.sql"
+    assert slice15_path.exists(), f"فایلِ slice15 پیدا نشد: {slice15_path}"
+    admin_conn.execute(_read(str(slice15_path)))  # نباید استثنا بدهد
