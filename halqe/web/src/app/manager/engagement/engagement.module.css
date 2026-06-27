@@ -1,0 +1,648 @@
+/* Manager Engagement — صفِ تأیید + تنظیماتِ تعامل — حلقه (cluster L) */
+
+.layout {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--color-bg);
+}
+
+.main {
+  flex: 1;
+  padding: var(--space-6);
+  max-width: 880px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+.pageHeader {
+  margin-bottom: var(--space-4);
+}
+
+.pageTitle {
+  font-size: 1.375rem;
+  font-weight: 700;
+  color: var(--color-text);
+}
+
+/* ── Persistent simulation banner (top, always visible) ── */
+.simBanner {
+  background: var(--color-primary-light);
+  border: 1px solid #b9dceb;
+  border-inline-start: 4px solid var(--color-info);
+  border-radius: var(--radius);
+  padding: var(--space-4) var(--space-6);
+  margin-bottom: var(--space-6);
+  color: var(--color-primary-dark);
+  line-height: 1.7;
+}
+
+.simBannerTitle {
+  font-weight: 700;
+  display: block;
+  margin-bottom: var(--space-2);
+  color: var(--color-info);
+}
+
+.simBannerBody {
+  font-size: 0.9375rem;
+}
+
+/* ── Tabs ── */
+.tabBar {
+  display: flex;
+  gap: var(--space-2);
+  border-bottom: 2px solid var(--color-border);
+  margin-bottom: var(--space-6);
+}
+
+.tab {
+  appearance: none;
+  background: none;
+  border: none;
+  border-bottom: 3px solid transparent;
+  margin-bottom: -2px;
+  padding: var(--space-3) var(--space-4);
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  cursor: pointer;
+}
+
+.tab:hover {
+  color: var(--color-text);
+}
+
+.tabActive {
+  color: var(--color-primary);
+  border-bottom-color: var(--color-primary);
+}
+
+.tab:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+
+.tabBadge {
+  display: inline-block;
+  min-width: 1.5em;
+  padding: 0 0.4em;
+  margin-inline-start: var(--space-2);
+  border-radius: 999px;
+  background: var(--color-primary);
+  color: #fff;
+  font-size: 0.75rem;
+  line-height: 1.5em;
+  text-align: center;
+}
+
+/* ── Approval queue cards ── */
+.queue {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+  padding: var(--space-4) var(--space-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.cardHeader {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2);
+  justify-content: space-between;
+}
+
+.cardPatient {
+  font-size: 1.0625rem;
+  font-weight: 700;
+  color: var(--color-text);
+}
+
+.cardEvent {
+  font-size: 0.9375rem;
+  color: var(--color-primary-dark);
+}
+
+.cardDue {
+  font-size: 0.875rem;
+  color: var(--color-text-muted);
+}
+
+/* The verbatim message — visually distinct ("this goes out as-is"). */
+.message {
+  background: var(--color-surface-raised);
+  border: 1px dashed var(--color-border);
+  border-inline-start: 4px solid var(--color-accent);
+  border-radius: var(--radius-sm);
+  padding: var(--space-3) var(--space-4);
+  font-size: 0.9375rem;
+  line-height: 1.8;
+  color: var(--color-text);
+  white-space: pre-wrap;
+}
+
+.messageLabel {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  margin-bottom: var(--space-1);
+}
+
+/* ── Metadata strip (channel + badges + last contact) ── */
+.metaStrip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 0.8125rem;
+}
+
+.metaItem {
+  color: var(--color-text-muted);
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25em;
+  padding: 0.15em 0.6em;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.badgeNeutral {
+  background: var(--color-surface-raised);
+  color: var(--color-text-muted);
+  border: 1px solid var(--color-border);
+}
+
+.badgeDanger {
+  background: #fdeceb;
+  color: var(--color-danger);
+  border: 1px solid #f3b8b2;
+}
+
+.badgeWarn {
+  background: #fdf2e3;
+  color: #9a5a12;
+  border: 1px solid #f0d399;
+}
+
+/*
+ * Consent-display clarifier (R1, owner gate). The consent badge is
+ * DISPLAY-ONLY: it surfaces the patient's recorded consent state but the
+ * dispatcher does NOT yet block on it — the send decision is the manager's.
+ * This muted note makes that boundary explicit so the UI never implies
+ * consent gating is active.
+ */
+.consentNote {
+  color: var(--color-text-muted);
+  font-size: 0.6875rem;
+  font-style: italic;
+}
+
+/* Stale notice — last contact newer than/around due date */
+.staleNote {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25em;
+  padding: 0.15em 0.6em;
+  border-radius: var(--radius-sm);
+  background: #fdf2e3;
+  color: #9a5a12;
+  border: 1px solid #f0d399;
+  font-size: 0.75rem;
+}
+
+/* ── Card actions ── */
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--color-border);
+}
+
+.btn {
+  appearance: none;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-text);
+  padding: var(--space-2) var(--space-4);
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.btn:hover:not(:disabled) {
+  background: var(--color-surface-raised);
+}
+
+.btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.btn:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+
+.btnPrimary {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: #fff;
+}
+
+.btnPrimary:hover:not(:disabled) {
+  background: var(--color-primary-dark);
+}
+
+.btnDanger {
+  color: var(--color-danger);
+  border-color: #f3b8b2;
+}
+
+.btnDanger:hover:not(:disabled) {
+  background: #fdeceb;
+}
+
+/* Per-action result chip */
+.resultChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25em;
+  padding: 0.2em 0.7em;
+  border-radius: 999px;
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.resultNeutral {
+  background: var(--color-surface-raised);
+  color: var(--color-text-muted);
+  border: 1px solid var(--color-border);
+}
+
+.resultBlocked {
+  background: #fdeceb;
+  color: var(--color-danger);
+  border: 1px solid #f3b8b2;
+}
+
+.resultPending {
+  background: #fdf2e3;
+  color: #9a5a12;
+  border: 1px solid #f0d399;
+}
+
+/* ── Settings tab ── */
+.settingsSection {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+  padding: var(--space-4) var(--space-6);
+  margin-bottom: var(--space-6);
+}
+
+.settingsTitle {
+  font-size: 1.0625rem;
+  font-weight: 700;
+  color: var(--color-text);
+  margin-bottom: var(--space-2);
+}
+
+.settingsSub {
+  font-size: 0.875rem;
+  color: var(--color-text-muted);
+  margin-bottom: var(--space-4);
+}
+
+.tableWrap {
+  overflow-x: auto;
+}
+
+.eventTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+
+.eventTable th,
+.eventTable td {
+  text-align: start;
+  padding: var(--space-3);
+  border-bottom: 1px solid var(--color-border);
+  vertical-align: middle;
+}
+
+.eventTable th {
+  color: var(--color-text-muted);
+  font-weight: 600;
+  font-size: 0.8125rem;
+}
+
+.eventName {
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.eventCategory {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+}
+
+/* Segmented control */
+.segmented {
+  display: inline-flex;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.segment {
+  appearance: none;
+  border: none;
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+  padding: var(--space-2) var(--space-3);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  cursor: pointer;
+  border-inline-start: 1px solid var(--color-border);
+}
+
+.segment:first-child {
+  border-inline-start: none;
+}
+
+.segment:hover:not(.segmentActive) {
+  background: var(--color-surface-raised);
+}
+
+.segmentActive {
+  background: var(--color-primary);
+  color: #fff;
+}
+
+.segment:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: -2px;
+}
+
+/* Stepper (cooldown / daily-cap) */
+.stepper {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.stepperBtn {
+  appearance: none;
+  width: 2rem;
+  height: 2rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-size: 1.125rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.stepperBtn:hover:not(:disabled) {
+  background: var(--color-surface-raised);
+}
+
+.stepperBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.stepperBtn:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+
+.stepperValue {
+  min-width: 2.5rem;
+  text-align: center;
+  font-weight: 700;
+  color: var(--color-text);
+}
+
+/* Quiet-hours / daily-cap form rows */
+.settingsGrid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-6);
+  align-items: flex-end;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.fieldLabel {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.timeInput {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-3);
+  font-size: 0.9375rem;
+  color: var(--color-text);
+  background: var(--color-surface);
+}
+
+.timeInput:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 1px;
+}
+
+.saveBar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+}
+
+.saveStatus {
+  font-size: 0.875rem;
+  color: var(--color-ok);
+}
+
+.saveStatusError {
+  font-size: 0.875rem;
+  color: var(--color-danger);
+}
+
+/* ── Generic states ── */
+.stateBox {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-6);
+  color: var(--color-text-muted);
+}
+
+.spinner {
+  width: 1rem;
+  height: 1rem;
+  border: 2px solid var(--color-border);
+  border-top-color: var(--color-primary);
+  border-radius: 50%;
+  display: inline-block;
+  animation: spin 0.7s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.errorBox {
+  background: #fdeceb;
+  border: 1px solid #f3b8b2;
+  border-radius: var(--radius);
+  padding: var(--space-4) var(--space-6);
+  color: var(--color-danger);
+}
+
+.retryBtn {
+  margin-top: var(--space-3);
+  appearance: none;
+  border: 1px solid var(--color-danger);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-danger);
+  padding: var(--space-2) var(--space-4);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.emptyBox {
+  background: var(--color-primary-light);
+  border: 1px solid #b9dceb;
+  border-radius: var(--radius);
+  padding: var(--space-8) var(--space-6);
+  text-align: center;
+  color: var(--color-primary-dark);
+}
+
+.emptyTitle {
+  font-weight: 700;
+  display: block;
+  margin-bottom: var(--space-2);
+}
+
+.restrictedBox {
+  max-width: 480px;
+  margin: var(--space-8) auto;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: var(--space-8) var(--space-6);
+  text-align: center;
+}
+
+.restrictedTitle {
+  font-weight: 700;
+  font-size: 1.125rem;
+  margin-bottom: var(--space-2);
+  color: var(--color-text);
+}
+
+/* ── Modal (reject reason + send confirm) ── */
+.modalOverlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(26, 38, 52, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-4);
+  z-index: 50;
+}
+
+.modal {
+  background: var(--color-surface);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-md);
+  padding: var(--space-6);
+  max-width: 460px;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.modalTitle {
+  font-size: 1.0625rem;
+  font-weight: 700;
+  color: var(--color-text);
+}
+
+.modalBody {
+  font-size: 0.9375rem;
+  line-height: 1.7;
+  color: var(--color-text);
+}
+
+.modalQuote {
+  background: var(--color-surface-raised);
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-3) var(--space-4);
+  font-size: 0.9375rem;
+  line-height: 1.7;
+  color: var(--color-text);
+  white-space: pre-wrap;
+}
+
+.modalSim {
+  font-size: 0.875rem;
+  color: var(--color-info);
+  font-weight: 600;
+}
+
+.modalTextarea {
+  width: 100%;
+  min-height: 4.5rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-3);
+  font-size: 0.9375rem;
+  resize: vertical;
+}
+
+.modalTextarea:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 1px;
+}
+
+.modalActions {
+  display: flex;
+  gap: var(--space-2);
+  justify-content: flex-start;
+}

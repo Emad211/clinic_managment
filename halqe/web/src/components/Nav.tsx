@@ -28,6 +28,7 @@ const NAV_LINKS: NavLink[] = [
 /** Manager-only links — appended only when `showManagerLinks` is true. */
 const MANAGER_LINKS: NavLink[] = [
   { href: "/manager/outcomes", label: "گزارشِ outcome" },
+  { href: "/manager/engagement", label: "صفِ تعامل" },
 ];
 
 interface NavProps {
