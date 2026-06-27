@@ -338,6 +338,14 @@ def control_trend(tenant_id: int) -> dict:
     # تمامِ قرائت‌های verifiedِ کنترلی را یک‌بار بخوان (set-based؛ بدونِ per-month per-patient query).
     # سپس in-memory as-of را برای هر باکت محاسبه می‌کنیم.
     # ساختار: rows = [(plid, bare_key, value, observed_at), ...] مرتب بر اساس observed_at.
+    #
+    # SCALE-GATE (قدم ۶۸ — clinical-data-scientist): خواندن set-based است (یک کوئری)؛
+    # محاسبهٔ as-of عمداً in-memory است (O(buckets×series×patients) با break؛ ثابت‌های
+    # کوچک). بازنویسی به window-function SQL **موکولِ تریگر** است (ROADMAP §۶۸):
+    # tenant > ~۵۰۰ بیمار / >~۵۰هزار observation، یا p95 endpoint > ۸۰۰ms (گره به قدم ۵۶).
+    # پیش‌نیازِ هر بازنویسی: تستِ identical-result (خروجیِ SQL == این تابع روی همان seed) +
+    # حفظِ `verified = TRUE` در WHERE (وگرنه self-reportِ تأییدنشده وارد متریک می‌شود).
+    # جایگزینِ ارزان‌تر از بازنویسی: کشِ روزانهٔ پاسخِ /manager/outcomes (manager-only، کم‌تکرار).
     control_obs_keys = (
         [f"vital:{k}" for k in CONTROL_VITALS]
         + [f"lab:{k}" for k in CONTROL_VITALS]

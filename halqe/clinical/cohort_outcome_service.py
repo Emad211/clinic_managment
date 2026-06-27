@@ -173,6 +173,13 @@ def _baseline_value(
 
 # ---------------------------------------------------------------------------
 # جمع‌آوریِ قرائت‌ها per (patient, indicator) — verified=True
+#
+# SCALE-GATE (قدم ۶۸ — clinical-data-scientist): این خواندن set-based است (یک
+# ORM query per indicator، نه per-patient/N+1)؛ محاسبهٔ baseline/window در
+# `_compute_metric` عمداً in-memory است (tie-breakِ نزدیک‌ترین-به-مرکز + paired-subset
+# در SQL پُرریسک است). بازنویسی به window-function SQL **موکولِ تریگر** است
+# (ROADMAP §۶۸): tenant > ~۵۰۰ بیمار / >~۵۰هزار observation، یا p95 > ۸۰۰ms (قدم ۵۶).
+# پیش‌نیازِ هر بازنویسی: تستِ identical-result + حفظِ `verified=True`.
 # ---------------------------------------------------------------------------
 def _collect_readings(
     tenant_id: int,
