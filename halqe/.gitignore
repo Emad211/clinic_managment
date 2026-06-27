@@ -15,3 +15,11 @@ build/
 backups/
 *.dump
 *.dump.sha256
+
+# Deploy (step 55) — TLS certs/keys and local compose overrides must NEVER enter git
+deploy/nginx/certs/
+*.pem
+*.key
+*.crt
+docker-compose.override.yml
+docker-compose.*.local.yml

@@ -1,0 +1,195 @@
+# =============================================================================
+# halqe — production / staging topology (step 55, cluster M)
+# =============================================================================
+# This compose file describes the PRODUCTION (and staging) deployment topology
+# for the halqe platform on a single Iranian VPS. It is CONFIG ONLY — the actual
+# VPS provisioning + TLS certs + backup cron are the OWNER's gate. Bringing this
+# up live is a deliberate, owner-approved act (see docs/deploy_runbook.md).
+#
+# TOPOLOGY
+#   internet ──443/80──▶ nginx ──(internal net)──▶ app:8000 ──▶ postgres:5432
+#                                                                   │
+#                                                          backup (cron/service)
+#
+#   • Only nginx is published to the host (80 + 443). app:8000 and postgres:5432
+#     stay on the INTERNAL docker network and are NEVER published to the host —
+#     nginx is the single public ingress, and it is the REAL rate-limit boundary
+#     (limit_req) + the thing that strips spoofed X-Forwarded-For.
+#   • postgres data + backups live on NAMED VOLUMES (survive container recreate).
+#
+# CONN_MAX_AGE=0 INVARIANT (ADR-0008)
+#   The app connects DIRECTLY to Postgres. There is intentionally NO connection
+#   pooler (no PgBouncer transaction mode). Each request opens a fresh connection
+#   so the per-connection tenant GUC (app.current_tenant) dies with the request
+#   and cannot leak across tenants. DO NOT add a transaction-mode pooler here.
+#
+# SECRETS
+#   Nothing sensitive is hardcoded. Everything comes from .env (git-ignored).
+#   Copy .env.example → .env on the VPS and fill in real values. The compose
+#   variables below interpolate from that .env (or the shell environment).
+#
+# USAGE (see docs/deploy_runbook.md for the full runbook)
+#   docker compose config        # validate this file + .env interpolation
+#   docker compose build         # build the app image from halqe/Dockerfile
+#   docker compose up -d         # start postgres → app (entrypoint applies schema) → nginx
+# =============================================================================
+
+services:
+  # ---------------------------------------------------------------------------
+  # Postgres — the single DB holding platform/accounting/clinical namespaces.
+  # NOT published to the host: only the app (same internal network) reaches it.
+  # ---------------------------------------------------------------------------
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    # POSTGRES_* come from .env. POSTGRES_DB must match PG_DB the app uses.
+    environment:
+      POSTGRES_USER: "${PG_USER}"
+      POSTGRES_PASSWORD: "${PG_PASSWORD}"
+      POSTGRES_DB: "${PG_DB}"
+      # Keep timestamps/logs in Tehran local time, consistent with the app.
+      TZ: "Asia/Tehran"
+      PGTZ: "Asia/Tehran"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - internal
+    # OPTIONAL: bind to loopback only if you must reach PG from the host for ops
+    # (psql/pg_dump from the host). Leave commented for the most-locked-down
+    # posture — the backup service runs INSIDE the network and does not need it.
+    # ports:
+    #   - "127.0.0.1:55432:5432"
+    healthcheck:
+      # pg_isready against the real DB/user — the app's depends_on waits on this.
+      test: ["CMD-SHELL", "pg_isready -U \"${PG_USER}\" -d \"${PG_DB}\" -h 127.0.0.1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  # ---------------------------------------------------------------------------
+  # app — the Django/gunicorn backend. Built from halqe/Dockerfile.
+  # entrypoint.sh waits for Postgres, runs apply_schema + ensure_app_role, then
+  # exec's gunicorn on 0.0.0.0:8000. 8000 is exposed ONLY on the internal
+  # network (no `ports:` mapping) — nginx fronts it.
+  # ---------------------------------------------------------------------------
+  app:
+    build:
+      # Build context is the REPO ROOT (one level up) because the Dockerfile
+      # COPYs halqe/ and halqe/db/schema/ from the repo root — see its header.
+      context: ..
+      dockerfile: halqe/Dockerfile
+    restart: unless-stopped
+    # All app env (PRODUCTION, SECRET_KEY, ALLOWED_HOSTS, PG_APP_*, SMS_*, …)
+    # comes from .env. No secrets in this file.
+    env_file:
+      - .env
+    # Compose-level overrides that are TOPOLOGY facts (not secrets): inside the
+    # network Postgres is reachable as host `postgres` on its native port 5432.
+    # These override whatever PG_HOST/PG_PORT happen to be in .env (which point
+    # at the host-side dev port). entrypoint.sh reads PG_HOST/PG_PORT.
+    environment:
+      PG_HOST: postgres
+      PG_PORT: "5432"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - internal
+    # NO `ports:` — 8000 is internal-only. nginx is the only public ingress.
+    # The Dockerfile already EXPOSE 8000 (documentation/internal reachability).
+    healthcheck:
+      # /healthz is liveness-only (no DB) — see platform_core/health.py.
+      test: ["CMD-SHELL", "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/healthz',timeout=3).status==200 else 1)\""]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+
+  # ---------------------------------------------------------------------------
+  # nginx — the ONLY public ingress. Terminates TLS, redirects 80→443, proxies
+  # /api/ + probes to app:8000, and is the REAL rate-limit boundary (limit_req)
+  # for the public patient endpoints. Config + certs are mounted READ-ONLY.
+  # ---------------------------------------------------------------------------
+  nginx:
+    image: nginx:alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      # The site config (read-only). nginx:alpine includes the bundled
+      # http {} context that `include`s /etc/nginx/conf.d/*.conf.
+      - ./deploy/nginx/halqe.conf:/etc/nginx/conf.d/halqe.conf:ro
+      # TLS material — provide certs on the host under ./deploy/nginx/certs/
+      # (git-ignored). Let's Encrypt or owner-provided. See the runbook.
+      - certs:/etc/nginx/certs:ro
+    depends_on:
+      - app
+    networks:
+      - internal
+
+  # ---------------------------------------------------------------------------
+  # backup — periodic pg_dump via scripts/backup.sh (step 54). Optional service:
+  # the simpler/recommended path is a HOST cron calling scripts/backup.sh (see
+  # the runbook). This container is provided for hosts where a host cron is not
+  # convenient. It runs ON THE INTERNAL NETWORK so it reaches `postgres` and
+  # writes dumps to the shared `backups` named volume.
+  #
+  # Enabled only via the "backup" profile so a plain `up` does not start it:
+  #   docker compose --profile backup up -d backup
+  # ---------------------------------------------------------------------------
+  backup:
+    image: postgres:16   # has pg_dump/pg_isready matching the server major
+    restart: unless-stopped
+    profiles: ["backup"]
+    environment:
+      # backup.sh / _pg_env.sh resolve PG* from these. Reads PG_DB; dumps as the
+      # superuser role so the full DB (all namespaces) is captured.
+      PGHOST: postgres
+      PGPORT: "5432"
+      PGUSER: "${PG_USER}"
+      PGPASSWORD: "${PG_PASSWORD}"
+      PGDATABASE: "${PG_DB}"
+      BACKUP_DIR: /backups
+      BACKUP_KEEP: "${BACKUP_KEEP:-14}"
+      TZ: "Asia/Tehran"
+    volumes:
+      # The backup scripts (read-only) + the shared backups volume (read-write).
+      - ./scripts:/opt/halqe/scripts:ro
+      - backups:/backups
+    networks:
+      - internal
+    depends_on:
+      postgres:
+        condition: service_healthy
+    # Simple in-container loop: dump on start, then every BACKUP_EVERY seconds
+    # (default 24h). For finer scheduling prefer the host-cron path in the
+    # runbook. bash is needed (the scripts are bash); install it, then loop.
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >
+        apt-get update -qq && apt-get install -y -qq bash >/dev/null 2>&1 || true;
+        while true; do
+          bash /opt/halqe/scripts/backup.sh "$$PGDATABASE" || echo "backup failed";
+          sleep "$${BACKUP_EVERY:-86400}";
+        done
+
+# -----------------------------------------------------------------------------
+# Named volumes — persist across `docker compose down`/recreate.
+#   pgdata  : Postgres data dir (the database itself).
+#   backups : pg_dump output (step 54). PHI — keep off-box copies too (runbook).
+#   certs   : TLS certs/keys mounted into nginx (provision on host; git-ignored).
+# -----------------------------------------------------------------------------
+volumes:
+  pgdata:
+  backups:
+  certs:
+
+# -----------------------------------------------------------------------------
+# Networks — a single INTERNAL bridge. Only nginx publishes host ports; app and
+# postgres are reachable solely from inside this network.
+# -----------------------------------------------------------------------------
+networks:
+  internal:
+    driver: bridge
