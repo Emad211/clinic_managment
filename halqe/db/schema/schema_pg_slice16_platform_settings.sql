@@ -15,10 +15,21 @@
 --       engagement_daily_cap (تنظیماتِ گاردریلِ تعامل، manager-editable) via
 --       platform_core.platform_settings_service + clinical.engagement_settings.
 --
--- مدلِ tenant-scoping:
---   در سطحِ اپلیکیشن (WHERE tenant_id=%s) — همان الگوی platform.users و
---   platform.tenants. RLS فقط روی schema clinical فعال است؛ schema platform
---   بدونِ RLS است (app-level tenant scoping). این برش RLS اضافه نمی‌کند.
+-- مدلِ tenant-scoping (به‌روزرسانیِ قدم ۷۳ — دفاع‌در‌عمق):
+--   دو لایه: (۱) scopingِ سطحِ اپلیکیشن (WHERE tenant_id=%s) که در سرویس همیشه
+--   اعمال می‌شود، و (۲) **RLS+FORCE+tenant_isolation** که در همین برش (بخشِ ۳)
+--   inline فعال می‌شود — مثلِ هر جدولِ tenant_id‌دارِ بعد از slice5 (slices ۸/۹/۱۰/۱۲/۱۳).
+--   چون این جدول بعد از slice5 ساخته می‌شود، حلقهٔ apply-timeِ slice5 آن را نمی‌گیرد؛
+--   پس RLS را خودِ برش فعال می‌کند (الگوی «هر برش مسئولِ RLSِ خودش»).
+--   تصمیمِ قدم ۷۳ (security + من): چون `platform.users` از قبل RLS دارد، schema
+--   platform خالص app-scoped نیست؛ و settings دادهٔ پیکربندیِ هر-مستأجر است
+--   (clinic_name، گاردریل‌های تعامل) که نشتِ cross-tenantِ آن نقضِ ایزولاسیون است.
+--   همهٔ مسیرهای read/write پیش از دسترسی GUC را ست می‌کنند (راستی‌آزمایی‌شده:
+--   patient_card→set_tenant_guc، endpointهای engagement با auth، run_engagement
+--   صریحاً set_tenant_guc؛ provision_tenant به settings دست نمی‌زند) → fail-closed
+--   هیچ مسیری را نمی‌شکند. بدونِ policyِ FOR SELECT USING true (برخلافِ users که
+--   برای login bootstrap لازم بود — settings همیشه با GUCِ ست‌شده خوانده می‌شود).
+--   لایهٔ WHERE tenant_id در سرویس به‌عنوانِ سدِ دوم حفظ می‌شود (بی‌ضرر).
 --
 --   PK مرکب (tenant_id, key) → upsert با ON CONFLICT (tenant_id, key) DO UPDATE.
 --   tenant_id BIGINT NOT NULL DEFAULT 1 REFERENCES platform.tenants(id) — همان
@@ -57,7 +68,7 @@ CREATE TABLE IF NOT EXISTS platform.settings (
 
 -- ###########################################################################
 -- ۲) GRANT — platform_app (اپِ halqe) می‌نویسد و می‌خواند روی این جدول.
---    schema platform بدونِ RLS است؛ scoping در سطحِ اپلیکیشن (WHERE tenant_id).
+--    scoping دو لایه است (بخشِ ۳): RLS+FORCE + لایهٔ WHERE tenant_id در سرویس.
 --    بدونِ UPDATE/DELETE-revoke (این یک جدولِ تنظیماتِ قابلِ ویرایش است، نه
 --    append-only؛ بنابراین مثلِ slice10 محدود نمی‌شود).
 -- ###########################################################################
@@ -72,6 +83,26 @@ BEGIN
     END IF;
 END$$;
 
+-- ###########################################################################
+-- ۳) RLS — فعال‌سازیِ inline (قدم ۷۳، دفاع‌در‌عمق).
+--    این جدول بعد از slice5 ساخته می‌شود، پس حلقهٔ apply-timeِ slice5 آن را
+--    نمی‌گیرد؛ خودِ برش RLS را فعال می‌کند — همان الگوی idempotentِ slices
+--    ۸/۹/۱۰/۱۲/۱۳ (ENABLE + FORCE + DROP POLICY IF EXISTS + CREATE POLICY).
+--    FORCE: رولِ مالک/app هم تابعِ policy باشد (سوپریوزرِ واقعی BYPASSRLS دارد →
+--    seed/apply با postgres کار می‌کند). NULLIF: GUCِ خالی → NULL → صفر ردیف
+--    (fail-closed). بدونِ policyِ FOR SELECT USING true — settings همیشه با GUCِ
+--    ست‌شده خوانده می‌شود (برخلافِ platform.users که برای login bootstrap نیاز داشت).
+-- ###########################################################################
+ALTER TABLE platform.settings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE platform.settings FORCE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS tenant_isolation ON platform.settings;
+
+CREATE POLICY tenant_isolation ON platform.settings
+    FOR ALL
+    USING      (tenant_id = NULLIF(current_setting('app.current_tenant', true), '')::bigint)
+    WITH CHECK (tenant_id = NULLIF(current_setting('app.current_tenant', true), '')::bigint);
+
 -- ============================================================================
 -- معیارِ «انجام‌شدهٔ» برشِ ۱۶ (برای تستِ نگهبان):
 --   ۱) جدولِ platform.settings وجود دارد با ستون‌های tenant_id/key/value/
@@ -79,5 +110,7 @@ END$$;
 --   ۲) tenant_id دارای FK → platform.tenants(id) و DEFAULT 1، NOT NULL.
 --   ۳) platform_app دارای SELECT, INSERT, UPDATE روی platform.settings است.
 --   ۴) idempotency: اجرای مجددِ این برش بدونِ خطا (CREATE TABLE IF NOT EXISTS +
---      GRANTهای امن).
+--      GRANTهای امن + DROP POLICY IF EXISTS).
+--   ۵) RLS: platform.settings دارای relrowsecurity=true + relforcerowsecurity=true
+--      + policyِ tenant_isolation (FOR ALL، USING+WITH CHECK با الگوی NULLIF) است.
 -- ============================================================================
