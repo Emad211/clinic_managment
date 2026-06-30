@@ -68,6 +68,17 @@
   border-color: rgba(255, 255, 255, 0.25);
 }
 
+/* Manager-only link cluster — visually grouped from the universal links by a
+   subtle inline-start divider (RTL-aware). Not a menu/dropdown (kept flat). */
+.managerGroup {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding-inline-start: var(--space-3);
+  margin-inline-start: var(--space-1);
+  border-inline-start: 1px solid rgba(255, 255, 255, 0.25);
+}
+
 /* Page title / breadcrumb injected by the consumer */
 .pageTitle {
   font-size: 0.875rem;

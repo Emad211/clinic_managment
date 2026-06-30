@@ -34,6 +34,58 @@
   color: var(--color-text-muted);
 }
 
+/* ── Primary action of the day (role-aware, full-width) ── */
+.primaryAction {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  background: var(--color-primary);
+  color: #fff;
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+  padding: var(--space-6);
+  margin-bottom: var(--space-8);
+  text-decoration: none;
+  transition: box-shadow 0.15s, transform 0.05s;
+}
+
+.primaryAction:hover {
+  box-shadow: var(--shadow-md);
+  color: #fff;
+  text-decoration: none;
+}
+
+.primaryAction:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.primaryActionEyebrow {
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  opacity: 0.85;
+  text-transform: uppercase;
+}
+
+.primaryActionTitle {
+  font-size: 1.35rem;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.primaryActionDesc {
+  font-size: 0.9rem;
+  opacity: 0.9;
+}
+
+/* ── Manager-only block ── */
+.managerSection {
+  margin-top: var(--space-8);
+  padding-top: var(--space-6);
+  border-top: 1px solid var(--color-border);
+}
+
 /* ── Stats row ── */
 .statsRow {
   display: grid;

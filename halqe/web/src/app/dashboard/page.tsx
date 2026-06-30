@@ -6,6 +6,7 @@ import Link from "next/link";
 import {
   apiGetPatients,
   apiGetWorklist,
+  getRole,
   ApiError,
 } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
@@ -87,6 +88,10 @@ export default function DashboardPage() {
   const { ready, logout } = useAuth();
   const pathname = usePathname();
 
+  // Role gate — hydration-safe (start null, resolve in effect, never in render).
+  // Pattern mirrors manager/outcomes/page.tsx.
+  const [role, setRole] = useState<string | null>(null);
+
   // Stats state
   const [patientsTotal, setPatientsTotal] = useState<number | null>(null);
   const [patientsLoading, setPatientsLoading] = useState(true);
@@ -136,9 +141,12 @@ export default function DashboardPage() {
   // Fire data fetches only once the auth guard has confirmed a valid token
   useEffect(() => {
     if (!ready) return;
+    setRole(getRole());
     fetchPatients();
     fetchWorklist();
   }, [ready, fetchPatients, fetchWorklist]);
+
+  const isManager = role === "manager";
 
   // Auth guard: render nothing while useAuth is checking/redirecting
   if (!ready) return null;
@@ -157,6 +165,28 @@ export default function DashboardPage() {
           <h1 className={styles.heroTitle}>حلقه</h1>
           <p className={styles.heroSub}>سامانهٔ هوشمند مراقبت از بیماران مزمن</p>
         </div>
+
+        {/* First action of the day — role-aware, full-width. No fabricated
+            numbers: just a label + a link to the right starting surface. */}
+        <Link
+          href={isManager ? "/control-room" : "/queue"}
+          className={styles.primaryAction}
+          aria-label={
+            isManager
+              ? "اتاقِ کنترل — بیمارانِ پراولویت"
+              : "صف ویزیتِ امروز"
+          }
+        >
+          <span className={styles.primaryActionEyebrow}>اقدامِ اولِ روز</span>
+          <span className={styles.primaryActionTitle}>
+            {isManager ? "اتاقِ کنترل — بیمارانِ پراولویت" : "صف ویزیتِ امروز"}
+          </span>
+          <span className={styles.primaryActionDesc}>
+            {isManager
+              ? "کوهورتِ اولویت‌بندی‌شده برای تماس و پیگیری"
+              : "بیمارانِ در صفِ ویزیتِ امروز را ببینید"}
+          </span>
+        </Link>
 
         {/* Stats */}
         <p className={styles.sectionHeading} aria-hidden="true">خلاصهٔ وضعیت</p>
@@ -192,6 +222,34 @@ export default function DashboardPage() {
             desc="لیست پیگیری‌های باز و سررسیدشده"
           />
         </nav>
+
+        {/* Manager-only block — rendered only for managers. Guarded on the
+            resolved role so it never flashes for staff (role === null → hidden). */}
+        {isManager && (
+          <section className={styles.managerSection} aria-label="مدیریت">
+            <p className={styles.sectionHeading}>مدیریت</p>
+            <nav className={styles.navCardRow} aria-label="ابزارهای مدیریتی">
+              <NavCard
+                href="/control-room"
+                icon="◎"
+                title="اتاقِ کنترل"
+                desc="کوهورتِ پراولویت برای تماس و پیگیری"
+              />
+              <NavCard
+                href="/manager/outcomes"
+                icon="◧"
+                title="گزارشِ outcome"
+                desc="گزارش‌های توصیفیِ فعالیت و وضعیتِ بیماران"
+              />
+              <NavCard
+                href="/manager/engagement"
+                icon="◍"
+                title="صفِ تعامل"
+                desc="پیکربندیِ رویداد و صفِ پیام‌ها"
+              />
+            </nav>
+          </section>
+        )}
 
       </main>
     </div>

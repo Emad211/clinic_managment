@@ -63,6 +63,8 @@ Object.defineProperty(globalThis, "localStorage", {
 jest.mock("@/lib/api", () => ({
   apiGetWorklist: jest.fn(),
   apiMarkDone: jest.fn(),
+  // Nav (rendered un-stubbed here) reads the role claim in an effect.
+  getRole: jest.fn(() => "manager"),
   ApiError: class ApiError extends Error {
     status: number;
     code: string | null;

@@ -14,8 +14,9 @@ import styles from "./landing.module.css";
  *   - Decision support is suggestion-only: «پیشنهاد — تأیید با پزشک».
  *   - Accounting data is READ-ONLY; nothing is written back.
  *   - No SMS without the clinic's approval; KYC-gated.
- *   - Never claim a feature that isn't built (e.g. there is NO /control-room
- *     page). Only real, shipped features are described.
+ *   - Never claim a feature that isn't built. اتاقِ کنترل (control-room) is an
+ *     internal in-panel view and is deliberately NOT advertised on this public
+ *     page; only real, shipped features are described here.
  *
  * The data-trust story (read-only boundary + consent + no fabricated numbers)
  * IS the differentiator — it is foregrounded, not buried.
