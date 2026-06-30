@@ -125,9 +125,14 @@ reference-case، قابِ wallet=اعتبار) + متنِ رضایتِ بیما�
   checkِ `clinical.E001` (production + live + بی‌کلید → Error؛ نه tautology/toggle). داوریِ من: BLOCK نه strip، فشار/bp
   به regexِ نسبتی واگذار. بازبینیِ من: backend **732**/۱skip سبزِ اولین اجرا (۸ MUST-PASS/۶ MUST-CATCH + spy: send صفر بار).
 
-### 77 (S5) پوششِ audit-log
+### ✅ 77 (S5) پوششِ audit-log — کامیت `6193ec7`
 تأیید کن visit / نوشتنِ نسخه / accept پیشنهاد / approve تعامل / issue-revoke توکن هرکدام tenant + user +
 patient را لاگ می‌کنند؛ گپ‌ها را پر کن. (verification است نه ساختِ سنگین — ردِ شواهدِ حقوقی + پیش‌نیازِ incident-response.)
+- **✅ انجام شد (کامیت `6193ec7`):** تیم security. **مسیرِ نوشتنِ audit از قبل کامل بود** (هر اقدام log_activity را با
+  tenant+user+patient_link_id صدا می‌زند) → کدِ logging-نو لازم نبود؛ فقط **گاردِ coverage**: `test_audit_coverage.py`
+  (۳ تست: encounter_created/prescription_created/card_token_issued، assertِ وجودِ ردیف با patient_link_id چون log_activity
+  best-effort است). داوریِ من: رفعِ card_token_revoked patient_link_id را skip کردم (revoke فقط token_id دارد؛ query
+  افزودن طبقِ توصیهٔ security اجتناب شد)؛ read-access-log موکول (O-3). بازبینیِ من: backend **735**/۱skip سبزِ اولین اجرا.
 
 ### 78 (S6) بنیانِ یکپارچگیِ سنجش — رفعِ باگِ `enrolled_at` + seedِ طولیِ تست  [⚠️ پرریسک — پیش از هر importِ واقعی]
 > **باگِ واقعیِ راستی‌آزمایی‌شده:** `clinical/models.py:40` → `enrolled_at = auto_now_add=True`. این
