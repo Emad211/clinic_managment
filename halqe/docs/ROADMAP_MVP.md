@@ -157,12 +157,18 @@ patient را لاگ می‌کنند؛ گپ‌ها را پر کن. (verification 
 
 ## خوشهٔ T — ستونِ استقرار  (گِیت: R1/VPS؛ T1ِ وب **محلی و موازی** ساختنی است)
 
-### 79 (T1) artifactِ استقرارِ `halqe/web`  [⚠️ مسیرِ بحرانیِ go-live — پیش‌نیازِ کلِ خوشهٔ U]
+### ✅ 79 (T1) artifactِ استقرارِ `halqe/web`  [⚠️ مسیرِ بحرانیِ go-live] — کامیت `088ea88`
 > راستی‌آزمایی: Dockerfileِ بک‌اند (`halqe/Dockerfile`) **هست** و serviceِ `app` آن را build می‌کند؛ اما
 > در `docker-compose.yml` **serviceِ web و scheduler وجود ندارد** و هیچ Dockerfileِ Next.js نیست.
 - Dockerfileِ Next.js (یا buildِ pinnedِ host) که وب را پشتِ nginx/TLS در‌دسترس کند + serviceِ `web`
   در compose، سیم‌کشی به origin/CORS؛ **فونت/asset خودمیزبان (بدونِ CDN)** + scopeِ SwRegistrar تأیید شود.
 - **مسیر:** محلی و موازی ساختنی است (نیازِ VPS ندارد) ولی **پیش‌شرطِ سختِ go-live**؛ به فهرستِ پیش‌نیازِ قدم ۹۶ افزوده شود.
+- **✅ انجام شد (کامیت `088ea88`):** تیم delivery + frontend. `halqe/web/Dockerfile` (multi-stage node:22 standalone، non-root،
+  offline-npm note) + `.dockerignore` + `next.config output:"standalone"` + سرویسِ `web` در compose (internal، بدونِ port) +
+  nginx `upstream halqe_web`+`location /`→web (locationهای rate-limitedِ API دست‌نخورده) + بازنویسیِ runbook §11. **داوریِ من:
+  same-origin (نه دو-هاست)** → `_core.ts` پیش‌فرضِ API_BASE به **relativeِ `/api/v1`** (حذفِ تله‌ی build-time-bakingِ NEXT_PUBLIC +
+  CORS). بازبینیِ من: `docker compose config` PASS، web jest **508/508**، tsc پاک. **buildِ کاملِ ایمیج (npm آفلاین) انجام نشد →
+  صادقانه به deploy/گِیتِ VPS موکول.**
 
 ### 80 (T2) provisionِ schedulerِ تعامل/پیگیری  [⚠️ پرریسک — «حلقهٔ نیمه‌مرده»]
 serviceِ scheduler در compose (host cron یا compose-loop) که `run_engagement` + `generate_followups`
