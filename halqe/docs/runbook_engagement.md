@@ -39,31 +39,57 @@ tickهای هم‌پوشان امن‌اند — تیکِ دوم اگر تیکِ
 */5 * * * *  cd /app && /usr/local/bin/python manage.py run_engagement >> /var/log/halqe/engagement.log 2>&1
 ```
 
-### نمونهٔ sidecar cron (compose؛ بدونِ افزودنِ Redis)
+### گزینهٔ ساخته‌شده در compose: سرویسِ `scheduler` (قدم ۸۰ / T2)
 
-سرویسِ web از همان imageِ `Dockerfile` استفاده می‌کند؛ یک سرویسِ جداگانهٔ `engagement-cron`
-همان image را اجرا می‌کند ولی به‌جای gunicorn، یک حلقهٔ cron:
+`docker-compose.yml` یک سرویسِ **`scheduler`** دارد که دقیقاً همین کار را می‌کند — همان
+imageِ backend (مثلِ `app`)، ولی به‌جای gunicorn یک حلقهٔ `sh`. **profile-gated** است (مثلِ
+`backup`): با `up` معمولی بالا نمی‌آید، فقط با فعال‌سازیِ صریح:
 
-```yaml
-  engagement-cron:
-    image: halqe-backend:latest          # همان image وب
-    entrypoint: ["/bin/sh", "-c"]
-    command:
-      - |
-        while true; do
-          python manage.py run_engagement || true
-          sleep 300
-        done
-    environment:
-      # همان env وب — PG_HOST/PG_PORT/PG_DB/PG_APP_USER/PG_APP_PASSWORD/SECRET_KEY/PRODUCTION=1
-    depends_on:
-      postgres:
-        condition: service_healthy
+```bash
+docker compose --profile scheduler up -d scheduler
 ```
 
-> نکته: `apply_schema`/`ensure_app_role` فقط در سرویسِ وب (`entrypoint.sh`) اجرا می‌شوند؛
-> سرویسِ cron نباید schema را دوباره اعمال کند — فقط command را صدا بزند. `|| true` تضمین
-> می‌کند که خطای یک tick حلقه را نمی‌کشد (خطا در summaryِ ساخت‌یافته لاگ می‌شود).
+هر tick (هر `SCHEDULER_EVERY` ثانیه، پیش‌فرض ۳۰۰) به‌ترتیب:
+
+```sh
+python manage.py generate_followups          # همیشه — worklistِ بالینی (مراقبت دریغ نشود)
+python manage.py run_engagement [$WL]        # $WL = --worklist-only تا holdout-freeze
+date -u +%FT%TZ > /tmp/scheduler.heartbeat   # heartbeatِ آخرین tick (برای healthcheck)
+```
+
+> نکاتِ طراحی (هر کدام در کامنتِ سرویس در `docker-compose.yml` هم آمده):
+> - **schema را دوباره اعمال نمی‌کند:** سرویسِ `app` با `entrypoint.sh` آن را می‌کند. scheduler
+>   عمداً `entrypoint` را به `sh -c` override می‌کند و فقط `manage.py` صدا می‌زند.
+> - **`|| …` بعدِ هر دو command:** `generate_followups` در خطای per-tenant `raise` می‌کند
+>   (خروجِ غیرصفر)، پس بدونِ این، یک خطا حلقه را می‌کشت. (`run_engagement` ذاتاً exit 0 است.)
+> - **`depends_on: app: service_started`** تا اولین tick بعد از apply_schema بخورد، نه روی
+>   schemaی نیمه‌ساخته؛ + یک `SCHEDULER_WARMUP` قبل از اولین tick.
+> - **heartbeat در `/tmp` نه volume:** کانتینر non-root (`halqe`) است و volumeِ root-owned
+>   نوشتنی نیست. healthcheck با `stat`+`date` (coreutils) تازگیِ heartbeat را می‌سنجد
+>   (پنجره = ۳× interval) → اگر حلقه گیر کند، کانتینر `unhealthy` می‌شود هرچند هنوز «up» است.
+
+#### ⚠️ گِیتِ holdout-freeze — `SCHEDULER_WORKLIST_ONLY` (پیش‌فرض `1` = امن)
+
+خروجیِ outreach (کانالِ SMS/approvalِ `run_engagement`) **خاموش** می‌ماند تا مالک:
+
+1. `python manage.py assign_engagement_holdout` را اجرا کند تا گروهِ کنترلِ علّی **freeze** شود
+   (تخصیص باید **پیش از** هر مداخله‌ای قفل شود — اصلِ no-allocation-after-exposure)؛
+2. baseline ثبت شود (مقایسهٔ قابلِ‌تفسیرِ lift به baselineِ pre-intervention نیاز دارد)؛
+3. سپس `SCHEDULER_WORKLIST_ONLY=0` در `.env` و `docker compose --profile scheduler up -d scheduler` (restart).
+
+پیش‌فرضِ `1` **fail-safe** است: اگر کسی freeze را فراموش کند، هیچ outreachی صف نمی‌شود و گروهِ
+holdout آلوده نمی‌شود. `generate_followups` (worklistِ بالینی) **بیرونِ این گِیت** است و همیشه
+اجرا می‌شود — *holdout = «بدونِ engagement-nudge»، نه «بدونِ مراقبت»* (`followup_engine`/red-flag
+مستقل تیک می‌خورند؛ کدِ holdout هم‌اکنون SMS و worklist-nudge را برای گروهِ کنترل سرکوب می‌کند).
+
+> **چک‌لیستِ go-live:** فعال‌بودنِ سرویسِ `scheduler` (و سبزبودنِ healthcheckِ heartbeat) را به
+> چک‌لیستِ راه‌اندازیِ هر کلینیکِ زنده اضافه کن — تنها ریسکِ این طراحی این است که scheduler
+> فراموش شود و worklistِ بالینی هرگز ساخته نشود.
+>
+> **موکولِ مستندشده (نه در این قدم):** برای تحلیلِ stepped-wedge، «تاریخِ freeze» و «تاریخِ
+> فعال‌سازیِ outreach» و یک «last successful tick»ِ persistent (per-tenant، query-able) ارزشمندند
+> تا روزهای گم‌شده در سری‌زمانیِ outcome به‌صراحت flag شوند. فعلاً heartbeatِ فایلی + خطِ لاگ
+> کافی است؛ جدولِ persistent یک بهبودِ آینده است.
 
 ## گزینهٔ آینده (گِیتِ infra): Celery beat + Redis
 

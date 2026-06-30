@@ -9,8 +9,14 @@
 # TOPOLOGY (same-origin: nginx fronts BOTH the web UI and the API)
 #   internet ──443/80──▶ nginx ──(internal net)──▶ /        → web:3000 (Next.js)
 #                                              └──▶ /api/v1 → app:8000 ──▶ postgres:5432
-#                                                                   │
-#                                                          backup (cron/service)
+#                                                                   ▲          │
+#                                       scheduler (profile, ticks ──┘    backup (cron/service)
+#                                       generate_followups + run_engagement)
+#
+#   • app/web/scheduler/backup share the internal net; scheduler + backup are
+#     PROFILE-GATED (a plain `up` starts only postgres/app/web/nginx). The
+#     scheduler is the external engagement/follow-up ticker (halqe has no
+#     in-process daemon) — see its block below + docs/runbook_engagement.md.
 #
 #   • Only nginx is published to the host (80 + 443). app:8000 and postgres:5432
 #     stay on the INTERNAL docker network and are NEVER published to the host —
@@ -211,6 +217,107 @@ services:
           bash /opt/halqe/scripts/backup.sh "$$PGDATABASE" || echo "backup failed";
           sleep "$${BACKUP_EVERY:-86400}";
         done
+
+  # ---------------------------------------------------------------------------
+  # scheduler — the EXTERNAL engagement/follow-up tick (step 80 / T2).
+  #
+  # WHY THIS EXISTS: halqe is a cloud Django app with NO in-process daemon thread
+  # (unlike the Flask desktop apps). Without an external ticker the follow-up→
+  # engagement half of the care loop is INERT in production. This service is that
+  # ticker — it runs the SAME backend image as `app`, but instead of gunicorn it
+  # runs a tiny shell loop that calls two management commands every N seconds.
+  #
+  # WHAT IT RUNS EACH TICK (generate_followups FIRST, then run_engagement):
+  #   • generate_followups  — clinical follow-up worklist. ALWAYS runs (even in
+  #     worklist-only mode): "care/red-flags are never withheld". Idempotent.
+  #   • run_engagement [--worklist-only] — routes due events to channels. It is
+  #     advisory-locked (no concurrent run; exits 0 on skip) and NEVER sends SMS
+  #     (it only enqueues physician approvals). See docs/runbook_engagement.md.
+  #
+  # THE HOLDOUT GATE (SCHEDULER_WORKLIST_ONLY, default "1" = SAFE):
+  #   Outreach (the SMS/approval channel of run_engagement) stays OFF until the
+  #   owner (a) runs assign_engagement_holdout to FREEZE the control cohort, (b)
+  #   records baseline, then (c) flips SCHEDULER_WORKLIST_ONLY=0. Defaulting to
+  #   worklist-only is fail-safe: if someone forgets to freeze the holdout, no
+  #   outreach is queued and the causal control group is not polluted. (SMS is
+  #   ALSO blocked by KYC 430 + per-patient sms_consent — this is a third layer.)
+  #
+  # NOT entrypoint.sh: the `app` service's entrypoint already applies the schema
+  # (apply_schema + ensure_app_role). The scheduler MUST NOT re-apply it — so we
+  # override the entrypoint to a plain `sh -c` loop that only calls manage.py.
+  #
+  # Profile-gated like `backup`: a plain `up` does NOT start it. Bring it up only
+  # as a deliberate go-live act (and it IS part of the go-live checklist — without
+  # it the clinical worklist is never generated):
+  #   docker compose --profile scheduler up -d scheduler
+  # ---------------------------------------------------------------------------
+  scheduler:
+    build:
+      # Same image as `app` (build context = repo root; see app + Dockerfile header).
+      context: ..
+      dockerfile: halqe/Dockerfile
+    restart: unless-stopped
+    profiles: ["scheduler"]
+    env_file:
+      - .env
+    environment:
+      # Topology facts (override .env's host-side dev values), same as `app`.
+      PG_HOST: postgres
+      PG_PORT: "5432"
+      # Tehran local time so heartbeat/log timestamps match the project's Iran-time rule.
+      TZ: "Asia/Tehran"
+      # SAFE DEFAULT: worklist-only until the owner freezes the holdout + enables
+      # outreach (set to "0" in .env). See the holdout-gate note above.
+      SCHEDULER_WORKLIST_ONLY: "${SCHEDULER_WORKLIST_ONLY:-1}"
+      # Tick interval (seconds) and warmup before the first tick.
+      SCHEDULER_EVERY: "${SCHEDULER_EVERY:-300}"
+      SCHEDULER_WARMUP: "${SCHEDULER_WARMUP:-30}"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      # Wait for `app` to START so its entrypoint has applied the schema before
+      # the first tick touches clinical tables (service_started is enough — we do
+      # not need it healthy, just past its schema-apply step).
+      app:
+        condition: service_started
+    networks:
+      - internal
+    # NO `ports:` — internal-only; this service has no listening socket anyway.
+    # Override entrypoint → tiny shell loop (NOT the app's gunicorn entrypoint).
+    # Compose interpolates single-$ ${...}; runtime shell vars are escaped $$.
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        echo "scheduler: warmup $${SCHEDULER_WARMUP:-30}s before first tick";
+        sleep "$${SCHEDULER_WARMUP:-30}";
+        WL="";
+        if [ "$${SCHEDULER_WORKLIST_ONLY:-1}" = "1" ]; then WL="--worklist-only"; fi;
+        echo "scheduler: loop every $${SCHEDULER_EVERY:-300}s worklist_only=$${SCHEDULER_WORKLIST_ONLY:-1}";
+        while true; do
+          python manage.py generate_followups || echo "scheduler: generate_followups failed (continuing)";
+          python manage.py run_engagement $$WL || echo "scheduler: run_engagement failed (continuing)";
+          date -u +%FT%TZ > /tmp/scheduler.heartbeat;
+          echo "scheduler_tick done ts=$$(date -u +%FT%TZ) worklist_only=$${SCHEDULER_WORKLIST_ONLY:-1}";
+          sleep "$${SCHEDULER_EVERY:-300}";
+        done
+    # Heartbeat healthcheck: the loop writes /tmp/scheduler.heartbeat after EVERY
+    # tick (written to /tmp, not a volume, because the container runs as non-root
+    # `halqe` and a root-owned named volume would not be writable). "unhealthy"
+    # means the loop is stuck (e.g. a wedged run holding the advisory lock) even
+    # though the container is still "up". stat+date are coreutils (always present
+    # in python:3.13-slim); staleness window = 3× the tick interval.
+    healthcheck:
+      test: ["CMD-SHELL", "test -f /tmp/scheduler.heartbeat && test $$(( $$(date +%s) - $$(stat -c %Y /tmp/scheduler.heartbeat) )) -lt $$(( $${SCHEDULER_EVERY:-300} * 3 ))"]
+      interval: 60s
+      timeout: 5s
+      retries: 3
+      # Generous: must exceed warmup + the first (cold) generate+engagement tick.
+      start_period: 180s
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
 
 # -----------------------------------------------------------------------------
 # Named volumes — persist across `docker compose down`/recreate.
