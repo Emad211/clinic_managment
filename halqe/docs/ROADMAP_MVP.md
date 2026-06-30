@@ -294,8 +294,29 @@ holdout نسازند. + سطحِ capture رضایت (متن از config). درِ
 > بحرانی نیست (worklistِ موجود مسیرِ پیگیریِ انسانی است) → بهبودِ نزدیک، خارج از scopeِ گِیت‌نخوردهٔ این قدم.
 > **بازبینیِ مستقلِ من:** `tsc`=0 + jest **۵۴۱/۵۴۱** (۲۹ suite، +۵). بدونِ Python→بدونِ pytest.
 
-### 88 (U5) ممیزیِ سازگاریِ بین‌صفحه‌ای
+### ✅ 88 (U5) ممیزیِ سازگاریِ بین‌صفحه‌ای — کامیت `ad66223`
 RTL/Jalali/ارقامِ فارسی + offline-vendor (بدونِ CDN) در همهٔ routeها (چکِ گِیتی). *(badgeِ billing حذف شد — حذفِ منو کافی است.)*
+
+> **انجام‌شده (۸۸):** تیمِ ممیزیِ موازیِ Opus = ux-ui-designer + frontend-dev-advisor؛ سازنده = frontend-web-engineer.
+> **یافته (ضدِ over-engineering):** اپ از قبل offline-by-design و RTL/Jalali-یکدست بود (`<html lang=fa dir=rtl>`،
+> فونتِ Vazirmatnِ لوکالِ `@font-face`، بدونِ `next/font`، بدونِ تاریخِ میلادیِ خام). فقط ۲ گَپ + یک گِیتِ مکانیکی:
+> **(۱) نگهبانِ no-CDN/offline** (`__tests__/no-cdn-guard.test.tsx`): source-scan با detectorِ خالصِ `scanForViolations`
+> + comment-strip (دفعِ false-positiveِ کامنت‌های `127.0.0.1`) + ۸ الگوی **context-bound** (script/link remote،
+> `next/font/google`، @import/@font-face remote، import/dynamic-import/fetchِ remote) → metadata/`halqe.app`/schema.org
+> طبیعتاً match نمی‌شوند (بدونِ allowlistِ host). **اثبات‌شده نه نمایشی:** ۹ self-testِ مثبت + ۸ منفی + full-scanِ
+> واقعی (گزارشِ خوانا، بدونِ silence) + `fs.existsSync` روی ۴ woff2 + assertِ `dir/lang`. win32 path-normalize، exclude
+> testها. **(۲) رقمِ فارسی** در ۵ نقطهٔ شمارش/صفحه‌بندیِ user-facing (patients/worklist/queue) → `toFarsiDigits`؛
+> نقاطِ عمداً-لاتین (phone/national_idِ ltr، `n=`، `%`) دست‌نخورده. **RTL/Jalali: بدونِ تغییر** (گَپ نداشت). تلهٔ
+> SWCِ `*/`-در-کامنت گرفته/رفع شد. **بازبینیِ من:** tsc=0 + jest **۵۶۴/۵۶۴** (۳۰ suite، +۲۳). بدونِ Python→بدونِ pytest.
+
+---
+
+## 🏁🏁 پایانِ کارِ بی‌گِیت — همهٔ قدم‌های گِیت‌نخورده تمام شدند
+**خوشه‌های S (کفِ ایمنی) + T-محلی (artifactهای استقرار) + U (رابطِ حلقهٔ مراقبت) کامل‌اند.** قدم‌های باقی‌مانده **همه owner-gate**‌اند و تا بازکردنِ گِیت توسطِ مالک ساخته نمی‌شوند:
+- **۸۱/۸۲/۸۳ (T3/T4/T5):** dry-runِ staging روی VPS / deployِ پروداکشن / گِیتِ ایمنیِ دادهٔ زنده — نیازِ VPS + secrets + PHIِ واقعی.
+- **۸۵ (U2 intake):** مسیرِ writeِ register/link — موکول به dedupِ national_id + freezeِ holdoutِ V2/V3.
+- **خوشهٔ V (۸۹–۹۳):** Onboarding + importِ بیمارِ واقعی + freezeِ holdout — نیازِ T5 سبز + R4 امضا + **PHIِ واقعی**.
+- **خوشه‌های W (measurement/UAT) و X (go-live):** نیازِ کلینیکِ پایلوتِ زنده + بیمارِ واقعی + (W) KYC/SMSِ واقعی.
 
 ## خوشهٔ V — Onboarding و یکپارچگیِ داده  (گِیت: T5 سبز + R4 امضاشده؛ نوشتن نیازِ رفعِ ۷۸ + اعتبارسنجیِ ۷۸)
 
