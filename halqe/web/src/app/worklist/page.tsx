@@ -10,7 +10,7 @@ import {
   ApiError,
 } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
-import { formatJalali, formatToman, todayTehranISO } from "@/lib/jalali";
+import { formatJalali, formatToman, todayTehranISO, toFarsiDigits } from "@/lib/jalali";
 import Nav from "@/components/Nav";
 import styles from "./worklist.module.css";
 
@@ -184,7 +184,7 @@ export default function WorklistPage() {
         <div className={styles.pageHeader}>
           <h1 className={styles.pageTitle}>لیست پیگیری‌ها</h1>
           {!loading && !error && (
-            <span className={styles.totalBadge}>مجموع: {total}</span>
+            <span className={styles.totalBadge}>مجموع: {toFarsiDigits(total)}</span>
           )}
           {/* Status filter buttons */}
           <div className={styles.toolbar} role="group" aria-label="فیلتر وضعیت">
@@ -359,7 +359,7 @@ export default function WorklistPage() {
                 بعدی
               </button>
               <span className={styles.pageInfo} aria-live="polite">
-                صفحهٔ {currentPage} از {totalPages}
+                صفحهٔ {toFarsiDigits(currentPage)} از {toFarsiDigits(totalPages)}
               </span>
               <button
                 onClick={handlePrev}

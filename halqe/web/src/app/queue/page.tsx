@@ -25,7 +25,7 @@ import {
   ApiError,
   type DoctorQueueEntry,
 } from "@/lib/api";
-import { formatJalali } from "@/lib/jalali";
+import { formatJalali, toFarsiDigits } from "@/lib/jalali";
 import { useAuth } from "@/hooks/useAuth";
 import Nav from "@/components/Nav";
 import styles from "./queue.module.css";
@@ -406,7 +406,7 @@ export default function QueuePage() {
             <section aria-labelledby="waiting-heading" className={styles.section}>
               <h2 id="waiting-heading" className={styles.sectionTitle}>
                 در انتظار
-                <span className={styles.countChip}>{totalWaiting}</span>
+                <span className={styles.countChip}>{toFarsiDigits(totalWaiting)}</span>
               </h2>
 
               {totalWaiting === 0 ? (
@@ -450,7 +450,7 @@ export default function QueuePage() {
             <section aria-labelledby="done-heading" className={styles.section}>
               <h2 id="done-heading" className={styles.sectionTitle}>
                 انجام‌شده
-                <span className={styles.countChip}>{totalDone}</span>
+                <span className={styles.countChip}>{toFarsiDigits(totalDone)}</span>
               </h2>
 
               {totalDone === 0 ? (

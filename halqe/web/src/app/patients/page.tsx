@@ -9,7 +9,7 @@ import {
   type EnrolledPatient,
 } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
-import { formatJalali } from "@/lib/jalali";
+import { formatJalali, toFarsiDigits } from "@/lib/jalali";
 import Nav from "@/components/Nav";
 import styles from "./patients.module.css";
 
@@ -128,7 +128,7 @@ export default function PatientsPage() {
           <h1 className={styles.pageTitle}>بیماران ثبت‌نام‌شده</h1>
           {!loading && !error && (
             <span className={styles.totalBadge}>
-              مجموع: {total} بیمار
+              مجموع: {toFarsiDigits(total)} بیمار
             </span>
           )}
         </div>
@@ -252,7 +252,7 @@ export default function PatientsPage() {
                   بعدی
                 </button>
                 <span className={styles.pageInfo} aria-live="polite">
-                  صفحهٔ {currentPage} از {totalPages}
+                  صفحهٔ {toFarsiDigits(currentPage)} از {toFarsiDigits(totalPages)}
                 </span>
                 <button
                   onClick={handlePrev}
