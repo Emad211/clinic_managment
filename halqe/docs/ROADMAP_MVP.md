@@ -256,9 +256,25 @@ holdout نسازند. + سطحِ capture رضایت (متن از config). درِ
 > پس مثلِ ۸۱/۸۲/۸۳ **موکول شد** (تیم/سازنده مصرف نشد — صداقت/توکن). **پیش‌نیازِ آزادسازی:** ساخته‌شدنِ V2/V3
 > (که خود نیازِ گِیتِ مالک: T5+R4+PHIِ واقعی). آن‌گاه U2 با همان dedup/holdout مشترک ساخته می‌شود.
 
-### 86 (U3) Nav/IA + landingِ نقش‌محور
+### ✅ 86 (U3) Nav/IA + landingِ نقش‌محور — کامیت `6282269`
 گسترشِ role-gatingِ `Nav.tsx` برای control-room/intake/clinic-setup + اولین‌صفحهٔ هر نقش («الان چه‌کار
 کنم») + جاروی dead-link (Nav از قبل role-gated است — ویرایشِ کوچک).
+
+> **انجام‌شده (۸۶):** تیمِ موازیِ Opus = ux-ui-designer + frontend-dev-advisor؛ سازنده = frontend-web-engineer.
+> رفعِ یک **بن‌بستِ واقعیِ IA**: فقط دو صفحهٔ `manager/*` به Nav `showManagerLinks` می‌دادند → managerِ روی
+> dashboard/queue/patients/worklist لینک‌های مدیریتی را نمی‌دید. حالا **Nav خودش نقش را می‌خواند** (hydration-safe:
+> `getRole()` فقط در `useEffect`، هرگز در بدنهٔ render → بدونِ SSR mismatch)؛ `showManagerLinks` به **override
+> اختیاری** تبدیل شد (undefined→`role==="manager"`؛ سازگارِ عقب‌رو). **`/control-room` به MANAGER_LINKS منتقل شد**
+> (manager-only، برگشت‌پذیر — توصیهٔ UX) داخلِ گروهِ معناییِ `aria-label="مدیریت"`. **landingِ نقش‌محورِ
+> `/dashboard`:** کارتِ «اقدامِ اولِ روز» (staff→`/queue`، manager→`/control-room`، بدونِ عددِ ساختگی) + بخشِ
+> مدیریتیِ gateشده (role===null→پنهان، بدونِ flash)؛ StatCardهای بیماران/پیگیری برای **هر دو نقش** (care دریغ
+> نشود). marketing `/`: فقط کامنتِ کهنه («there is NO /control-room») اصلاح شد، copy دست‌نخورده، تستِ
+> `landing.test.tsx:150-152` (بنِ control-room در marketing) سبز ماند. **«intake/clinic-setup» در Nav اضافه نشد**
+> چون routeهاشان موجود نیست (U2 موکول، clinic-setup هنوز نیست) → dead-link نساختیم. تست‌های جدید: `nav.test.tsx`
+> + `dashboard-landing.test.tsx` + `nav-deadlink.test.ts` (fs: هر hrefِ Nav باید `page.tsx` داشته باشد).
+> **بازبینیِ مستقلِ من:** `tsc --noEmit`=0 + jest **۵۳۶/۵۳۶** (۲۸ suite، +۲۳). یک رگرسیونِ واقعی (worklist-page
+> چون Navِ واقعی را رندر می‌کند و حالا getRole صدا می‌زند) را سازنده گرفت و mockش را رفع کرد. بدونِ Python→بدونِ
+> pytest. رندرِ بصریِ مرورگر به deploy موکول (صادقانه).
 
 ### 87 (U4) UXِ حالت و ایمنی  [آیتمِ گِیتِ UAT — نه polishِ اختیاری]
 حالت‌های NULL-graceful («هنوز داده‌ای نیست» نه «خراب»)؛ قابِ «پیشنهاد — تأیید با پزشک»؛ red-flag فوری و
