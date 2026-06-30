@@ -85,11 +85,16 @@ reference-case، قابِ wallet=اعتبار) + متنِ رضایتِ بیما�
   (۶ تست) با allowlistِ **خالی** سبز شد → اثباتِ تجربیِ پوششِ کاملِ clinical+platform. بازبینیِ من: backend **703**/۱skip،
   guard **118**، slice16 دوبار idempotent روی DBِ populated.
 
-### 74 (S2) تستِ نشتِ بین‌مستأجری + تضمینِ تک‌مستأجر (prod config)
+### ✅ 74 (S2) تستِ نشتِ بین‌مستأجری + تضمینِ تک‌مستأجر (prod config) — کامیت `430538e`
 گسترش/اجرای `test_e2e_tenant_isolation` + `test_guc_leak`: دو مستأجرِ مصنوعی، assert صفر ردیفِ
 مستأجرِ نادرست در هر کوئریِ clinical/patient/card/engagement + scopingِ `card_resolve_token` + **fail-CLOSED
 وقتی GUC ست‌نشده/نادرست**، زیرِ `DEBUG=False`. تضمینِ **تک‌مستأجر** (دقیقاً یک tenant_id؛ کلینیکِ
 دوم provision نشود). همین تست = گِیتِ کلینیکِ دوم. **S4 فقط پس از اعمالِ نتیجهٔ S3 اجرا شود** (جلوگیری از green کاذب).
+- **✅ انجام شد (کامیت `430538e`):** تیم (qa + security) تأیید کرد **TEST scope از قبل کاملاً پوشش دارد** (test_e2e_tenant_isolation
+  + test_guc_leak + test_patient_card_token + test_engagement_dispatch/approvals + test_control_room + اثباتِ table-wideِ قدم ۷۳) →
+  تستِ نوِ ایزولاسیون نساختم (over-engineering). تنها deliverable = **گاردِ تک‌مستأجریِ prod-only** در `provision_tenant`
+  (ACK=`ALLOW_ADDITIONAL_TENANT=clinic-2-approved`، idempotent-safe، dev no-op) + `test_single_tenant_guarantee.py` (۴ تست).
+  داوریِ من: prod-only Python حالا؛ **enforcementِ سختِ DB-level به T1 موکول** (blast-radius). بازبینیِ من: backend **707**/۱skip.
 
 ### 75 (S3) رضایت: AND-clauseِ پیامک + برشِ رضایتِ پردازشِ داده + invariantِ بوت
 > راستی‌آزمایی: ستونِ `sms_consent` در slice0 **هست** (پس AND-clause همین‌حالا روی آن ساختنی است)، اما
