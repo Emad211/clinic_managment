@@ -23,6 +23,7 @@ const NAV_LINKS: NavLink[] = [
   { href: "/queue", label: "صف ویزیت" },
   { href: "/patients", label: "بیماران" },
   { href: "/worklist", label: "پیگیری‌ها" },
+  { href: "/control-room", label: "اتاقِ کنترل" },
 ];
 
 /** Manager-only links — appended only when `showManagerLinks` is true. */

@@ -1,0 +1,411 @@
+/* Control Room page — reuses worklist patterns + globals tokens only */
+
+.layout {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--color-bg);
+}
+
+.main {
+  flex: 1;
+  padding: var(--space-6);
+  max-width: 1080px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+.pageHeader {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  margin-bottom: var(--space-6);
+}
+
+.pageTitle {
+  font-size: 1.375rem;
+  font-weight: 700;
+  color: var(--color-text);
+  flex: 1;
+}
+
+.totalBadge {
+  font-size: 0.875rem;
+  color: var(--color-text-muted);
+}
+
+/* ── Cohort chip filter bar ── */
+.cohortBar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  margin-bottom: var(--space-6);
+}
+
+.filterBtn {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+  padding: var(--space-1) var(--space-3);
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.filterBtn:hover {
+  background: var(--color-primary-light);
+  border-color: var(--color-accent);
+  color: var(--color-primary-dark);
+}
+
+.filterBtn:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+
+.filterBtnActive {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: #fff;
+  font-weight: 600;
+}
+
+.filterBtnActive:hover {
+  background: var(--color-primary-dark);
+  border-color: var(--color-primary-dark);
+  color: #fff;
+}
+
+/* ── State boxes ── */
+.stateBox {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-8);
+  justify-content: center;
+  color: var(--color-text-muted);
+  font-size: 1rem;
+}
+
+.spinner {
+  display: inline-block;
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--color-border);
+  border-top-color: var(--color-primary);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.errorBox {
+  background: #fdf0ef;
+  border: 1px solid #f5c6c2;
+  border-radius: var(--radius);
+  color: var(--color-danger);
+  padding: var(--space-6);
+  text-align: center;
+}
+
+.retryBtn {
+  margin-top: var(--space-4);
+  background: var(--color-primary);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-6);
+  font-size: 0.875rem;
+  transition: background 0.15s;
+}
+
+.retryBtn:hover {
+  background: var(--color-primary-dark);
+}
+
+/* ── Table ── */
+.tableWrapper {
+  overflow-x: auto;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-sm);
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9375rem;
+}
+
+.table th {
+  background: var(--color-primary-light);
+  color: var(--color-primary-dark);
+  font-weight: 600;
+  font-size: 0.875rem;
+  padding: var(--space-3) var(--space-4);
+  text-align: right;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.table td {
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--color-border);
+  text-align: right;
+  vertical-align: top;
+}
+
+.tableRow:hover {
+  background: var(--color-primary-light);
+}
+
+.nameCell {
+  font-weight: 500;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  align-items: flex-start;
+}
+
+.monoInline {
+  font-variant-numeric: tabular-nums;
+  direction: ltr;
+  display: inline-block;
+}
+
+.subLine {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  font-variant-numeric: tabular-nums;
+  margin-top: var(--space-1);
+}
+
+/* ── opt-out chip (behavioural, not PHI) ── */
+.optOutChip {
+  display: inline-block;
+  font-size: 0.6875rem;
+  font-weight: 500;
+  padding: 0.0625rem 0.5rem;
+  border-radius: 999px;
+  background: #f0f0f0;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+
+/* ── Control status badge (four-state) ── */
+.controlBadge {
+  display: inline-block;
+  padding: 0.125rem 0.625rem;
+  border-radius: 999px;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.control_uncontrolled {
+  background: #fdecea;
+  color: var(--color-danger);
+}
+
+.control_borderline {
+  background: #fff4e0;
+  color: var(--color-warn);
+}
+
+.control_controlled {
+  background: #e6f9ef;
+  color: var(--color-ok);
+}
+
+.control_unknown {
+  background: #f0f0f0;
+  color: var(--color-text-muted);
+}
+
+/* ── Severity chips (danger / warn) — icon + text + colour ── */
+.chipStack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  align-items: flex-start;
+}
+
+.sevChip {
+  display: inline-block;
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 0.0625rem 0.5rem;
+  border-radius: var(--radius-sm);
+  white-space: nowrap;
+}
+
+.sevDanger {
+  background: #fdecea;
+  color: var(--color-danger);
+  border: 1px solid #f5c6c2;
+}
+
+.sevWarn {
+  background: #fff4e0;
+  color: var(--color-warn);
+  border: 1px solid #f6d9b0;
+}
+
+.lapsedChip {
+  margin-top: var(--space-2);
+}
+
+/* ── Upcoming appointment ── */
+.upcomingChip {
+  display: inline-block;
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 0.0625rem 0.5rem;
+  border-radius: var(--radius-sm);
+  background: #e6f9ef;
+  color: var(--color-ok);
+  white-space: nowrap;
+}
+
+/* ── Revenue column (manager-only) ── */
+.revenueCell {
+  font-variant-numeric: tabular-nums;
+  color: var(--color-primary-dark);
+  white-space: nowrap;
+  text-align: right;
+}
+
+/* ── Score + why ── */
+.scoreCell {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.scoreBadge {
+  display: inline-block;
+  min-width: 2rem;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  font-size: 0.9375rem;
+  padding: 0.125rem 0.5rem;
+  border-radius: var(--radius-sm);
+  background: var(--color-primary-light);
+  color: var(--color-primary-dark);
+}
+
+.whyBtn {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-primary);
+  font-size: 0.75rem;
+  padding: var(--space-1) var(--space-2);
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.whyBtn:hover {
+  background: var(--color-primary-light);
+  border-color: var(--color-accent);
+}
+
+.whyBtn:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+
+/* ── Expanded breakdown row ── */
+.detailRow td {
+  background: var(--color-surface-raised);
+}
+
+.breakdownList {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-6);
+  margin: 0;
+  padding: 0;
+}
+
+.breakdownItem {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 0.8125rem;
+  color: var(--color-text);
+}
+
+.breakdownPoints {
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  color: var(--color-primary-dark);
+}
+
+/* ── Conversion card ── */
+.conversionCard {
+  margin-top: var(--space-8);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+  padding: var(--space-6);
+}
+
+.conversionTitle {
+  font-size: 1.0625rem;
+  font-weight: 700;
+  color: var(--color-text);
+  margin-bottom: var(--space-4);
+}
+
+.conversionHint {
+  color: var(--color-text-muted);
+  font-size: 0.9375rem;
+  margin-bottom: var(--space-3);
+}
+
+.conversionError {
+  color: var(--color-danger);
+  font-size: 0.9375rem;
+}
+
+.conversionFraming {
+  color: var(--color-text-muted);
+  font-size: 0.8125rem;
+  line-height: 1.7;
+}
+
+.rateGrid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-6);
+  margin: 0 0 var(--space-4);
+}
+
+.rateItem {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.rateItem dt {
+  font-size: 0.8125rem;
+  color: var(--color-text-muted);
+}
+
+.rateItem dd {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--color-primary-dark);
+  font-variant-numeric: tabular-nums;
+}
