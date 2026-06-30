@@ -65,7 +65,7 @@ reference-case، قابِ wallet=اعتبار) + متنِ رضایتِ بیما�
 
 ## خوشهٔ S — کفِ ایمنی  (کد؛ **اول از همه**؛ بدونِ گِیتِ مالک — بیشترش موازی و infra-مستقل)
 
-### 73 (S1) auditِ پوششِ RLS + اثباتِ رولِ کم‌امتیاز  [⚠️ پرریسک — اولین قدمِ کدیِ کلِ MVP]
+### ✅ 73 (S1) auditِ پوششِ RLS + اثباتِ رولِ کم‌امتیاز  [⚠️ پرریسک — اولین قدمِ کدیِ کلِ MVP] — کامیت `452bcca`
 > **تصحیحِ مهم (راستی‌آزماییِ کد):** فرضیهٔ «enable-loopِ slice5 قبل از slice7..16 اجرا شده پس جداول
 > RLS خاموش دارند» **نادرست** است — راستی‌آزمایی شد: slices ۸/۹/۱۰/۱۲/۱۳ خودشان inline RLS را
 > ENABLE می‌کنند؛ slice11 فقط **ستون** به `patient_links` (که از قبل تحتِ سیاستِ slice5 است) اضافه
@@ -80,6 +80,10 @@ reference-case، قابِ wallet=اعتبار) + متنِ رضایتِ بیما�
   را روی staging/prod **اجرا و تأیید** می‌کند که `platform_app` فاقدِ BYPASSRLS/SUPERUSER و non-owner
   است (بدونِ آن FORCE RLS بی‌اثر است). این پیش‌نیازِ هر تضمینِ RLS است.
 - **پذیرش:** گزارشِ audit صفر جدولِ بالینیِ پوشش‌نداده؛ رولِ اپ بدونِ BYPASSRLS اثبات‌شده.
+- **✅ انجام شد (کامیت `452bcca`):** تنها جدولِ پوشش‌نیافته = `platform.settings` بود → inline RLS+FORCE+tenant_isolation
+  در slice16 افزوده شد (داوریِ من بینِ security[afzudan] و data-architect[allowlist]: دفاع‌در‌عمق). `test_rls_coverage.py`
+  (۶ تست) با allowlistِ **خالی** سبز شد → اثباتِ تجربیِ پوششِ کاملِ clinical+platform. بازبینیِ من: backend **703**/۱skip،
+  guard **118**، slice16 دوبار idempotent روی DBِ populated.
 
 ### 74 (S2) تستِ نشتِ بین‌مستأجری + تضمینِ تک‌مستأجر (prod config)
 گسترش/اجرای `test_e2e_tenant_isolation` + `test_guc_leak`: دو مستأجرِ مصنوعی، assert صفر ردیفِ
