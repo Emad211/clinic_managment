@@ -113,12 +113,17 @@ reference-case، قابِ wallet=اعتبار) + متنِ رضایتِ بیما�
   داوریِ من بینِ legal(send-only) و backend(blast-radius): گاردِ send-only، seedِ پایه consented، (ج) به ۷۶. بازبینیِ من:
   backend **708**/۱skip، guard **121** (۲ باگ گرفت: رگرسیونِ enrichment + NameErrorِ نگهبان).
 
-### 76 (S4) sanitizeِ محتوای بالینی در SMS (R3)
+### ✅ 76 (S4) sanitizeِ محتوای بالینی در SMS (R3) + invariantِ بوت — کامیت `e6a9e8b`
 `compliance` را گسترش بده تا **محتوای بالینی** (نامِ دارو، دوز، تشخیص، مقدارِ آزمایش) را — نه فقط واژهٔ
 تبلیغاتی — از متنِ SMS حذف/مسدود کند. (با گِیتِ KYC حرکت می‌کند ولی همین‌حالا ساخته می‌شود تا flip ایمن باشد.)
 - **+ invariantِ بوت (منتقل‌شده از ۷۵):** یک Django system check (در apps.ready) که اگر provider بتواند live شود
   (`SMS_LIVE_ENABLED` + کلید) ولی پیش‌نیازهای ایمنی (consent-gate + sanitizeِ محتوای بالینی) فراهم نباشد → خطای
   fail-closed در بوت. اینجا — جایی که sanitize ساخته می‌شود — این check غیرتاتولوژیک و معنادار است (legal: fail-closed).
+- **✅ انجام شد (کامیت `e6a9e8b`):** تیم clinical-pharmacist + security. (الف) `find_phi`/`is_phi_free` عدد-محور
+  (دوز/lab-anchor+عدد/BP-ratio/drug+عدد) با نرمال‌سازیِ ارقامِ فارسی + **حذفِ زمینهٔ خوش‌خیم** (تاریخ/ساعت/تلفن) →
+  بدونِ false-positive؛ (ب) **BLOCK** در send_approved_sms قبل از provider.send (auto-reject، نه strip)؛ (ج) system
+  checkِ `clinical.E001` (production + live + بی‌کلید → Error؛ نه tautology/toggle). داوریِ من: BLOCK نه strip، فشار/bp
+  به regexِ نسبتی واگذار. بازبینیِ من: backend **732**/۱skip سبزِ اولین اجرا (۸ MUST-PASS/۶ MUST-CATCH + spy: send صفر بار).
 
 ### 77 (S5) پوششِ audit-log
 تأیید کن visit / نوشتنِ نسخه / accept پیشنهاد / approve تعامل / issue-revoke توکن هرکدام tenant + user +
