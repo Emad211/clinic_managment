@@ -367,3 +367,44 @@ class TestResolveConnMaxAge:
             "TENANT_GUC_POOLING_ACK_VALUE changed — update ADR-0008 and "
             "all operator documentation if this is intentional."
         )
+
+
+# ---------------------------------------------------------------------------
+# clinical.E001 — SMS go-live config boot check (step 76)
+# ---------------------------------------------------------------------------
+class TestSmsLiveConfigCheck:
+    """
+    The boot invariant: in PRODUCTION, SMS_LIVE_ENABLED on + KAVENEGAR_API_KEY
+    empty → Error (real SMS would silently fall back to NullProvider). Tests the
+    pure helper with synthetic env dicts (no os.environ monkeypatching).
+    """
+
+    def _errs(self, **env):
+        from clinical.apps import _sms_live_config_errors
+        return _sms_live_config_errors(env)
+
+    def test_prod_live_without_key_errors(self):
+        errs = self._errs(PRODUCTION="1", SMS_LIVE_ENABLED="1")
+        assert len(errs) == 1, errs
+        assert errs[0].id == "clinical.E001"
+
+    def test_prod_live_with_key_ok(self):
+        assert self._errs(
+            PRODUCTION="1", SMS_LIVE_ENABLED="1", KAVENEGAR_API_KEY="real-key"
+        ) == []
+
+    def test_prod_live_blank_key_errors(self):
+        # whitespace-only key counts as empty
+        errs = self._errs(PRODUCTION="1", SMS_LIVE_ENABLED="1", KAVENEGAR_API_KEY="   ")
+        assert len(errs) == 1 and errs[0].id == "clinical.E001"
+
+    def test_prod_not_live_ok(self):
+        assert self._errs(PRODUCTION="1", SMS_LIVE_ENABLED="0") == []
+
+    def test_dev_live_without_key_ok(self):
+        # dev/CI may set SMS_LIVE_ENABLED without a key to exercise the path —
+        # the check is production-gated, so no boot error in dev.
+        assert self._errs(SMS_LIVE_ENABLED="1") == []
+
+    def test_empty_env_ok(self):
+        assert self._errs() == []

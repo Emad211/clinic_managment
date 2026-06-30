@@ -74,7 +74,7 @@ from clinical.models import (
 from clinical.followup_engine import due_clinical_events
 from clinical.engagement_approval_service import enqueue_approval
 from clinical.sms.provider import get_provider, NullProvider, SendResult
-from clinical.sms.compliance import sanitize
+from clinical.sms.compliance import sanitize, find_phi
 from clinical.audit import log_activity
 
 logger = logging.getLogger(__name__)
@@ -912,6 +912,25 @@ def send_approved_sms(
     body = sanitize(approval.message or "")
     if not body.strip():
         return {"ok": False, "reason": "empty_body", "provider_msgid": None, "pending": False}
+
+    # R3 clinical-content gate (step 76): a patient SMS must never carry this
+    # patient's clinical SPECIFICS (lab/vital values, drug doses, BP readings).
+    # Detection runs on the FINAL body (post-sanitize). BLOCK — never strip (there
+    # is no safe rewrite for PHI). Auto-reject so a bad template surfaces to staff
+    # (mirrors opt_out/consent); leaving it 'approved' would loop-block forever
+    # since the condition is permanent until the template is edited.
+    phi_signals = find_phi(body)
+    if phi_signals:
+        approval.status = EngagementApproval.STATUS_REJECTED
+        approval.decided_by = decided_by
+        approval.decided_at = dj_timezone.now()
+        approval.save(update_fields=["status", "decided_by", "decided_at"])
+        logger.warning(
+            "[engagement] send BLOCKED — clinical content in body "
+            "(approval=%s tenant=%s signals=%s) — NOT sent",
+            approval.id, tenant_id, phi_signals,
+        )
+        return {"ok": False, "reason": "clinical_content_blocked", "provider_msgid": None, "pending": False}
 
     # SEND — this is the ONLY place a real SMS may go out
     result: SendResult = provider.send(phone, body, message_type="Informational")
