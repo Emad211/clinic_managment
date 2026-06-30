@@ -869,6 +869,22 @@ def send_approved_sms(
         approval.save(update_fields=["status", "decided_by", "decided_at"])
         return {"ok": False, "reason": "opt_out", "provider_msgid": None, "pending": False}
 
+    # R1 consent gate (step 75 / S3): no real SMS without explicit, recorded
+    # sms_consent — default-deny (the column defaults FALSE in slice0). This gates
+    # ONLY the real-send boundary; the worklist/in-app path is never consent-gated
+    # ("care/red-flags are never withheld"). dispatch_patient (the enqueue path) is
+    # deliberately NOT gated — an unconsented patient still surfaces to the physician
+    # queue (a useful "needs consent" signal); the send simply stops here. This is
+    # the lawful, sufficient enforcement point (the only place provider.send() runs).
+    # NOTE: sms_consent (communication consent) is DISTINCT from data_consent
+    # (data-processing consent, slice17) — this gate uses sms_consent only.
+    if not link.sms_consent:
+        approval.status = EngagementApproval.STATUS_REJECTED
+        approval.decided_by = decided_by
+        approval.decided_at = dj_timezone.now()
+        approval.save(update_fields=["status", "decided_by", "decided_at"])
+        return {"ok": False, "reason": "no_consent", "provider_msgid": None, "pending": False}
+
     # Phone via AccountingPort
     phone: Optional[str] = _get_patient_phone(approval.patient_link_id, tenant_id)
     if not phone:

@@ -188,11 +188,14 @@ def seed_data(django_db_setup):
         ).fetchone()
         patient_id = row[0]
 
-        # Insert clinical patient_link
+        # Insert clinical patient_link.
+        # sms_consent=TRUE: the base seeded patient is a normal *consented* patient
+        # (step 75 added a consent send-gate in send_approved_sms; default is FALSE).
+        # The no-consent path has its own dedicated test (test_send_blocked_without_consent).
         conn.execute("""
             INSERT INTO clinical.patient_links
-                (tenant_id, patient_id, is_active)
-            VALUES (1, %s, TRUE)
+                (tenant_id, patient_id, is_active, sms_consent)
+            VALUES (1, %s, TRUE, TRUE)
             ON CONFLICT (tenant_id, patient_id) DO NOTHING
         """, (patient_id,))
 

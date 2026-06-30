@@ -769,6 +769,59 @@ def test_send_opted_out_patient_auto_rejects(django_db_setup, dispatch_seed):
 
 
 @pytest.mark.django_db
+def test_send_blocked_without_consent(django_db_setup, dispatch_seed):
+    """
+    S3b (step 75 / S3 consent gate): patient WITHOUT sms_consent at send time →
+    'no_consent', auto-rejects, NO send. Mirrors S3 (opt_out).
+
+    A valid phone is provided and quiet is overridden, so the ONLY thing that can
+    block is the consent gate — asserting reason=='no_consent' also proves the gate
+    fires in the right ORDER (before phone/quiet). The worklist/enqueue path is NOT
+    consent-gated; this gates only the real-send boundary.
+    """
+    from clinical.engagement_service import send_approved_sms
+    from clinical.sms.provider import NullProvider
+    from clinical.models import PatientLink, EngagementApproval
+
+    _cleanup()
+    link_id = dispatch_seed["link_id"]
+    ek = f"{_EK}-send-s3b"
+    pk = "2026-s3b"
+    _seed_event(ek, "sms")
+
+    ap = _create_approved_approval(link_id, ek, pk)
+
+    # Revoke consent AFTER approval (the base seed grants it). Restore in finally.
+    PatientLink.objects.filter(id=link_id).update(sms_consent=False)
+
+    import clinical.engagement_service as svc
+    original_phone = svc._get_patient_phone
+    svc._get_patient_phone = lambda *a, **kw: "09120000001"  # valid phone present
+    try:
+        result = send_approved_sms(
+            ap.id, 1,
+            decided_by="testmanager",
+            override_quiet=True,
+            provider=NullProvider(),
+        )
+    finally:
+        svc._get_patient_phone = original_phone
+        PatientLink.objects.filter(id=link_id).update(sms_consent=True)
+
+    assert result["ok"] is False, f"Expected blocked by consent gate, got {result}"
+    assert result["reason"] == "no_consent", (
+        f"Expected reason='no_consent' (gate must fire before phone/quiet), got {result}"
+    )
+
+    # Approval auto-rejected; nothing sent
+    ap.refresh_from_db()
+    assert ap.status == EngagementApproval.STATUS_REJECTED
+    assert ap.sent_at is None
+
+    _cleanup()
+
+
+@pytest.mark.django_db
 def test_send_no_phone_auto_rejects(django_db_setup, dispatch_seed):
     """S4: No phone number at send time → auto-rejects, no send."""
     from clinical.engagement_service import send_approved_sms

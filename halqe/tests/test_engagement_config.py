@@ -207,9 +207,12 @@ def test_approval_enrichment_all_fields(django_db_setup, approval_seed):
     assert item["event_label"] == "آزمایشِ دوره‌ای"
     # patient_name = FIRST name only (seed patient name is 'علی')
     assert item["patient_name"] == "علی", item["patient_name"]
-    # opt_out/consent from patient_links (seed defaults: opt_out False, consent False)
+    # opt_out/consent from patient_links. Base seed: opt_out False, consent True —
+    # step 75 grants sms_consent to the normal seeded patient (the no-consent send
+    # path is covered by test_send_blocked_without_consent). Still proves the
+    # enrichment DTO serialises sms_consent correctly (here: True).
     assert item["sms_opt_out"] is False
-    assert item["sms_consent"] is False
+    assert item["sms_consent"] is True
     # last_contact_at present: seed_data has a verified hba1c vital ~1 day ago
     assert item["last_contact_at"] is not None
     # contract fields present

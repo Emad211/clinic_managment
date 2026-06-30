@@ -2454,3 +2454,88 @@ def test_slice16_idempotent_re_apply(admin_conn):
     slice16_path = pathlib.Path(_MIG) / "schema_pg_slice16_platform_settings.sql"
     assert slice16_path.exists(), f"فایلِ slice16 پیدا نشد: {slice16_path}"
     admin_conn.execute(_read(str(slice16_path)))  # نباید استثنا بدهد
+
+
+# ===========================================================================
+# Slice 17 — رضایتِ پردازشِ داده (data-processing consent) — قدم ۷۵ (خوشهٔ S)
+# ===========================================================================
+
+# ---------------------------------------------------------------------------
+# معیار ۱ — چهار ستونِ data_consent روی clinical.patient_links وجود دارند
+# ---------------------------------------------------------------------------
+def test_slice17_data_consent_columns_exist(admin_conn):
+    """Slice 17: clinical.patient_links باید چهار ستونِ data_consent را داشته باشد."""
+    rows = admin_conn.execute(
+        """
+        SELECT column_name, data_type, column_default, is_nullable
+        FROM information_schema.columns
+        WHERE table_schema = 'clinical'
+          AND table_name = 'patient_links'
+          AND column_name IN (
+              'data_consent', 'data_consent_at',
+              'data_consent_version', 'data_consent_source'
+          )
+        ORDER BY column_name
+        """
+    ).fetchall()
+    col_map = {row[0]: row for row in rows}
+
+    for expected in (
+        "data_consent", "data_consent_at",
+        "data_consent_version", "data_consent_source",
+    ):
+        assert expected in col_map, (
+            f"slice17: clinical.patient_links باید ستونِ {expected} داشته باشد"
+        )
+
+    # data_consent: BOOLEAN NOT NULL DEFAULT FALSE (وضعِ امنِ default-deny)
+    dc = col_map["data_consent"]
+    assert dc[1] == "boolean", f"data_consent باید BOOLEAN باشد، یافته: {dc[1]!r}"
+    assert dc[3] == "NO", "data_consent باید NOT NULL باشد"
+    assert dc[2] is not None and "false" in dc[2].lower(), (
+        f"data_consent باید DEFAULT FALSE داشته باشد، یافته: {dc[2]!r}"
+    )
+
+    # data_consent_at: TIMESTAMPTZ nullable
+    at = col_map["data_consent_at"]
+    assert at[1] in ("timestamp with time zone",), (
+        f"data_consent_at باید TIMESTAMPTZ باشد، یافته: {at[1]!r}"
+    )
+    assert at[3] == "YES", "data_consent_at باید nullable باشد"
+
+    # version/source: TEXT nullable
+    for col_name in ("data_consent_version", "data_consent_source"):
+        col = col_map[col_name]
+        assert col[1] == "text", f"{col_name} باید TEXT باشد، یافته: {col[1]!r}"
+        assert col[3] == "YES", f"{col_name} باید nullable باشد"
+
+
+# ---------------------------------------------------------------------------
+# معیار ۲ — data_consent جدا از sms_consent است (دو مفهومِ مستقل)
+# ---------------------------------------------------------------------------
+def test_slice17_data_consent_distinct_from_sms_consent(admin_conn):
+    """Slice 17: هر دو ستونِ data_consent (پردازشِ داده) و sms_consent (پیامک) باید
+    به‌صورتِ ستون‌های مجزا روی clinical.patient_links وجود داشته باشند — یکی نباید
+    دیگری را جایگزین کند (تلهٔ دو-منبعِ-حقیقتِ consent)."""
+    rows = admin_conn.execute(
+        """
+        SELECT column_name FROM information_schema.columns
+        WHERE table_schema = 'clinical' AND table_name = 'patient_links'
+          AND column_name IN ('data_consent', 'sms_consent')
+        """
+    ).fetchall()
+    names = {r[0] for r in rows}
+    assert names == {"data_consent", "sms_consent"}, (
+        f"هر دو ستونِ data_consent و sms_consent باید مجزا وجود داشته باشند؛ یافت شد: {names}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# معیار ۳ — idempotency: اجرای مجددِ slice17 بدونِ خطا
+# ---------------------------------------------------------------------------
+def test_slice17_idempotent_re_apply(admin_conn):
+    """Slice 17: اجرای مجددِ slice17 بدونِ خطا (ADD COLUMN IF NOT EXISTS)."""
+    import pathlib
+    slice17_path = pathlib.Path(_MIG) / "schema_pg_slice17_data_consent.sql"
+    assert slice17_path.exists(), f"فایلِ slice17 پیدا نشد: {slice17_path}"
+    admin_conn.execute(_read(str(slice17_path)))  # نباید استثنا بدهد
