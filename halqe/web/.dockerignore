@@ -1,0 +1,15 @@
+# halqe/web build context excludes (step 79 / T1)
+# Keep the build context small + reproducible. node_modules and .next are
+# rebuilt inside the image (npm ci + next build); never ship the host's copies.
+# The npm offline cache is a platform build artifact — not committed, not shipped.
+node_modules
+.next
+.npm-cache
+npm-debug.log*
+*.tsbuildinfo
+coverage
+.git
+.gitignore
+Dockerfile
+.dockerignore
+README.md

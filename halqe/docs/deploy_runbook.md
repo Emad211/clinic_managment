@@ -296,23 +296,30 @@ Tick every box before declaring production live:
 
 ---
 
-## 11. Serving the web (Next.js — separate)
+## 11. Serving the web (Next.js — colocated, same-origin)
 
-The front-end (`halqe/web/`) is a **separate Next.js app** and is **not** part of
-this compose stack. It reads the API base from `NEXT_PUBLIC_API_BASE` (see
-`web/src/lib/api/_core.ts`). Two supported models:
+The front-end (`halqe/web/`) is now **part of this compose stack** as the `web`
+service (built from `halqe/web/Dockerfile`; `next.config.ts output:"standalone"`
+→ `node server.js` on :3000, internal-only). nginx fronts it **same-origin**:
+`location /` → `halqe_web`, while `/api/v1/...` → `halqe_app`. Because the web and
+API share ONE origin, the client calls the API via a **relative** `/api/v1` path
+(the default in `web/src/lib/api/_core.ts`) — **no CORS, and no
+`NEXT_PUBLIC_API_BASE` host baked into the bundle** (`NEXT_PUBLIC_*` is build-time
+only, so a relative default sidesteps that trap).
 
-1. **Separate deployment (recommended):** build + run the web on its own host
-   (`npm run build` → `npm start`, or a static export behind any static host),
-   with `NEXT_PUBLIC_API_BASE=https://api.halqe.ir/api/v1`. Add that origin to
-   `CORS_ALLOWED_ORIGINS` in the API's `.env`.
-2. **Colocate later (optional):** front the web behind the same nginx under a
-   **different hostname** (e.g. `app.halqe.ir`) with its own `server {}` block and
-   a `web` upstream — see the commented sketch at the bottom of `halqe.conf`. Do
-   **not** mix it into the `api.halqe.ir` server block.
+- `docker compose build web` builds the image — it needs the **npm registry**.
+  On a restricted/Iranian VPS see the **OFFLINE FALLBACK** note in
+  `halqe/web/Dockerfile` (prime an offline npm cache, or build on a connected
+  machine and `docker save | docker load` onto the VPS).
+- `docker compose up -d` brings up postgres → app → web → nginx.
+- **Verify after up:** `GET /` serves the UI; `GET /api/v1/...` still hits the API;
+  the public `/api/v1/card/` rate-limit still fires (429 after burst); and no
+  asset/font 404s (the Dockerfile copies `public/` + `.next/static` alongside the
+  standalone server, which it does not bundle by default).
 
-Keeping them separate keeps the API server block (and its rate-limit boundary)
-focused and simple.
+**Scale option (NOT the pilot model):** a two-host split (api.halqe.ir +
+app.halqe.ir — separate `server {}` + cert + `CORS_ALLOWED_ORIGINS`) is available
+for larger multi-tenant scaling; see the SCALE NOTE at the bottom of `halqe.conf`.
 
 ---
 

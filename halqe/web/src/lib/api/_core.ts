@@ -12,13 +12,17 @@
  * This module imports nothing from those domains — keeps the dependency graph
  * acyclic (_core → domains, never the reverse).
  *
- * Reads NEXT_PUBLIC_API_BASE (default: http://127.0.0.1:8099/api/v1).
+ * Reads NEXT_PUBLIC_API_BASE (default: "/api/v1" — relative, same-origin behind nginx).
  * Attaches Bearer JWT from localStorage when present.
  * All request/response shapes mirror the django-ninja schemas in config/api.py.
  */
 
-export const API_BASE =
-  process.env.NEXT_PUBLIC_API_BASE ?? "http://127.0.0.1:8099/api/v1";
+// Default to a RELATIVE same-origin path (step 79 / T1): in production the web is
+// served behind the SAME nginx as the API (/ → web, /api/v1 → backend), so a
+// relative base means no CORS and no build-time host baking (NEXT_PUBLIC_* is
+// inlined at build). Dev sets NEXT_PUBLIC_API_BASE=http://127.0.0.1:8099/api/v1
+// to reach the local backend on a different port.
+export const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "/api/v1";
 
 // ────────────────────────────────────────────────────────────
 // Token storage  (localStorage — simplest for this slice)

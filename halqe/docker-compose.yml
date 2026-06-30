@@ -6,8 +6,9 @@
 # VPS provisioning + TLS certs + backup cron are the OWNER's gate. Bringing this
 # up live is a deliberate, owner-approved act (see docs/deploy_runbook.md).
 #
-# TOPOLOGY
-#   internet ──443/80──▶ nginx ──(internal net)──▶ app:8000 ──▶ postgres:5432
+# TOPOLOGY (same-origin: nginx fronts BOTH the web UI and the API)
+#   internet ──443/80──▶ nginx ──(internal net)──▶ /        → web:3000 (Next.js)
+#                                              └──▶ /api/v1 → app:8000 ──▶ postgres:5432
 #                                                                   │
 #                                                          backup (cron/service)
 #
@@ -118,6 +119,30 @@ services:
         max-file: "5"
 
   # ---------------------------------------------------------------------------
+  # web — the Next.js patient/clinic UI. Built from halqe/web/Dockerfile
+  # (next.config output:"standalone" → `node server.js` on :3000). Internal-only;
+  # nginx fronts it at `/`, SAME-ORIGIN with /api/v1 — so the client calls the API
+  # via a RELATIVE path (no CORS, no baked API host). See deploy_runbook.md §11.
+  # The image build needs the npm registry (offline fallback in halqe/web/Dockerfile).
+  # ---------------------------------------------------------------------------
+  web:
+    build:
+      context: ./web
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    # No env needed for the pilot: the client uses a RELATIVE /api/v1 base
+    # (same-origin behind nginx). NEXT_PUBLIC_* is build-time only and the relative
+    # default in web/src/lib/api/_core.ts needs no override.
+    networks:
+      - internal
+    # NO `ports:` — :3000 is internal-only; nginx is the only public ingress.
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
+
+  # ---------------------------------------------------------------------------
   # nginx — the ONLY public ingress. Terminates TLS, redirects 80→443, proxies
   # /api/ + probes to app:8000, and is the REAL rate-limit boundary (limit_req)
   # for the public patient endpoints. Config + certs are mounted READ-ONLY.
@@ -137,6 +162,7 @@ services:
       - certs:/etc/nginx/certs:ro
     depends_on:
       - app
+      - web
     networks:
       - internal
 
