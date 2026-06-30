@@ -15,6 +15,7 @@ ClinicalIndicator: clinical_indicators — live threshold/target metadata.
 PatientFlag: patient_flags — per-patient categorical/bool decision inputs.
 """
 from django.db import models
+from django.db.models.functions import Now
 
 
 class PatientLink(models.Model):
@@ -37,7 +38,13 @@ class PatientLink(models.Model):
     data_retention_until = models.DateField(null=True, blank=True)
     is_active = models.BooleanField(default=True)
     enrolled_by = models.TextField(null=True, blank=True)
-    enrolled_at = models.DateTimeField(auto_now_add=True)
+    # enrolled_at: db_default=Now() (NOT auto_now_add) — step 78 / S6.
+    # auto_now_add SILENTLY OVERRODE any caller-set value with insert-time, so a
+    # future patient-import could not record the real enrollment date → corrupted
+    # cohort_outcome baseline windows (anchored at enrolled_at ±30/90d). With
+    # db_default the column is SETTABLE (a backdated import value is preserved) and,
+    # when unset, the DB column DEFAULT now() applies (slice0:129) — never NULL.
+    enrolled_at = models.DateTimeField(db_default=Now())
     notes = models.TextField(null=True, blank=True)
     updated_at = models.DateTimeField(auto_now=True)
 
