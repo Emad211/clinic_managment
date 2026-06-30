@@ -219,10 +219,22 @@ prod-config (`test_db_boundary` + `test_prod_config` + سوئیتِ isolation). 
 
 ## خوشهٔ U — رابطِ حلقهٔ مراقبت  (روی **مسیرِ بحرانیِ go-live**؛ پس از T1؛ ۸۷ ایمنی‌مرتبط = آیتمِ UAT)
 
-### 84 (U1) صفحهٔ وبِ `/control-room`
+### ✅ 84 (U1) صفحهٔ وبِ `/control-room` — کامیت `9f71992`
 wrapperِ نازک روی ۳ endpointِ GETِ موجود (ترتیبِ بالینی‌اول، برجستگیِ red-flag، ستونِ درآمدِ
 manager-only). تستِ نگهبانِ معماری (صفر نوشتنِ حالت). **اول diff قراردادِ control_room/manager با
 `docs/openapi.json`.**
+
+> **انجام‌شده (۸۴):** تیمِ موازیِ Opus = ux-ui-designer + frontend-dev-advisor؛ سازنده = frontend-web-engineer
+> (Opus). diffِ قرارداد با `docs/openapi.json` اول انجام شد (خالصِ فرانت — endpointها از قبل بودند، صفر تغییرِ
+> بک‌اند). فایل‌ها: `src/lib/api/control-room.ts` (کلاینتِ GET-only، typeهای دقیق، `breakdown:unknown[]` دفاعی) +
+> barrel + لینکِ `Nav` (تک‌خط؛ IAِ کامل کارِ ۸۶) + `src/app/control-room/{page.tsx,control-room.module.css}` +
+> `__tests__/control-room.test.tsx` (نگهبانِ GET-only + تستِ completeness که تابعِ نوشتنیِ آینده را می‌گیرد).
+> چیدمان: chip-filterِ کوهورت (فیلترِ سمتِ کلاینت روی `cohorts[].ids`) → جدول → کارتِ conversion. panel+conversion با
+> `Promise.allSettled` (panel خطا→کلِ صفحه؛ conversion خطا→فقط کارت؛ ۴۰۱→logout). score badge + expandِ inlineِ
+> «چرا؟» (نه tooltip). red-flag = آیکن+متن+رنگ (کوررنگی). گِیتِ درآمد روی `panel.show_value` (نه getRole). قیفِ
+> conversion وقتی `n_sufficient=false` **هیچ عددی نمی‌دهد**، فقط متنِ `framing` با `role="note"` (صداقت). empty=خبرِ
+> خوب نه خطا. بدونِ شماره‌تلفن/PHI در جدول. **بازبینیِ مستقلِ من:** `tsc --noEmit`=0 + jest **۵۱۳/۵۱۳** (۲۵ suite،
+> +۵ نسبت به ۵۰۸، صفر رگرسیون). بدونِ Python/schema→بدونِ pytest. رندرِ بصریِ مرورگر به deploy موکول (صادقانه).
 
 ### 85 (U2) صفحهٔ پذیرش (intake)
 search-by-national-id که match پلِ read-only حسابداری را نشان می‌دهد + register/link + مسیرِ «بیمارِ نو»
