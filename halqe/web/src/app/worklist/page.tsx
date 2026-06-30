@@ -10,7 +10,7 @@ import {
   ApiError,
 } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
-import { formatJalali, formatToman } from "@/lib/jalali";
+import { formatJalali, formatToman, todayTehranISO } from "@/lib/jalali";
 import Nav from "@/components/Nav";
 import styles from "./worklist.module.css";
 
@@ -39,6 +39,21 @@ function statusLabel(status: string): string {
   if (status === "done") return "انجام‌شده";
   if (status === "dismissed") return "رد‌شده";
   return "باز";
+}
+
+/**
+ * A task is "overdue" only when it is still open AND its due date is strictly
+ * before today (Tehran). Done/dismissed tasks are never flagged — they are
+ * resolved, not pending triage. ISO YYYY-MM-DD strings compare lexicographically,
+ * so `<` is a correct date comparison (and we use Tehran's "today", not UTC).
+ *
+ * Triage safety (GP): a follow-up that is months overdue must look different
+ * from one due today, so a frail/elderly patient does not slip through.
+ */
+function isOverdue(status: string, dueDate: string | null): boolean {
+  if (status !== "open") return false;
+  if (!dueDate) return false;
+  return dueDate < todayTehranISO();
 }
 
 export default function WorklistPage() {
@@ -270,9 +285,15 @@ export default function WorklistPage() {
                         {/* Reason / kind */}
                         <td>{item.reason ?? item.kind ?? "—"}</td>
 
-                        {/* Due date via Jalali stub */}
+                        {/* Due date via Jalali stub; flag overdue open tasks */}
                         <td className={styles.monoCell}>
                           {formatJalali(item.due_date)}
+                          {isOverdue(effectiveStatus, item.due_date) && (
+                            <span className={styles.overdue} role="status">
+                              <span aria-hidden="true">⚠ </span>
+                              سررسید گذشته
+                            </span>
+                          )}
                         </td>
 
                         {/* Status badge */}

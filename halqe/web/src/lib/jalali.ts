@@ -171,6 +171,23 @@ export function formatToman(amount: number | null | undefined): string {
 }
 
 /**
+ * Today's date in Tehran, as a Gregorian "YYYY-MM-DD" string.
+ *
+ * Why Intl + Asia/Tehran (not `new Date().toISOString()`): toISOString emits the
+ * date in UTC, which is off by Tehran's +3:30 offset around midnight — so within
+ * the ~3.5h window after Tehran midnight it would report "yesterday". Intl with
+ * an explicit timeZone gives the correct Tehran calendar date regardless of the
+ * browser's own timezone. The "en-CA" locale formats as ISO (YYYY-MM-DD), which
+ * sorts lexicographically — so string comparison with stored YYYY-MM-DD dates is
+ * a correct date comparison.
+ */
+export function todayTehranISO(): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Tehran" }).format(
+    new Date(),
+  );
+}
+
+/**
  * Return only the Jalali year from an ISO date/datetime string, as Persian digits.
  * Example: "2026-06-24" → "۱۴۰۵"
  */

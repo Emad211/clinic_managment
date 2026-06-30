@@ -315,7 +315,7 @@ export function RecentVitalsTable({ vitals }: { vitals: VitalReadingDTO[] }) {
                     className={styles.vitalValueCell}
                     aria-label={lvl.ariaLabel || undefined}
                   >
-                    <span className={styles.vitalValue}>{v.value}</span>
+                    <span className={styles.vitalValue}>{toFarsiDigits(v.value)}</span>
                     {badgeClass && (
                       <span
                         className={`${styles.vitalLevelBadge} ${badgeClass}`}

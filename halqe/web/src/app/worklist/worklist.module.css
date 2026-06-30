@@ -189,6 +189,19 @@
   text-align: left;
 }
 
+/* Overdue marker — distinguished by icon + weight + colour (not colour alone),
+   so it survives colour-blindness. Sits under the Jalali due date. */
+.overdue {
+  display: block;
+  direction: rtl;
+  text-align: right;
+  margin-top: var(--space-1);
+  font-size: 0.8125rem;
+  font-weight: 700;
+  color: var(--color-danger);
+  white-space: nowrap;
+}
+
 /* ── Status badges ── */
 .badge {
   display: inline-block;
