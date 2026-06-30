@@ -134,7 +134,7 @@ patient را لاگ می‌کنند؛ گپ‌ها را پر کن. (verification 
   best-effort است). داوریِ من: رفعِ card_token_revoked patient_link_id را skip کردم (revoke فقط token_id دارد؛ query
   افزودن طبقِ توصیهٔ security اجتناب شد)؛ read-access-log موکول (O-3). بازبینیِ من: backend **735**/۱skip سبزِ اولین اجرا.
 
-### 78 (S6) بنیانِ یکپارچگیِ سنجش — رفعِ باگِ `enrolled_at` + seedِ طولیِ تست  [⚠️ پرریسک — پیش از هر importِ واقعی]
+### ✅ 78 (S6) بنیانِ یکپارچگیِ سنجش — رفعِ باگِ `enrolled_at` + seedِ طولیِ تست  [⚠️ پرریسک] — کامیت `e8e8705`
 > **باگِ واقعیِ راستی‌آزمایی‌شده:** `clinical/models.py:40` → `enrolled_at = auto_now_add=True`. این
 > ORM **هر مقداری که import ست کند را بی‌صدا دور می‌اندازد** و زمانِ درجِ ردیف را می‌نشاند → هر بیمارِ
 > import‌شده `enrolled_at = روزِ import` می‌گیرد → **پنجرهٔ baseline و freezeِ holdout برای همیشه
@@ -145,6 +145,15 @@ patient را لاگ می‌کنند؛ گپ‌ها را پر کن. (verification 
   pipelineِ outcome + holdout یک‌بار** (پنجره/baseline/paired-subset/شمارندهٔ holdout همه fire شوند) —
   جایی که باگِ `enrolled_at` گرفته می‌شود. (این **پیش از** خوشهٔ V است، نه parallel-W؛ چون freezeِ holdoutِ
   واقعی در V بازگشت‌ناپذیر است و pipeline باید قبلش روی دادهٔ مصنوعی اثبات شود.)
+- **✅ انجام شد (کامیت `e8e8705`):** تیم data-architect + clinical-data-scientist. رفع: `enrolled_at = DateTimeField(db_default=Now())`
+  (نه auto_now_add، نه null=True) — settable + unset→DEFAULT now()ِ DB؛ **بدونِ تغییرِ schema**، blast-radius صفر (هیچ
+  PatientLink.objects.create در کدبیس نیست). تست: `test_enrolled_at.py` (۲ تست ORM-create). **یافتهٔ صادقانهٔ CDS (چهارمین
+  «از قبل پوشش‌دار»):** seed + اعتبارسنجیِ outcome از قبل در test_cohort_outcomes (۳۵-بیمار، N>=30، verified-gate، thin-gate)؛
+  holdout در test_engagement_holdout H8/H9/H10 → **seed/تستِ حجمِ نو نساختم** (over-engineering). داوریِ من: D1 negative-control
+  skip (تستِ موجود anchoring را مثبت اثبات می‌کند). بازبینیِ من: backend **737**/۱skip سبزِ اولین اجرا.
+
+> 🏁🏁 **خوشهٔ S (کفِ ایمنی، قدم‌های ۷۳–۷۸) کامل شد** — auditِ RLS · تک‌مستأجر · رضایت · sanitizeِ PHI · پوششِ audit-log · رفعِ enrolled_at.
+> backend ۷۳۷ / guard ۱۲۱، همه روی main. بعدی: **خوشهٔ T (بخش‌های محلیِ بدونِ‌VPS: T1 webِ Dockerfile/compose، T2 scheduler)** سپس خوشهٔ U.
 
 ## خوشهٔ T — ستونِ استقرار  (گِیت: R1/VPS؛ T1ِ وب **محلی و موازی** ساختنی است)
 
