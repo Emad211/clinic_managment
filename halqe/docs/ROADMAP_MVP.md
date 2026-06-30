@@ -96,7 +96,7 @@ reference-case، قابِ wallet=اعتبار) + متنِ رضایتِ بیما�
   (ACK=`ALLOW_ADDITIONAL_TENANT=clinic-2-approved`، idempotent-safe، dev no-op) + `test_single_tenant_guarantee.py` (۴ تست).
   داوریِ من: prod-only Python حالا؛ **enforcementِ سختِ DB-level به T1 موکول** (blast-radius). بازبینیِ من: backend **707**/۱skip.
 
-### 75 (S3) رضایت: AND-clauseِ پیامک + برشِ رضایتِ پردازشِ داده + invariantِ بوت
+### ✅ 75 (S3) رضایت: AND-clauseِ پیامک + برشِ رضایتِ پردازشِ داده (invariantِ بوت → ۷۶) — کامیت `b1cc925`
 > راستی‌آزمایی: ستونِ `sms_consent` در slice0 **هست** (پس AND-clause همین‌حالا روی آن ساختنی است)، اما
 > ستونِ **رضایتِ پردازشِ داده وجود ندارد** → نیازِ یک برشِ افزایشی.
 - (الف) در dispatcher، ارسالِ پیامک را علاوه بر `sms_opt_out` به `sms_consent` هم گِیت کن (default-deny
@@ -104,13 +104,21 @@ reference-case، قابِ wallet=اعتبار) + متنِ رضایتِ بیما�
   که مسیرِ worklist/NullProvider به consent گِیت نمی‌شود** (فقط ارسالِ واقعیِ SMS).
 - (ب) یک برشِ افزایشیِ idempotent برای `data_consent` + `data_consent_at`/`version`/`source` (ADD COLUMN
   IF NOT EXISTS، هرگز فرضِ DBِ تازه).
-- (ج) invariantِ بوت: «(اعمالِ consent + sanitize فعال) هرگاه provider غیرِ Null باشد» + «رولِ اپ فاقدِ BYPASSRLS».
+- (ج) invariantِ بوت **→ به قدم ۷۶ موکول شد** (داوریِ legal+backend: نسخهٔ consent-onlyِ آن tautological
+  است چون گیتْ کدِ همیشه-فعال است؛ در ۷۶ کنارِ sanitize به یک Django system checkِ fail-closedِ معنادار تبدیل می‌شود).
 - **توجهِ ترتیبی:** سطحِ **capture**ِ رضایت (UI + متنِ privacy) به قدمِ **پذیرش/۸۵ (U2)** و به متنِ
   نهاییِ وکیل (R4) گره می‌خورد و از **config** رندر می‌شود، نه hardcode.
+- **✅ انجام شد (کامیت `b1cc925`):** گاردِ consent فقط در `send_approved_sms` (نه worklist/dispatch — care دریغ نمی‌شود)؛
+  slice17 data_consent (column-only، بدونِ منطقِ خواننده، جدا از sms_consent)؛ تستِ مثبتِ no-consent + ۳ نگهبانِ slice17.
+  داوریِ من بینِ legal(send-only) و backend(blast-radius): گاردِ send-only، seedِ پایه consented، (ج) به ۷۶. بازبینیِ من:
+  backend **708**/۱skip، guard **121** (۲ باگ گرفت: رگرسیونِ enrichment + NameErrorِ نگهبان).
 
 ### 76 (S4) sanitizeِ محتوای بالینی در SMS (R3)
 `compliance` را گسترش بده تا **محتوای بالینی** (نامِ دارو، دوز، تشخیص، مقدارِ آزمایش) را — نه فقط واژهٔ
 تبلیغاتی — از متنِ SMS حذف/مسدود کند. (با گِیتِ KYC حرکت می‌کند ولی همین‌حالا ساخته می‌شود تا flip ایمن باشد.)
+- **+ invariantِ بوت (منتقل‌شده از ۷۵):** یک Django system check (در apps.ready) که اگر provider بتواند live شود
+  (`SMS_LIVE_ENABLED` + کلید) ولی پیش‌نیازهای ایمنی (consent-gate + sanitizeِ محتوای بالینی) فراهم نباشد → خطای
+  fail-closed در بوت. اینجا — جایی که sanitize ساخته می‌شود — این check غیرتاتولوژیک و معنادار است (legal: fail-closed).
 
 ### 77 (S5) پوششِ audit-log
 تأیید کن visit / نوشتنِ نسخه / accept پیشنهاد / approve تعامل / issue-revoke توکن هرکدام tenant + user +
