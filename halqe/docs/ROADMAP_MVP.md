@@ -170,12 +170,30 @@ patient را لاگ می‌کنند؛ گپ‌ها را پر کن. (verification 
   CORS). بازبینیِ من: `docker compose config` PASS، web jest **508/508**، tsc پاک. **buildِ کاملِ ایمیج (npm آفلاین) انجام نشد →
   صادقانه به deploy/گِیتِ VPS موکول.**
 
-### 80 (T2) provisionِ schedulerِ تعامل/پیگیری  [⚠️ پرریسک — «حلقهٔ نیمه‌مرده»]
+### ✅ 80 (T2) provisionِ schedulerِ تعامل/پیگیری  [⚠️ پرریسک — «حلقهٔ نیمه‌مرده»] — کامیت `8e9ec50`
 serviceِ scheduler در compose (host cron یا compose-loop) که `run_engagement` + `generate_followups`
 را با advisory-lockِ موجود صدا می‌زند؛ **یک مالکِ واحد**؛ **DISABLED provision شود** و `run_engagement`
 فقط پس از تأییدِ freezeِ holdout (V3) via یک فلگِ per-tenantِ `onboarding_complete` فعال شود (تا علیهِ
 holdoutِ منجمدنشده tick نزند → حفاظت از ادعای incrementality). **heartbeatِ «آخرین tick» + موفقیتِ
 بکاپ از همان بوتِ اول** قابلِ‌رؤیتِ اپراتور باشد (نه پس از گِیتِ T5).
+
+> **انجام‌شده (۸۰):** تیمِ موازیِ Opus = delivery-reliability + clinical-data-scientist. سرویسِ
+> `scheduler` در `docker-compose.yml` (همان imageِ backend، `profiles:["scheduler"]` → با `up` معمولی
+> بالا نمی‌آید = «DISABLED provision»؛ entrypoint به حلقهٔ `sh` override شد تا apply_schema را تکرار
+> نکند؛ `depends_on app:service_started`). هر tick: `generate_followups` (همیشه — مراقبت دریغ نشود) سپس
+> `run_engagement $WL`؛ `|| echo` بعدِ **هر دو** چون generate_followups در خطا `raise` می‌کند.
+> **گِیتِ holdout:** `SCHEDULER_WORKLIST_ONLY` پیش‌فرض `"1"` (fail-safe — outreach تا freezeِ holdout
+> خاموش، سپس مالک به `"0"` flip می‌کند) — جایگزینِ ساده و درستِ ایدهٔ فلگِ per-tenantِ نقشه، چون
+> `run_engagement --worklist-only` همین‌حالا کانالِ SMS را کامل می‌بندد. **heartbeat:** نوشتنِ timestamp در
+> `/tmp/scheduler.heartbeat` (کانتینر non-root → volumeِ root-owned نوشتنی نیست) + خطِ لاگ + healthcheckِ
+> `stat`+`date` (پنجره ۳× interval → «up ولی گیرکرده» را unhealthy می‌کند). داورِ داده: enqueue/worklist
+> هم می‌توانند holdout را آلوده کنند → پیش‌فرضِ worklist-only درست؛ توالیِ assignment→baseline→activation
+> نگرانیِ runbook است (مستند شد). **بازبینیِ من:** `docker compose config` PASS (scheduler خارج از
+> default، داخلِ `--profile scheduler`، فقط nginx پورت publish، `$$` runtime درست، env interpolation درست).
+> بدونِ Python/schema → بدونِ pytest/guard. اجرای زندهٔ کانتینر (اولین tick + گذارِ healthcheck) به deploy
+> موکول (صادقانه، مثلِ ۷۹). فایل‌ها: `docker-compose.yml` + `.env.example` (`SCHEDULER_*`) +
+> `docs/runbook_engagement.md` (بخشِ sidecar بازنویسی شد). موکولِ مستندشده: جدولِ persistentِ last-tick +
+> ثبتِ freeze/activation-date برای تحلیلِ stepped-wedge؛ چک‌لیستِ go-live = فعال‌بودنِ scheduler.
 
 ### 81 (T3) dry-runِ اجباریِ staging روی hostِ هم‌سانِ VPS
 walkِ گاردهای بوت؛ `apply_schema` از clean **سپس** re-apply روی کپیِ **populated** (idempotency، صفر
