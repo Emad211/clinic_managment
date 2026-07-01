@@ -32,6 +32,10 @@ RUN npm ci
 FROM node:22-bookworm-slim AS builder
 WORKDIR /app
 ENV NEXT_TELEMETRY_DISABLED=1
+# Cap the node heap: `next build` on a small VPS (the 2 vCPU / 4 GB staging box)
+# can OOM when node expands its default heap while postgres etc. share the RAM.
+# 1536 MB is plenty for this app's build and harmless on bigger machines.
+ENV NODE_OPTIONS=--max-old-space-size=1536
 COPY --from=deps /app/node_modules ./node_modules
 COPY . ./
 RUN npm run build
