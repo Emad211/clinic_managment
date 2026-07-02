@@ -100,3 +100,87 @@ Override the IP for a different box: `VPS_IP=1.2.3.4 sudo -E bash deploy/provisi
 For everything else (backup schedule, restore drill, rollback, cert renewal, the
 go-live checklist) the authoritative source remains
 [`deploy_runbook.md`](deploy_runbook.md).
+
+---
+
+## Post-deploy: T3 verification drills (run on THIS live box, from the Arvan console)
+
+Verified by the team (principal-architect + delivery-reliability + security-privacy,
+2026-07-02) against the running stack. None of these need real patient data — they
+use throwaway/synthetic DBs and never touch the live `halqe_app` DB.
+
+```sh
+cd /opt/halqe/halqe
+CF="-f docker-compose.yml -f deploy/compose.iran-mirrors.yml"   # keep the SAME -f set everywhere
+
+# (a) restore drill — proves backups are actually restorable. Uses the postgres
+#     CONTAINER's version-matched tools (host has no psql; port 5432 is unpublished).
+#     PASS = final line "DRILL RESULT: PASS" + exit 0. Touches ONLY halqe_drill_src /
+#     halqe_restore_drill (hard-guarded), never the live DB.
+PG_CONTAINER=$(docker compose $CF ps -q postgres) \
+  PGUSER="$PG_USER" PGPASSWORD="$PG_PASSWORD" bash scripts/restore_drill.sh
+
+# (b) backup-before-deploy — dump lands in the NAMED VOLUME `backups` (NOT a host path).
+docker compose $CF --profile backup up backup    # one-shot, watch output
+#     then copy OFF-BOX (PHI must not live only in one volume):
+docker run --rm -v halqe_backups:/b -v /root/halqe-backups:/out alpine sh -c 'cp /b/*.dump /b/*.sha256 /out/ 2>/dev/null; ls -l /out'
+
+# (c) fail-fast boot guard — throwaway container, does NOT touch the live app.
+#     PASS = NON-zero exit + explicit SECRET_KEY rejection.
+docker compose $CF run --rm -e SECRET_KEY= app python -c "import config.settings"; echo "exit=$?"
+
+# (d) 429 burst on the public token endpoints (need a real card token first).
+#     PASS = 429 appears (card after ~6 rapid reqs, report after ~4).
+for i in $(seq 1 20); do curl -k -s -o /dev/null -w "%{http_code}\n" https://127.0.0.1/api/v1/card/<TOKEN>; done | sort | uniq -c
+
+# Bring up the scheduler (else the clinical worklist never generates in prod):
+docker compose $CF --profile scheduler up -d scheduler
+docker compose $CF ps            # scheduler must show healthy after warmup
+```
+
+## Pre-stage the T5 leak-gate NOW (no PHI needed)
+
+Run the isolation/RLS/leak/verified suites on the LIVE prod-config Postgres, using the
+least-privilege `halqe_app` role (NOT postgres — else the anti-false-green guard warns):
+`test_rls_coverage`, `test_guc_leak`, `test_e2e_tenant_isolation` (+ the superuser guard),
+`test_single_tenant_guarantee`, and the verified-gate card test. These build a `_test`
+DB, so they never pollute `halqe_app`. If green here, T5 (step 83) becomes a rerun+sign,
+not a bug hunt. ⚠️ Confirm RLS on `platform.users` (the E4 case must PASS, not warn).
+
+## T4 (domain + Arvan CDN) — prep BEFORE the cutover
+
+`halqehealth.ir` is bought (pending IRNIC). When live:
+1. **CDN → origin**: add `halqehealth.ir` in Arvan CDN, A-record/origin → `95.38.187.128`,
+   proxy ON. Edge is reachable from everywhere (incl. mobile) → this ALSO fixes the
+   owner's access problem. `server_name _;` already accepts any Host — no nginx edit for that.
+2. **`.env`**: add the domain to `ALLOWED_HOSTS` (currently IP,127.0.0.1,localhost).
+3. **TLS**: Arvan edge serves a real DV cert to users; set CDN→origin to full/verify
+   (keep origin TLS — self-signed is acceptable to the edge, or upgrade origin to
+   Let's Encrypt via **DNS-01** since http-01 can't reach this box from outside). For
+   PHI, edge-only TLS is NOT enough — the CDN→origin hop must be encrypted too.
+4. **⚠️ real_ip (the #1 T4 risk)**: behind the CDN every request arrives from an Arvan
+   EDGE ip, so `limit_req_zone $binary_remote_addr` (the sacred card/report rate-limit)
+   would bucket ALL patients under one IP. FIX: add Arvan's official edge ranges to
+   `set_real_ip_from` in `deploy/nginx/halqe.conf` (lines 82-87) so nginx trusts Arvan's
+   XFF and extracts the real client IP. Then RE-TEST the 429 burst from an EXTERNAL
+   network via the domain. (Get the edge ranges from Arvan's docs — do not guess.)
+5. **Origin firewall (hide the origin)**: allow only Arvan edge ranges + `80/443` to the
+   origin, else an attacker hits the IP directly and bypasses the CDN/WAF/rate-limit.
+   `8000/5432` stay unpublished. Use the Arvan security-group (Docker bypasses UFW).
+
+## Security cleanup after this deploy (owner, in the Arvan panel)
+
+The code transfer exchanged three secrets over chat — rotate/close, in order:
+1. **S3 keys** → revoke/rotate in the panel; make the `halqe-deploy` bucket **private** or
+   **delete** it (and purge object versions). If S3 was a one-shot transfer tool, delete the key.
+2. **Server console password** → change it; better, switch SSH to key-only
+   (`PasswordAuthentication no`).
+3. **(conservative)** rotate `SECRET_KEY` once (cheap now — no real sessions/PHI yet);
+   do NOT rotate `PG_PASSWORD` (would lock out the initialised pgdata volume). Scan git
+   history for accidental secrets. App secrets were generated on-server and never printed
+   → safe unless the leaked root password let someone read `.env`.
+
+> **Environments:** do NOT build a second box — upgrade THIS one to production
+> (provision_vps.sh is idempotent). The staging→prod boundary is the **T5 gate**: before
+> the first real patient row, wipe synthetic/drill DBs, record a final `restore_drill`
+> PASS, and prove restore on a fresh host once (single-site disaster rehearsal).
