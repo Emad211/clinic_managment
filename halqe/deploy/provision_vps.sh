@@ -48,6 +48,14 @@ export DEBIAN_FRONTEND
 # community fallback. Used only when /etc/docker/daemon.json has no mirror yet.
 DOCKER_MIRRORS='["https://docker.arvancloud.ir", "https://focker.ir"]'
 
+# Iran national-uplink mode. Default ON for THIS box (its network reaches only
+# in-country hosts). When 1: apt is repointed at an Iranian Ubuntu mirror (STEP 3)
+# and the compose build uses deploy/compose.iran-mirrors.yml (pip/npm mirrors,
+# STEP 7). Set IRAN_MIRRORS=0 to fall back to upstream (only if this box ever
+# gets unrestricted egress).
+IRAN_MIRRORS="${IRAN_MIRRORS:-1}"
+APT_MIRROR_URL="${APT_MIRROR_URL:-http://mirror.arvancloud.ir/ubuntu}"
+
 # ---------------------------------------------------------------------------
 # Small helpers
 # ---------------------------------------------------------------------------
@@ -70,6 +78,16 @@ cd "${HALQE_DIR}"
 
 # One compose invocation string reused everywhere (v2 plugin: `docker compose`).
 COMPOSE="docker compose"
+
+# Compose -f file list. When IRAN_MIRRORS=1 we layer the Iran-mirror build
+# overlay on top of the base file. CRITICAL: the SAME -f list must be passed to
+# config/build/up/ps — compose resolves services (and their config hash) per the
+# -f set, so mixing them would recreate/re-resolve services inconsistently.
+if [ "${IRAN_MIRRORS}" = "1" ]; then
+    COMPOSE_FILES="-f docker-compose.yml -f deploy/compose.iran-mirrors.yml"
+else
+    COMPOSE_FILES=""
+fi
 
 # ---------------------------------------------------------------------------
 # STEP 1 — Preflight: privileges, OS, resources, and the .env PRECONDITION.
@@ -152,6 +170,48 @@ else
 fi
 
 # ---------------------------------------------------------------------------
+# STEP 2b — Repoint apt at an IRANIAN Ubuntu mirror (only when IRAN_MIRRORS=1).
+# WHY: archive.ubuntu.com / security.ubuntu.com time out from this box; Arvan's
+# mirror serves BOTH archive and security. Ubuntu 24.04 uses the deb822 format
+# (/etc/apt/sources.list.d/ubuntu.sources); 22.04 uses the classic sources.list.
+# Idempotent: back up the original ONCE (.orig), then rewrite the URIs each run.
+# If the mirror is unreachable, we warn and continue — the needed packages may
+# already be present in the base image.
+# ---------------------------------------------------------------------------
+if [ "${IRAN_MIRRORS}" = "1" ]; then
+    step "STEP 2b: apt → Iranian mirror (${APT_MIRROR_URL})"
+    DEB822=/etc/apt/sources.list.d/ubuntu.sources
+    CLASSIC=/etc/apt/sources.list
+    if [ -f "${DEB822}" ]; then
+        # deb822 (24.04 noble): rewrite the URIs: line(s) to the Iranian mirror.
+        [ -f "${DEB822}.orig" ] || cp -a "${DEB822}" "${DEB822}.orig"
+        # Both archive (URIs: http://archive.ubuntu.com/ubuntu) and security
+        # (http://security.ubuntu.com/ubuntu) are served by Arvan's /ubuntu path.
+        sed -i -E "s#^([[:space:]]*URIs:[[:space:]]*).*#\1${APT_MIRROR_URL}#" "${DEB822}"
+        info "rewrote URIs: in ${DEB822} → ${APT_MIRROR_URL} (backup: ${DEB822}.orig)"
+    else
+        # classic sources.list (22.04 jammy or minimal images): rewrite from scratch.
+        CODENAME="${VERSION_CODENAME:-}"
+        if [ -z "${CODENAME}" ] && [ -r /etc/os-release ]; then
+            # shellcheck disable=SC1091
+            . /etc/os-release
+            CODENAME="${VERSION_CODENAME:-}"
+        fi
+        if [ -z "${CODENAME}" ]; then
+            info "WARNING: could not resolve Ubuntu codename — leaving apt sources as-is."
+        else
+            [ -f "${CLASSIC}.orig" ] || cp -a "${CLASSIC}" "${CLASSIC}.orig" 2>/dev/null || true
+            cat > "${CLASSIC}" <<EOF
+deb ${APT_MIRROR_URL} ${CODENAME} main restricted universe multiverse
+deb ${APT_MIRROR_URL} ${CODENAME}-updates main restricted universe multiverse
+deb ${APT_MIRROR_URL} ${CODENAME}-security main restricted universe multiverse
+EOF
+            info "rewrote ${CLASSIC} for ${CODENAME} → ${APT_MIRROR_URL} (backup: ${CLASSIC}.orig)"
+        fi
+    fi
+fi
+
+# ---------------------------------------------------------------------------
 # STEP 3 — Packages from UBUNTU's OWN apt repo (NOT docker.com — it may be
 # unreachable from Iran). docker.io + docker-compose-v2 give us `docker` and the
 # `docker compose` v2 plugin, which is all the compose file needs.
@@ -165,7 +225,13 @@ for pkg in docker.io docker-compose-v2 git curl openssl; do
 done
 if [ -n "${NEED_PKGS# }" ]; then
     info "installing:${NEED_PKGS}"
-    apt-get update -qq
+    # With the Iranian mirror the update may still fail (mirror down / partial);
+    # don't abort the whole run on that — warn and try the install anyway, since
+    # the packages may already be cached/present. `apt-get install` will fail
+    # loudly below if they truly cannot be fetched.
+    if ! apt-get update -qq; then
+        info "WARNING: apt-get update failed (mirror unreachable?) — continuing to install (may use cache)."
+    fi
     # shellcheck disable=SC2086
     apt-get install -y -qq ${NEED_PKGS}
 else
@@ -259,7 +325,8 @@ step "STEP 6: self-signed TLS cert for IP:${VPS_IP} → compose 'certs' volume"
 
 # Compose prefixes named volumes with the project name. Resolve the real volume
 # name from `compose config` (authoritative) with a directory-name fallback.
-CERTS_VOL="$($COMPOSE config --format json 2>/dev/null \
+# shellcheck disable=SC2086
+CERTS_VOL="$($COMPOSE $COMPOSE_FILES config --format json 2>/dev/null \
     | grep -o '"[a-zA-Z0-9_-]*_certs"' | head -n1 | tr -d '"' || true)"
 if [ -z "${CERTS_VOL}" ]; then
     PROJECT="$(basename "${HALQE_DIR}" | tr '[:upper:]' '[:lower:]' | tr -cd 'a-z0-9')"
@@ -309,18 +376,26 @@ fi
 # ---------------------------------------------------------------------------
 step "STEP 7: compose config → build → up → health"
 
+if [ "${IRAN_MIRRORS}" = "1" ]; then
+    info "IRAN_MIRRORS=1 → build uses deploy/compose.iran-mirrors.yml (pip/npm mirrors)."
+fi
+
 info "validating compose + .env interpolation ..."
-$COMPOSE config -q || die "docker compose config failed (check .env). See runbook §5."
+# shellcheck disable=SC2086
+$COMPOSE $COMPOSE_FILES config -q || die "docker compose config failed (check .env). See runbook §5."
 
 info "building images SEQUENTIALLY (audit: parallel build of backend+web can OOM on 4GB) ..."
 # app first (pip wheels — light), then web (npm ci + next build — the heavy one).
 # Building one-at-a-time removes the concurrent memory peak; swap (step 2) is the
 # backstop. web/Dockerfile also caps the node heap (NODE_OPTIONS) for this box.
-$COMPOSE build app
-$COMPOSE build web
+# shellcheck disable=SC2086
+$COMPOSE $COMPOSE_FILES build app
+# shellcheck disable=SC2086
+$COMPOSE $COMPOSE_FILES build web
 
 info "starting stack (postgres → app → web → nginx) ..."
-$COMPOSE up -d
+# shellcheck disable=SC2086
+$COMPOSE $COMPOSE_FILES up -d
 
 info "waiting up to ${HEALTH_TIMEOUT}s for services to become running/healthy ..."
 deadline=$(( $(date +%s) + HEALTH_TIMEOUT ))
@@ -328,7 +403,8 @@ while :; do
     # A container that reports a health state must be 'healthy'; a container with
     # no healthcheck (web, nginx → Health="") only needs State=running. `BAD`
     # collects any container violating that, using the templated ps output.
-    BAD="$($COMPOSE ps --format '{{.Service}} {{.State}} {{.Health}}' 2>/dev/null \
+    # shellcheck disable=SC2086
+    BAD="$($COMPOSE $COMPOSE_FILES ps --format '{{.Service}} {{.State}} {{.Health}}' 2>/dev/null \
         | awk '$2!="running" || ($3!="" && $3!="healthy") {print}' || true)"
     if [ -z "$BAD" ]; then
         info "all services running/healthy."
@@ -336,7 +412,8 @@ while :; do
     fi
     if [ "$(date +%s)" -ge "$deadline" ]; then
         echo "    WARNING: timed out after ${HEALTH_TIMEOUT}s. Current state:" >&2
-        $COMPOSE ps || true
+        # shellcheck disable=SC2086
+        $COMPOSE $COMPOSE_FILES ps || true
         info "not fatal — inspect with: $COMPOSE logs app  /  $COMPOSE logs postgres"
         break
     fi
@@ -357,18 +434,22 @@ info "https /healthz -> ${HEALTHZ}   https /readyz -> ${READYZ}   http / -> ${RE
 # safe-by-default gates (SMS off / scheduler worklist-only).
 # ---------------------------------------------------------------------------
 step "STEP 8: summary"
-$COMPOSE ps || true
+# shellcheck disable=SC2086
+$COMPOSE $COMPOSE_FILES ps || true
 cat <<EOF
 
     ---------------------------------------------------------------------------
     Provisioning complete for staging on https://${VPS_IP}/  (self-signed cert).
 
+    IRAN_MIRRORS=${IRAN_MIRRORS} $([ "${IRAN_MIRRORS}" = "1" ] && echo "→ pip/npm/apt pulled via Iranian mirrors (compose.iran-mirrors.yml + ${APT_MIRROR_URL})" || echo "→ upstream repos")
+
     RUNNING now (plain \`up\`): postgres, app, web, nginx.
 
-    PROFILE-GATED (NOT started by \`up\` — bring up deliberately):
-      • backups:   ${COMPOSE} --profile backup up -d backup
+    PROFILE-GATED (NOT started by \`up\` — bring up deliberately). NOTE: keep the
+    SAME -f files shown below so scheduler's image builds via the Iran mirrors too:
+      • backups:   ${COMPOSE} ${COMPOSE_FILES} --profile backup up -d backup
                    (or the recommended HOST cron — see deploy_runbook.md §7)
-      • scheduler: ${COMPOSE} --profile scheduler up -d scheduler
+      • scheduler: ${COMPOSE} ${COMPOSE_FILES} --profile scheduler up -d scheduler
                    (the follow-up/engagement ticker — needed for the clinical
                     worklist to generate; runbook §7 / docker-compose.yml)
 

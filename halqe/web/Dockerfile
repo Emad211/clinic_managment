@@ -23,8 +23,15 @@
 # ---------------------------------------------------------------------------
 FROM node:22-bookworm-slim AS deps
 WORKDIR /app
+# npm registry — parametrised for Iran's national uplink. Default is the OFFICIAL
+# registry, so normal builds / CI are unchanged. Pass --build-arg
+# NPM_REGISTRY=<iranian-mirror> ONLY on the restricted VPS (registry.npmjs.org
+# times out there). npm v10 rewrites the resolved host of lockfile entries when
+# the configured registry is a plain default-style registry — package-lock.json
+# is NOT edited, so the install stays reproducible.
+ARG NPM_REGISTRY=https://registry.npmjs.org
 COPY package.json package-lock.json ./
-RUN npm ci
+RUN npm config set registry "${NPM_REGISTRY}" && npm ci
 
 # ---------------------------------------------------------------------------
 # Stage 2 — builder (next build → .next/standalone + .next/static)

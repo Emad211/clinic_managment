@@ -29,6 +29,14 @@ FROM python:3.13-slim AS deps
 
 WORKDIR /app
 
+# PyPI index URL — parametrised for Iran's national uplink. Default is the
+# OFFICIAL PyPI, so normal builds / CI are unchanged. Pass --build-arg
+# PIP_INDEX_URL=<iranian-mirror/simple> ONLY on the restricted VPS (that box can
+# only reach in-country hosts; direct pypi.org times out). pip honours the
+# PIP_INDEX_URL env var natively — no flag needed on the pip line.
+ARG PIP_INDEX_URL=https://pypi.org/simple
+ENV PIP_INDEX_URL=${PIP_INDEX_URL}
+
 # psycopg[binary] uses a pre-compiled manylinux wheel — no gcc/libpq-dev needed.
 COPY halqe/requirements.txt /tmp/requirements.txt
 
