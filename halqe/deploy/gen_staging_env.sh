@@ -60,7 +60,11 @@ cat > "$ENV_FILE" <<EOF
 PRODUCTION=1
 SECRET_KEY=${SECRET_KEY}
 DEBUG=false
-ALLOWED_HOSTS=${VPS_IP}
+# The bare public IP + loopback: 127.0.0.1/localhost are REQUIRED so the app
+# container's own healthcheck (curl http://127.0.0.1:8000/healthz) and any
+# same-host probe pass Django's ALLOWED_HOSTS check — otherwise the app reports
+# "unhealthy" even though real traffic (Host: <IP>) works fine.
+ALLOWED_HOSTS=${VPS_IP},127.0.0.1,localhost
 CORS_ALLOWED_ORIGINS=
 NEXT_PUBLIC_SITE_URL=https://${VPS_IP}
 
