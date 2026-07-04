@@ -642,34 +642,23 @@ def test_e4_tenant_a_cannot_update_tenant_b_user_via_db(e2e_tenants):
 
     rls_enabled_on_platform_users = rls_row[0] if rls_row else False
 
-    if rls_enabled_on_platform_users:
-        # اگر RLS فعال است: UPDATE باید صفر ردیف برگرداند
-        assert len(updated_rows) == 0, (
-            f"E4 FAIL — نشتِ RLS روی platform.users! "
-            f"کاربرِ A (GUC=tid_a={tid_a}) توانست کاربرِ B (id={user_b_id}) را UPDATE کند. "
-            f"RLS WITH CHECK باید این را ببندد."
-        )
-    else:
-        # اگر RLS روی platform.users فعال نیست، این یک یافتهٔ مهم است
-        # اما login (SELECT بدون GUC) باید کار کند
-        if len(updated_rows) > 0:
-            pytest.fail(
-                f"E4 FINDING — RLS روی platform.users فعال نیست و UPDATE کاربرِ B "
-                f"با GUC=tid_a={tid_a} موفق شد ({len(updated_rows)} ردیف). "
-                f"پیشنهاد: RLS روی platform.users نیز فعال شود یا "
-                f"لایهٔ سرویس این محدودیت را اعمال کند."
-            )
-        # اگر RLS نیست ولی UPDATE هم موفق نشد (tenant_id=tid_b با GUC=tid_a مسدود نشده)
-        # این حالت یعنی هیچ guard ندارد — گزارش می‌کنیم
-        # این تست را pass می‌کنیم ولی WARNING لاگ می‌دهیم
-        import warnings
-        warnings.warn(
-            f"E4 WARNING: RLS روی platform.users فعال نیست. "
-            f"UPDATE نتیجه: {updated_rows}. "
-            f"پیشنهاد: فعال‌سازیِ RLS روی platform.users در slice بعدی.",
-            UserWarning,
-            stacklevel=2,
-        )
+    # platform.users نگه‌دارندهٔ password_hash / api_token_hash / هویتِ JWT است.
+    # RLS روی این جدول باید همیشه فعال و FORCE باشد (slice5: tenant_isolation).
+    # نبودِ RLS اینجا یک شکستِ سختِ (hard-fail) امنیتی است، نه صرفاً یک warning:
+    # این تست دقیقاً همان leak-test‌ای است که گِیتِ T5 (قدم ۸۳ — «مالک نتیجه را امضا
+    # می‌کند») روی آن تکیه دارد؛ اگر برشی در آینده RLS را از این جدول بردارد، این
+    # نگهبان باید بلند شکست بخورد، نه اینکه سبزِ کاذب بماند و امضا روی سوئیتِ ساکت انجام شود.
+    assert rls_enabled_on_platform_users, (
+        "E4 FAIL — RLS روی platform.users فعال نیست! این جدول password_hash/"
+        "api_token_hash را نگه می‌دارد و slice5 باید tenant_isolation را روی آن FORCE کند "
+        f"(pg_class.relrowsecurity=False). نتیجهٔ UPDATEِ متقاطع: {updated_rows}."
+    )
+    # RLS فعال است: UPDATEِ متقاطعِ tenant باید صفر ردیف را لمس کرده باشد.
+    assert len(updated_rows) == 0, (
+        f"E4 FAIL — نشتِ RLS روی platform.users! "
+        f"کاربرِ A (GUC=tid_a={tid_a}) توانست کاربرِ B (id={user_b_id}) را UPDATE کند. "
+        f"RLS WITH CHECK باید این را ببندد."
+    )
 
 
 # ===========================================================================
