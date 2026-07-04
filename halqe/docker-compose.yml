@@ -207,12 +207,14 @@ services:
       postgres:
         condition: service_healthy
     # Simple in-container loop: dump on start, then every BACKUP_EVERY seconds
-    # (default 24h). For finer scheduling prefer the host-cron path in the
-    # runbook. bash is needed (the scripts are bash); install it, then loop.
+    # (default 24h). For finer scheduling prefer the host-cron path in the runbook.
+    # NOTE: the postgres:16 image (debian-bookworm) ALREADY ships /bin/bash, so we
+    # do NOT apt-get install anything — on Iran's national uplink deb.debian.org is
+    # unreachable and an apt-get here would stall each cycle by the connect timeout
+    # (confirmed on the Arvan box, 2026-07). The scripts run directly.
     entrypoint: ["/bin/sh", "-c"]
     command:
       - >
-        apt-get update -qq && apt-get install -y -qq bash >/dev/null 2>&1 || true;
         while true; do
           bash /opt/halqe/scripts/backup.sh "$$PGDATABASE" || echo "backup failed";
           sleep "$${BACKUP_EVERY:-86400}";
