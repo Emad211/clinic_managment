@@ -22,25 +22,33 @@ from django.core.management.base import BaseCommand, CommandError
 
 
 def _import_rules():
-    """Import RULES from specialist_clinic/src/adapters/sqlite/clinical_rules_seed.py."""
-    seed_path = (
-        Path(__file__).resolve().parent.parent.parent.parent.parent
-        / "specialist_clinic"
-        / "src"
-        / "adapters"
-        / "sqlite"
-        / "clinical_rules_seed.py"
+    """Load the clinical rule catalog (RULES + _condition_for).
+
+    The source of truth lives in specialist_clinic's clinical_rules_seed.py, but
+    that file is also VENDORED into halqe (clinical/_rule_catalog_seed.py) so the
+    deployed halqe container — which ships ONLY halqe/, not specialist_clinic/ —
+    is self-contained and this command works on the box (fixes the deploy-time
+    "clinical_rules_seed.py not found at /specialist_clinic/..." CommandError).
+
+    Preference order:
+      1) the specialist_clinic source when present (local dev / full checkout, so
+         an edit to the source-of-truth is picked up immediately), then
+      2) the vendored copy bundled inside halqe (the container path).
+    Keep the vendored copy in sync when the specialist_clinic catalog changes.
+    """
+    src_path = (
+        Path(__file__).resolve().parents[4]
+        / "specialist_clinic" / "src" / "adapters" / "sqlite" / "clinical_rules_seed.py"
     )
-    if not seed_path.exists():
-        raise CommandError(
-            f"clinical_rules_seed.py not found at expected path: {seed_path}\n"
-            "Ensure the halqe/ directory sits next to specialist_clinic/."
-        )
-    import importlib.util
-    spec = importlib.util.spec_from_file_location("clinical_rules_seed", seed_path)
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    return mod.RULES, mod._condition_for
+    if src_path.exists():
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("clinical_rules_seed", src_path)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        return mod.RULES, mod._condition_for
+    # Container / standalone path: use the vendored copy shipped inside halqe.
+    from clinical import _rule_catalog_seed as cat
+    return cat.RULES, cat._condition_for
 
 
 class Command(BaseCommand):
