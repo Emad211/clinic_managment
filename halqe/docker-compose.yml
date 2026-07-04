@@ -160,9 +160,16 @@ services:
       - "80:80"
       - "443:443"
     volumes:
-      # The site config (read-only). nginx:alpine includes the bundled
-      # http {} context that `include`s /etc/nginx/conf.d/*.conf.
-      - ./deploy/nginx/halqe.conf:/etc/nginx/conf.d/halqe.conf:ro
+      # The site config (read-only). nginx:alpine includes the bundled http {}
+      # context that `include`s /etc/nginx/conf.d/*.conf. We mount OVER the stock
+      # `default.conf` (the "Welcome to nginx!" page) — NOT alongside it. If both
+      # existed, conf.d loads alphabetically (default < halqe) and the stock
+      # default.conf, being the first `listen 80` block, becomes the implicit
+      # default_server → it would answer any Host (e.g. halqehealth.ir) on :80 and
+      # shadow our 80→443 redirect, serving the welcome page. Replacing it removes
+      # that shadow so our server blocks are the only ones. (Our listen directives
+      # are also marked `default_server` as belt-and-suspenders.)
+      - ./deploy/nginx/halqe.conf:/etc/nginx/conf.d/default.conf:ro
       # TLS material — provide certs on the host under ./deploy/nginx/certs/
       # (git-ignored). Let's Encrypt or owner-provided. See the runbook.
       - certs:/etc/nginx/certs:ro
