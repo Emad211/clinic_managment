@@ -25,6 +25,9 @@
 set -euo pipefail
 
 VPS_IP="${VPS_IP:-95.38.187.128}"   # ALLOWED_HOSTS + SEO base for the bare-IP box
+# Production domain behind the Arvan CDN. When set, it is added to ALLOWED_HOSTS
+# and becomes the SEO base. Leave empty for the bare-IP staging profile.
+VPS_DOMAIN="${VPS_DOMAIN:-halqehealth.ir}"
 FORCE=0
 for a in "$@"; do
   case "$a" in
@@ -53,20 +56,29 @@ SECRET_KEY="$(gen 48 50)"
 PG_PASSWORD="$(gen 32 32)"
 PG_APP_PASSWORD="$(gen 32 32)"
 
+# ALLOWED_HOSTS: always the bare IP + loopback (127.0.0.1/localhost are REQUIRED
+# so the app container's healthcheck — curl http://127.0.0.1:8000/healthz — and
+# same-host probes pass Django's host check). The production DOMAIN is prepended
+# when VPS_DOMAIN is set (behind the Arvan CDN, real traffic arrives as Host:
+# <domain>). SEO base becomes the domain when present, else the IP.
+ALLOWED="${VPS_IP},127.0.0.1,localhost"
+SITE_URL="https://${VPS_IP}"
+if [ -n "${VPS_DOMAIN}" ]; then
+  ALLOWED="${VPS_DOMAIN},${ALLOWED}"
+  SITE_URL="https://${VPS_DOMAIN}"
+fi
+
 umask 077   # the .env is created 0600
 cat > "$ENV_FILE" <<EOF
-# halqe STAGING .env — generated on-server by deploy/gen_staging_env.sh
-# Bare-IP staging: no domain, self-signed TLS, SMS off, scheduler worklist-only.
+# halqe .env — generated on-server by deploy/gen_staging_env.sh
+# SMS off, scheduler worklist-only. TLS: self-signed on origin (Arvan CDN edge
+# serves the real cert to users).
 PRODUCTION=1
 SECRET_KEY=${SECRET_KEY}
 DEBUG=false
-# The bare public IP + loopback: 127.0.0.1/localhost are REQUIRED so the app
-# container's own healthcheck (curl http://127.0.0.1:8000/healthz) and any
-# same-host probe pass Django's ALLOWED_HOSTS check — otherwise the app reports
-# "unhealthy" even though real traffic (Host: <IP>) works fine.
-ALLOWED_HOSTS=${VPS_IP},127.0.0.1,localhost
+ALLOWED_HOSTS=${ALLOWED}
 CORS_ALLOWED_ORIGINS=
-NEXT_PUBLIC_SITE_URL=https://${VPS_IP}
+NEXT_PUBLIC_SITE_URL=${SITE_URL}
 
 # Postgres superuser (container-internal only; never published to the host)
 PG_USER=postgres
