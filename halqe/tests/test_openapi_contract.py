@@ -37,11 +37,14 @@ from django.conf import settings
 from config.api import api
 
 # ---------------------------------------------------------------------------
-# Locked invariants. As of step 56 the surface is 44 operations across 42 paths.
-# (The build brief estimated "~40"; the real, verified count is 44.)
+# Locked invariants. As of step 56 the surface was 44 operations across 42 paths.
+# فاز ۱ کاکپیت (allergies domain) additively added the allergies sub-resource:
+#   GET/POST /patients/{uuid}/allergies + DELETE /patients/{uuid}/allergies/{id}
+#   → +3 operations, +2 paths (all within /api/v1, no breaking change).
+# New verified count: 47 operations across 44 paths.
 # ---------------------------------------------------------------------------
-EXPECTED_OPERATION_COUNT = 44
-EXPECTED_PATH_COUNT = 42
+EXPECTED_OPERATION_COUNT = 47
+EXPECTED_PATH_COUNT = 44
 EXPECTED_API_VERSION = "0.1.0"
 
 _HTTP_VERBS = ("get", "post", "put", "patch", "delete")
@@ -54,6 +57,7 @@ CORE_PATHS = [
     "/api/v1/patients/{patient_uuid}",
     "/api/v1/patients/{patient_uuid}/record",
     "/api/v1/patients/{patient_uuid}/vitals/latest",
+    "/api/v1/patients/{patient_uuid}/allergies",
     "/api/v1/patients/{patient_uuid}/suggestions",
     "/api/v1/worklist",
     "/api/v1/patients/{patient_uuid}/encounters",

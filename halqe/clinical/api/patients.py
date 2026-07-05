@@ -51,6 +51,7 @@ from clinical.models import (
 )
 from clinical.rule_engine import _evaluate_reading as _eval_reading
 from clinical.models import ClinicalIndicator as _ClinicalIndicator
+from clinical.record_summary_service import record_summary
 
 router = Router()
 
@@ -108,17 +109,87 @@ class MedicationDTO(Schema):
     created_at: datetime
 
 
+# ---------------------------------------------------------------------------
+# Safety-cockpit summary schemas (فاز ۱ — enrichment of /record)
+#
+# These wrap the DATA produced by clinical.record_summary_service.record_summary
+# (control + risk + per-disease indicator deltas). The service owns ALL clinical
+# computation (verified-gated, tenant-scoped); these Schemas only shape its dict
+# output into a typed contract for the front-end cockpit. Nested Schemas (not
+# bare dict) so the OpenAPI contract documents the exact shape — matching the
+# typed style of the rest of this router.
+# ---------------------------------------------------------------------------
+
+class ControlDTO(Schema):
+    """Overall (or per-disease) control state — worst of latest verified vitals."""
+    status: str            # controlled | borderline | uncontrolled | no_data
+    label: str             # Persian display label
+
+
+class RiskDTO(Schema):
+    """Weighted headline risk (suggestion-only derivation)."""
+    level: str             # high | medium | low | stable
+    dominant: Optional[str] = None   # dominant category (Persian) or None
+    score: float           # weighted risk points
+
+
+class IndicatorDeltaDTO(Schema):
+    """Direction-aware change between the two latest verified readings."""
+    value: float           # signed delta (latest - previous)
+    dir: str               # up | down | flat
+    improving: bool        # moving away from danger (direction-aware)
+
+
+class PerDiseaseIndicatorDTO(Schema):
+    """One risk-weighted indicator tile within a per-disease block."""
+    key: str
+    label: str
+    value: Optional[float] = None
+    unit: Optional[str] = None
+    target: Optional[float] = None
+    direction: Optional[str] = None   # high | low (worse-when)
+    delta: Optional[IndicatorDeltaDTO] = None
+    level: Optional[str] = None        # ok | warn | danger | None
+
+
+class PerDiseaseDTO(Schema):
+    """Per active chronic condition: control + risk tier + top indicators."""
+    condition_code: str
+    condition_name: str
+    control: ControlDTO
+    risk_level: str        # high | medium | low | stable
+    indicators: list[PerDiseaseIndicatorDTO]
+
+
+class DemographicsDTO(PatientDTO):
+    """
+    Accounting demographics (read-only) + derived ``age``.
+
+    Extends the boundary ``PatientDTO`` additively: every existing field is
+    preserved byte-for-byte; only ``age`` (computed from birthdate by the
+    summary service) is added. We do NOT mutate PatientDTO itself — that DTO is
+    the accounting-port boundary contract.
+    """
+    age: Optional[int] = None
+
+
 class ClinicalRecordDTO(Schema):
     """Full clinical record for one patient."""
     patient_link_id: int
-    # Demographics via AccountingReadPort
-    demographics: Optional[PatientDTO] = None
+    # Demographics via AccountingReadPort (+ derived age — additive subclass)
+    demographics: Optional[DemographicsDTO] = None
     # Active chronic conditions
     active_conditions: list[ConditionDTO]
     # Active medications only
     active_medications: list[MedicationDTO]
     # Recent vitals (last ~10, newest first)
     recent_vitals: list[VitalReadingDTO]
+    # --- safety-cockpit summary (فاز ۱ — additive; verified-gated in service) ---
+    control: ControlDTO
+    risk: RiskDTO
+    open_followups_count: int
+    refill_due_count: int
+    per_disease: list[PerDiseaseDTO]
 
 
 # ---------------------------------------------------------------------------
@@ -296,11 +367,42 @@ def get_patient_record(request, patient_uuid: uuid_module.UUID):
             return None
         return _eval_reading(vtype, value, _indicator_map)
 
+    # 7. Safety-cockpit summary — control + risk + per-disease deltas.
+    #    ALL clinical computation lives in the service (verified-gated,
+    #    tenant-scoped). The route only feeds it the already-fetched active
+    #    conditions (as {condition_code, condition_name} dicts) + demographics,
+    #    then shapes the returned dict into the typed DTO. No SQL, no rules here.
+    summary = record_summary(
+        pid=link.id,
+        tenant_id=tenant_id,
+        conditions=[
+            {
+                "condition_code": c.condition_code,
+                "condition_name": c.condition_name,
+            }
+            for c in active_conditions
+        ],
+        demographics=demo,
+    )
+
+    # demographics + derived age (additive subclass — existing fields preserved).
+    demographics_out: Optional[DemographicsDTO] = None
+    if demo is not None:
+        demographics_out = DemographicsDTO(
+            **demo.model_dump(),
+            age=summary["age"],
+        )
+
     return ClinicalRecordDTO(
         patient_link_id=link.id,
-        demographics=demo,
+        demographics=demographics_out,
         active_conditions=active_conditions,
         active_medications=active_medications,
+        control=summary["control"],
+        risk=summary["risk"],
+        open_followups_count=summary["open_followups_count"],
+        refill_due_count=summary["refill_due_count"],
+        per_disease=summary["per_disease"],
         recent_vitals=[
             VitalReadingDTO(
                 id=v.id,

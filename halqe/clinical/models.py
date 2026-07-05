@@ -219,6 +219,53 @@ class PatientMedication(models.Model):
         )
 
 
+class Allergy(models.Model):
+    """
+    clinical.allergies — per-patient allergy list (فاز ۱ کاکپیت).
+
+    Schema owned by the SQL slices (managed=False):
+      * slice2 (schema_pg_slice2_clinical.sql §allergies): id, tenant_id,
+        patient_link_id, substance, reaction, severity, created_at
+        + composite FK (tenant_id, patient_link_id) → patient_links(tenant_id, id).
+      * slice4a: severity CHECK (NULL | mild | moderate | severe | anaphylaxis).
+      * slice18: note (TEXT nullable) + idx_allergies_patient.
+
+    RLS: tenant_id column → slice5 gives ENABLE+FORCE+tenant_isolation; queries
+    must run with the app.current_tenant GUC set (JWTBearer in prod; the
+    set_default_tenant_guc fixture in tests).
+
+    ``reaction`` is the structured reaction column from slice2; ``note`` (slice18)
+    is a free-text complement surfaced by the cockpit API. ``created_at`` has a
+    DB default now(); we do NOT pass it on INSERT so the DB stamps it.
+    """
+
+    tenant_id = models.BigIntegerField(default=1)
+    patient_link_id = models.BigIntegerField()
+    substance = models.TextField()
+    reaction = models.TextField(null=True, blank=True)
+    # DB-level CHECK (slice4a): NULL | mild | moderate | severe | anaphylaxis.
+    severity = models.TextField(null=True, blank=True)
+    note = models.TextField(null=True, blank=True)          # slice18 additive col
+    # created_at: DB has NOT NULL DEFAULT now(); the service never sets it, so
+    # auto_now_add stamps insert-time (USE_TZ=True/Asia/Tehran ≡ iran_now). Unlike
+    # PatientLink.enrolled_at (where auto_now_add silently overrode a caller value),
+    # allergies never receive a caller-supplied created_at, so auto_now_add is the
+    # right, project-standard choice here (same as ActivityLog/Encounter/…).
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        managed = False
+        app_label = "clinical"
+        db_table = '"clinical"."allergies"'
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return (
+            f"Allergy(substance={self.substance}, "
+            f"patient_link_id={self.patient_link_id}, severity={self.severity})"
+        )
+
+
 class ClinicalRule(models.Model):
     """
     clinical.clinical_rules — the If/Then rule catalog.

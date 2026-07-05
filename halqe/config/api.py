@@ -58,6 +58,7 @@ from clinical.api.engagement import router as engagement_router
 from clinical.api.manager import router as manager_router
 from clinical.api.patient_card import router as patient_card_router
 from clinical.api.self_report import router as self_report_router
+from clinical.api.allergies import router as allergies_router
 
 # ---------------------------------------------------------------------------
 # Test-facing re-exports.  No endpoint/schema/helper is defined in this module
@@ -115,3 +116,7 @@ api.add_router("", patient_card_router)
 # "/patient-report/{token}". SACRED: POST /patient-report/{token} stays
 # auth=None (public, one-time token).
 api.add_router("", self_report_router)
+# allergies domain (فاز ۱ کاکپیت): "/patients/{uuid}/allergies" (GET/POST) +
+# ".../allergies/{id}" (DELETE); prefix "" keeps the full paths byte-consistent
+# with the other patient sub-resources. All JWT, tenant-scoped, audit on writes.
+api.add_router("", allergies_router)

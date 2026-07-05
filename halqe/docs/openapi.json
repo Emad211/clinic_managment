@@ -1,6 +1,119 @@
 {
   "components": {
     "schemas": {
+      "AllergyDTO": {
+        "description": "یک حساسیت در پاسخِ فهرست/ساخت.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "reaction": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reaction"
+          },
+          "severity": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Severity"
+          },
+          "substance": {
+            "title": "Substance",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "substance",
+          "created_at"
+        ],
+        "title": "AllergyDTO",
+        "type": "object"
+      },
+      "AllergyDeleteOut": {
+        "description": "پاسخِ DELETE.",
+        "properties": {
+          "deleted": {
+            "title": "Deleted",
+            "type": "boolean"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "deleted",
+          "id"
+        ],
+        "title": "AllergyDeleteOut",
+        "type": "object"
+      },
+      "AllergyIn": {
+        "description": "بدنهٔ POST — ساختِ حساسیت.",
+        "properties": {
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "severity": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Severity"
+          },
+          "substance": {
+            "title": "Substance",
+            "type": "string"
+          }
+        },
+        "required": [
+          "substance"
+        ],
+        "title": "AllergyIn",
+        "type": "object"
+      },
       "ApprovalListResponse": {
         "description": "Pending queue list.",
         "properties": {
@@ -113,19 +226,33 @@
             "title": "Active Medications",
             "type": "array"
           },
+          "control": {
+            "$ref": "#/components/schemas/ControlDTO"
+          },
           "demographics": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/PatientDTO"
+                "$ref": "#/components/schemas/DemographicsDTO"
               },
               {
                 "type": "null"
               }
             ]
           },
+          "open_followups_count": {
+            "title": "Open Followups Count",
+            "type": "integer"
+          },
           "patient_link_id": {
             "title": "Patient Link Id",
             "type": "integer"
+          },
+          "per_disease": {
+            "items": {
+              "$ref": "#/components/schemas/PerDiseaseDTO"
+            },
+            "title": "Per Disease",
+            "type": "array"
           },
           "recent_vitals": {
             "items": {
@@ -133,13 +260,25 @@
             },
             "title": "Recent Vitals",
             "type": "array"
+          },
+          "refill_due_count": {
+            "title": "Refill Due Count",
+            "type": "integer"
+          },
+          "risk": {
+            "$ref": "#/components/schemas/RiskDTO"
           }
         },
         "required": [
           "patient_link_id",
           "active_conditions",
           "active_medications",
-          "recent_vitals"
+          "recent_vitals",
+          "control",
+          "risk",
+          "open_followups_count",
+          "refill_due_count",
+          "per_disease"
         ],
         "title": "ClinicalRecordDTO",
         "type": "object"
@@ -555,6 +694,25 @@
           "diagnosed_at"
         ],
         "title": "ConditionDTO",
+        "type": "object"
+      },
+      "ControlDTO": {
+        "description": "Overall (or per-disease) control state — worst of latest verified vitals.",
+        "properties": {
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "label"
+        ],
+        "title": "ControlDTO",
         "type": "object"
       },
       "ControlRoomCohortDTO": {
@@ -1090,6 +1248,97 @@
           "message_fa"
         ],
         "title": "DdiDTO",
+        "type": "object"
+      },
+      "DemographicsDTO": {
+        "description": "Accounting demographics (read-only) + derived ``age``.\n\nExtends the boundary ``PatientDTO`` additively: every existing field is\npreserved byte-for-byte; only ``age`` (computed from birthdate by the\nsummary service) is added. We do NOT mutate PatientDTO itself — that DTO is\nthe accounting-port boundary contract.",
+        "properties": {
+          "age": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Age"
+          },
+          "birthdate": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Birthdate"
+          },
+          "family_name": {
+            "title": "Family Name",
+            "type": "string"
+          },
+          "full_name": {
+            "title": "Full Name",
+            "type": "string"
+          },
+          "gender": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gender"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "national_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "National Id"
+          },
+          "phone_number": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phone Number"
+          },
+          "uuid": {
+            "format": "uuid",
+            "title": "Uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "uuid",
+          "name",
+          "family_name",
+          "full_name"
+        ],
+        "title": "DemographicsDTO",
         "type": "object"
       },
       "DoctorQueueEntryDTO": {
@@ -1980,6 +2229,30 @@
         "title": "FollowupTaskDTO",
         "type": "object"
       },
+      "IndicatorDeltaDTO": {
+        "description": "Direction-aware change between the two latest verified readings.",
+        "properties": {
+          "dir": {
+            "title": "Dir",
+            "type": "string"
+          },
+          "improving": {
+            "title": "Improving",
+            "type": "boolean"
+          },
+          "value": {
+            "title": "Value",
+            "type": "number"
+          }
+        },
+        "required": [
+          "value",
+          "dir",
+          "improving"
+        ],
+        "title": "IndicatorDeltaDTO",
+        "type": "object"
+      },
       "LabIn": {
         "description": "One lab result to add under an encounter.\n\ntest_key is a soft FK to lab_test_catalog.test_key — pass null if the catalog\nrow does not exist yet; the LabResult will still be saved (test_name is the\nrequired human-readable label).",
         "properties": {
@@ -2656,6 +2929,126 @@
         "title": "PatientListResponse",
         "type": "object"
       },
+      "PerDiseaseDTO": {
+        "description": "Per active chronic condition: control + risk tier + top indicators.",
+        "properties": {
+          "condition_code": {
+            "title": "Condition Code",
+            "type": "string"
+          },
+          "condition_name": {
+            "title": "Condition Name",
+            "type": "string"
+          },
+          "control": {
+            "$ref": "#/components/schemas/ControlDTO"
+          },
+          "indicators": {
+            "items": {
+              "$ref": "#/components/schemas/PerDiseaseIndicatorDTO"
+            },
+            "title": "Indicators",
+            "type": "array"
+          },
+          "risk_level": {
+            "title": "Risk Level",
+            "type": "string"
+          }
+        },
+        "required": [
+          "condition_code",
+          "condition_name",
+          "control",
+          "risk_level",
+          "indicators"
+        ],
+        "title": "PerDiseaseDTO",
+        "type": "object"
+      },
+      "PerDiseaseIndicatorDTO": {
+        "description": "One risk-weighted indicator tile within a per-disease block.",
+        "properties": {
+          "delta": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/IndicatorDeltaDTO"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "direction": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Direction"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "level": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Level"
+          },
+          "target": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "required": [
+          "key",
+          "label"
+        ],
+        "title": "PerDiseaseIndicatorDTO",
+        "type": "object"
+      },
       "PopulationThresholdDTO": {
         "description": "One population-specific threshold override row (read-only).\n\napproval_status is always shown so the UI can distinguish draft from approved.\nframing: fixed label indicating this is a draft awaiting physician review.",
         "properties": {
@@ -3213,6 +3606,36 @@
           "report_url"
         ],
         "title": "ReportTokenOut",
+        "type": "object"
+      },
+      "RiskDTO": {
+        "description": "Weighted headline risk (suggestion-only derivation).",
+        "properties": {
+          "dominant": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dominant"
+          },
+          "level": {
+            "title": "Level",
+            "type": "string"
+          },
+          "score": {
+            "title": "Score",
+            "type": "number"
+          }
+        },
+        "required": [
+          "level",
+          "score"
+        ],
+        "title": "RiskDTO",
         "type": "object"
       },
       "ScreeningItemDTO": {
@@ -6143,6 +6566,174 @@
         "summary": "Get Patient",
         "tags": [
           "patients"
+        ]
+      }
+    },
+    "/api/v1/patients/{patient_uuid}/allergies": {
+      "get": {
+        "description": "فهرستِ حساسیت‌های بیمار (جدیدترین اول). JWT، tenant-scoped.\n\nLookup: accounting.patients(uuid) → clinical.patient_links(tenant) → allergies.\n404 اگر بیمار یا ثبت‌نامِ بالینیِ این مستأجر وجود نداشته باشد.",
+        "operationId": "clinical_api_allergies_list_patient_allergies",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "patient_uuid",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Patient Uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AllergyDTO"
+                  },
+                  "title": "Response",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "JWTBearer": []
+          }
+        ],
+        "summary": "List Patient Allergies",
+        "tags": [
+          "allergies"
+        ]
+      },
+      "post": {
+        "description": "افزودنِ یک حساسیت برای بیمار → 201 با ردیفِ ساخته‌شده. JWT، tenant-scoped.\n\n- substance اجباری (خالی → 422 validation_error).\n- severity یکی از mild|moderate|severe|anaphylaxis یا خالی (نامعتبر → 422).\n- Audit: allergy_added (لایهٔ سرویس).\n404 اگر بیمار/ثبت‌نامِ این مستأجر وجود نداشته باشد.",
+        "operationId": "clinical_api_allergies_create_patient_allergy",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "patient_uuid",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Patient Uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AllergyIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AllergyDTO"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorSchema"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorSchema"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "security": [
+          {
+            "JWTBearer": []
+          }
+        ],
+        "summary": "Create Patient Allergy",
+        "tags": [
+          "allergies"
+        ]
+      }
+    },
+    "/api/v1/patients/{patient_uuid}/allergies/{allergy_id}": {
+      "delete": {
+        "description": "حذفِ یک حساسیتِ بیمار. JWT، tenant-scoped.\n\nبا (id, tenant_id, patient_link_id) فیلتر می‌شود → حذفِ cross-tenant ممکن نیست.\n404 اگر ردیف برای این بیمار/مستأجر پیدا نشد. Audit: allergy_deleted.",
+        "operationId": "clinical_api_allergies_delete_patient_allergy",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "patient_uuid",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Patient Uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "allergy_id",
+            "required": true,
+            "schema": {
+              "title": "Allergy Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AllergyDeleteOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorSchema"
+                }
+              }
+            },
+            "description": "Not Found"
+          }
+        },
+        "security": [
+          {
+            "JWTBearer": []
+          }
+        ],
+        "summary": "Delete Patient Allergy",
+        "tags": [
+          "allergies"
         ]
       }
     },
