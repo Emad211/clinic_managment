@@ -1,0 +1,276 @@
+/* Allergies — banner (above tabs) + full section (record tab). Light theme. */
+
+/* ── Prominent banner (above the tabs, outside tab content) ── */
+.banner {
+  border-radius: var(--radius);
+  padding: var(--space-3) var(--space-5);
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  box-shadow: var(--shadow-sm);
+  /* logical border on the reading-start edge (RTL-safe) */
+  border: 1px solid transparent;
+  border-inline-start-width: 5px;
+}
+
+/* Severe / anaphylaxis present → red. */
+.bannerDanger {
+  background: #fdf0ef;
+  border-color: var(--color-danger);
+  color: #7a1f16;
+}
+
+/* Only mild/moderate/unspecified → amber. */
+.bannerWarn {
+  background: #fff8e1;
+  border-color: var(--color-warn);
+  color: #7b5800;
+}
+
+.bannerIcon {
+  font-size: 1.25rem;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.bannerTitle {
+  font-weight: 700;
+  font-size: 0.95rem;
+  white-space: nowrap;
+}
+
+.bannerList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
+}
+
+.bannerChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  padding: 0.1rem 0.6rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.bannerChipSeverity {
+  font-size: 0.7rem;
+  font-weight: 700;
+  opacity: 0.85;
+}
+
+/* ── Full section in the record tab ── */
+.section {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+  padding: var(--space-6);
+}
+
+.sectionTitle {
+  font-size: 1.0625rem;
+  font-weight: 700;
+  color: var(--color-primary-dark);
+  margin-bottom: var(--space-4);
+  padding-bottom: var(--space-3);
+  border-bottom: 2px solid var(--color-primary-light);
+}
+
+.emptyNote {
+  color: var(--color-text-muted);
+  font-size: 0.9rem;
+  padding: var(--space-3) 0;
+  text-align: center;
+}
+
+.list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  border-inline-start: 3px solid var(--color-warn);
+}
+
+.itemDanger {
+  border-inline-start-color: var(--color-danger);
+}
+
+.itemMain {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.substance {
+  font-weight: 600;
+  font-size: 0.95rem;
+  color: var(--color-text);
+}
+
+.severityBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  border-radius: 999px;
+  padding: 0.1rem 0.55rem;
+  white-space: nowrap;
+}
+
+.severityMild {
+  background: #e6f9ef;
+  color: var(--color-ok);
+}
+.severityModerate {
+  background: #fef3e2;
+  color: #8b5000;
+}
+.severitySevere,
+.severityAnaphylaxis {
+  background: #fde8e7;
+  color: var(--color-danger);
+}
+.severityUnknown {
+  background: #f0f3f7;
+  color: var(--color-text-muted);
+}
+
+.note {
+  font-size: 0.8125rem;
+  color: var(--color-text-muted);
+}
+
+.deleteBtn {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-muted);
+  font-size: 0.8125rem;
+  padding: var(--space-1) var(--space-3);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+  flex-shrink: 0;
+}
+
+.deleteBtn:hover:not(:disabled) {
+  background: #fdf0ef;
+  border-color: var(--color-danger);
+  color: var(--color-danger);
+}
+
+.deleteBtn:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+
+.deleteBtn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* ── Add form ── */
+.addForm {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  align-items: flex-end;
+  border-top: 1px dashed var(--color-border);
+  padding-top: var(--space-4);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.fieldGrow {
+  flex: 1 1 180px;
+}
+
+.fieldLabel {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
+}
+
+.input,
+.select {
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-3);
+  font-size: 0.9rem;
+  color: var(--color-text);
+  font-family: inherit;
+  text-align: right;
+  direction: rtl;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.input:focus,
+.select:focus {
+  outline: none;
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 20%, transparent);
+}
+
+.addBtn {
+  background: var(--color-primary);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-5);
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+  flex-shrink: 0;
+}
+
+.addBtn:hover:not(:disabled) {
+  background: var(--color-primary-dark);
+}
+
+.addBtn:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+
+.addBtn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.error {
+  background: #fdf0ef;
+  border: 1px solid #f5c6c2;
+  border-radius: var(--radius-sm);
+  color: var(--color-danger);
+  font-size: 0.85rem;
+  padding: var(--space-2) var(--space-3);
+  margin-top: var(--space-3);
+  flex-basis: 100%;
+}

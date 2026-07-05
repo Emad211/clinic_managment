@@ -13,6 +13,80 @@ export interface PatientDemographics {
   phone_number: string | null;
   birthdate: string | null;   // ISO date YYYY-MM-DD
   gender: string | null;
+  /**
+   * Derived age in whole years (safety-cockpit enrichment, فاز ۱).
+   * Additive: null when birthdate is absent, or when the backend predates the
+   * enrichment (graceful fallback). Never render a bare `null`.
+   */
+  age?: number | null;
+}
+
+// ────────────────────────────────────────────────────────────
+// Safety-cockpit summary DTOs (فاز ۱ — additive enrichment of /record)
+//
+// These mirror the nested Schemas in clinical/api/patients.py exactly. They are
+// OPTIONAL on ClinicalRecordDTO so the page degrades gracefully against a
+// backend that predates the enrichment (the cockpit strips silently omit).
+// ────────────────────────────────────────────────────────────
+
+/** Control state token — worst of the latest verified vitals. */
+export type ControlStatus =
+  | "controlled"
+  | "borderline"
+  | "uncontrolled"
+  | "no_data";
+
+/** Overall (or per-disease) control state + Persian display label. */
+export interface ControlDTO {
+  status: ControlStatus;
+  label: string;
+}
+
+/** Weighted headline risk tier. 'ok' surfaces as 'stable' at the boundary. */
+export type RiskLevel = "high" | "medium" | "low" | "stable";
+
+/** Weighted headline risk (suggestion-only derivation). */
+export interface RiskDTO {
+  level: RiskLevel;
+  /** Dominant category (Persian) driving the score, or null. */
+  dominant: string | null;
+  /** Weighted risk points (for transparency, not a primary display). */
+  score: number;
+}
+
+/** Direction of a between-reading change. */
+export type DeltaDir = "up" | "down" | "flat";
+
+/** Direction-aware change between the two latest verified readings. */
+export interface IndicatorDeltaDTO {
+  /** Signed delta (latest − previous). */
+  value: number;
+  dir: DeltaDir;
+  /** True when moving away from danger (direction-aware). */
+  improving: boolean;
+}
+
+/** One risk-weighted indicator tile within a per-disease block. */
+export interface PerDiseaseIndicatorDTO {
+  key: string;
+  label: string;
+  value: number | null;
+  unit: string | null;
+  /** Target as a display string (e.g. "<7"), or null. */
+  target: number | string | null;
+  /** Worse-when direction: 'high' | 'low' | null. */
+  direction: "high" | "low" | null;
+  delta: IndicatorDeltaDTO | null;
+  level: "ok" | "warn" | "danger" | null;
+}
+
+/** Per active chronic condition: control + risk tier + top indicators. */
+export interface PerDiseaseDTO {
+  condition_code: string;
+  condition_name: string;
+  control: ControlDTO;
+  risk_level: RiskLevel;
+  indicators: PerDiseaseIndicatorDTO[];
 }
 
 export interface ConditionDTO {
@@ -138,6 +212,12 @@ export interface ClinicalRecordDTO {
   active_conditions: ConditionDTO[];
   active_medications: MedicationDTO[];
   recent_vitals: VitalReadingDTO[];
+  // ── safety-cockpit summary (فاز ۱ — additive; OPTIONAL for graceful fallback) ──
+  control?: ControlDTO;
+  risk?: RiskDTO;
+  open_followups_count?: number;
+  refill_due_count?: number;
+  per_disease?: PerDiseaseDTO[];
 }
 
 export async function apiGetRecord(uuid: string): Promise<ClinicalRecordDTO> {

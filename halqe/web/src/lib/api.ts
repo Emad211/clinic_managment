@@ -36,6 +36,7 @@ export {
 export * from "./api/auth";
 export * from "./api/patients";
 export * from "./api/record";
+export * from "./api/allergies";
 export * from "./api/suggestions";
 export * from "./api/worklist";
 export * from "./api/encounters";
