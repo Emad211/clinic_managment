@@ -77,6 +77,8 @@ def test_unresolved_error_and_report_redact_raw_identity(seed_data, tmp_path):
         assert secret not in rendered_error
         assert secret not in rendered_report
 
+    # A full traceback must not reveal the original unredacted exception either.
+    assert captured.value.__cause__ is None
     assert "77" in rendered_error
     assert importer.report.unresolved_patients == [
         {
