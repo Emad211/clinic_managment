@@ -1,23 +1,6 @@
 "use client";
 
-/**
- * PatientHeader — full-width patient demographics header on the detail page.
- *
- * فاز ۱ (safety cockpit): the sticky header is now the at-a-glance identity +
- * safety strip. Beyond the original demographics (name, national_id, phone,
- * birthdate, gender) it now shows, WHEN the backend supplies them:
- *   - age (derived) inline in the meta row
- *   - a control badge (کنترل‌شده/مرزی/کنترل‌نشده/بدون داده)
- *   - a risk badge (پرخطر/متوسط/کم/پایدار) with the dominant driver
- *
- * graceful fallback (قید مقدس): control/risk are OPTIONAL. When absent (an older
- * backend), the badges are simply not rendered — the header degrades to exactly
- * its previous markup, and the page never breaks.
- *
- * Colour-is-not-the-only-signal: every badge carries a text label + an aria-label,
- * so status is legible without relying on colour alone.
- */
-
+import Link from "next/link";
 import {
   type PatientDemographics,
   type ControlDTO,
@@ -27,6 +10,7 @@ import { formatJalali, toFarsiDigits } from "@/lib/jalali";
 import { CONTROL_META, RISK_META } from "@/lib/clinical-status";
 import styles from "@/app/patients/[uuid]/record.module.css";
 
+/** Identity and safety header shared by the cockpit and the full record page. */
 export function PatientHeader({
   demo,
   control,
@@ -42,12 +26,9 @@ export function PatientHeader({
   return (
     <div className={`${styles.card} ${styles.patientHeader}`} role="region" aria-label="مشخصات بیمار">
       <div className={styles.patientHeaderTop}>
-        <h1 className={styles.patientName}>
-          {demo?.full_name ?? "بیمار ناشناس"}
-        </h1>
+        <h1 className={styles.patientName}>{demo?.full_name ?? "بیمار ناشناس"}</h1>
 
-        {/* Safety badges — rendered only when the backend supplies them */}
-        {(ctrl || rsk) && (
+        {(ctrl || rsk || demo?.uuid) && (
           <div className={styles.headerBadges}>
             {ctrl && (
               <span
@@ -55,9 +36,7 @@ export function PatientHeader({
                 data-status={control!.status}
                 aria-label={`وضعیت کنترل: ${control!.label}`}
               >
-                <span className={styles.statusBadgeIcon} aria-hidden="true">
-                  {ctrl.icon}
-                </span>
+                <span className={styles.statusBadgeIcon} aria-hidden="true">{ctrl.icon}</span>
                 کنترل: {control!.label}
               </span>
             )}
@@ -70,14 +49,19 @@ export function PatientHeader({
                   (risk!.dominant ? ` — عامل غالب: ${risk!.dominant}` : "")
                 }
               >
-                <span className={styles.statusBadgeIcon} aria-hidden="true">
-                  {rsk.icon}
-                </span>
+                <span className={styles.statusBadgeIcon} aria-hidden="true">{rsk.icon}</span>
                 خطر: {rsk.label}
-                {risk!.dominant && (
-                  <span className={styles.riskDominant}> · {risk!.dominant}</span>
-                )}
+                {risk!.dominant && <span className={styles.riskDominant}> · {risk!.dominant}</span>}
               </span>
+            )}
+            {demo?.uuid && (
+              <Link
+                href={`/patients/${demo.uuid}/record`}
+                className={styles.registerVisitBtn}
+                aria-label={`بازکردن پرونده تخصصی کامل ${demo.full_name}`}
+              >
+                پرونده تخصصی کامل
+              </Link>
             )}
           </div>
         )}
