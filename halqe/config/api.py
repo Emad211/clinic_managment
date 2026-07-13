@@ -2,7 +2,7 @@
 django-ninja API — halqe platform v1 (router wiring module).
 
 This module stays intentionally thin: one shared ``NinjaAPI`` instance and one
-router per bounded domain.  Endpoint logic belongs in the domain modules.
+router per bounded domain. Endpoint logic belongs in the domain modules.
 
 Full endpoint surface (all under /api/v1, mounted from urls.py):
 
@@ -17,8 +17,9 @@ Full endpoint surface (all under /api/v1, mounted from urls.py):
   worklist    : GET /worklist, POST /worklist/{task_id}/done
   encounters  : POST/GET /patients/{uuid}/encounters,
                 POST /encounters/{id}/vitals | /labs | /complete | /cancel | /prescriptions
-  accounting  : patient/tariff/open-invoice projections, visit invoice creation,
-                item payments, settlement and paid-only invoice close
+  accounting  : patient/tariff/open-invoice projections, visit invoices,
+                item payments, paid-only close, shift staff, nursing services
+                and consumables
   manager     : GET /manager/{population-thresholds,suggestion-stats,
                 cohort-outcomes,lapsed-return,control-trend}
   control-room: GET /control-room[/conversion | /cohort/{cohort_key}]
@@ -44,6 +45,7 @@ from clinical.api.self_report import router as self_report_router
 from clinical.api.allergies import router as allergies_router
 from accounting_ops.api import router as accounting_router
 from accounting_ops.payment_api import router as accounting_payment_router
+from accounting_ops.nursing_api import router as accounting_nursing_router
 
 # Only ``_MIN_N_FOR_RATE`` has a live config.api consumer.
 from clinical.api.manager import _MIN_N_FOR_RATE  # noqa: F401
@@ -56,6 +58,7 @@ api.add_router("", worklist_router)
 api.add_router("", encounters_router)
 api.add_router("", accounting_router)
 api.add_router("", accounting_payment_router)
+api.add_router("", accounting_nursing_router)
 api.add_router("", control_room_router)
 api.add_router("", doctor_queue_router)
 api.add_router("", engagement_router)
