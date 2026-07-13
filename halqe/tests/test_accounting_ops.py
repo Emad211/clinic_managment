@@ -1,13 +1,7 @@
 """First accounting migration slice: reception -> visit invoice -> close.
 
-The tests exercise the real PostgreSQL permission boundary:
-
-* Django's normal ``platform_app`` login remains read-only on accounting.
-* Accounting commands use a separate LOGIN role inheriting ``accounting_app``.
-* That accounting role cannot read ``clinical.*`` or ``platform.users``.
-* Patient upsert + invoice + visit + audit is one atomic transaction.
-* Closing is idempotent and refuses unsupported item families until their exact
-  production pricing rules are ported.
+These tests exercise the real PostgreSQL permission boundary and the money
+safety gates used during the incremental migration from ``webapp``.
 """
 from __future__ import annotations
 
@@ -36,7 +30,6 @@ ACCOUNTING_PASSWORD = os.environ.get(
     "PG_ACCOUNTING_PASSWORD", "accounting_test_pw"
 )
 
-# accounting_ops.write_port resolves these lazily when an endpoint is called.
 os.environ.setdefault("PG_ACCOUNTING_USER", ACCOUNTING_USER)
 os.environ.setdefault("PG_ACCOUNTING_PASSWORD", ACCOUNTING_PASSWORD)
 
@@ -82,11 +75,10 @@ def test_production_rejects_documented_accounting_placeholder(monkeypatch):
 
 @pytest.fixture(scope="session")
 def accounting_ready(django_db_setup):
-    """Create the dedicated test login and seed neutral tariffs + receptionist."""
+    """Create the writer login and seed neutral tariffs + receptionist/shift."""
     password = "reception-secret"
     password_hash = bcrypt.hashpw(password.encode(), bcrypt.gensalt())
 
-    # Exercise the real bootstrap command rather than reproducing its SQL here.
     call_command(
         "ensure_accounting_role",
         login_role=ACCOUNTING_USER,
@@ -97,7 +89,6 @@ def accounting_ready(django_db_setup):
     with psycopg.connect(
         _conninfo(PG_SU_USER, PG_SU_PASSWORD), autocommit=True
     ) as conn:
-        # Tenant 2 exists only to prove that all service queries scope by tenant.
         conn.execute(
             """
             INSERT INTO platform.tenants (id, name, is_active)
@@ -105,7 +96,6 @@ def accounting_ready(django_db_setup):
             ON CONFLICT (id) DO NOTHING
             """
         )
-
         conn.execute(
             """
             INSERT INTO accounting.visit_tariffs
@@ -122,7 +112,6 @@ def accounting_ready(django_db_setup):
                 is_base_tariff=EXCLUDED.is_base_tariff
             """
         )
-
         conn.execute(
             """
             INSERT INTO platform.users
@@ -137,8 +126,43 @@ def accounting_ready(django_db_setup):
             """,
             (password_hash,),
         )
+        user_id = conn.execute(
+            "SELECT id FROM platform.users "
+            "WHERE tenant_id=1 AND username='reception_test'"
+        ).fetchone()[0]
+        conn.execute(
+            """
+            INSERT INTO accounting.user_active_shift
+                (tenant_id, user_id, active_shift, work_date, shift_started_at)
+            VALUES (1, %s, 'night', '2026-07-12', now())
+            ON CONFLICT (tenant_id, user_id) DO UPDATE SET
+                active_shift=EXCLUDED.active_shift,
+                work_date=EXCLUDED.work_date,
+                shift_started_at=EXCLUDED.shift_started_at
+            """,
+            (user_id,),
+        )
 
-    return {"username": "reception_test", "password": password}
+    return {
+        "username": "reception_test",
+        "password": password,
+        "user_id": int(user_id),
+    }
+
+
+@override_settings(PRODUCTION=True)
+@pytest.mark.django_db(databases=["default", "accounting_read"], transaction=True)
+def test_accounting_api_is_fail_closed_when_writer_secret_is_missing(
+    accounting_ready, monkeypatch
+):
+    token = _login(accounting_ready["username"], accounting_ready["password"])
+    monkeypatch.delenv("PG_ACCOUNTING_PASSWORD", raising=False)
+    response = _client().get(
+        "/accounting/invoices/open",
+        headers=_auth(token),
+    )
+    assert response.status_code == 503
+    assert response.json()["code"] == "accounting_unavailable"
 
 
 @pytest.mark.django_db(databases=["default", "accounting_read"], transaction=True)
@@ -179,6 +203,8 @@ def test_visit_invoice_open_list_close_is_atomic_and_audited(accounting_ready):
     assert opened["patient_full_name"] == "مریم حسابی"
     assert opened["total_amount"] == 85000
     assert opened["visit_price"] == 85000
+    assert opened["shift"] == "night"
+    assert opened["work_date"] == "2026-07-12"
     invoice_id = opened["id"]
 
     listing = client.get(
@@ -187,8 +213,6 @@ def test_visit_invoice_open_list_close_is_atomic_and_audited(accounting_ready):
     )
     assert listing.status_code == 200, listing.text
     assert any(row["id"] == invoice_id for row in listing.json()["items"])
-
-    # Explicit tenant filtering: tenant 2 cannot see tenant 1's open invoice.
     assert list_open_invoices(tenant_id=2)["items"] == []
 
     closed_response = client.post(
@@ -224,8 +248,7 @@ def test_visit_invoice_open_list_close_is_atomic_and_audited(accounting_ready):
         actions = conn.execute(
             """
             SELECT action_type FROM accounting.activity_logs
-            WHERE tenant_id=1 AND invoice_id=%s
-            ORDER BY id
+            WHERE tenant_id=1 AND invoice_id=%s ORDER BY id
             """,
             (invoice_id,),
         ).fetchall()
@@ -299,6 +322,28 @@ def test_supplementary_tariff_overrides_primary_and_patient_is_upserted(
 
 
 @pytest.mark.django_db(databases=["default", "accounting_read"], transaction=True)
+def test_supplementary_cannot_hide_an_unknown_primary_tariff(accounting_ready):
+    token = _login(accounting_ready["username"], accounting_ready["password"])
+    response = _client().post(
+        "/accounting/invoices/visit",
+        headers=_auth(token),
+        json={
+            "patient": {
+                "name": "بیمار",
+                "family_name": "بیمه پایه نامعتبر",
+                "national_id": "0013546759",
+                "phone_number": "09127777777",
+                "is_foreign": False,
+            },
+            "insurance_type": "بیمه پایه ناشناخته",
+            "supplementary_insurance": "تکمیلی تست",
+        },
+    )
+    assert response.status_code == 422
+    assert response.json()["code"] == "tariff_not_found"
+
+
+@pytest.mark.django_db(databases=["default", "accounting_read"], transaction=True)
 def test_missing_tariff_rolls_back_patient_and_invoice(accounting_ready):
     token = _login(accounting_ready["username"], accounting_ready["password"])
     response = _client().post(
@@ -358,8 +403,6 @@ def test_close_refuses_unported_item_families_without_mutation(accounting_ready)
     assert opened_response.status_code == 201, opened_response.text
     opened = opened_response.json()
 
-    # Simulate an invoice containing a family whose patient-share rules have not
-    # yet been ported to the new close command.
     with psycopg.connect(
         _conninfo(PG_SU_USER, PG_SU_PASSWORD), autocommit=True
     ) as conn:
@@ -444,6 +487,27 @@ def test_close_refuses_legacy_pricing_invoice(accounting_ready):
 
 
 def test_accounting_login_is_confined_to_accounting(accounting_ready):
+    with psycopg.connect(
+        _conninfo(PG_SU_USER, PG_SU_PASSWORD), autocommit=True
+    ) as super_conn:
+        flags = super_conn.execute(
+            "SELECT rolsuper, rolcreatedb, rolcreaterole, rolreplication, rolbypassrls "
+            "FROM pg_roles WHERE rolname=%s",
+            (ACCOUNTING_USER,),
+        ).fetchone()
+        assert flags == (False, False, False, False, False)
+        memberships = super_conn.execute(
+            """
+            SELECT parent.rolname
+            FROM pg_auth_members m
+            JOIN pg_roles parent ON parent.oid=m.roleid
+            JOIN pg_roles child ON child.oid=m.member
+            WHERE child.rolname=%s ORDER BY parent.rolname
+            """,
+            (ACCOUNTING_USER,),
+        ).fetchall()
+        assert [row[0] for row in memberships] == ["accounting_app"]
+
     with psycopg.connect(
         _conninfo(ACCOUNTING_USER, ACCOUNTING_PASSWORD), autocommit=True
     ) as conn:
