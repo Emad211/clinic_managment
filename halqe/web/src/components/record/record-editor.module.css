@@ -1,0 +1,451 @@
+.shell {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+.statusRow {
+  min-height: 2.75rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+}
+
+.success {
+  color: var(--color-ok);
+  font-weight: 600;
+}
+
+.error {
+  color: var(--color-danger);
+  font-weight: 600;
+}
+
+.muted {
+  color: var(--color-text-muted);
+}
+
+.section {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+}
+
+.sectionHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: var(--space-4) var(--space-6);
+  background: var(--color-surface-raised);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.sectionHeader h2,
+.sectionHeader h3 {
+  margin: 0;
+  color: var(--color-primary-dark);
+}
+
+.sectionHeader p {
+  margin-top: var(--space-1);
+  color: var(--color-text-muted);
+  font-size: 0.82rem;
+  line-height: 1.7;
+}
+
+.sectionBody {
+  padding: var(--space-5, 1.25rem) var(--space-6);
+}
+
+.gridTwo,
+.gridThree {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.gridTwo {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.gridThree {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.subsection {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.subsectionHeader {
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-bg);
+  border-bottom: 1px solid var(--color-border);
+  font-weight: 700;
+}
+
+.subsectionBody {
+  padding: var(--space-4);
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.formGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+.formGridThree {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+.field,
+.checkField {
+  display: flex;
+  gap: var(--space-2);
+  font-size: 0.84rem;
+  font-weight: 600;
+}
+
+.field {
+  flex-direction: column;
+}
+
+.checkField {
+  align-items: center;
+}
+
+.field input,
+.field select,
+.field textarea,
+.inlineInput {
+  width: 100%;
+  min-height: 2.5rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 0.58rem 0.72rem;
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: inherit;
+  font-weight: 400;
+}
+
+.field textarea {
+  resize: vertical;
+  min-height: 5.5rem;
+}
+
+.field input:focus,
+.field select:focus,
+.field textarea:focus,
+.inlineInput:focus,
+.button:focus-visible,
+.secondaryButton:focus-visible,
+.dangerButton:focus-visible,
+.chip:focus-visible,
+.linkButton:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.button,
+.secondaryButton,
+.dangerButton,
+.linkButton,
+.chip {
+  border-radius: var(--radius-sm);
+  font: inherit;
+  font-weight: 600;
+}
+
+.button,
+.secondaryButton,
+.dangerButton,
+.linkButton {
+  min-height: 2.45rem;
+  padding: 0.55rem 0.95rem;
+}
+
+.button {
+  border: 1px solid var(--color-primary);
+  background: var(--color-primary);
+  color: white;
+}
+
+.button:hover:not(:disabled) {
+  background: var(--color-primary-dark);
+}
+
+.secondaryButton,
+.linkButton {
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-primary-dark);
+}
+
+.dangerButton {
+  border: 1px solid var(--color-danger);
+  background: var(--color-surface);
+  color: var(--color-danger);
+}
+
+.button:disabled,
+.secondaryButton:disabled,
+.dangerButton:disabled,
+.chip:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  list-style: none;
+}
+
+.listItem {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+}
+
+.listMain {
+  min-width: 0;
+}
+
+.listTitle {
+  font-weight: 700;
+  line-height: 1.7;
+}
+
+.listMeta {
+  margin-top: var(--space-1);
+  color: var(--color-text-muted);
+  font-size: 0.78rem;
+  line-height: 1.7;
+}
+
+.listNote {
+  margin-top: var(--space-2);
+  white-space: pre-wrap;
+  line-height: 1.8;
+}
+
+.empty {
+  padding: var(--space-4);
+  color: var(--color-text-muted);
+  text-align: center;
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-sm);
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  margin-inline-start: var(--space-2);
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  background: var(--color-primary-light);
+  color: var(--color-primary-dark);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.badgeMuted {
+  background: var(--color-bg);
+  color: var(--color-text-muted);
+}
+
+.flagGroups {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-4);
+}
+
+.flagList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.chip {
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-primary-dark);
+  padding: 0.35rem 0.65rem;
+  font-size: 0.78rem;
+}
+
+.chipActive {
+  border-color: var(--color-primary);
+  background: var(--color-primary-light);
+}
+
+.tableWrap {
+  overflow-x: auto;
+}
+
+.table {
+  width: 100%;
+  min-width: 680px;
+  border-collapse: collapse;
+}
+
+.table th,
+.table td {
+  padding: var(--space-3);
+  border-bottom: 1px solid var(--color-border);
+  text-align: right;
+  vertical-align: top;
+}
+
+.table th {
+  background: var(--color-surface-raised);
+  color: var(--color-text-muted);
+  font-size: 0.77rem;
+}
+
+.table td {
+  font-size: 0.84rem;
+}
+
+.entryRows {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.entryRow {
+  display: grid;
+  grid-template-columns: minmax(190px, 1.5fr) minmax(100px, 0.7fr) minmax(160px, 1fr) auto;
+  gap: var(--space-2);
+  align-items: end;
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+}
+
+.timeline {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding-inline-start: var(--space-4);
+}
+
+.timelineItem {
+  position: relative;
+  padding: var(--space-3);
+  border-inline-start: 3px solid var(--color-primary-light);
+  background: var(--color-surface-raised);
+  border-radius: var(--radius-sm);
+}
+
+.medicationCard {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-4);
+}
+
+.medicationHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.medicationActions {
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px dashed var(--color-border);
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.count {
+  color: var(--color-text-muted);
+  font-size: 0.78rem;
+}
+
+@media (max-width: 980px) {
+  .gridThree,
+  .formGridThree {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .flagGroups {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 700px) {
+  .gridTwo,
+  .gridThree,
+  .formGrid,
+  .formGridThree {
+    grid-template-columns: 1fr;
+  }
+
+  .sectionHeader,
+  .listItem,
+  .medicationHeader,
+  .toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .sectionBody,
+  .sectionHeader {
+    padding: var(--space-4);
+  }
+
+  .entryRow {
+    grid-template-columns: 1fr;
+  }
+}
