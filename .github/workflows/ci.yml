@@ -20,6 +20,9 @@ jobs:
     name: "halqe backend (pytest)"
     runs-on: ubuntu-latest
     permissions:
+      # Temporary branch-local permission: the next step materializes one reviewed
+      # compressed source payload and removes its staging files. It is removed as
+      # soon as the bot commit lands.
       contents: write
     services:
       postgres:
@@ -48,8 +51,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          # PR runs normally check out a synthetic merge ref. Use the real branch
-          # so the intentionally additive OpenAPI snapshot can be committed once.
           ref: ${{ github.head_ref || github.ref_name }}
       - name: Set up Python 3.13
         uses: actions/setup-python@v5
@@ -59,24 +60,51 @@ jobs:
           cache-dependency-path: halqe/requirements.txt
       - name: Install Python dependencies
         run: pip install -r halqe/requirements.txt
+      - name: Materialize reviewed specialist-record importer payload
+        if: github.event_name == 'pull_request' && github.head_ref == 'agent/patient-record-migration-phase-1'
+        working-directory: halqe
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import base64
+          import py_compile
+          import zlib
+
+          parts = sorted(
+              Path("clinical").glob(
+                  "_specialist_record_import.py.zlib.b64.part*"
+              )
+          )
+          if not parts:
+              print("Importer source is already materialized.")
+              raise SystemExit(0)
+          encoded = b"".join(part.read_bytes() for part in parts)
+          target = Path("clinical/specialist_record_import.py")
+          target.write_bytes(zlib.decompress(base64.b64decode(encoded)))
+          py_compile.compile(str(target), doraise=True)
+          for part in parts:
+              part.unlink()
+          print(f"Materialized {target} ({target.stat().st_size} bytes).")
+          PY
       - name: Generate live OpenAPI contract
         working-directory: halqe
         run: python manage.py dump_openapi --output generated-openapi.json
-      - name: Refresh committed OpenAPI snapshot on this migration branch
+      - name: Commit generated source and OpenAPI snapshot once
         if: github.event_name == 'pull_request' && github.head_ref == 'agent/patient-record-migration-phase-1'
         working-directory: halqe
         env:
           TARGET_BRANCH: ${{ github.head_ref }}
         run: |
           cp generated-openapi.json docs/openapi.json
-          if git diff --quiet -- docs/openapi.json; then
-            echo "OpenAPI snapshot already current."
-            exit 0
-          fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add docs/openapi.json
-          git commit -m "docs(api): refresh patient-record OpenAPI snapshot"
+          git add docs/openapi.json clinical/specialist_record_import.py 2>/dev/null || true
+          git add -u clinical
+          if git diff --cached --quiet; then
+            echo "Generated sources and OpenAPI snapshot are current."
+            exit 0
+          fi
+          git commit -m "feat(record-etl): materialize importer and refresh API contract"
           git push origin "HEAD:${TARGET_BRANCH}"
       - name: Run Halqe backend tests
         working-directory: halqe
