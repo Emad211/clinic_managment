@@ -18,8 +18,8 @@ Full endpoint surface (all under /api/v1, mounted from urls.py):
   encounters  : POST/GET /patients/{uuid}/encounters,
                 POST /encounters/{id}/vitals | /labs | /complete | /cancel | /prescriptions
   accounting  : patient/tariff/open-invoice projections, visit invoices,
-                item payments, paid-only close, shift staff, nursing services,
-                consumables and procedures
+                invoice detail/corrections, item payments, paid-only close,
+                shift staff, nursing services, consumables and procedures
   manager     : GET /manager/{population-thresholds,suggestion-stats,
                 cohort-outcomes,lapsed-return,control-trend}
   control-room: GET /control-room[/conversion | /cohort/{cohort_key}]
@@ -47,6 +47,7 @@ from accounting_ops.api import router as accounting_router
 from accounting_ops.payment_api import router as accounting_payment_router
 from accounting_ops.nursing_api import router as accounting_nursing_router
 from accounting_ops.procedure_api import router as accounting_procedure_router
+from accounting_ops.invoice_workbench_api import router as accounting_workbench_router
 
 # Only ``_MIN_N_FOR_RATE`` has a live config.api consumer.
 from clinical.api.manager import _MIN_N_FOR_RATE  # noqa: F401
@@ -61,6 +62,7 @@ api.add_router("", accounting_router)
 api.add_router("", accounting_payment_router)
 api.add_router("", accounting_nursing_router)
 api.add_router("", accounting_procedure_router)
+api.add_router("", accounting_workbench_router)
 api.add_router("", control_room_router)
 api.add_router("", doctor_queue_router)
 api.add_router("", engagement_router)
