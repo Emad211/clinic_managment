@@ -1,19 +1,22 @@
 """Public facade for the specialist-clinic historical record importer.
 
 The implementation lives in :mod:`clinical._specialist_record_import_core`.
-This facade strengthens two operational boundaries:
+This facade strengthens three operational boundaries:
 
 * dry-run rows use explicit negative primary keys inside a transaction that is
   always rolled back, validating real PostgreSQL relationships without leaving
   data behind or advancing identities;
 * reports and command errors redact raw patient identifiers by default so
-  national IDs and names cannot leak into shell, CI or generic job logs.
+  national IDs and names cannot leak into shell, CI or generic job logs;
+* a reused ``source_id`` must contain every source row already present in its
+  append-only ledger.  Truncated snapshots and accidental source-id reuse fail
+  before commit instead of silently merging two source histories.
 """
 from __future__ import annotations
 
 from typing import Any, Mapping
 
-from django.db import transaction
+from django.db import connection, transaction
 from psycopg import sql
 
 from clinical import _specialist_record_import_core as _core
@@ -31,7 +34,7 @@ from clinical._specialist_record_import_core import (
 
 
 class SpecialistRecordImporter(_core.SpecialistRecordImporter):
-    """Importer with sequence-neutral dry-run and PHI-safe default reporting."""
+    """Importer with monotonic source identity and PHI-safe reporting."""
 
     def _redact_sensitive_report(self) -> None:
         """Remove direct patient identifiers from operator-facing report data."""
@@ -58,16 +61,49 @@ class SpecialistRecordImporter(_core.SpecialistRecordImporter):
                 for item in wallets
             ]
 
+    def _assert_source_continuity(self) -> None:
+        """Reject a source snapshot that omits rows imported under this source-id."""
+        manifest_rows = {
+            (str(table), int(source_row_id))
+            for table, source_row_id, _digest in self._manifest
+        }
+        _core.set_tenant_guc(self.tenant_id)
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT source_table, source_row_id
+                FROM clinical.record_import_ledger
+                WHERE tenant_id=%s AND source_id=%s
+                ORDER BY source_table, source_row_id
+                """,
+                [self.tenant_id, self.source_id],
+            )
+            ledger_rows = {
+                (str(table), int(source_row_id))
+                for table, source_row_id in cursor.fetchall()
+            }
+
+        missing = sorted(ledger_rows - manifest_rows)
+        if missing:
+            preview = ", ".join(
+                f"{table}#{source_row_id}" for table, source_row_id in missing[:10]
+            )
+            suffix = "" if len(missing) <= 10 else f" (+{len(missing) - 10} more)"
+            raise _core.ImportConflictError(
+                "The current SQLite snapshot is missing source rows previously "
+                f"recorded for source_id={self.source_id!r}: {preview}{suffix}. "
+                "Do not reuse a source-id for another database or a truncated snapshot."
+            )
+
     def run(self) -> ImportReport:
         try:
-            if self.apply:
+            # An outer transaction surrounds BOTH apply and dry-run. The core uses
+            # an inner savepoint. This lets source-continuity validation roll back
+            # newly imported target and ledger rows before the outer commit.
+            with transaction.atomic():
                 report = super().run()
-            else:
-                # The core importer already uses an inner atomic block. The outer
-                # block materializes planned rows for genuine FK/catalog validation
-                # and discards the complete simulation in one rollback.
-                with transaction.atomic():
-                    report = super().run()
+                self._assert_source_continuity()
+                if not self.apply:
                     transaction.set_rollback(True)
         except _core.UnresolvedPatientError:
             source_ids = [
