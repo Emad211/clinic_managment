@@ -1,11 +1,13 @@
 """Public facade for the specialist-clinic historical record importer.
 
 The implementation lives in :mod:`clinical._specialist_record_import_core`.
-This facade strengthens dry-run semantics: planned rows are inserted with
-explicit negative primary keys inside an outer transaction that is always
-rolled back.  PostgreSQL therefore validates the real foreign keys, checks and
-catalog lookups, while the dry run leaves no rows behind and never advances an
-identity sequence.
+This facade strengthens two operational boundaries:
+
+* dry-run rows use explicit negative primary keys inside a transaction that is
+  always rolled back, validating real PostgreSQL relationships without leaving
+  data behind or advancing identities;
+* reports and command errors redact raw patient identifiers by default so
+  national IDs and names cannot leak into shell, CI or generic job logs.
 """
 from __future__ import annotations
 
@@ -29,18 +31,64 @@ from clinical._specialist_record_import_core import (
 
 
 class SpecialistRecordImporter(_core.SpecialistRecordImporter):
-    """Importer with a transactionally faithful, sequence-neutral dry run."""
+    """Importer with sequence-neutral dry-run and PHI-safe default reporting."""
+
+    def _redact_sensitive_report(self) -> None:
+        """Remove direct patient identifiers from operator-facing report data."""
+        redacted_unresolved = []
+        for item in self.report.unresolved_patients:
+            redacted_unresolved.append(
+                {
+                    "source_patient_link_id": item.get("source_patient_link_id"),
+                    "has_national_id": bool(item.get("national_id")),
+                    "has_accounting_patient_id": item.get("accounting_patient_id")
+                    not in (None, ""),
+                }
+            )
+        self.report.unresolved_patients = redacted_unresolved
+
+        financial = self.report.financial_data_out_of_scope
+        if isinstance(financial, dict):
+            wallets = financial.get("nonzero_patient_wallets") or []
+            financial["nonzero_patient_wallets"] = [
+                {
+                    "source_patient_link_id": item.get("source_patient_link_id"),
+                    "wallet_balance": item.get("wallet_balance"),
+                }
+                for item in wallets
+            ]
 
     def run(self) -> ImportReport:
-        if self.apply:
-            return super().run()
+        try:
+            if self.apply:
+                report = super().run()
+            else:
+                # The core importer already uses an inner atomic block. The outer
+                # block materializes planned rows for genuine FK/catalog validation
+                # and discards the complete simulation in one rollback.
+                with transaction.atomic():
+                    report = super().run()
+                    transaction.set_rollback(True)
+        except _core.UnresolvedPatientError as exc:
+            source_ids = [
+                item.get("source_patient_link_id")
+                for item in self.report.unresolved_patients
+            ]
+            self._redact_sensitive_report()
+            rendered_ids = ",".join(
+                str(item) for item in source_ids if item is not None
+            ) or "unknown"
+            raise _core.UnresolvedPatientError(
+                "Cannot resolve specialist patient row(s) to accounting.patients; "
+                f"source patient_link id(s): {rendered_ids}. "
+                "See the redacted reconciliation report and inspect the secured "
+                "SQLite snapshot directly."
+            ) from exc
+        except Exception:
+            self._redact_sensitive_report()
+            raise
 
-        # The core importer already uses an inner atomic block.  The outer block
-        # lets us materialize planned rows for genuine FK/catalog validation and
-        # then discard the complete simulation in one rollback.
-        with transaction.atomic():
-            report = super().run()
-            transaction.set_rollback(True)
+        self._redact_sensitive_report()
         return report
 
     def _insert(
