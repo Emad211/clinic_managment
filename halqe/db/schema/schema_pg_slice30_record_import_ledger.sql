@@ -1,10 +1,14 @@
 -- ==========================================================================
 -- Specialist-clinic patient-record import ledger.
 --
--- Source SQLite row IDs are meaningful only inside one source database.  This
+-- Source SQLite row IDs are meaningful only inside one source database. This
 -- tenant-scoped ledger gives the ETL a stable idempotency key and stores the
 -- transformed payload digest, so reruns can distinguish an exact replay from a
 -- source row that changed after an earlier import.
+--
+-- A target row is intentionally NOT unique in this ledger: multiple independent
+-- specialist databases may legitimately resolve the same natural catalog row or
+-- the same already-enrolled patient link.
 -- ==========================================================================
 
 CREATE TABLE IF NOT EXISTS clinical.record_import_ledger (
@@ -20,8 +24,6 @@ CREATE TABLE IF NOT EXISTS clinical.record_import_ledger (
     imported_by       TEXT,
     CONSTRAINT uq_record_import_source
         UNIQUE (tenant_id, source_id, source_table, source_row_id),
-    CONSTRAINT uq_record_import_target
-        UNIQUE (tenant_id, target_table, target_row_id),
     CONSTRAINT chk_record_import_source_id_not_blank
         CHECK (btrim(source_id) <> ''),
     CONSTRAINT chk_record_import_table_names_not_blank
@@ -53,7 +55,7 @@ CREATE POLICY tenant_isolation ON clinical.record_import_ledger
         )::bigint
     );
 
--- ETL uses the normal application connection under the tenant GUC.  The ledger
+-- ETL uses the normal application connection under the tenant GUC. The ledger
 -- is append-only for that role: it may read and insert, never rewrite history.
 GRANT SELECT, INSERT ON clinical.record_import_ledger
     TO clinical_app, platform_app;
