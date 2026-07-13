@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
+import tempfile
 
 from django.core.management.base import BaseCommand, CommandError
 
@@ -70,7 +72,18 @@ class Command(BaseCommand):
         )
         parser.add_argument(
             "--report",
-            help="Optional JSON report path. Parent directories are created.",
+            help=(
+                "Optional JSON report path. The file is replaced atomically with "
+                "permissions 0600; parent directories are created."
+            ),
+        )
+        parser.add_argument(
+            "--print-report",
+            action="store_true",
+            help=(
+                "Print the complete redacted JSON report to stdout. Disabled by "
+                "default so generic shell/CI logs receive only a compact summary."
+            ),
         )
 
     def handle(self, *args, **options):
@@ -90,10 +103,19 @@ class Command(BaseCommand):
             report = importer.run()
         except SpecialistRecordImportError as exc:
             importer.report.error = str(exc)
-            self._emit(importer.report.to_dict(), options.get("report"))
+            self._emit(
+                importer.report.to_dict(),
+                options.get("report"),
+                print_report=options["print_report"],
+            )
             raise CommandError(str(exc)) from exc
+
         payload = report.to_dict()
-        self._emit(payload, options.get("report"))
+        self._emit(
+            payload,
+            options.get("report"),
+            print_report=options["print_report"],
+        )
         action = "committed" if options["apply"] else "validated (dry-run; no writes)"
         total = sum(table["source_rows"] for table in payload["tables"].values())
         self.stdout.write(
@@ -104,11 +126,59 @@ class Command(BaseCommand):
             )
         )
 
-    def _emit(self, payload: dict, report_path: str | None) -> None:
+    def _emit(
+        self,
+        payload: dict,
+        report_path: str | None,
+        *,
+        print_report: bool,
+    ) -> None:
         rendered = json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True)
-        self.stdout.write(rendered)
+        if print_report:
+            self.stdout.write(rendered)
         if report_path:
-            path = Path(report_path).expanduser()
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(rendered + "\n", encoding="utf-8")
-            self.stdout.write(f"Wrote reconciliation report: {path}")
+            path = Path(report_path).expanduser().absolute()
+            self._write_private_report(path, rendered + "\n")
+            self.stdout.write(f"Wrote private reconciliation report (0600): {path}")
+
+    @staticmethod
+    def _write_private_report(path: Path, content: str) -> None:
+        """Atomically replace a regular report file with owner-only permissions."""
+        path.parent.mkdir(parents=True, exist_ok=True)
+        if path.is_symlink():
+            raise CommandError(
+                f"Refusing to write reconciliation report through a symlink: {path}"
+            )
+        if path.exists() and not path.is_file():
+            raise CommandError(
+                f"Reconciliation report path is not a regular file: {path}"
+            )
+
+        fd: int | None = None
+        temporary_name: str | None = None
+        try:
+            fd, temporary_name = tempfile.mkstemp(
+                prefix=f".{path.name}.",
+                suffix=".tmp",
+                dir=path.parent,
+                text=True,
+            )
+            os.fchmod(fd, 0o600)
+            with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as handle:
+                fd = None
+                handle.write(content)
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(temporary_name, path)
+            temporary_name = None
+            os.chmod(path, 0o600)
+        except OSError as exc:
+            raise CommandError(f"Failed to write reconciliation report: {exc}") from exc
+        finally:
+            if fd is not None:
+                os.close(fd)
+            if temporary_name is not None:
+                try:
+                    os.unlink(temporary_name)
+                except FileNotFoundError:
+                    pass
