@@ -4,7 +4,7 @@
 #   1. Halqe backend (Django + real PostgreSQL + full pytest)
 #   2. PostgreSQL schema guard
 #   3. Halqe web (Jest + TypeScript + ESLint + production build)
-# Test logs are retained even on failure so safety regressions are diagnosable.
+# Test logs and the generated OpenAPI contract are retained for diagnosis/review.
 # ---------------------------------------------------------------------------
 name: CI
 
@@ -27,10 +27,6 @@ jobs:
           POSTGRES_PASSWORD: ci_postgres_pw
           POSTGRES_DB: postgres
         ports:
-          # A number of long-lived schema/audit characterization tests connect
-          # directly to the documented local test port. Keep the service on the
-          # same port as the pytest fixture instead of silently splitting CI into
-          # two PostgreSQL endpoints.
           - 55432:5432
         options: >-
           --health-cmd "pg_isready -U postgres"
@@ -57,6 +53,9 @@ jobs:
           cache-dependency-path: halqe/requirements.txt
       - name: Install Python dependencies
         run: pip install -r halqe/requirements.txt
+      - name: Generate live OpenAPI contract
+        working-directory: halqe
+        run: python manage.py dump_openapi --output generated-openapi.json
       - name: Run Halqe backend tests
         working-directory: halqe
         shell: bash
@@ -69,6 +68,14 @@ jobs:
         with:
           name: backend-test-log
           path: halqe/backend-test.log
+          if-no-files-found: error
+          retention-days: 14
+      - name: Upload generated OpenAPI contract
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: generated-openapi-contract
+          path: halqe/generated-openapi.json
           if-no-files-found: error
           retention-days: 14
 
@@ -101,8 +108,6 @@ jobs:
           cache: pip
           cache-dependency-path: specialist_clinic/requirements.txt
       - name: Install Python dependencies
-        # test_pg_schema includes the auth-function characterization and hashes a
-        # password exactly as production does, so bcrypt is a real test dependency.
         run: pip install "psycopg[binary]" pytest bcrypt
       - name: Run schema-guard tests
         working-directory: specialist_clinic
