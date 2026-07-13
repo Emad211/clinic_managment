@@ -21,6 +21,7 @@ export const NAV_LINKS: NavLink[] = [
 /** Accounting links mirror the backend role gate. */
 export const ACCOUNTING_LINKS: NavLink[] = [
   { href: "/accounting", label: "پذیرش" },
+  { href: "/accounting/nursing", label: "پرستاری" },
   { href: "/accounting/payments", label: "تسویه" },
 ];
 
