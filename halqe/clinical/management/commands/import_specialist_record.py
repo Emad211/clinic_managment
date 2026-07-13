@@ -74,7 +74,7 @@ class Command(BaseCommand):
             "--report",
             help=(
                 "Optional JSON report path. The file is replaced atomically with "
-                "permissions 0600; parent directories are created."
+                "permissions 0600; newly-created parent directories use 0700."
             ),
         )
         parser.add_argument(
@@ -144,7 +144,7 @@ class Command(BaseCommand):
     @staticmethod
     def _write_private_report(path: Path, content: str) -> None:
         """Atomically replace a regular report file with owner-only permissions."""
-        path.parent.mkdir(parents=True, exist_ok=True)
+        path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
         if path.is_symlink():
             raise CommandError(
                 f"Refusing to write reconciliation report through a symlink: {path}"
