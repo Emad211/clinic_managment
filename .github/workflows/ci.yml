@@ -27,7 +27,11 @@ jobs:
           POSTGRES_PASSWORD: ci_postgres_pw
           POSTGRES_DB: postgres
         ports:
-          - 5432:5432
+          # A number of long-lived schema/audit characterization tests connect
+          # directly to the documented local test port. Keep the service on the
+          # same port as the pytest fixture instead of silently splitting CI into
+          # two PostgreSQL endpoints.
+          - 55432:5432
         options: >-
           --health-cmd "pg_isready -U postgres"
           --health-interval 5s
@@ -35,7 +39,7 @@ jobs:
           --health-retries 10
     env:
       PG_HOST: localhost
-      PG_PORT: "5432"
+      PG_PORT: "55432"
       PG_USER: postgres
       PG_PASSWORD: ci_postgres_pw
       PG_APP_USER: platform_login_test
@@ -97,7 +101,9 @@ jobs:
           cache: pip
           cache-dependency-path: specialist_clinic/requirements.txt
       - name: Install Python dependencies
-        run: pip install "psycopg[binary]" pytest
+        # test_pg_schema includes the auth-function characterization and hashes a
+        # password exactly as production does, so bcrypt is a real test dependency.
+        run: pip install "psycopg[binary]" pytest bcrypt
       - name: Run schema-guard tests
         working-directory: specialist_clinic
         shell: bash
