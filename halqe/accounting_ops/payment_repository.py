@@ -4,7 +4,7 @@ Amounts in this projection are the patient's liability, not raw billed revenue:
 
 * visit      -> ``visits.price`` (the migrated visit patient share)
 * injection  -> ``injections.patient_amount`` with recorded-price fallback
-* procedure  -> ``procedures.price`` (still blocked by the service until ported)
+* procedure  -> ``procedures.patient_amount`` with legacy raw-price fallback
 * consumable -> ``consumables_ledger.total_cost``
 
 Every close transition still requires an explicit paid row for every item,
@@ -35,7 +35,8 @@ _ITEM_STREAM = """
     UNION ALL
 
     SELECT p.tenant_id, p.invoice_id, 'procedure'::text,
-           p.id, p.procedure_type, p.price::numeric
+           p.id, p.procedure_type,
+           COALESCE(p.patient_amount, p.price)::numeric
     FROM accounting.procedures p
 
     UNION ALL
