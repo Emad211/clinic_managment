@@ -22,6 +22,7 @@ export const NAV_LINKS: NavLink[] = [
 export const ACCOUNTING_LINKS: NavLink[] = [
   { href: "/accounting", label: "پذیرش" },
   { href: "/accounting/nursing", label: "پرستاری" },
+  { href: "/accounting/procedures", label: "پروسیجر" },
   { href: "/accounting/payments", label: "تسویه" },
 ];
 
@@ -39,7 +40,10 @@ interface NavProps {
 }
 
 function renderLink({ href, label }: NavLink, currentPath: string) {
-  const isActive = currentPath === href || currentPath.startsWith(`${href}/`);
+  const isAccountingRoot = href === "/accounting";
+  const isActive =
+    currentPath === href ||
+    (!isAccountingRoot && currentPath.startsWith(`${href}/`));
   return (
     <Link
       key={href}
