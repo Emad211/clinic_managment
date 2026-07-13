@@ -32,3 +32,4 @@ export * from "./api/control-room";
 export * from "./api/accounting";
 export * from "./api/accounting-payments";
 export * from "./api/accounting-nursing";
+export * from "./api/accounting-procedures";
