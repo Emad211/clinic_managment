@@ -14,7 +14,6 @@ from decimal import Decimal
 from typing import Any, Mapping, Optional
 
 from django.utils import timezone
-from psycopg.errors import UniqueViolation
 
 from accounting_ops.repository import AccountingRepository
 from accounting_ops.validators import (
@@ -66,16 +65,6 @@ def _money(value: Any) -> int:
     if value is None:
         return 0
     return int(Decimal(value))
-
-
-def _current_shift() -> str:
-    """Legacy-compatible default shift derived from Tehran local clock."""
-    hour = timezone.localtime().hour
-    if 7 <= hour <= 13:
-        return "morning"
-    if 14 <= hour <= 19:
-        return "evening"
-    return "night"
 
 
 def _actor_fields(actor: Any) -> tuple[Optional[int], str, str]:
@@ -174,13 +163,16 @@ def _upsert_patient(
 ) -> dict[str, Any]:
     data = _validate_patient_payload(payload)
 
-    existing = None
     if data["national_id"]:
-        existing = repo.find_patient_by_national_id_for_update(
+        row = repo.upsert_patient_by_national_id(
             tenant_id=tenant_id,
-            national_id=data["national_id"],
+            data=data,
+            created_by=actor_username,
         )
-    elif data["phone_number"]:
+        return _patient_row_to_dict(row)
+
+    existing = None
+    if data["phone_number"]:
         existing = repo.find_patient_by_name_phone_for_update(
             tenant_id=tenant_id,
             name=data["name"],
@@ -188,25 +180,18 @@ def _upsert_patient(
             phone_number=data["phone_number"],
         )
 
-    try:
-        if existing:
-            row = repo.update_patient(
-                tenant_id=tenant_id,
-                patient_id=int(existing["id"]),
-                data=data,
-            )
-        else:
-            row = repo.create_patient(
-                tenant_id=tenant_id,
-                data=data,
-                created_by=actor_username,
-            )
-    except UniqueViolation as exc:
-        raise AccountingConflict(
-            "بیماری با این کد ملی قبلاً ثبت شده است.",
-            "duplicate_patient",
-        ) from exc
-
+    if existing:
+        row = repo.update_patient(
+            tenant_id=tenant_id,
+            patient_id=int(existing["id"]),
+            data=data,
+        )
+    else:
+        row = repo.create_patient(
+            tenant_id=tenant_id,
+            data=data,
+            created_by=actor_username,
+        )
     return _patient_row_to_dict(row)
 
 
@@ -217,19 +202,61 @@ def _resolve_visit_price(
     insurance_type: str,
     supplementary_insurance: Optional[str],
 ) -> int:
-    selected = supplementary_insurance or insurance_type
-    row = repo.get_visit_tariff(
+    # A supplementary row must never make an invalid/unknown primary insurance
+    # look valid. Validate the primary first, matching the production form rule.
+    primary = repo.get_visit_tariff(
         tenant_id=tenant_id,
-        insurance_type=selected,
-        is_supplementary=bool(supplementary_insurance),
+        insurance_type=insurance_type,
+        is_supplementary=False,
     )
-    if not row:
-        label = "بیمهٔ تکمیلی" if supplementary_insurance else "بیمه"
+    if not primary:
         raise AccountingValidationError(
-            f"تعرفهٔ فعال برای {label} انتخاب‌شده پیدا نشد.",
+            "تعرفهٔ فعال برای بیمهٔ پایهٔ انتخاب‌شده پیدا نشد.",
             "tariff_not_found",
         )
-    return _money(row["tariff_price"])
+    if not supplementary_insurance:
+        return _money(primary["tariff_price"])
+
+    supplementary = repo.get_visit_tariff(
+        tenant_id=tenant_id,
+        insurance_type=supplementary_insurance,
+        is_supplementary=True,
+    )
+    if not supplementary:
+        raise AccountingValidationError(
+            "تعرفهٔ فعال برای بیمهٔ تکمیلی انتخاب‌شده پیدا نشد.",
+            "tariff_not_found",
+        )
+    return _money(supplementary["tariff_price"])
+
+
+def _resolve_shift_context(
+    repo: AccountingRepository,
+    *,
+    tenant_id: int,
+    actor_user_id: Optional[int],
+    requested_shift: Any,
+    requested_work_date: Any,
+) -> tuple[str, Any]:
+    """Preserve the production app's fully manual shift/work-date contract.
+
+    Explicit values take precedence for controlled imports and recovery.
+    Otherwise the user's ``accounting.user_active_shift`` row is used. A user
+    with no row receives the same legacy first-use fallback: morning + today.
+    """
+    active = None
+    if actor_user_id is not None:
+        active = repo.get_user_active_shift(
+            tenant_id=tenant_id,
+            user_id=int(actor_user_id),
+        )
+    shift = _clean(requested_shift) or (active or {}).get("active_shift") or "morning"
+    work_date = (
+        requested_work_date
+        or (active or {}).get("work_date")
+        or timezone.localdate()
+    )
+    return shift, work_date
 
 
 def _resolve_doctor(
@@ -330,14 +357,19 @@ def open_visit_invoice(
             "invalid_supplementary_insurance",
         )
 
-    work_date = payload.get("work_date") or timezone.localdate()
-    shift = _clean(payload.get("shift")) or _current_shift()
     doctor_id = payload.get("doctor_id")
     notes = _clean(payload.get("notes"))
-    _user_id, username, actor_name = _actor_fields(actor)
+    actor_user_id, username, actor_name = _actor_fields(actor)
 
     with accounting_transaction(tenant_id=tenant_id) as conn:
         repo = AccountingRepository(conn)
+        shift, work_date = _resolve_shift_context(
+            repo,
+            tenant_id=tenant_id,
+            actor_user_id=actor_user_id,
+            requested_shift=payload.get("shift"),
+            requested_work_date=payload.get("work_date"),
+        )
         patient_payload = dict(payload["patient"])
         patient_payload["insurance_type"] = insurance_type
         patient = _upsert_patient(
@@ -433,12 +465,10 @@ def close_invoice(
     ip_address: Optional[str] = None,
     user_agent: Optional[str] = None,
 ) -> dict[str, Any]:
-    """Close a visit-only invoice and freeze its patient-facing total.
+    """Close a Halqe-v1 visit-only invoice and freeze its patient total.
 
-    Injection/procedure/consumable pricing is deliberately blocked in this first
-    slice. Closing such an invoice before those pricing rules are ported could
-    corrupt money. Following slices remove this guard one item family at a time
-    under golden-master tests.
+    Injection/procedure/consumable/visit-item pricing is deliberately blocked
+    in this slice. Closing before those exact rules are ported could corrupt money.
     """
     _user_id, username, actor_name = _actor_fields(actor)
 
@@ -465,8 +495,8 @@ def close_invoice(
         )
         if any(unsupported.values()):
             raise AccountingConflict(
-                "بستن فاکتورهای دارای تزریق، پروسیجر یا مصرفی تا انتقال کامل "
-                "قواعد قیمت‌گذاری آن‌ها مسدود است.",
+                "بستن فاکتورهای دارای تزریق، پروسیجر، مصرفی یا خدمتِ افزودهٔ "
+                "ویزیت تا انتقال کامل قواعد قیمت‌گذاری آن‌ها مسدود است.",
                 "unsupported_invoice_items",
             )
 
@@ -474,13 +504,18 @@ def close_invoice(
             tenant_id=tenant_id,
             invoice_id=invoice_id,
         )
-        repo.mark_invoice_closed(
+        changed = repo.mark_invoice_closed(
             tenant_id=tenant_id,
             invoice_id=invoice_id,
             total_amount=patient_total,
             closed_by=username,
             closed_by_name=actor_name,
         )
+        if not changed:
+            raise AccountingConflict(
+                "وضعیت فاکتور هم‌زمان تغییر کرده است؛ فهرست را تازه کنید.",
+                "invoice_state_changed",
+            )
         patient = repo.patient_for_invoice(
             tenant_id=tenant_id,
             invoice_id=invoice_id,
