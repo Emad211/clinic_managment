@@ -6,10 +6,12 @@ import Link from "next/link";
 import {
   ApiError,
   apiCloseAccountingInvoice,
+  apiCloseAccountingNursingInvoice,
   apiGetAccountingInvoiceFinancials,
   apiGetOpenAccountingInvoices,
   apiSetAccountingItemPayment,
   apiSettleAccountingInvoice,
+  apiSettleAccountingNursingInvoice,
   type AccountingInvoiceDTO,
   type AccountingPaymentSummaryDTO,
   type AccountingPaymentType,
@@ -24,6 +26,8 @@ interface PaymentRow {
   summary: AccountingPaymentSummaryDTO;
 }
 
+const NURSING_PRICING_VERSION = "halqe_visit_nursing_v1";
+
 const PAYMENT_METHODS: Array<{
   value: AccountingPaymentType;
   label: string;
@@ -36,6 +40,10 @@ const PAYMENT_METHODS: Array<{
 
 function errorText(error: unknown, fallback: string): string {
   return error instanceof ApiError ? error.message : fallback;
+}
+
+function isNursingInvoice(invoice: AccountingInvoiceDTO): boolean {
+  return invoice.pricing_version === NURSING_PRICING_VERSION;
 }
 
 export default function AccountingPaymentsPage() {
@@ -108,15 +116,16 @@ export default function AccountingPaymentsPage() {
     );
   }
 
-  async function settle(invoiceId: number) {
+  async function settle(row: PaymentRow) {
+    const invoiceId = row.invoice.id;
     setBusy((current) => ({ ...current, [invoiceId]: true }));
     setError(null);
     setNotice(null);
     try {
-      const summary = await apiSettleAccountingInvoice(
-        invoiceId,
-        methods[invoiceId] ?? "card",
-      );
+      const method = methods[invoiceId] ?? "card";
+      const summary = isNursingInvoice(row.invoice)
+        ? await apiSettleAccountingNursingInvoice(invoiceId, method)
+        : await apiSettleAccountingInvoice(invoiceId, method);
       updateSummary(summary);
       setNotice(`فاکتور شمارهٔ ${toFarsiDigits(invoiceId)} تسویه شد.`);
     } catch (err) {
@@ -130,7 +139,7 @@ export default function AccountingPaymentsPage() {
     }
   }
 
-  async function undoSettlement(row: PaymentRow) {
+  async function undoVisitSettlement(row: PaymentRow) {
     const visitId = row.invoice.visit_id;
     if (!visitId) {
       setError("آیتم ویزیت این فاکتور پیدا نشد.");
@@ -180,7 +189,11 @@ export default function AccountingPaymentsPage() {
     setError(null);
     setNotice(null);
     try {
-      await apiCloseAccountingInvoice(invoiceId);
+      if (isNursingInvoice(row.invoice)) {
+        await apiCloseAccountingNursingInvoice(invoiceId);
+      } else {
+        await apiCloseAccountingInvoice(invoiceId);
+      }
       setRows((current) =>
         current.filter((item) => item.invoice.id !== invoiceId),
       );
@@ -216,6 +229,9 @@ export default function AccountingPaymentsPage() {
           <div className={styles.headerActions}>
             <Link href="/accounting" className={styles.secondaryLink}>
               پذیرش و فاکتور جدید
+            </Link>
+            <Link href="/accounting/nursing" className={styles.secondaryLink}>
+              خدمات پرستاری
             </Link>
             <button type="button" onClick={load} disabled={loading}>
               تازه‌سازی
@@ -265,11 +281,13 @@ export default function AccountingPaymentsPage() {
                     const invoice = row.invoice;
                     const summary = row.summary;
                     const isBusy = Boolean(busy[invoice.id]);
+                    const nursing = isNursingInvoice(invoice);
                     return (
                       <tr key={invoice.id}>
                         <td>
                           <strong>#{toFarsiDigits(invoice.id)}</strong>
                           <small>{invoice.insurance_type || "—"}</small>
+                          {nursing && <small>ویزیت + پرستاری</small>}
                         </td>
                         <td>
                           <strong>{invoice.patient_full_name}</strong>
@@ -314,7 +332,7 @@ export default function AccountingPaymentsPage() {
                                 <button
                                   type="button"
                                   className={styles.settleButton}
-                                  onClick={() => settle(invoice.id)}
+                                  onClick={() => settle(row)}
                                   disabled={isBusy}
                                 >
                                   {isBusy ? "…" : "تسویه"}
@@ -323,14 +341,16 @@ export default function AccountingPaymentsPage() {
                             ) : (
                               <>
                                 <span className={styles.paidBadge}>تسویه‌شده</span>
-                                <button
-                                  type="button"
-                                  className={styles.undoButton}
-                                  onClick={() => undoSettlement(row)}
-                                  disabled={isBusy}
-                                >
-                                  لغو تسویه
-                                </button>
+                                {!nursing && (
+                                  <button
+                                    type="button"
+                                    className={styles.undoButton}
+                                    onClick={() => undoVisitSettlement(row)}
+                                    disabled={isBusy}
+                                  >
+                                    لغو تسویه
+                                  </button>
+                                )}
                                 <button
                                   type="button"
                                   className={styles.closeButton}
@@ -353,8 +373,8 @@ export default function AccountingPaymentsPage() {
 
         <p className={styles.safetyNote}>
           بستن فاکتور در سطح سرویس و PostgreSQL فقط زمانی مجاز است که همهٔ آیتم‌ها
-          پرداخت شده باشند. در این برش، تسویهٔ یکجا فقط برای فاکتورهای ویزیت خالص
-          فعال است.
+          پرداخت شده باشند. فاکتورهای دارای خدمات پرستاری از موتور مالی مخصوص همان
+          برش تسویه و بسته می‌شوند؛ پروسیجرها هنوز عمداً مسدودند.
         </p>
       </main>
     </div>
