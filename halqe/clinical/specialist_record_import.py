@@ -1,7 +1,7 @@
 """Public facade for the specialist-clinic historical record importer.
 
 The implementation lives in :mod:`clinical._specialist_record_import_core`.
-This facade strengthens three operational boundaries:
+This facade strengthens four operational boundaries:
 
 * dry-run rows use explicit negative primary keys inside a transaction that is
   always rolled back, validating real PostgreSQL relationships without leaving
@@ -9,11 +9,13 @@ This facade strengthens three operational boundaries:
 * reports and command errors redact raw patient identifiers by default so
   national IDs and names cannot leak into shell, CI or generic job logs;
 * a reused ``source_id`` must contain every source row already present in its
-  append-only ledger.  Truncated snapshots and accidental source-id reuse fail
-  before commit instead of silently merging two source histories.
+  append-only ledger; truncated or unrelated sources fail before commit;
+* every report states whether changes were committed, intentionally rolled back
+  after validation, or failed with no durable import changes.
 """
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any, Mapping
 
 from django.db import connection, transaction
@@ -23,7 +25,6 @@ from clinical import _specialist_record_import_core as _core
 from clinical._specialist_record_import_core import (
     FinancialDataOutOfScopeError,
     ImportConflictError,
-    ImportReport,
     SourceDatabaseError,
     SourceRowChangedError,
     SpecialistRecordImportError,
@@ -33,8 +34,25 @@ from clinical._specialist_record_import_core import (
 )
 
 
+@dataclass
+class ImportReport(_core.ImportReport):
+    """Operator-facing report with an explicit durability state."""
+
+    transaction_status: str = "not_started"
+
+
 class SpecialistRecordImporter(_core.SpecialistRecordImporter):
     """Importer with monotonic source identity and PHI-safe reporting."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        base = self.report
+        self.report = ImportReport(
+            source_id=base.source_id,
+            source_path=base.source_path,
+            tenant_id=base.tenant_id,
+            mode=base.mode,
+        )
 
     def _redact_sensitive_report(self) -> None:
         """Remove direct patient identifiers from operator-facing report data."""
@@ -60,6 +78,33 @@ class SpecialistRecordImporter(_core.SpecialistRecordImporter):
                 }
                 for item in wallets
             ]
+
+    def _durable_ledger_count(self) -> int | None:
+        """Read the post-transaction ledger count; failure here must not mask root cause."""
+        try:
+            _core.set_tenant_guc(self.tenant_id)
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT COUNT(*)
+                    FROM clinical.record_import_ledger
+                    WHERE tenant_id=%s AND source_id=%s
+                    """,
+                    [self.tenant_id, self.source_id],
+                )
+                return int(cursor.fetchone()[0])
+        except Exception:
+            return None
+
+    def _mark_failed_no_commit(self) -> None:
+        self.report.transaction_status = "failed_no_commit"
+        self.report.ledger_rows_after = self._durable_ledger_count()
+        message = (
+            "No import changes were committed. Per-table inserted/reused counters "
+            "in this failed report describe attempted work before rollback."
+        )
+        if message not in self.report.warnings:
+            self.report.warnings.append(message)
 
     def _assert_source_continuity(self) -> None:
         """Reject a source snapshot that omits rows imported under this source-id."""
@@ -96,6 +141,7 @@ class SpecialistRecordImporter(_core.SpecialistRecordImporter):
             )
 
     def run(self) -> ImportReport:
+        self.report.transaction_status = "running"
         try:
             # An outer transaction surrounds BOTH apply and dry-run. The core uses
             # an inner savepoint. This lets source-continuity validation roll back
@@ -105,12 +151,19 @@ class SpecialistRecordImporter(_core.SpecialistRecordImporter):
                 self._assert_source_continuity()
                 if not self.apply:
                     transaction.set_rollback(True)
+
+            if self.apply:
+                self.report.transaction_status = "committed"
+            else:
+                self.report.transaction_status = "validated_no_commit"
+            self.report.ledger_rows_after = self._durable_ledger_count()
         except _core.UnresolvedPatientError:
             source_ids = [
                 item.get("source_patient_link_id")
                 for item in self.report.unresolved_patients
             ]
             self._redact_sensitive_report()
+            self._mark_failed_no_commit()
             rendered_ids = ",".join(
                 str(item) for item in source_ids if item is not None
             ) or "unknown"
@@ -124,6 +177,7 @@ class SpecialistRecordImporter(_core.SpecialistRecordImporter):
             ) from None
         except Exception:
             self._redact_sensitive_report()
+            self._mark_failed_no_commit()
             raise
 
         self._redact_sensitive_report()
