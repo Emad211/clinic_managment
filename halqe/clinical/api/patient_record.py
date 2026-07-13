@@ -1,9 +1,4 @@
-"""Typed API for the structured patient-record aggregate.
-
-All endpoints require JWT, resolve the accounting UUID to the tenant's clinical
-enrollment, and delegate to ``clinical.patient_record_service``.  The route
-layer owns only transport validation and stable HTTP error mapping.
-"""
+"""Typed JWT API for the structured patient-record aggregate."""
 from __future__ import annotations
 
 import uuid as uuid_module
@@ -14,6 +9,7 @@ from ninja import Router, Schema
 from pydantic import Field
 
 from clinical.api._shared import _resolve_patient_link_for_tenant
+from clinical.models import Condition
 from clinical.patient_record_service import (
     PatientRecordConflict,
     PatientRecordNotFound,
@@ -37,12 +33,11 @@ from clinical.patient_record_service import (
 from config.api_base import _jwt_auth
 from config.errors import ErrorSchema, error_response
 
-
 router = Router()
 
 
 # ---------------------------------------------------------------------------
-# DTOs — exact, documented JSON contract for the Next.js patient record.
+# Output contracts
 # ---------------------------------------------------------------------------
 class CatalogConditionDTO(Schema):
     id: int
@@ -258,7 +253,7 @@ class DeleteOut(Schema):
 
 
 # ---------------------------------------------------------------------------
-# Inputs
+# Input contracts
 # ---------------------------------------------------------------------------
 class ConditionIn(Schema):
     condition_id: int
@@ -323,7 +318,7 @@ class LabResultIn(Schema):
 
 
 # ---------------------------------------------------------------------------
-# Route helpers
+# Helpers
 # ---------------------------------------------------------------------------
 def _actor(request) -> tuple[str, Optional[int]]:
     return (
@@ -332,7 +327,7 @@ def _actor(request) -> tuple[str, Optional[int]]:
     )
 
 
-def _errors(exc: Exception):
+def _error(exc: Exception):
     if isinstance(exc, PatientRecordNotFound):
         return 404, error_response(str(exc), "not_found")
     if isinstance(exc, PatientRecordConflict):
@@ -402,9 +397,10 @@ def create_condition(request, patient_uuid: uuid_module.UUID, payload: Condition
             actor_id=user_id,
         )
     except (PatientRecordNotFound, PatientRecordConflict, PatientRecordValidationError) as exc:
-        return _errors(exc)
+        return _error(exc)
     condition = Condition.objects.filter(
-        tenant_id=request.tenant_id, id=row.condition_id
+        tenant_id=request.tenant_id,
+        id=row.condition_id,
     ).first()
     return 201, RecordConditionDTO(
         id=row.id,
@@ -425,11 +421,7 @@ def create_condition(request, patient_uuid: uuid_module.UUID, payload: Condition
     auth=_jwt_auth,
     tags=["patient-record"],
 )
-def remove_condition(
-    request,
-    patient_uuid: uuid_module.UUID,
-    patient_condition_id: int,
-):
+def remove_condition(request, patient_uuid: uuid_module.UUID, patient_condition_id: int):
     link = _link(request, patient_uuid)
     username, user_id = _actor(request)
     try:
@@ -441,7 +433,7 @@ def remove_condition(
             actor_id=user_id,
         )
     except PatientRecordNotFound as exc:
-        return _errors(exc)
+        return _error(exc)
     return DeleteOut(deleted=True, id=row_id)
 
 
@@ -466,7 +458,7 @@ def create_medication(request, patient_uuid: uuid_module.UUID, payload: Medicati
             **payload.model_dump(),
         )
     except (PatientRecordNotFound, PatientRecordValidationError) as exc:
-        return _errors(exc)
+        return _error(exc)
     return 201, _medication_dto(row)
 
 
@@ -495,7 +487,7 @@ def stop_medication_endpoint(
             actor_id=user_id,
         )
     except (PatientRecordNotFound, PatientRecordValidationError) as exc:
-        return _errors(exc)
+        return _error(exc)
     return _medication_dto(row)
 
 
@@ -525,12 +517,12 @@ def change_dose_endpoint(
             actor_id=user_id,
         )
     except (PatientRecordNotFound, PatientRecordValidationError) as exc:
-        return _errors(exc)
+        return _error(exc)
     return _medication_dto(row)
 
 
 # ---------------------------------------------------------------------------
-# Typed flags
+# Typed, partial-safe flags
 # ---------------------------------------------------------------------------
 @router.patch(
     "/patients/{patient_uuid}/record/flags",
@@ -551,17 +543,17 @@ def update_flags(request, patient_uuid: uuid_module.UUID, payload: FlagsPatchIn)
             actor_id=user_id,
         )
     except (PatientRecordNotFound, PatientRecordValidationError) as exc:
-        return _errors(exc)
+        return _error(exc)
     aggregate = get_structured_record(
         tenant_id=request.tenant_id,
         patient_link_id=link.id,
     )
-    changed_keys = set(payload.values) | set(payload.clear_keys)
-    return [row for row in aggregate["flag_catalog"] if row["flag_key"] in changed_keys]
+    changed = set(payload.values) | set(payload.clear_keys)
+    return [row for row in aggregate["flag_catalog"] if row["flag_key"] in changed]
 
 
 # ---------------------------------------------------------------------------
-# Surgery / medical history / notes
+# Medical/surgical history and record notes
 # ---------------------------------------------------------------------------
 @router.post(
     "/patients/{patient_uuid}/record/surgeries",
@@ -583,7 +575,7 @@ def create_surgery(request, patient_uuid: uuid_module.UUID, payload: SurgeryIn):
             actor_id=user_id,
         )
     except (PatientRecordNotFound, PatientRecordValidationError) as exc:
-        return _errors(exc)
+        return _error(exc)
     return 201, SurgeryDTO(
         id=row.id,
         title=row.title,
@@ -611,7 +603,7 @@ def remove_surgery(request, patient_uuid: uuid_module.UUID, surgery_id: int):
             actor_id=user_id,
         )
     except PatientRecordNotFound as exc:
-        return _errors(exc)
+        return _error(exc)
     return DeleteOut(deleted=True, id=deleted_id)
 
 
@@ -621,7 +613,7 @@ def remove_surgery(request, patient_uuid: uuid_module.UUID, surgery_id: int):
     auth=_jwt_auth,
     tags=["patient-record"],
 )
-def create_medical_history(
+def create_medical_history_endpoint(
     request,
     patient_uuid: uuid_module.UUID,
     payload: MedicalHistoryIn,
@@ -639,7 +631,7 @@ def create_medical_history(
             actor_id=user_id,
         )
     except (PatientRecordNotFound, PatientRecordValidationError) as exc:
-        return _errors(exc)
+        return _error(exc)
     return 201, MedicalHistoryDTO(
         id=row.id,
         title=row.title,
@@ -655,11 +647,7 @@ def create_medical_history(
     auth=_jwt_auth,
     tags=["patient-record"],
 )
-def remove_medical_history(
-    request,
-    patient_uuid: uuid_module.UUID,
-    history_id: int,
-):
+def remove_medical_history(request, patient_uuid: uuid_module.UUID, history_id: int):
     link = _link(request, patient_uuid)
     username, user_id = _actor(request)
     try:
@@ -671,7 +659,7 @@ def remove_medical_history(
             actor_id=user_id,
         )
     except PatientRecordNotFound as exc:
-        return _errors(exc)
+        return _error(exc)
     return DeleteOut(deleted=True, id=deleted_id)
 
 
@@ -694,7 +682,7 @@ def create_note(request, patient_uuid: uuid_module.UUID, payload: ClinicalNoteIn
             actor_id=user_id,
         )
     except (PatientRecordNotFound, PatientRecordValidationError) as exc:
-        return _errors(exc)
+        return _error(exc)
     return 201, ClinicalNoteDTO(
         id=row.id,
         kind=row.kind,
@@ -722,7 +710,7 @@ def remove_note(request, patient_uuid: uuid_module.UUID, note_id: int):
             actor_id=user_id,
         )
     except PatientRecordNotFound as exc:
-        return _errors(exc)
+        return _error(exc)
     return DeleteOut(deleted=True, id=deleted_id)
 
 
@@ -747,7 +735,7 @@ def create_lab(request, patient_uuid: uuid_module.UUID, payload: LabResultIn):
             **payload.model_dump(),
         )
     except (PatientRecordNotFound, PatientRecordValidationError) as exc:
-        return _errors(exc)
+        return _error(exc)
     return 201, LabResultDTO(
         id=row.id,
         encounter_id=row.encounter_id,
@@ -781,5 +769,5 @@ def remove_lab(request, patient_uuid: uuid_module.UUID, lab_id: int):
             actor_id=user_id,
         )
     except PatientRecordNotFound as exc:
-        return _errors(exc)
+        return _error(exc)
     return DeleteOut(deleted=True, id=deleted_id)
