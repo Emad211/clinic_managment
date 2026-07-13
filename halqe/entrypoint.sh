@@ -47,7 +47,10 @@ fi
 
 WORKERS="${GUNICORN_WORKERS:-3}"
 echo "entrypoint: starting gunicorn with ${WORKERS} workers ..."
-GUNICORN_ACCESS_FMT='%(h)s "%(r)s" %(s)s %(b)s %(L)s rid=%({x-request-id}o)s'
+# Privacy contract: use method + URL PATH + protocol instead of %(r)s. Gunicorn's
+# request-line atom includes the query string, which can contain patient search
+# values such as national_id or phone. %(U)s deliberately excludes query args.
+GUNICORN_ACCESS_FMT='%(h)s "%(m)s %(U)s %(H)s" %(s)s %(b)s %(L)s rid=%({x-request-id}o)s'
 exec gunicorn config.wsgi:application \
     --bind 0.0.0.0:8000 \
     --workers "${WORKERS}" \
