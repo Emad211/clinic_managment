@@ -60,6 +60,9 @@ class PaymentRepository:
     ) -> Optional[dict[str, Any]]:
         if item_type not in _ITEM_TYPES:
             return None
+        # The command service locks the parent invoice row before resolving an
+        # item. PostgreSQL cannot apply FOR UPDATE to a UNION projection, and the
+        # invoice lock is the correct serialization boundary for item payments.
         return self.conn.execute(
             f"""
             WITH item AS ({_ITEM_STREAM})
@@ -67,7 +70,6 @@ class PaymentRepository:
             FROM item
             WHERE tenant_id=%s AND invoice_id=%s
               AND item_type=%s AND item_id=%s
-            FOR UPDATE
             """,
             (tenant_id, invoice_id, item_type, item_id),
         ).fetchone()
