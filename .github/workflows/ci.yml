@@ -1,8 +1,8 @@
 # ---------------------------------------------------------------------------
 # CI — Clinic Management Platform
-# Four gates: Django/Postgres, legacy record/accounting oracles, schema guards,
-# and the complete Next.js quality gate. Test logs are retained on every run so
-# safety regressions are diagnosable rather than hidden behind a red status.
+# Four gates: Django/Postgres, legacy Flask characterization suites, PostgreSQL
+# schema guards, and the complete Next.js quality gate. Logs are retained so a
+# clinical-safety regression is always diagnosable.
 # ---------------------------------------------------------------------------
 name: CI
 
@@ -53,9 +53,10 @@ jobs:
         run: pip install -r halqe/requirements.txt
       - name: Run halqe backend tests
         working-directory: halqe
-        run: >-
-          python -m pytest -q --tb=short
-          2>&1 | tee backend-tests.log
+        shell: bash
+        run: |
+          set -o pipefail
+          python -m pytest -q --tb=short 2>&1 | tee backend-tests.log
       - name: Upload backend test log
         if: always()
         uses: actions/upload-artifact@v4
@@ -66,7 +67,7 @@ jobs:
           retention-days: 7
 
   legacy-oracles:
-    name: "legacy Flask characterization oracles"
+    name: "legacy Flask characterization suites"
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -87,14 +88,9 @@ jobs:
           tests/test_harness_smoke.py
           tests/test_billing_characterization.py
           -q --tb=short
-      - name: Run specialist record unit oracles
+      - name: Run full specialist-clinic suite
         working-directory: specialist_clinic
-        run: >-
-          python -m pytest
-          tests/test_record_catalogs.py
-          tests/test_flag_form.py
-          tests/test_date_flag_semantics.py
-          -q --tb=short
+        run: python -m pytest -q --tb=short
 
   schema-guard:
     name: "schema-guard (pg slice tests)"
@@ -128,9 +124,10 @@ jobs:
         run: pip install "psycopg[binary]" pytest
       - name: Run schema-guard tests
         working-directory: specialist_clinic
-        run: >-
-          python -m pytest tests/test_pg_schema.py -q --tb=short
-          2>&1 | tee schema-guard.log
+        shell: bash
+        run: |
+          set -o pipefail
+          python -m pytest tests/test_pg_schema.py -q --tb=short 2>&1 | tee schema-guard.log
       - name: Upload schema-guard log
         if: always()
         uses: actions/upload-artifact@v4
