@@ -1,13 +1,14 @@
 """Managed=False models for the structured patient-record aggregate.
 
 The PostgreSQL tables already exist in ``schema_pg_slice2_clinical.sql`` and are
-owned by SQL slices.  They live in this module to keep ``clinical.models`` from
+owned by SQL slices. They live in this module to keep ``clinical.models`` from
 growing into another god file; ``ClinicalConfig.import_models`` imports this
 module during Django's model-loading phase.
 """
 from __future__ import annotations
 
 from django.db import models
+from django.db.models.functions import Now
 
 
 class FlagCatalog(models.Model):
@@ -67,7 +68,7 @@ class LabTestCatalog(models.Model):
     unit = models.TextField(null=True, blank=True)
     ref_low = models.FloatField(null=True, blank=True)
     ref_high = models.FloatField(null=True, blank=True)
-    conditions = models.TextField(default="all")
+    category = models.TextField(null=True, blank=True)
     display_order = models.IntegerField(default=100)
     is_active = models.BooleanField(default=True)
 
@@ -90,7 +91,7 @@ class MedicationEvent(models.Model):
     event_date = models.DateField(null=True, blank=True)
     note = models.TextField(null=True, blank=True)
     created_by = models.TextField(null=True, blank=True)
-    created_at = models.DateTimeField()
+    created_at = models.DateTimeField(db_default=Now())
 
     class Meta:
         managed = False
@@ -105,7 +106,7 @@ class SurgeryHistory(models.Model):
     title = models.TextField()
     performed_on = models.DateField(null=True, blank=True)
     note = models.TextField(null=True, blank=True)
-    created_at = models.DateTimeField()
+    created_at = models.DateTimeField(db_default=Now())
 
     class Meta:
         managed = False
@@ -120,7 +121,7 @@ class MedicalHistory(models.Model):
     title = models.TextField()
     note = models.TextField(null=True, blank=True)
     since = models.DateField(null=True, blank=True)
-    created_at = models.DateTimeField()
+    created_at = models.DateTimeField(db_default=Now())
 
     class Meta:
         managed = False
@@ -142,7 +143,7 @@ class ClinicalNote(models.Model):
     patient_link_id = models.BigIntegerField()
     kind = models.TextField()
     body = models.TextField(null=True, blank=True)
-    recorded_at = models.DateTimeField()
+    recorded_at = models.DateTimeField(db_default=Now())
     recorded_by = models.TextField(null=True, blank=True)
 
     class Meta:
