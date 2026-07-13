@@ -2,12 +2,10 @@
 from __future__ import annotations
 
 import json
-import os
-from pathlib import Path
-import tempfile
 
 from django.core.management.base import BaseCommand, CommandError
 
+from clinical.secure_report_io import SecureReportIOError, write_private_text
 from clinical.specialist_record_import import (
     SpecialistRecordImportError,
     SpecialistRecordImporter,
@@ -137,48 +135,8 @@ class Command(BaseCommand):
         if print_report:
             self.stdout.write(rendered)
         if report_path:
-            path = Path(report_path).expanduser().absolute()
-            self._write_private_report(path, rendered + "\n")
+            try:
+                path = write_private_text(report_path, rendered + "\n")
+            except SecureReportIOError as exc:
+                raise CommandError(str(exc)) from exc
             self.stdout.write(f"Wrote private reconciliation report (0600): {path}")
-
-    @staticmethod
-    def _write_private_report(path: Path, content: str) -> None:
-        """Atomically replace a regular report file with owner-only permissions."""
-        path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-        if path.is_symlink():
-            raise CommandError(
-                f"Refusing to write reconciliation report through a symlink: {path}"
-            )
-        if path.exists() and not path.is_file():
-            raise CommandError(
-                f"Reconciliation report path is not a regular file: {path}"
-            )
-
-        fd: int | None = None
-        temporary_name: str | None = None
-        try:
-            fd, temporary_name = tempfile.mkstemp(
-                prefix=f".{path.name}.",
-                suffix=".tmp",
-                dir=path.parent,
-                text=True,
-            )
-            os.fchmod(fd, 0o600)
-            with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as handle:
-                fd = None
-                handle.write(content)
-                handle.flush()
-                os.fsync(handle.fileno())
-            os.replace(temporary_name, path)
-            temporary_name = None
-            os.chmod(path, 0o600)
-        except OSError as exc:
-            raise CommandError(f"Failed to write reconciliation report: {exc}") from exc
-        finally:
-            if fd is not None:
-                os.close(fd)
-            if temporary_name is not None:
-                try:
-                    os.unlink(temporary_name)
-                except FileNotFoundError:
-                    pass
