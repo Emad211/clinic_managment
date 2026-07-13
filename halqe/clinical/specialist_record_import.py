@@ -1,7 +1,7 @@
 """Public facade for the specialist-clinic historical record importer.
 
 The implementation lives in :mod:`clinical._specialist_record_import_core`.
-This facade strengthens four operational boundaries:
+This facade strengthens five operational boundaries:
 
 * dry-run rows use explicit negative primary keys inside a transaction that is
   always rolled back, validating real PostgreSQL relationships without leaving
@@ -11,12 +11,15 @@ This facade strengthens four operational boundaries:
 * a reused ``source_id`` must contain every source row already present in its
   append-only ledger; truncated or unrelated sources fail before commit;
 * every report states whether changes were committed, intentionally rolled back
-  after validation, or failed with no durable import changes.
+  after validation, or failed with no durable import changes;
+* every new ledger row fingerprints the actual target values after insert/reuse,
+  allowing release reconciliation to detect silent target mutation by content,
+  not merely by primary-key existence.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Mapping
+from typing import Any, Mapping, Optional
 
 from django.db import connection, transaction
 from psycopg import sql
@@ -53,6 +56,7 @@ class SpecialistRecordImporter(_core.SpecialistRecordImporter):
             tenant_id=base.tenant_id,
             mode=base.mode,
         )
+        self._target_snapshot_columns: dict[tuple[str, int], tuple[str, ...]] = {}
 
     def _redact_sensitive_report(self) -> None:
         """Remove direct patient identifiers from operator-facing report data."""
@@ -182,6 +186,130 @@ class SpecialistRecordImporter(_core.SpecialistRecordImporter):
 
         self._redact_sensitive_report()
         return report
+
+    def _begin(
+        self,
+        *,
+        source_table: str,
+        row: Mapping[str, Any],
+        payload: Mapping[str, Any],
+        expected_target_table: str,
+    ):
+        result = super()._begin(
+            source_table=source_table,
+            row=row,
+            payload=payload,
+            expected_target_table=expected_target_table,
+        )
+        source_row_id = int(result[0])
+        schema_name, table_name = expected_target_table.split(".", 1)
+        filtered = self._filtered_payload(schema_name, table_name, payload)
+        columns = tuple(sorted(filtered))
+        if not columns:
+            raise _core.ImportConflictError(
+                f"No target snapshot columns for {source_table}#{source_row_id}."
+            )
+        self._target_snapshot_columns[(source_table, source_row_id)] = columns
+        return result
+
+    def _read_actual_target_payload(
+        self,
+        *,
+        target_table: str,
+        target_row_id: Optional[int],
+        target_key: str,
+        columns: tuple[str, ...],
+    ) -> dict[str, Any]:
+        assert self.pg is not None
+        schema_name, table_name = target_table.split(".", 1)
+        selected = sql.SQL(", ").join(sql.Identifier(column) for column in columns)
+        if target_row_id is not None:
+            query = sql.SQL(
+                "SELECT {} FROM {}.{} WHERE tenant_id=%s AND id=%s"
+            ).format(
+                selected,
+                sql.Identifier(schema_name),
+                sql.Identifier(table_name),
+            )
+            self.pg.execute(query, [self.tenant_id, target_row_id])
+        elif target_table == "clinical.condition_lab_tests":
+            condition_code, separator, lab_test_key = target_key.partition("|")
+            if not separator or not condition_code or not lab_test_key:
+                raise _core.ImportConflictError(
+                    f"Invalid natural target key for {target_table}: {target_key!r}"
+                )
+            query = sql.SQL(
+                """
+                SELECT {} FROM clinical.condition_lab_tests
+                WHERE tenant_id=%s AND condition_code=%s AND lab_test_key=%s
+                """
+            ).format(selected)
+            self.pg.execute(
+                query,
+                [self.tenant_id, condition_code, lab_test_key],
+            )
+        else:
+            raise _core.ImportConflictError(
+                f"Target row id is required for snapshotting {target_table}."
+            )
+
+        found = self.pg.fetchone()
+        if found is None:
+            rendered_target = (
+                f"#{target_row_id}" if target_row_id is not None else f":{target_key}"
+            )
+            raise _core.ImportConflictError(
+                f"Cannot fingerprint missing target {target_table}{rendered_target}."
+            )
+        return dict(zip(columns, found))
+
+    def _ledger_add(
+        self,
+        *,
+        source_table: str,
+        source_row_id: int,
+        target_table: str,
+        target_row_id: Optional[int],
+        target_key: str,
+        payload_sha256: str,
+    ) -> None:
+        if not self.apply:
+            return
+        assert self.pg is not None
+        columns = self._target_snapshot_columns.get((source_table, source_row_id))
+        if not columns:
+            raise _core.ImportConflictError(
+                f"Missing target snapshot definition for {source_table}#{source_row_id}."
+            )
+        actual_payload = self._read_actual_target_payload(
+            target_table=target_table,
+            target_row_id=target_row_id,
+            target_key=target_key,
+            columns=columns,
+        )
+        target_payload_sha256 = self._digest(actual_payload)
+        self.pg.execute(
+            """
+            INSERT INTO clinical.record_import_ledger
+                (tenant_id, source_id, source_table, source_row_id,
+                 target_table, target_row_id, target_key, payload_sha256,
+                 target_payload_columns, target_payload_sha256, imported_by)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+            """,
+            [
+                self.tenant_id,
+                self.source_id,
+                source_table,
+                source_row_id,
+                target_table,
+                target_row_id,
+                target_key,
+                payload_sha256,
+                list(columns),
+                target_payload_sha256,
+                self.imported_by,
+            ],
+        )
 
     def _insert(
         self,
