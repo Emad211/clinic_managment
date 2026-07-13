@@ -6,9 +6,10 @@
 -- transformed payload digest, so reruns can distinguish an exact replay from a
 -- source row that changed after an earlier import.
 --
--- A target row is intentionally NOT unique in this ledger: multiple independent
--- specialist databases may legitimately resolve the same natural catalog row or
--- the same already-enrolled patient link.
+-- ``target_key`` is always present. ``target_row_id`` is optional because a few
+-- target tables (for example condition_lab_tests) use only a composite natural
+-- key. A target is intentionally NOT unique in this ledger: independent source
+-- databases may legitimately resolve the same catalogue row or patient link.
 -- ==========================================================================
 
 CREATE TABLE IF NOT EXISTS clinical.record_import_ledger (
@@ -18,7 +19,8 @@ CREATE TABLE IF NOT EXISTS clinical.record_import_ledger (
     source_table      TEXT NOT NULL,
     source_row_id     BIGINT NOT NULL,
     target_table      TEXT NOT NULL,
-    target_row_id     BIGINT NOT NULL,
+    target_row_id     BIGINT,
+    target_key        TEXT NOT NULL,
     payload_sha256    TEXT NOT NULL,
     imported_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
     imported_by       TEXT,
@@ -28,6 +30,8 @@ CREATE TABLE IF NOT EXISTS clinical.record_import_ledger (
         CHECK (btrim(source_id) <> ''),
     CONSTRAINT chk_record_import_table_names_not_blank
         CHECK (btrim(source_table) <> '' AND btrim(target_table) <> ''),
+    CONSTRAINT chk_record_import_target_key_not_blank
+        CHECK (btrim(target_key) <> ''),
     CONSTRAINT chk_record_import_hash_hex
         CHECK (payload_sha256 ~ '^[0-9a-f]{64}$')
 );
@@ -37,7 +41,7 @@ CREATE INDEX IF NOT EXISTS idx_record_import_source_lookup
        (tenant_id, source_id, source_table, source_row_id);
 CREATE INDEX IF NOT EXISTS idx_record_import_target_lookup
     ON clinical.record_import_ledger
-       (tenant_id, target_table, target_row_id);
+       (tenant_id, target_table, target_key);
 
 ALTER TABLE clinical.record_import_ledger ENABLE ROW LEVEL SECURITY;
 ALTER TABLE clinical.record_import_ledger FORCE ROW LEVEL SECURITY;
