@@ -1,12 +1,12 @@
-"""Reception/accounting application service — first Halqe migration slice.
+"""Reception/accounting application service for the Halqe migration.
 
-This module moves the production flow
+The production-safe write flow is deliberately narrow and explicit:
 
-    register/update patient -> open invoice -> add visit -> close invoice
+    patient upsert -> visit invoice -> item payment -> invoice close
 
-from ``webapp`` into the unified PostgreSQL platform. Commands are tenant-
-scoped, atomic, audited, and persist only through the dedicated accounting
-repository/role.
+All commands are tenant-scoped, atomic, audited, and use the dedicated
+``accounting_app`` PostgreSQL role.  The legacy Flask application remains the
+money oracle while additional item families are ported.
 """
 from __future__ import annotations
 
@@ -15,6 +15,7 @@ from typing import Any, Mapping, Optional
 
 from django.utils import timezone
 
+from accounting_ops.payment_repository import PaymentRepository
 from accounting_ops.repository import AccountingRepository
 from accounting_ops.validators import (
     validate_iranian_national_id,
@@ -24,6 +25,13 @@ from accounting_ops.write_port import accounting_transaction
 
 
 PRICING_VERSION_VISIT_V1 = "halqe_visit_v1"
+PAYMENT_TYPES = frozenset({"cash", "card", "insurance", "supplementary"})
+_PAYMENT_LABELS = {
+    "cash": "نقد",
+    "card": "کارت",
+    "insurance": "بیمه",
+    "supplementary": "بیمهٔ تکمیلی",
+}
 
 
 class AccountingCommandError(Exception):
@@ -61,7 +69,7 @@ def _clean(value: Any) -> Optional[str]:
 
 
 def _money(value: Any) -> int:
-    """Convert NUMERIC/Decimal to the platform's integer-Toman contract."""
+    """Convert NUMERIC/Decimal to the integer-Toman API contract."""
     if value is None:
         return 0
     return int(Decimal(value))
@@ -137,7 +145,10 @@ def _patient_row_to_dict(row: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
-def _invoice_row_to_dict(row: Mapping[str, Any]) -> dict[str, Any]:
+def _invoice_row_to_dict(
+    row: Mapping[str, Any],
+    financials: Optional[Mapping[str, Any]] = None,
+) -> dict[str, Any]:
     result = dict(row)
     result["id"] = int(result["id"])
     result["tenant_id"] = int(result["tenant_id"])
@@ -151,7 +162,20 @@ def _invoice_row_to_dict(row: Mapping[str, Any]) -> dict[str, Any]:
         if result.get("visit_price") is not None
         else None
     )
+    if financials:
+        result.update(financials)
     return result
+
+
+def _payment_summary(invoice_id: int, summary: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        "invoice_id": int(invoice_id),
+        "total_amount": _money(summary.get("total_amount")),
+        "paid_amount": _money(summary.get("paid_amount")),
+        "remaining_amount": _money(summary.get("remaining_amount")),
+        "all_items_paid": bool(summary.get("all_items_paid")),
+        "payment_type": summary.get("payment_type"),
+    }
 
 
 def _upsert_patient(
@@ -179,7 +203,6 @@ def _upsert_patient(
             family_name=data["family_name"],
             phone_number=data["phone_number"],
         )
-
     if existing:
         row = repo.update_patient(
             tenant_id=tenant_id,
@@ -202,8 +225,9 @@ def _resolve_visit_price(
     insurance_type: str,
     supplementary_insurance: Optional[str],
 ) -> int:
-    # A supplementary row must never make an invalid/unknown primary insurance
-    # look valid. Validate the primary first, matching the production form rule.
+    # Validate the primary tariff even when a supplementary tariff overrides the
+    # patient share.  An unknown primary insurance must never look valid merely
+    # because a supplementary row exists.
     primary = repo.get_visit_tariff(
         tenant_id=tenant_id,
         insurance_type=insurance_type,
@@ -238,12 +262,7 @@ def _resolve_shift_context(
     requested_shift: Any,
     requested_work_date: Any,
 ) -> tuple[str, Any]:
-    """Preserve the production app's fully manual shift/work-date contract.
-
-    Explicit values take precedence for controlled imports and recovery.
-    Otherwise the user's ``accounting.user_active_shift`` row is used. A user
-    with no row receives the same legacy first-use fallback: morning + today.
-    """
+    """Preserve the production app's manual shift/work-date contract."""
     active = None
     if actor_user_id is not None:
         active = repo.get_user_active_shift(
@@ -276,6 +295,16 @@ def _resolve_doctor(
     return row["full_name"]
 
 
+def _validate_payment_type(value: Any) -> str:
+    payment_type = _clean(value)
+    if payment_type not in PAYMENT_TYPES:
+        raise AccountingValidationError(
+            "روش پرداخت باید نقد، کارت، بیمه یا بیمهٔ تکمیلی باشد.",
+            "invalid_payment_type",
+        )
+    return payment_type
+
+
 def _log_activity(
     repo: AccountingRepository,
     *,
@@ -303,6 +332,29 @@ def _log_activity(
         ip_address=ip_address,
         user_agent=user_agent,
     )
+
+
+def _lock_visit_invoice(
+    repo: AccountingRepository,
+    *,
+    tenant_id: int,
+    invoice_id: int,
+) -> Mapping[str, Any]:
+    invoice = repo.lock_invoice(tenant_id=tenant_id, invoice_id=invoice_id)
+    if not invoice:
+        raise AccountingNotFound("فاکتور پیدا نشد.")
+    if invoice["status"] != "open":
+        raise AccountingConflict(
+            "این فاکتور قبلاً بسته شده است.",
+            "invoice_already_closed",
+        )
+    if invoice.get("pricing_version") != PRICING_VERSION_VISIT_V1:
+        raise AccountingConflict(
+            "این فاکتور با موتور قیمت‌گذاری قدیمی ساخته شده است و باید تا "
+            "تکمیل تطبیق مالی از مسیر قبلی مدیریت شود.",
+            "legacy_invoice_close_blocked",
+        )
+    return invoice
 
 
 def list_visit_tariffs(*, tenant_id: int) -> list[dict[str, Any]]:
@@ -363,6 +415,7 @@ def open_visit_invoice(
 
     with accounting_transaction(tenant_id=tenant_id) as conn:
         repo = AccountingRepository(conn)
+        payments = PaymentRepository(conn)
         shift, work_date = _resolve_shift_context(
             repo,
             tenant_id=tenant_id,
@@ -432,7 +485,11 @@ def open_visit_invoice(
         row = repo.invoice_projection(tenant_id=tenant_id, invoice_id=invoice_id)
         if not row:
             raise AccountingNotFound("فاکتور ایجادشده پیدا نشد.")
-        return _invoice_row_to_dict(row)
+        summary = payments.summary_for_invoice(
+            tenant_id=tenant_id,
+            invoice_id=invoice_id,
+        )
+        return _invoice_row_to_dict(row, _payment_summary(invoice_id, summary))
 
 
 def list_open_invoices(
@@ -443,18 +500,169 @@ def list_open_invoices(
 ) -> dict[str, Any]:
     with accounting_transaction(tenant_id=tenant_id) as conn:
         repo = AccountingRepository(conn)
+        payments = PaymentRepository(conn)
         total = repo.count_open_invoices(tenant_id=tenant_id)
         rows = repo.list_open_invoices(
             tenant_id=tenant_id,
             limit=limit,
             offset=offset,
         )
+        summaries = payments.summaries_for_invoices(
+            tenant_id=tenant_id,
+            invoice_ids=[int(row["id"]) for row in rows],
+        )
         return {
-            "items": [_invoice_row_to_dict(row) for row in rows],
+            "items": [
+                _invoice_row_to_dict(
+                    row,
+                    _payment_summary(int(row["id"]), summaries[int(row["id"])]),
+                )
+                for row in rows
+            ],
             "total": total,
             "limit": limit,
             "offset": offset,
         }
+
+
+def get_invoice_financials(*, tenant_id: int, invoice_id: int) -> dict[str, Any]:
+    with accounting_transaction(tenant_id=tenant_id) as conn:
+        repo = AccountingRepository(conn)
+        if not repo.invoice_projection(tenant_id=tenant_id, invoice_id=invoice_id):
+            raise AccountingNotFound("فاکتور پیدا نشد.")
+        summary = PaymentRepository(conn).summary_for_invoice(
+            tenant_id=tenant_id,
+            invoice_id=invoice_id,
+        )
+        return _payment_summary(invoice_id, summary)
+
+
+def set_item_payment(
+    *,
+    tenant_id: int,
+    invoice_id: int,
+    item_type: str,
+    item_id: int,
+    payment_type: Optional[str],
+    is_paid: bool,
+    actor: Any,
+    ip_address: Optional[str] = None,
+    user_agent: Optional[str] = None,
+) -> dict[str, Any]:
+    """Set one visit item's payment state and return invoice financials."""
+    if item_type != "visit":
+        raise AccountingValidationError(
+            "در این مرحله فقط پرداخت آیتم ویزیت پشتیبانی می‌شود.",
+            "payment_item_type_not_supported",
+        )
+    normalized_type = _validate_payment_type(payment_type) if is_paid else None
+
+    with accounting_transaction(tenant_id=tenant_id) as conn:
+        repo = AccountingRepository(conn)
+        payments = PaymentRepository(conn)
+        _lock_visit_invoice(repo, tenant_id=tenant_id, invoice_id=invoice_id)
+        visit = payments.get_visit_item(
+            tenant_id=tenant_id,
+            invoice_id=invoice_id,
+            visit_id=item_id,
+        )
+        if not visit:
+            raise AccountingNotFound("آیتم ویزیت برای این فاکتور پیدا نشد.")
+        payments.set_item_payment(
+            tenant_id=tenant_id,
+            invoice_id=invoice_id,
+            item_type="visit",
+            item_id=item_id,
+            payment_type=normalized_type,
+            is_paid=is_paid,
+        )
+        patient = repo.patient_for_invoice(
+            tenant_id=tenant_id,
+            invoice_id=invoice_id,
+        )
+        status_label = "پرداخت‌شده" if is_paid else "پرداخت‌نشده"
+        method_label = _PAYMENT_LABELS.get(normalized_type or "", "—")
+        _log_activity(
+            repo,
+            tenant_id=tenant_id,
+            actor=actor,
+            action_type="item_payment_set",
+            description=(
+                f"تغییر وضعیت پرداخت ویزیت #{item_id} به {status_label} "
+                f"({method_label})"
+            ),
+            invoice_id=invoice_id,
+            patient=patient,
+            amount=_money(visit["price"]) if is_paid else 0,
+            ip_address=ip_address,
+            user_agent=user_agent,
+        )
+        summary = payments.summary_for_invoice(
+            tenant_id=tenant_id,
+            invoice_id=invoice_id,
+        )
+        return _payment_summary(invoice_id, summary)
+
+
+def settle_all_invoice(
+    *,
+    tenant_id: int,
+    invoice_id: int,
+    payment_type: str,
+    actor: Any,
+    ip_address: Optional[str] = None,
+    user_agent: Optional[str] = None,
+) -> dict[str, Any]:
+    """Mark every currently supported item as paid in one transaction."""
+    normalized_type = _validate_payment_type(payment_type)
+    with accounting_transaction(tenant_id=tenant_id) as conn:
+        repo = AccountingRepository(conn)
+        payments = PaymentRepository(conn)
+        _lock_visit_invoice(repo, tenant_id=tenant_id, invoice_id=invoice_id)
+        unsupported = repo.unsupported_item_counts(
+            tenant_id=tenant_id,
+            invoice_id=invoice_id,
+        )
+        if any(unsupported.values()):
+            raise AccountingConflict(
+                "تسویهٔ یکجای این فاکتور تا انتقال پرداخت تزریق، پروسیجر، "
+                "مصرفی و خدمات افزوده مسدود است.",
+                "unsupported_invoice_items",
+            )
+        changed = payments.settle_all_visits(
+            tenant_id=tenant_id,
+            invoice_id=invoice_id,
+            payment_type=normalized_type,
+        )
+        if changed == 0:
+            raise AccountingConflict(
+                "این فاکتور آیتم قابل تسویه ندارد.",
+                "invoice_has_no_payable_items",
+            )
+        summary = payments.summary_for_invoice(
+            tenant_id=tenant_id,
+            invoice_id=invoice_id,
+        )
+        patient = repo.patient_for_invoice(
+            tenant_id=tenant_id,
+            invoice_id=invoice_id,
+        )
+        _log_activity(
+            repo,
+            tenant_id=tenant_id,
+            actor=actor,
+            action_type="invoice_settle",
+            description=(
+                f"تسویهٔ فاکتور #{invoice_id} با روش "
+                f"{_PAYMENT_LABELS[normalized_type]}"
+            ),
+            invoice_id=invoice_id,
+            patient=patient,
+            amount=_money(summary.get("paid_amount")),
+            ip_address=ip_address,
+            user_agent=user_agent,
+        )
+        return _payment_summary(invoice_id, summary)
 
 
 def close_invoice(
@@ -465,29 +673,13 @@ def close_invoice(
     ip_address: Optional[str] = None,
     user_agent: Optional[str] = None,
 ) -> dict[str, Any]:
-    """Close a Halqe-v1 visit-only invoice and freeze its patient total.
-
-    Injection/procedure/consumable/visit-item pricing is deliberately blocked
-    in this slice. Closing before those exact rules are ported could corrupt money.
-    """
+    """Close a fully-paid, Halqe-v1 visit-only invoice and freeze its total."""
     _user_id, username, actor_name = _actor_fields(actor)
 
     with accounting_transaction(tenant_id=tenant_id) as conn:
         repo = AccountingRepository(conn)
-        invoice = repo.lock_invoice(tenant_id=tenant_id, invoice_id=invoice_id)
-        if not invoice:
-            raise AccountingNotFound("فاکتور پیدا نشد.")
-        if invoice["status"] != "open":
-            raise AccountingConflict(
-                "این فاکتور قبلاً بسته شده است.",
-                "invoice_already_closed",
-            )
-        if invoice.get("pricing_version") != PRICING_VERSION_VISIT_V1:
-            raise AccountingConflict(
-                "این فاکتور با موتور قیمت‌گذاری قدیمی ساخته شده است و باید تا "
-                "تکمیل تطبیق مالی از مسیر قبلی بسته شود.",
-                "legacy_invoice_close_blocked",
-            )
+        payments = PaymentRepository(conn)
+        _lock_visit_invoice(repo, tenant_id=tenant_id, invoice_id=invoice_id)
 
         unsupported = repo.unsupported_item_counts(
             tenant_id=tenant_id,
@@ -500,10 +692,26 @@ def close_invoice(
                 "unsupported_invoice_items",
             )
 
-        patient_total = repo.visit_patient_total(
+        unpaid = payments.unpaid_visit_items(
             tenant_id=tenant_id,
             invoice_id=invoice_id,
         )
+        if unpaid:
+            raise AccountingConflict(
+                f"امکان بستن فاکتور وجود ندارد — {len(unpaid)} آیتم تسویه نشده است.",
+                "invoice_unpaid_items",
+            )
+
+        summary = payments.summary_for_invoice(
+            tenant_id=tenant_id,
+            invoice_id=invoice_id,
+        )
+        if not summary.get("all_items_paid"):
+            raise AccountingConflict(
+                "امکان بستن فاکتور وجود ندارد — وضعیت پرداخت کامل نیست.",
+                "invoice_unpaid_items",
+            )
+        patient_total = _money(summary.get("total_amount"))
         changed = repo.mark_invoice_closed(
             tenant_id=tenant_id,
             invoice_id=invoice_id,
@@ -535,4 +743,4 @@ def close_invoice(
         row = repo.invoice_projection(tenant_id=tenant_id, invoice_id=invoice_id)
         if not row:
             raise AccountingNotFound("فاکتور پیدا نشد.")
-        return _invoice_row_to_dict(row)
+        return _invoice_row_to_dict(row, _payment_summary(invoice_id, summary))
