@@ -1,6 +1,6 @@
 # Verifier خودکار مهاجرت پروندهٔ کلینیک تخصصی
 
-این سند مکمل `specialist_record_migration_runbook.md` است. فرمان verifier هیچ تغییر ماندگاری در داده‌های بالینی یا حسابداری ایجاد نمی‌کند؛ برای بازتولید manifest، dry-run رابطه‌ای با IDهای منفی اجرا می‌شود و transaction آن همیشه rollback می‌شود.
+این سند مکمل `specialist_record_migration_runbook.md` است. فرمان verifier هیچ تغییر **ماندگاری** در داده‌های بالینی یا حسابداری ایجاد نمی‌کند؛ برای بازتولید manifest، dry-run رابطه‌ای با IDهای منفی اجرا می‌شود و transaction آن همیشه rollback می‌شود. اجرای verifier باید در همان maintenance window و پیش از آزادشدن writeهای حلقه انجام شود.
 
 ## خروجی‌های موردنیاز
 
@@ -106,6 +106,26 @@ Verifier dry-run را دوباره روی همان SQLite اجرا می‌کند
 - وجود target در همان tenant؛
 - resolveشدن natural key جدول `condition_lab_tests`؛
 - بازسازی manifest از digestهای ledger و مقایسه با source manifest.
+
+### اثر انگشت محتوای target
+
+هر ledger row جدید دو مدرک مستقل دارد:
+
+```text
+payload_sha256                 hash payload تبدیل‌شدهٔ source
+target_payload_sha256          hash مقدار واقعی target پس از insert/reuse
+target_payload_columns         ستون‌های شرکت‌کننده در hash target
+```
+
+Verifier مقدار فعلی target را فقط برای همان ستون‌ها به‌شکل canonical بازسازی می‌کند و با `target_payload_sha256` مقایسه می‌کند. این بررسی موارد زیر را کشف می‌کند:
+
+- target با همان ID حذف و دوباره با محتوای دیگر ساخته شده؛
+- مقدار یک medical history، lab، medication یا row دیگر پس از rehearsal تغییر کرده؛
+- `display_order` یا mapping طبیعی `condition_lab_tests` تغییر کرده؛
+- ledger قدیمی فاقد fingerprint است؛
+- target column یا natural key دیگر قابل resolve نیست.
+
+اثر انگشت target برای **پنجرهٔ migration** طراحی شده است. پس از بازشدن writeهای production، تغییر مشروع پرونده توسط پزشک طبیعتاً snapshot اولیه را تغییر می‌دهد؛ بنابراین verifier نهایی باید قبل از آزادکردن writeها اجرا و artifact آن نگهداری شود.
 
 ### invariantهای بالینی
 
