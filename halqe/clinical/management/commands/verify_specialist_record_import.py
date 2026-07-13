@@ -1,4 +1,4 @@
-"""Management command for read-only specialist-record reconciliation."""
+"""Management command for specialist-record release reconciliation."""
 from __future__ import annotations
 
 import json
@@ -10,12 +10,14 @@ from clinical.specialist_record_reconciliation import (
     SpecialistRecordReconciliationError,
     SpecialistRecordReconciler,
 )
+from clinical.specialist_record_target_snapshots import verify_target_snapshots
 
 
 class Command(BaseCommand):
     help = (
         "Verify a committed specialist-record import and its idempotent replay "
-        "against the secured SQLite snapshot, append-only ledger and domain invariants."
+        "against the secured SQLite snapshot, append-only ledger, target content "
+        "fingerprints and clinical domain invariants."
     )
 
     def add_arguments(self, parser):
@@ -90,8 +92,23 @@ class Command(BaseCommand):
                 strict_warnings=options["strict_warnings"],
                 require_replay=not options["allow_missing_replay"],
             ).run()
+            snapshot = verify_target_snapshots(
+                tenant_id=options["tenant_id"],
+                source_id=options["source_id"],
+            )
+            result.add(
+                "target_payload_fingerprints",
+                snapshot.status,
+                snapshot.detail,
+                **snapshot.metrics,
+            )
+            result.finalize()
         except SpecialistRecordReconciliationError as exc:
             raise CommandError(str(exc)) from exc
+        except Exception as exc:
+            raise CommandError(
+                f"Target snapshot reconciliation could not be completed: {exc}"
+            ) from exc
 
         payload = result.to_dict()
         rendered = json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True)
