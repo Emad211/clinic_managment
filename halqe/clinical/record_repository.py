@@ -397,6 +397,15 @@ class RecordRepository:
         )
 
     # ----------------------------------------------------------------- vitals
+    def list_vitals(
+        self, *, tenant_id: int, patient_link_id: int, limit: int = 200
+    ) -> list[VitalReading]:
+        return list(
+            VitalReading.objects.filter(
+                tenant_id=tenant_id, patient_link_id=patient_link_id
+            ).order_by("-measured_at", "-id")[:limit]
+        )
+
     def create_vital(self, **fields) -> VitalReading:
         return VitalReading.objects.create(**fields)
 
