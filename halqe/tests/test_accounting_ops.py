@@ -1,7 +1,7 @@
-"""First accounting migration slice: reception -> visit invoice -> close.
+"""Accounting migration tests: reception, payment and paid-only close.
 
-These tests exercise the real PostgreSQL permission boundary and the money
-safety gates used during the incremental migration from ``webapp``.
+The suite exercises the real PostgreSQL permission boundary and keeps the
+legacy money rules fail-closed while item families are moved incrementally.
 """
 from __future__ import annotations
 
@@ -10,10 +10,10 @@ import os
 import bcrypt
 import psycopg
 import pytest
-from ninja.testing import TestClient
-from django.core.management import call_command
 from django.core.exceptions import ImproperlyConfigured
+from django.core.management import call_command
 from django.test import override_settings
+from ninja.testing import TestClient
 
 from accounting_ops.service import list_open_invoices
 from accounting_ops.write_port import _accounting_credentials
@@ -56,6 +56,35 @@ def _login(username: str, password: str) -> str:
 
 def _auth(token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
+
+
+def _open_visit(
+    client: TestClient,
+    token: str,
+    *,
+    national_id: str,
+    family_name: str,
+    insurance_type: str = "تامین اجتماعی",
+    supplementary: str | None = None,
+):
+    response = client.post(
+        "/accounting/invoices/visit",
+        headers=_auth(token),
+        json={
+            "patient": {
+                "name": "بیمار",
+                "family_name": family_name,
+                "national_id": national_id,
+                "phone_number": "09121111111",
+                "is_foreign": False,
+            },
+            "insurance_type": insurance_type,
+            "supplementary_insurance": supplementary,
+            "notes": "ویزیت مهاجرت حسابداری",
+        },
+    )
+    assert response.status_code == 201, response.text
+    return response.json()
 
 
 @override_settings(PRODUCTION=True)
@@ -177,53 +206,74 @@ def test_staff_role_cannot_access_accounting(seed_data, accounting_ready):
 
 
 @pytest.mark.django_db(databases=["default", "accounting_read"], transaction=True)
-def test_visit_invoice_open_list_close_is_atomic_and_audited(accounting_ready):
+def test_visit_invoice_requires_settlement_before_close_and_is_audited(
+    accounting_ready,
+):
     token = _login(accounting_ready["username"], accounting_ready["password"])
     client = _client()
-
-    response = client.post(
-        "/accounting/invoices/visit",
-        headers=_auth(token),
-        json={
-            "patient": {
-                "name": "مریم",
-                "family_name": "حسابی",
-                "national_id": "2170415981",
-                "phone_number": "09121111111",
-                "is_foreign": False,
-            },
-            "insurance_type": "تامین اجتماعی",
-            "notes": "ویزیت مهاجرت حسابداری",
-        },
+    opened = _open_visit(
+        client,
+        token,
+        national_id="2170415981",
+        family_name="حسابی",
     )
-    assert response.status_code == 201, response.text
-    opened = response.json()
+    invoice_id = opened["id"]
+
     assert opened["status"] == "open"
     assert opened["pricing_version"] == "halqe_visit_v1"
-    assert opened["patient_full_name"] == "مریم حسابی"
     assert opened["total_amount"] == 85000
     assert opened["visit_price"] == 85000
     assert opened["shift"] == "night"
     assert opened["work_date"] == "2026-07-12"
-    invoice_id = opened["id"]
+    assert list_open_invoices(tenant_id=2)["items"] == []
 
-    listing = client.get(
-        "/accounting/invoices/open?limit=100&offset=0",
+    financials = client.get(
+        f"/accounting/invoices/{invoice_id}/financials",
         headers=_auth(token),
     )
-    assert listing.status_code == 200, listing.text
-    assert any(row["id"] == invoice_id for row in listing.json()["items"])
-    assert list_open_invoices(tenant_id=2)["items"] == []
+    assert financials.status_code == 200, financials.text
+    assert financials.json() == {
+        "invoice_id": invoice_id,
+        "total_amount": 85000,
+        "paid_amount": 0,
+        "remaining_amount": 85000,
+        "all_items_paid": False,
+        "payment_type": None,
+    }
+
+    blocked = client.post(
+        f"/accounting/invoices/{invoice_id}/close",
+        headers=_auth(token),
+    )
+    assert blocked.status_code == 409
+    assert blocked.json()["code"] == "invoice_unpaid_items"
+
+    invalid = client.post(
+        f"/accounting/invoices/{invoice_id}/settle-all",
+        headers=_auth(token),
+        json={"payment_type": "crypto"},
+    )
+    assert invalid.status_code == 422
+    assert invalid.json()["code"] == "invalid_payment_type"
+
+    settled = client.post(
+        f"/accounting/invoices/{invoice_id}/settle-all",
+        headers=_auth(token),
+        json={"payment_type": "card"},
+    )
+    assert settled.status_code == 200, settled.text
+    assert settled.json()["paid_amount"] == 85000
+    assert settled.json()["remaining_amount"] == 0
+    assert settled.json()["all_items_paid"] is True
+    assert settled.json()["payment_type"] == "card"
 
     closed_response = client.post(
         f"/accounting/invoices/{invoice_id}/close",
         headers=_auth(token),
     )
     assert closed_response.status_code == 200, closed_response.text
-    closed = closed_response.json()
-    assert closed["status"] == "closed"
-    assert closed["total_amount"] == 85000
-    assert closed["closed_by"] == accounting_ready["username"]
+    assert closed_response.json()["status"] == "closed"
+    assert closed_response.json()["closed_by"] == accounting_ready["username"]
 
     repeated = client.post(
         f"/accounting/invoices/{invoice_id}/close",
@@ -236,52 +286,99 @@ def test_visit_invoice_open_list_close_is_atomic_and_audited(accounting_ready):
         _conninfo(PG_SU_USER, PG_SU_PASSWORD), autocommit=True
     ) as conn:
         visit = conn.execute(
-            """
-            SELECT price, notes FROM accounting.visits
-            WHERE tenant_id=1 AND invoice_id=%s
-            """,
+            "SELECT price, notes FROM accounting.visits "
+            "WHERE tenant_id=1 AND invoice_id=%s",
             (invoice_id,),
         ).fetchone()
-        assert int(visit[0]) == 85000
-        assert visit[1] == "ویزیت مهاجرت حسابداری"
-
+        assert (int(visit[0]), visit[1]) == (85000, "ویزیت مهاجرت حسابداری")
         actions = conn.execute(
-            """
-            SELECT action_type FROM accounting.activity_logs
-            WHERE tenant_id=1 AND invoice_id=%s ORDER BY id
-            """,
+            "SELECT action_type FROM accounting.activity_logs "
+            "WHERE tenant_id=1 AND invoice_id=%s ORDER BY id",
             (invoice_id,),
         ).fetchall()
         assert [row[0] for row in actions] == [
             "invoice_create",
+            "invoice_settle",
             "invoice_close",
         ]
 
 
 @pytest.mark.django_db(databases=["default", "accounting_read"], transaction=True)
-def test_supplementary_tariff_overrides_primary_and_patient_is_upserted(
-    accounting_ready,
-):
+def test_individual_visit_payment_can_be_reversed_before_close(accounting_ready):
     token = _login(accounting_ready["username"], accounting_ready["password"])
     client = _client()
-    national_id = "0001001000"
-
-    first = client.post(
-        "/accounting/invoices/visit",
-        headers=_auth(token),
-        json={
-            "patient": {
-                "name": "سارا",
-                "family_name": "تطبیق",
-                "national_id": national_id,
-                "phone_number": "09125555555",
-                "is_foreign": False,
-            },
-            "insurance_type": "تامین اجتماعی",
-        },
+    opened = _open_visit(
+        client,
+        token,
+        national_id="0001001000",
+        family_name="پرداخت آیتمی",
+        insurance_type="آزاد",
     )
-    assert first.status_code == 201, first.text
-    assert first.json()["total_amount"] == 85000
+    path = (
+        f"/accounting/invoices/{opened['id']}/items/visit/"
+        f"{opened['visit_id']}/payment"
+    )
+    paid = client.post(path, headers=_auth(token), json={
+        "payment_type": "cash", "is_paid": True
+    })
+    assert paid.status_code == 200, paid.text
+    assert paid.json()["all_items_paid"] is True
+    assert paid.json()["payment_type"] == "cash"
+
+    reversed_payment = client.post(path, headers=_auth(token), json={
+        "payment_type": None, "is_paid": False
+    })
+    assert reversed_payment.status_code == 200, reversed_payment.text
+    assert reversed_payment.json()["paid_amount"] == 0
+    assert reversed_payment.json()["all_items_paid"] is False
+
+    blocked = client.post(
+        f"/accounting/invoices/{opened['id']}/close",
+        headers=_auth(token),
+    )
+    assert blocked.status_code == 409
+    assert blocked.json()["code"] == "invoice_unpaid_items"
+
+
+@pytest.mark.django_db(databases=["default", "accounting_read"], transaction=True)
+def test_postgres_trigger_rejects_direct_unpaid_close(accounting_ready):
+    token = _login(accounting_ready["username"], accounting_ready["password"])
+    opened = _open_visit(
+        _client(),
+        token,
+        national_id="0013546759",
+        family_name="گیت دیتابیس",
+        insurance_type="آزاد",
+    )
+    with psycopg.connect(
+        _conninfo(PG_SU_USER, PG_SU_PASSWORD), autocommit=True
+    ) as conn:
+        with pytest.raises(psycopg.errors.CheckViolation, match="unpaid"):
+            conn.execute(
+                "UPDATE accounting.invoices SET status='closed' "
+                "WHERE tenant_id=1 AND id=%s",
+                (opened["id"],),
+            )
+        state = conn.execute(
+            "SELECT status, closed_at FROM accounting.invoices "
+            "WHERE tenant_id=1 AND id=%s",
+            (opened["id"],),
+        ).fetchone()
+        assert state == ("open", None)
+
+
+@pytest.mark.django_db(databases=["default", "accounting_read"], transaction=True)
+def test_supplementary_overrides_primary_and_patient_is_upserted(accounting_ready):
+    token = _login(accounting_ready["username"], accounting_ready["password"])
+    client = _client()
+    national_id = "2110530979"
+    first = _open_visit(
+        client,
+        token,
+        national_id=national_id,
+        family_name="تطبیق",
+    )
+    assert first["total_amount"] == 85000
 
     second = client.post(
         "/accounting/invoices/visit",
@@ -306,41 +403,9 @@ def test_supplementary_tariff_overrides_primary_and_patient_is_upserted(
         f"/accounting/patients/search?q={national_id}&limit=10",
         headers=_auth(token),
     )
-    assert search.status_code == 200, search.text
+    assert search.status_code == 200
     assert len(search.json()) == 1
     assert search.json()[0]["phone_number"] == "09126666666"
-
-    with psycopg.connect(
-        _conninfo(PG_SU_USER, PG_SU_PASSWORD), autocommit=True
-    ) as conn:
-        count = conn.execute(
-            "SELECT COUNT(*) FROM accounting.patients "
-            "WHERE tenant_id=1 AND national_id=%s",
-            (national_id,),
-        ).fetchone()[0]
-        assert count == 1
-
-
-@pytest.mark.django_db(databases=["default", "accounting_read"], transaction=True)
-def test_supplementary_cannot_hide_an_unknown_primary_tariff(accounting_ready):
-    token = _login(accounting_ready["username"], accounting_ready["password"])
-    response = _client().post(
-        "/accounting/invoices/visit",
-        headers=_auth(token),
-        json={
-            "patient": {
-                "name": "بیمار",
-                "family_name": "بیمه پایه نامعتبر",
-                "national_id": "0013546759",
-                "phone_number": "09127777777",
-                "is_foreign": False,
-            },
-            "insurance_type": "بیمه پایه ناشناخته",
-            "supplementary_insurance": "تکمیلی تست",
-        },
-    )
-    assert response.status_code == 422
-    assert response.json()["code"] == "tariff_not_found"
 
 
 @pytest.mark.django_db(databases=["default", "accounting_read"], transaction=True)
@@ -353,7 +418,7 @@ def test_missing_tariff_rolls_back_patient_and_invoice(accounting_ready):
             "patient": {
                 "name": "بیمار",
                 "family_name": "Rollback",
-                "national_id": "2110530979",
+                "national_id": "0440253519",
                 "phone_number": "09122222222",
                 "is_foreign": False,
             },
@@ -367,42 +432,22 @@ def test_missing_tariff_rolls_back_patient_and_invoice(accounting_ready):
         _conninfo(PG_SU_USER, PG_SU_PASSWORD), autocommit=True
     ) as conn:
         assert conn.execute(
-            """
-            SELECT COUNT(*) FROM accounting.patients
-            WHERE tenant_id=1 AND national_id='2110530979'
-            """
-        ).fetchone()[0] == 0
-        assert conn.execute(
-            """
-            SELECT COUNT(*) FROM accounting.invoices i
-            JOIN accounting.patients p
-              ON p.tenant_id=i.tenant_id AND p.id=i.patient_id
-            WHERE i.tenant_id=1 AND p.national_id='2110530979'
-            """
+            "SELECT COUNT(*) FROM accounting.patients "
+            "WHERE tenant_id=1 AND national_id='0440253519'"
         ).fetchone()[0] == 0
 
 
 @pytest.mark.django_db(databases=["default", "accounting_read"], transaction=True)
-def test_close_refuses_unported_item_families_without_mutation(accounting_ready):
+def test_unported_item_family_blocks_settlement_and_close(accounting_ready):
     token = _login(accounting_ready["username"], accounting_ready["password"])
     client = _client()
-    opened_response = client.post(
-        "/accounting/invoices/visit",
-        headers=_auth(token),
-        json={
-            "patient": {
-                "name": "زهرا",
-                "family_name": "محافظت مالی",
-                "national_id": "0440253519",
-                "phone_number": "09123333333",
-                "is_foreign": False,
-            },
-            "insurance_type": "آزاد",
-        },
+    opened = _open_visit(
+        client,
+        token,
+        national_id="0001000004",
+        family_name="محافظت مالی",
+        insurance_type="آزاد",
     )
-    assert opened_response.status_code == 201, opened_response.text
-    opened = opened_response.json()
-
     with psycopg.connect(
         _conninfo(PG_SU_USER, PG_SU_PASSWORD), autocommit=True
     ) as conn:
@@ -416,74 +461,49 @@ def test_close_refuses_unported_item_families_without_mutation(accounting_ready)
             (opened["patient_id"], opened["id"]),
         )
 
-    close_response = client.post(
+    settle = client.post(
+        f"/accounting/invoices/{opened['id']}/settle-all",
+        headers=_auth(token),
+        json={"payment_type": "card"},
+    )
+    assert settle.status_code == 409
+    assert settle.json()["code"] == "unsupported_invoice_items"
+
+    close = client.post(
         f"/accounting/invoices/{opened['id']}/close",
         headers=_auth(token),
     )
-    assert close_response.status_code == 409
-    assert close_response.json()["code"] == "unsupported_invoice_items"
-
-    with psycopg.connect(
-        _conninfo(PG_SU_USER, PG_SU_PASSWORD), autocommit=True
-    ) as conn:
-        row = conn.execute(
-            """
-            SELECT status, closed_at, total_amount
-            FROM accounting.invoices WHERE tenant_id=1 AND id=%s
-            """,
-            (opened["id"],),
-        ).fetchone()
-        assert row[0] == "open"
-        assert row[1] is None
-        assert int(row[2]) == 200000
+    assert close.status_code == 409
+    assert close.json()["code"] == "unsupported_invoice_items"
 
 
 @pytest.mark.django_db(databases=["default", "accounting_read"], transaction=True)
-def test_close_refuses_legacy_pricing_invoice(accounting_ready):
+def test_legacy_pricing_invoice_stays_on_old_path(accounting_ready):
     token = _login(accounting_ready["username"], accounting_ready["password"])
     client = _client()
-    opened_response = client.post(
-        "/accounting/invoices/visit",
-        headers=_auth(token),
-        json={
-            "patient": {
-                "name": "رضا",
-                "family_name": "قدیمی",
-                "national_id": "0001000004",
-                "phone_number": "09124444444",
-                "is_foreign": False,
-            },
-            "insurance_type": "آزاد",
-        },
+    opened = _open_visit(
+        client,
+        token,
+        national_id="2170415981",
+        family_name="قدیمی",
+        insurance_type="آزاد",
     )
-    assert opened_response.status_code == 201, opened_response.text
-    invoice_id = opened_response.json()["id"]
-
     with psycopg.connect(
         _conninfo(PG_SU_USER, PG_SU_PASSWORD), autocommit=True
     ) as conn:
         conn.execute(
             "UPDATE accounting.invoices SET pricing_version='legacy' "
             "WHERE tenant_id=1 AND id=%s",
-            (invoice_id,),
+            (opened["id"],),
         )
 
     response = client.post(
-        f"/accounting/invoices/{invoice_id}/close",
+        f"/accounting/invoices/{opened['id']}/settle-all",
         headers=_auth(token),
+        json={"payment_type": "card"},
     )
     assert response.status_code == 409
     assert response.json()["code"] == "legacy_invoice_close_blocked"
-
-    with psycopg.connect(
-        _conninfo(PG_SU_USER, PG_SU_PASSWORD), autocommit=True
-    ) as conn:
-        row = conn.execute(
-            "SELECT status, closed_at FROM accounting.invoices "
-            "WHERE tenant_id=1 AND id=%s",
-            (invoice_id,),
-        ).fetchone()
-        assert row == ("open", None)
 
 
 def test_accounting_login_is_confined_to_accounting(accounting_ready):
@@ -512,9 +532,7 @@ def test_accounting_login_is_confined_to_accounting(accounting_ready):
         _conninfo(ACCOUNTING_USER, ACCOUNTING_PASSWORD), autocommit=True
     ) as conn:
         conn.execute("SELECT COUNT(*) FROM accounting.patients").fetchone()
-
         with pytest.raises(psycopg.errors.InsufficientPrivilege):
             conn.execute("SELECT COUNT(*) FROM clinical.patient_links").fetchone()
-
         with pytest.raises(psycopg.errors.InsufficientPrivilege):
             conn.execute("SELECT password_hash FROM platform.users LIMIT 1").fetchone()

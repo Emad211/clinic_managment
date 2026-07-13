@@ -30,3 +30,5 @@ export * from "./api/manager-analytics";
 export * from "./api/engagement";
 export * from "./api/control-room";
 export * from "./api/accounting";
+export * from "./api/accounting-payments";
+export * from "./api/accounting-nursing";
