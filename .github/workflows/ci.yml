@@ -115,7 +115,17 @@ jobs:
         run: pip install "psycopg[binary]" pytest
       - name: Run schema-guard tests
         working-directory: specialist_clinic
-        run: python -m pytest tests/test_pg_schema.py -q --tb=short
+        run: >-
+          python -m pytest tests/test_pg_schema.py -q --tb=short
+          2>&1 | tee schema-guard.log
+      - name: Upload schema-guard log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: schema-guard-log
+          path: specialist_clinic/schema-guard.log
+          if-no-files-found: error
+          retention-days: 7
 
   web:
     name: "halqe web (jest + build)"
