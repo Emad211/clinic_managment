@@ -39,6 +39,14 @@ class Command(BaseCommand):
             help="Maximum unique patients in the packet (1-200).",
         )
         parser.add_argument(
+            "--allow-incomplete-coverage",
+            action="store_true",
+            help=(
+                "Write a packet even when max-patients cannot cover every scenario "
+                "present in the source. The command still reports the gaps."
+            ),
+        )
+        parser.add_argument(
             "--report",
             required=True,
             help="Private owner-only JSON output path for the review packet.",
@@ -83,11 +91,29 @@ class Command(BaseCommand):
         present = sum(
             row["eligible_patients"] > 0 for row in sample.coverage.values()
         )
-        self.stdout.write(
-            self.style.SUCCESS(
-                "Specialist clinical review sample generated: "
-                f"source_id={sample.source_id}, tenant={sample.tenant_id}, "
-                f"patients={len(sample.patients)}, covered_scenarios={covered}/{present}, "
-                f"report={target}"
-            )
+        incomplete = [
+            key
+            for key, row in sample.coverage.items()
+            if row["status"] == "uncovered_due_to_limit"
+        ]
+        summary = (
+            "Specialist clinical review sample generated: "
+            f"source_id={sample.source_id}, tenant={sample.tenant_id}, "
+            f"patients={len(sample.patients)}, covered_scenarios={covered}/{present}, "
+            f"report={target}"
         )
+
+        if not sample.patients:
+            raise CommandError(
+                summary
+                + "; no imported patient was available for clinical review."
+            )
+        if incomplete and not options["allow_incomplete_coverage"]:
+            raise CommandError(
+                summary
+                + "; present scenarios remain uncovered: "
+                + ", ".join(incomplete)
+                + ". Increase --max-patients or explicitly acknowledge with "
+                "--allow-incomplete-coverage."
+            )
+        self.stdout.write(self.style.SUCCESS(summary))
