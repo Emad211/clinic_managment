@@ -60,7 +60,17 @@ jobs:
         run: pip install -r halqe/requirements.txt
       - name: Run halqe backend tests
         working-directory: halqe
-        run: python -m pytest -q --tb=short
+        run: >-
+          python -m pytest -q --tb=short
+          2>&1 | tee backend.log
+      - name: Upload backend test log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-test-log
+          path: halqe/backend.log
+          if-no-files-found: error
+          retention-days: 7
 
   webapp-accounting-oracle:
     name: "webapp accounting oracle"
