@@ -69,7 +69,7 @@ class SpecialistRecordImporter(_core.SpecialistRecordImporter):
                 with transaction.atomic():
                     report = super().run()
                     transaction.set_rollback(True)
-        except _core.UnresolvedPatientError as exc:
+        except _core.UnresolvedPatientError:
             source_ids = [
                 item.get("source_patient_link_id")
                 for item in self.report.unresolved_patients
@@ -78,12 +78,14 @@ class SpecialistRecordImporter(_core.SpecialistRecordImporter):
             rendered_ids = ",".join(
                 str(item) for item in source_ids if item is not None
             ) or "unknown"
+            # Suppress the original exception context: it contains the legacy
+            # full_name/national_id detail and a generic traceback sink could log it.
             raise _core.UnresolvedPatientError(
                 "Cannot resolve specialist patient row(s) to accounting.patients; "
                 f"source patient_link id(s): {rendered_ids}. "
                 "See the redacted reconciliation report and inspect the secured "
                 "SQLite snapshot directly."
-            ) from exc
+            ) from None
         except Exception:
             self._redact_sensitive_report()
             raise
