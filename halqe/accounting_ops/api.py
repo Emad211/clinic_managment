@@ -7,10 +7,13 @@ the normal clinical connection remains physically read-only on ``accounting.*``.
 from __future__ import annotations
 
 from datetime import date, datetime
+import logging
 from typing import Optional
 from uuid import UUID
 
 from ninja import Query, Router, Schema
+from django.core.exceptions import ImproperlyConfigured
+from psycopg import Error as PsycopgError
 
 from accounting_ops.service import (
     AccountingCommandError,
@@ -23,6 +26,8 @@ from accounting_ops.service import (
 from config.api_base import _jwt_auth
 from config.errors import ErrorSchema, error_response
 
+
+logger = logging.getLogger(__name__)
 
 router = Router()
 _ACCOUNTING_ROLES = frozenset({"admin", "manager", "reception"})
@@ -47,6 +52,20 @@ def _request_meta(request) -> tuple[Optional[str], Optional[str]]:
 
 def _command_error(exc: AccountingCommandError):
     return exc.status, error_response(str(exc), exc.code)
+
+
+def _accounting_unavailable(exc: Exception, *, tenant_id: int):
+    # Do not put request bodies, patient identifiers or DB credentials in logs.
+    logger.error(
+        "accounting write-side unavailable tenant_id=%s error_type=%s",
+        tenant_id,
+        type(exc).__name__,
+        exc_info=True,
+    )
+    return 503, error_response(
+        "بخش حسابداری هنوز فعال نشده یا پایگاه دادهٔ آن در دسترس نیست.",
+        "accounting_unavailable",
+    )
 
 
 class AccountingPatientInput(Schema):
@@ -131,7 +150,7 @@ class VisitTariffDTO(Schema):
 
 @router.get(
     "/accounting/patients/search",
-    response={200: list[AccountingPatientDTO], 403: ErrorSchema},
+    response={200: list[AccountingPatientDTO], 403: ErrorSchema, 503: ErrorSchema},
     auth=_jwt_auth,
     tags=["accounting"],
 )
@@ -143,16 +162,19 @@ def accounting_patient_search(
     guard = _assert_accounting_access(request)
     if guard:
         return guard
-    return search_patients(
-        tenant_id=request.tenant_id,
-        query=q,
-        limit=limit,
-    )
+    try:
+        return search_patients(
+            tenant_id=request.tenant_id,
+            query=q,
+            limit=limit,
+        )
+    except (ImproperlyConfigured, PsycopgError) as exc:
+        return _accounting_unavailable(exc, tenant_id=request.tenant_id)
 
 
 @router.get(
     "/accounting/tariffs/visits",
-    response={200: list[VisitTariffDTO], 403: ErrorSchema},
+    response={200: list[VisitTariffDTO], 403: ErrorSchema, 503: ErrorSchema},
     auth=_jwt_auth,
     tags=["accounting"],
 )
@@ -160,12 +182,15 @@ def accounting_visit_tariffs(request):
     guard = _assert_accounting_access(request)
     if guard:
         return guard
-    return list_visit_tariffs(tenant_id=request.tenant_id)
+    try:
+        return list_visit_tariffs(tenant_id=request.tenant_id)
+    except (ImproperlyConfigured, PsycopgError) as exc:
+        return _accounting_unavailable(exc, tenant_id=request.tenant_id)
 
 
 @router.get(
     "/accounting/invoices/open",
-    response={200: OpenInvoicesResponse, 403: ErrorSchema},
+    response={200: OpenInvoicesResponse, 403: ErrorSchema, 503: ErrorSchema},
     auth=_jwt_auth,
     tags=["accounting"],
 )
@@ -177,11 +202,14 @@ def accounting_open_invoices(
     guard = _assert_accounting_access(request)
     if guard:
         return guard
-    return list_open_invoices(
-        tenant_id=request.tenant_id,
-        limit=limit,
-        offset=offset,
-    )
+    try:
+        return list_open_invoices(
+            tenant_id=request.tenant_id,
+            limit=limit,
+            offset=offset,
+        )
+    except (ImproperlyConfigured, PsycopgError) as exc:
+        return _accounting_unavailable(exc, tenant_id=request.tenant_id)
 
 
 @router.post(
@@ -191,6 +219,7 @@ def accounting_open_invoices(
         403: ErrorSchema,
         409: ErrorSchema,
         422: ErrorSchema,
+        503: ErrorSchema,
     },
     auth=_jwt_auth,
     tags=["accounting"],
@@ -212,6 +241,8 @@ def accounting_create_visit_invoice(request, payload: OpenVisitInvoiceInput):
         )
     except AccountingCommandError as exc:
         return _command_error(exc)
+    except (ImproperlyConfigured, PsycopgError) as exc:
+        return _accounting_unavailable(exc, tenant_id=request.tenant_id)
     return 201, result
 
 
@@ -222,6 +253,7 @@ def accounting_create_visit_invoice(request, payload: OpenVisitInvoiceInput):
         403: ErrorSchema,
         404: ErrorSchema,
         409: ErrorSchema,
+        503: ErrorSchema,
     },
     auth=_jwt_auth,
     tags=["accounting"],
@@ -242,3 +274,5 @@ def accounting_close_invoice(request, invoice_id: int):
         )
     except AccountingCommandError as exc:
         return _command_error(exc)
+    except (ImproperlyConfigured, PsycopgError) as exc:
+        return _accounting_unavailable(exc, tenant_id=request.tenant_id)
