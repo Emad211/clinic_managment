@@ -1,8 +1,6 @@
 /**
  * API client for the Halqe platform backend — barrel module.
- *
- * Reads NEXT_PUBLIC_API_BASE and re-exports the per-domain clients under
- * `./api/*`. Shared request/auth internals remain private in `./api/_core`.
+ * Shared request/auth internals remain private in `./api/_core`.
  */
 
 export {
@@ -18,6 +16,7 @@ export * from "./api/auth";
 export * from "./api/patients";
 export * from "./api/record";
 export * from "./api/record-data";
+export * from "./api/record-vitals";
 export * from "./api/allergies";
 export * from "./api/suggestions";
 export * from "./api/worklist";
