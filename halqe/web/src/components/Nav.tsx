@@ -18,9 +18,10 @@ export const NAV_LINKS: NavLink[] = [
   { href: "/worklist", label: "پیگیری‌ها" },
 ];
 
-/** Accounting is visible only to roles accepted by the backend accounting gate. */
+/** Accounting links mirror the backend role gate. */
 export const ACCOUNTING_LINKS: NavLink[] = [
-  { href: "/accounting", label: "حسابداری" },
+  { href: "/accounting", label: "پذیرش" },
+  { href: "/accounting/payments", label: "تسویه" },
 ];
 
 export const MANAGER_LINKS: NavLink[] = [
