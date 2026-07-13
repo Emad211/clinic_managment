@@ -4,7 +4,7 @@
 #   1. halqe backend       (pytest, Django+Postgres)
 #   2. webapp money oracle (isolated SQLite characterization tests)
 #   3. schema-guard        (Postgres slice tests)
-#   4. halqe web           (jest)
+#   4. halqe web           (jest + typecheck + lint + production build)
 #
 # clinic_new.db is never mutated; webapp's guard hashes it before/after tests.
 # No real SMS is sent — NullProvider is active when no real key is set.
@@ -118,7 +118,7 @@ jobs:
         run: python -m pytest tests/test_pg_schema.py -q --tb=short
 
   web:
-    name: "halqe web (jest)"
+    name: "halqe web (jest + build)"
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -131,6 +131,15 @@ jobs:
       - name: Install npm dependencies
         working-directory: halqe/web
         run: npm ci
-      - name: Run jest tests
+      - name: Run Jest tests
         working-directory: halqe/web
         run: npm test
+      - name: Type-check TypeScript
+        working-directory: halqe/web
+        run: npx tsc --noEmit
+      - name: Lint web source
+        working-directory: halqe/web
+        run: npx eslint .
+      - name: Build production web bundle
+        working-directory: halqe/web
+        run: npm run build
