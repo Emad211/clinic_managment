@@ -65,6 +65,7 @@ def test_command_writes_atomic_owner_only_report_and_compact_stdout(
     )
 
     assert report.exists()
+    assert stat.S_IMODE(report.parent.stat().st_mode) == 0o700
     assert stat.S_IMODE(report.stat().st_mode) == 0o600
     payload = json.loads(report.read_text(encoding="utf-8"))
     assert payload["mode"] == "dry-run"
