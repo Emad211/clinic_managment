@@ -37,6 +37,55 @@ class AccountingRepository:
             (tenant_id, national_id),
         ).fetchone()
 
+    def upsert_patient_by_national_id(
+        self,
+        *,
+        tenant_id: int,
+        data: Mapping[str, Any],
+        created_by: str,
+    ) -> dict[str, Any]:
+        """Atomically create/update an Iranian patient by the tenant key.
+
+        A SELECT cannot lock a row that does not yet exist. ``ON CONFLICT``
+        preserves the legacy add-or-get behaviour under concurrent reception
+        requests without returning a false duplicate error.
+        """
+        return self.conn.execute(
+            f"""
+            INSERT INTO accounting.patients AS p
+                (tenant_id, name, family_name, national_id, phone_number,
+                 birthdate, gender, insurance_type, insurance_expiry,
+                 address, is_foreign, created_by)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (tenant_id, national_id) DO UPDATE SET
+                name = EXCLUDED.name,
+                family_name = EXCLUDED.family_name,
+                phone_number = EXCLUDED.phone_number,
+                birthdate = COALESCE(EXCLUDED.birthdate, p.birthdate),
+                gender = COALESCE(EXCLUDED.gender, p.gender),
+                insurance_type = COALESCE(EXCLUDED.insurance_type, p.insurance_type),
+                insurance_expiry = COALESCE(EXCLUDED.insurance_expiry, p.insurance_expiry),
+                address = COALESCE(EXCLUDED.address, p.address),
+                is_foreign = EXCLUDED.is_foreign,
+                updated_at = now()
+            RETURNING {_PATIENT_COLUMNS}
+            """,
+            (
+                tenant_id,
+                data["name"],
+                data["family_name"],
+                data["national_id"],
+                data["phone_number"],
+                data["birthdate"],
+                data["gender"],
+                data["insurance_type"],
+                data["insurance_expiry"],
+                data["address"],
+                data["is_foreign"],
+                created_by,
+            ),
+        ).fetchone()
+
     def find_patient_by_name_phone_for_update(
         self,
         *,
@@ -210,6 +259,19 @@ class AccountingRepository:
             (tenant_id, doctor_id),
         ).fetchone()
 
+    def get_user_active_shift(
+        self, *, tenant_id: int, user_id: int
+    ) -> Optional[dict[str, Any]]:
+        """Return the manually selected work date and shift."""
+        return self.conn.execute(
+            """
+            SELECT active_shift, work_date
+            FROM accounting.user_active_shift
+            WHERE tenant_id = %s AND user_id = %s
+            """,
+            (tenant_id, user_id),
+        ).fetchone()
+
     # ------------------------------------------------------------------ invoice
     def create_invoice(
         self,
@@ -318,9 +380,15 @@ class AccountingRepository:
               (SELECT COUNT(*) FROM accounting.procedures p
                 WHERE p.tenant_id=%s AND p.invoice_id=%s) AS procedures,
               (SELECT COUNT(*) FROM accounting.consumables_ledger c
-                WHERE c.tenant_id=%s AND c.invoice_id=%s) AS consumables
+                WHERE c.tenant_id=%s AND c.invoice_id=%s) AS consumables,
+              (SELECT COUNT(*) FROM accounting.visit_items vi
+                 JOIN accounting.visits v
+                   ON v.tenant_id=vi.tenant_id AND v.id=vi.visit_id
+                WHERE v.tenant_id=%s AND v.invoice_id=%s) AS visit_items
             """,
             (
+                tenant_id,
+                invoice_id,
                 tenant_id,
                 invoice_id,
                 tenant_id,
@@ -331,7 +399,7 @@ class AccountingRepository:
         ).fetchone()
         return {
             key: int(row[key])
-            for key in ("injections", "procedures", "consumables")
+            for key in ("injections", "procedures", "consumables", "visit_items")
         }
 
     def visit_patient_total(self, *, tenant_id: int, invoice_id: int) -> int:
@@ -353,8 +421,8 @@ class AccountingRepository:
         total_amount: int,
         closed_by: str,
         closed_by_name: str,
-    ) -> None:
-        self.conn.execute(
+    ) -> bool:
+        row = self.conn.execute(
             """
             UPDATE accounting.invoices
                SET total_amount = %s,
@@ -362,10 +430,12 @@ class AccountingRepository:
                    closed_at = now(),
                    closed_by = %s,
                    closed_by_name = %s
-             WHERE tenant_id = %s AND id = %s
+             WHERE tenant_id = %s AND id = %s AND status = 'open'
+            RETURNING id
             """,
             (total_amount, closed_by, closed_by_name, tenant_id, invoice_id),
-        )
+        ).fetchone()
+        return row is not None
 
     def count_open_invoices(self, *, tenant_id: int) -> int:
         row = self.conn.execute(
