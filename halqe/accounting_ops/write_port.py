@@ -71,16 +71,23 @@ def _connection_kwargs() -> dict:
 
 
 @contextmanager
-def accounting_transaction() -> Iterator[Connection]:
-    """Yield a dedicated accounting connection in one atomic transaction.
+def accounting_transaction(*, tenant_id: int) -> Iterator[Connection]:
+    """Yield a tenant-bound accounting connection in one atomic transaction.
 
-    A fresh connection is deliberately opened per command in the first
-    migration slice. This keeps accounting privileges out of Django's clinical
-    connection and avoids carrying the clinical tenant GUC into this session.
-    Every normal exit commits; every exception rolls back.
+    A fresh connection is deliberately opened per command. This keeps accounting
+    privileges out of Django's clinical connection. The tenant GUC is set with
+    transaction scope as future-proofing for accounting RLS; every SQL statement
+    still carries an explicit ``tenant_id`` predicate today.
     """
+    if not isinstance(tenant_id, int) or tenant_id <= 0:
+        raise ValueError("tenant_id must be a positive integer")
+
     conn = psycopg.connect(**_connection_kwargs())
     try:
+        conn.execute(
+            "SELECT set_config('app.current_tenant', %s, true)",
+            (str(tenant_id),),
+        )
         yield conn
         conn.commit()
     except Exception:
