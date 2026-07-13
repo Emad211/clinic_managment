@@ -24,7 +24,9 @@ jobs:
         image: postgres:16
         env:
           POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: ci_postgres_pw
+          # Long-lived direct-psycopg characterization tests intentionally pin
+          # the documented local validation password. Keep CI identical.
+          POSTGRES_PASSWORD: validate_only
           POSTGRES_DB: postgres
         ports:
           - 55432:5432
@@ -37,7 +39,7 @@ jobs:
       PG_HOST: localhost
       PG_PORT: "55432"
       PG_USER: postgres
-      PG_PASSWORD: ci_postgres_pw
+      PG_PASSWORD: validate_only
       PG_APP_USER: platform_login_test
       PG_APP_PASSWORD: test_pw
       DJANGO_SETTINGS_MODULE: config.settings
@@ -130,6 +132,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Set up Node 20 LTS
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Correct Node setup
         uses: actions/setup-node@v4
         with:
           node-version: "20"
