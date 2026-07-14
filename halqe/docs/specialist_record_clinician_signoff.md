@@ -4,8 +4,23 @@
 `verify_specialist_record_import` انجام می‌شود. هدف آن تبدیل بررسی انسانی نمونه‌ها
 به یک artifact قابل‌ممیزی و یک تصمیم ماشین‌خوان `GO` یا `NO_GO` است.
 
-این فرمان جایگزین بررسی پزشک نیست؛ فقط اثبات می‌کند بررسی تعیین‌شده کامل، به همان
-snapshot و گزارش verifier متصل و بدون اختلاف حل‌نشده ثبت شده است.
+این فرمان جایگزین بررسی پزشک نیست. علاوه بر hash artifactها، هنگام اجرا هر بیمار
+منتخب را دوباره با زنجیرهٔ زیر تطبیق می‌دهد:
+
+```text
+source_patient_link_id
+        ↓
+clinical.record_import_ledger
+        ↓
+clinical.patient_links
+        ↓
+accounting.patients.uuid
+        ↓
+patient_uuid و cockpit_path داخل packet
+```
+
+در نتیجه تغییر UUID، target ID، حذف enrollment یا نبود ledger با تکمیل دستی
+`review_status=approved` قابل دورزدن نیست.
 
 ## ۱. پیش‌نیازها
 
@@ -40,12 +55,15 @@ python manage.py generate_specialist_record_review_sample \
   --report /secure-migration/reports/clinician-review.json
 ```
 
-هر دو فایل باید regular file، بدون symlink و owner-only باشند. mode پیشنهادی:
+هر دو فایل باید regular file، بدون symlink و owner-only باشند:
 
 ```text
 directory: 0700
 file:      0600
 ```
+
+مسیر خروجی sign-off باید از هر دو فایل ورودی متفاوت باشد. برخورد مستقیم path یا
+hard-link پیش از اجرای verifier رد می‌شود.
 
 ## ۲. تکمیل packet توسط پزشک
 
@@ -61,7 +79,7 @@ file:      0600
 }
 ```
 
-پس از تطبیق موفق به این حالت تغییر می‌کند:
+پس از تطبیق موفق:
 
 ```json
 {
@@ -70,18 +88,27 @@ file:      0600
 }
 ```
 
-packet نباید با نام، کد ملی، تلفن، نشانی یا تاریخ تولد غنی شود. شناسه‌های مجاز:
+packet نباید با نام، کد ملی، تلفن، نشانی یا تاریخ تولد غنی شود. شناسه‌های عملیاتی
+مجاز عبارت‌اند از:
 
 - `source_patient_link_id`
 - `target_patient_link_id`
 - `patient_uuid`
 - `cockpit_path`
 
-Verifier وجود کلیدهای هویتی مستقیم را `NO_GO` می‌کند.
+Verifier نام‌های snake_case، camelCase و برچسب‌های فارسی متداول برای اطلاعات
+هویتی را رد می‌کند. علاوه بر نام کلید، متن `review_notes` و متن اختلاف‌ها برای
+موارد زیر اسکن می‌شود:
+
+- شماره موبایل ایرانی؛
+- کد ملی معتبر ایرانی؛
+- اعداد نوشته‌شده با رقم لاتین، فارسی یا عربی.
+
+بنابراین متن‌هایی مانند شمارهٔ `۰۹۱۲...` یا کد ملی فارسی نیز `NO_GO` می‌شوند.
 
 ## ۳. تکمیل sign-off نهایی
 
-در انتهای JSON، `signoff_template` باید تکمیل شود. نمونهٔ بدون اختلاف:
+در انتهای JSON، `signoff_template` باید تکمیل شود:
 
 ```json
 {
@@ -93,8 +120,11 @@ Verifier وجود کلیدهای هویتی مستقیم را `NO_GO` می‌ک�
 }
 ```
 
-`reviewed_at` باید ISO-8601 و دارای timezone باشد. تصمیمی غیر از `approved` اجازهٔ
-release نمی‌دهد.
+`reviewed_at` باید ISO-8601 و دارای timezone باشد. همچنین:
+
+- نباید قبل از `generated_at` packet باشد؛
+- نباید بیش از پنج دقیقه در آینده باشد؛
+- تصمیمی غیر از `approved` اجازهٔ release نمی‌دهد.
 
 اگر packet دارای warning است، `acknowledged_warnings` باید دقیقاً همان رشته‌ها را
 شامل شود. حذف، تغییر متن یا acknowledge ناقص warning باعث `NO_GO` می‌شود.
@@ -138,7 +168,9 @@ deferred
 - `deferred` همیشه `NO_GO` است؛
 - اختلاف `major` یا `critical` فقط با `fixed` قابل پذیرش است؛
 - `accepted_risk` و `false_positive` برای اختلاف minor به `resolution_note` نیاز دارند؛
-- owner، description و timestamp حل برای همهٔ اختلاف‌ها الزامی است.
+- owner، description و timestamp حل برای همهٔ اختلاف‌ها الزامی است؛
+- `resolved_at` نباید قبل از تولید packet یا بعد از زمان sign-off باشد؛
+- description و resolution_note نباید PHI مستقیم داشته باشند.
 
 ## ۵. اجرای verifier نهایی
 
@@ -172,12 +204,19 @@ Verifier این موارد را کنترل می‌کند:
 5. گزارش پایه `decision=GO` و `summary.failed=0` دارد؛
 6. check list گزارش پایه موجود است و هیچ check ناموفق ندارد؛
 7. packet هیچ کلید هویتی مستقیم بیمار ندارد؛
-8. تمام سناریوهای موجود `covered` هستند؛
-9. نمونه خالی نیست و شناسه‌ها/UUIDها یکتا و معتبرند؛
-10. تمام بیماران `review_status=approved` دارند؛
-11. تصمیم پزشک approved، timestamp timezone-aware و نام بررسی‌کننده ثبت شده است؛
-12. تمام warningها acknowledge شده‌اند؛
-13. تمام اختلاف‌ها طبق severity تعیین‌تکلیف شده‌اند.
+8. free text فاقد شماره موبایل یا کد ملی معتبر در هر سه شکل رقم است؛
+9. تمام سناریوهای موجود واقعاً توسط `patients[].scenarios` پوشش داده شده‌اند؛
+10. `selected_samples`/`selected_patients` و statusهای sampler به واژگان canonical تبدیل و بازشماری می‌شوند؛
+11. نمونه خالی نیست و شناسه‌ها/UUIDها یکتا و معتبرند؛
+12. هر نمونه با ledger، clinical link فعال و UUID accounting زنده تطبیق دارد؛
+13. تمام بیماران `review_status=approved` دارند؛
+14. تصمیم پزشک approved، timestamp timezone-aware و نام بررسی‌کننده ثبت شده است؛
+15. تمام warningها acknowledge شده‌اند؛
+16. تمام اختلاف‌ها طبق severity تعیین‌تکلیف شده‌اند.
+
+اگر lookup دیتابیس یا accounting port شکست بخورد، verifier traceback یا اتصال حساس
+را منتشر نمی‌کند؛ یک check ناموفق `patient_database_binding` و تصمیم `NO_GO`
+می‌سازد.
 
 ## ۷. اتصال artifactها
 
@@ -189,7 +228,10 @@ Verifier این موارد را کنترل می‌کند:
 - `source_manifest_sha256`
 
 پس از صدور `GO`، هیچ‌یک از packet، گزارش verifier یا SQLite snapshot نباید تغییر
-کند. هر اصلاح بعدی مستلزم اجرای دوبارهٔ apply/replay/verifier/sample/sign-off با
+کند. تغییر targetهای PostgreSQL نیز در مرحلهٔ release manifest با fresh
+reconciliation تشخیص داده می‌شود.
+
+هر اصلاح بعدی مستلزم اجرای دوبارهٔ زنجیرهٔ verifier/sample/sign-off و manifest با
 artifactهای جدید است.
 
 ## ۸. معیار release
@@ -197,6 +239,7 @@ artifactهای جدید است.
 `GO` این فرمان فقط یکی از gateهاست. release نهایی هنوز به این موارد نیاز دارد:
 
 - CI سبز روی commit نهایی؛
+- fresh database reconciliation در زمان ساخت release manifest؛
 - backup و restore rehearsal؛
 - تصمیم مکتوب دربارهٔ wallet/accounting خارج از دامنه؛
 - تأیید مالک migration window و rollback owner؛
