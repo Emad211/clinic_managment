@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 from django.core.management.base import BaseCommand, CommandError
 
@@ -15,7 +16,8 @@ from clinical.specialist_record_release_manifest import (
 class Command(BaseCommand):
     help = (
         "Re-hash the source snapshot and every migration/review artifact, rerun "
-        "clinician verification, and emit the final production GO/NO_GO manifest."
+        "clinician and live database verification, and emit the final production "
+        "GO/NO_GO manifest."
     )
 
     def add_arguments(self, parser):
@@ -37,6 +39,13 @@ class Command(BaseCommand):
             help="Optional immutable container digest in sha256:<64 hex> form.",
         )
         parser.add_argument(
+            "--fresh-verification-report",
+            help=(
+                "Private output path for the mandatory cutover-time database "
+                "reconciliation. Defaults beside --verification-report."
+            ),
+        )
+        parser.add_argument(
             "--report",
             required=True,
             help="Owner-only output path for the final release manifest.",
@@ -48,6 +57,12 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
+        fresh_path = options.get("fresh_verification_report")
+        if not fresh_path:
+            verification = Path(options["verification_report"]).expanduser().absolute()
+            fresh_path = verification.with_name(
+                verification.stem + ".fresh-verification.json"
+            )
         try:
             result = SpecialistRecordReleaseManifestBuilder(
                 source_snapshot_path=options["sqlite"],
@@ -62,6 +77,7 @@ class Command(BaseCommand):
                 tenant_id=options["tenant_id"],
                 git_commit=options["git_commit"],
                 image_digest=options.get("image_digest"),
+                fresh_verification_report_path=fresh_path,
             ).run()
         except SpecialistRecordReleaseManifestError as exc:
             raise CommandError(str(exc)) from exc
@@ -86,7 +102,7 @@ class Command(BaseCommand):
             f"release_id={result.release_id}, source_id={result.source_id}, "
             f"tenant={result.tenant_id}, commit={result.git_commit}, "
             f"passed={summary['passed']}, warnings={summary['warnings']}, "
-            f"failed={summary['failed']}, report={target}"
+            f"failed={summary['failed']}, fresh_report={fresh_path}, report={target}"
         )
         if result.decision != "GO":
             raise CommandError(message)
