@@ -87,6 +87,38 @@ export interface AccountingServiceReportDTO {
   rows: AccountingServiceRowDTO[];
 }
 
+export interface AccountingPayrollDetailDTO {
+  code: string;
+  label: string;
+  count: number;
+  unit_price: number;
+  total: number;
+}
+
+export interface AccountingPayrollRowDTO {
+  id: number;
+  name: string;
+  staff_type: "doctor" | "nurse";
+  type_label: string;
+  shift_counts: { morning: number; evening: number; night: number };
+  details: AccountingPayrollDetailDTO[];
+  gross_salary: number;
+  tax_amount: number;
+  net_salary: number;
+}
+
+export interface AccountingPayrollReportDTO {
+  date_from: string;
+  date_to: string;
+  summary: {
+    staff_count: number;
+    gross_salary: number;
+    tax_amount: number;
+    net_salary: number;
+  };
+  rows: AccountingPayrollRowDTO[];
+}
+
 export interface AccountingReportFilters {
   date_from?: string;
   date_to?: string;
@@ -96,5 +128,6 @@ export interface AccountingReportFilters {
   service_type?: string;
   shift?: string;
   staff_id?: number | null;
+  staff_type?: string;
   limit?: number;
 }
