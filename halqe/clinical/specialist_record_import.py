@@ -9,9 +9,8 @@ facade adds two release-facing guarantees:
   from the transformed source payload, the discrepancy is reported using only
   source table/row identity.
 
-Comparable digests normalize aware datetimes to UTC and all finite numerics to a
-stable decimal string. The same instant returned by PostgreSQL in UTC therefore
-does not differ from a Tehran-offset source timestamp.
+Comparable digests normalize aware datetimes to UTC, finite numerics to a stable
+decimal string and psycopg ``Jsonb`` wrappers to their underlying JSON value.
 """
 from __future__ import annotations
 
@@ -22,6 +21,8 @@ import json
 import math
 from pathlib import Path
 from typing import Any, Mapping, Optional
+
+from psycopg.types.json import Jsonb
 
 from clinical import _specialist_record_import_target_core as _target
 
@@ -213,6 +214,8 @@ def _comparable_digest(value: Any) -> str:
 
 
 def _normalize_comparable(value: Any) -> Any:
+    if isinstance(value, Jsonb):
+        return _normalize_comparable(value.obj)
     if isinstance(value, Mapping):
         return {
             str(key): _normalize_comparable(item)
