@@ -9,6 +9,11 @@ facade adds two release-facing guarantees:
   from the transformed source payload, the discrepancy is reported using only
   source table/row identity. Strict reconciliation can therefore block silent
   semantic divergence without copying clinical values into operator logs.
+
+``patient_links`` are excluded from the generic divergence warning because their
+merge policy is explicit and asymmetric: accounting owns demographics, consent
+is never imported, opt-out may only become safer, and inactive target enrollment
+is never silently reactivated.
 """
 from __future__ import annotations
 
@@ -112,6 +117,8 @@ class SpecialistRecordImporter(_target.SpecialistRecordImporter):
         target_row_id: Optional[int],
         target_key: str,
     ) -> None:
+        if source_table == "patient_links":
+            return
         identity = (source_table, int(source_row_id))
         if identity in self._reported_target_divergence:
             return
