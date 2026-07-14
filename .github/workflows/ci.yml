@@ -4,6 +4,8 @@
 # All suites must stay green together before either legacy production app can be
 # retired: Halqe/PostgreSQL, both legacy behavioural oracles, schema guards and
 # the complete Next.js quality/build gate. This workflow never writes to Git.
+# Diagnostic artifacts are produced before fail-fast checks so an integration
+# conflict is reviewable rather than reduced to a red status.
 # ---------------------------------------------------------------------------
 name: CI
 
@@ -57,12 +59,20 @@ jobs:
           cache-dependency-path: halqe/requirements.txt
       - name: Install Python dependencies
         run: pip install -r halqe/requirements.txt
-      - name: Verify exact unified OpenAPI lock
-        working-directory: halqe
-        run: python manage.py dump_openapi --check-lock
       - name: Generate full OpenAPI review artifact
         working-directory: halqe
         run: python manage.py dump_openapi --output generated-openapi.json
+      - name: Upload generated OpenAPI contract
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: generated-openapi-contract
+          path: halqe/generated-openapi.json
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Verify exact unified OpenAPI lock
+        working-directory: halqe
+        run: python manage.py dump_openapi --check-lock
       - name: Run full Halqe backend suite
         working-directory: halqe
         shell: bash
@@ -76,14 +86,6 @@ jobs:
           name: backend-test-log
           path: halqe/backend-test.log
           if-no-files-found: warn
-          retention-days: 14
-      - name: Upload generated OpenAPI contract
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: generated-openapi-contract
-          path: halqe/generated-openapi.json
-          if-no-files-found: error
           retention-days: 14
 
   legacy-oracles:
@@ -173,7 +175,18 @@ jobs:
         run: npm ci
       - name: Run Jest tests
         working-directory: halqe/web
-        run: npm test
+        shell: bash
+        run: |
+          set -o pipefail
+          npm test -- --runInBand 2>&1 | tee jest-test.log
+      - name: Upload Jest test log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jest-test-log
+          path: halqe/web/jest-test.log
+          if-no-files-found: warn
+          retention-days: 14
       - name: Type-check TypeScript
         working-directory: halqe/web
         run: npx tsc --noEmit
