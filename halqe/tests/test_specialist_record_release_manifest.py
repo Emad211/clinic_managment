@@ -17,6 +17,9 @@ from clinical.secure_report_io import write_private_text
 from clinical.specialist_record_clinician_signoff import (
     SpecialistRecordClinicianSignoffVerifier,
 )
+from clinical.specialist_record_fresh_verification import (
+    FreshImportVerificationResult,
+)
 from clinical.specialist_record_release_manifest import (
     SpecialistRecordReleaseManifestBuilder,
     SpecialistRecordReleaseManifestError,
@@ -32,8 +35,8 @@ PATIENT_UUID = "00000000-0000-0000-0000-000000000202"
 
 
 @pytest.fixture(autouse=True)
-def _artifact_chain_uses_controlled_database_binding(monkeypatch):
-    """Release hash-chain tests mock only the already integration-tested DB hop."""
+def _artifact_chain_uses_controlled_live_checks(monkeypatch):
+    """Hash-chain tests mock only the separately integration-tested live hops."""
 
     def verified_binding(*, packet, source_id, tenant_id):
         patients = packet.get("patients") if isinstance(packet, dict) else []
@@ -44,9 +47,48 @@ def _artifact_chain_uses_controlled_database_binding(monkeypatch):
             failures=[] if count > 0 else ["patient-sample-empty"],
         )
 
+    def fresh_verification(
+        *,
+        sqlite_path,
+        apply_report_path,
+        replay_report_path,
+        saved_verification_report,
+        source_id,
+        tenant_id,
+        report_path,
+    ):
+        target = write_private_text(
+            report_path,
+            json.dumps(saved_verification_report, sort_keys=True) + "\n",
+        )
+        raw = target.read_bytes()
+        semantic = hashlib.sha256(
+            json.dumps(
+                {
+                    "source_id": source_id,
+                    "tenant_id": tenant_id,
+                    "checks": saved_verification_report.get("checks"),
+                },
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode("utf-8")
+        ).hexdigest()
+        return FreshImportVerificationResult(
+            passed=True,
+            report_path=target,
+            report_sha256=hashlib.sha256(raw).hexdigest(),
+            semantic_fingerprint=semantic,
+            detail="Fresh database reconciliation is GO.",
+            payload=dict(saved_verification_report),
+        )
+
     monkeypatch.setattr(
         "clinical.specialist_record_clinician_signoff.verify_review_patient_bindings",
         verified_binding,
+    )
+    monkeypatch.setattr(
+        "clinical.specialist_record_release_manifest.run_fresh_import_verification",
+        fresh_verification,
     )
 
 
@@ -199,6 +241,7 @@ def _builder(paths: dict[str, Path]) -> SpecialistRecordReleaseManifestBuilder:
         tenant_id=1,
         git_commit=COMMIT_SHA,
         image_digest=IMAGE_DIGEST,
+        fresh_verification_report_path=paths["verification"].with_name("fresh.json"),
     )
 
 
@@ -212,13 +255,19 @@ def test_complete_hash_chain_produces_go_manifest(tmp_path):
     assert result.selected_patient_count == 1
     assert result.summary["failed"] == 0
     assert len(result.release_id) == 64
+    assert len(result.fresh_verification_report_sha256 or "") == 64
+    assert len(result.fresh_verification_semantic_fingerprint or "") == 64
     assert set(result.artifact_sha256) == {
         "apply_report",
         "replay_report",
         "verification_report",
         "review_packet",
         "clinician_signoff_report",
+        "fresh_verification_report",
     }
+    assert next(
+        item for item in result.checks if item.key == "fresh_database_reconciliation"
+    ).status == "pass"
 
 
 def test_source_snapshot_mutation_after_reports_is_no_go(tmp_path):
@@ -317,6 +366,7 @@ def test_invalid_commit_or_public_source_is_rejected_before_manifest(tmp_path):
 def test_manifest_command_writes_private_go_and_no_go_outputs(tmp_path):
     paths = _chain(tmp_path)
     output = tmp_path / "release" / "manifest-go.json"
+    fresh = tmp_path / "release" / "fresh-verification.json"
     stdout = StringIO()
     call_command(
         "build_specialist_record_release_manifest",
@@ -330,12 +380,15 @@ def test_manifest_command_writes_private_go_and_no_go_outputs(tmp_path):
         tenant_id=1,
         git_commit=COMMIT_SHA,
         image_digest=IMAGE_DIGEST,
+        fresh_verification_report=str(fresh),
         report=str(output),
         stdout=stdout,
         verbosity=0,
     )
     payload = json.loads(output.read_text(encoding="utf-8"))
     assert payload["decision"] == "GO"
+    assert fresh.exists()
+    assert stat.S_IMODE(fresh.stat().st_mode) == 0o600
     assert stat.S_IMODE(output.stat().st_mode) == 0o600
     assert "release manifest GO" in stdout.getvalue()
     assert PATIENT_UUID not in stdout.getvalue()
@@ -356,6 +409,7 @@ def test_manifest_command_writes_private_go_and_no_go_outputs(tmp_path):
             source_id=SOURCE_ID,
             tenant_id=1,
             git_commit=COMMIT_SHA,
+            fresh_verification_report=str(fresh),
             report=str(no_go),
             verbosity=0,
         )
