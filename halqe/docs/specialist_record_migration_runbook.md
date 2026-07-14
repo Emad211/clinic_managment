@@ -1,61 +1,86 @@
 # راهنمای عملیاتی مهاجرت پروندهٔ کلینیک تخصصی به حلقه
 
-این سند برای انتقال تاریخی داده‌های `specialist.db` به PostgreSQL حلقه نوشته شده است. اجرای آن یک عملیات بالینی و داده‌ای حساس است؛ هیچ مرحله‌ای نباید مستقیماً روی تنها نسخهٔ دیتابیس مبدأ یا بدون نسخهٔ پشتیبان مقصد انجام شود.
+این سند مسیر کامل انتقال تاریخی `specialist.db` به PostgreSQL حلقه را تعریف می‌کند.
+این عملیات بالینی و داده‌ای حساس است. هیچ مرحله‌ای نباید روی تنها نسخهٔ مبدأ، بدون
+backup قابل‌بازیابی مقصد، یا با artifactهای عمومی انجام شود.
+
+هیچ‌یک از فرمان‌های این سند PR را merge، نسخه را deploy یا cutover را خودکار
+نمی‌کنند. تصمیم نهایی عملیاتی همچنان انسانی است.
+
+---
 
 ## ۱. دامنهٔ انتقال
 
-فرمان `import_specialist_record` این حوزه‌ها را منتقل یا به رکورد موجود تطبیق می‌دهد:
+فرمان `import_specialist_record` حوزه‌های زیر را منتقل یا به رکورد canonical موجود
+تطبیق می‌دهد:
 
-- کاتالوگ بیماری‌ها، فلگ‌ها، کلاس‌های دارویی، داروها و آزمایش‌ها؛
-- enrollment بیمار، مشروط به resolveشدن هویت در `accounting.patients`؛
-- بیماری‌ها، داروها و timeline رویدادهای دارویی؛
+- کاتالوگ بیماری، فلگ، کلاس دارویی، دارو و آزمایش؛
+- enrollment بالینی، فقط پس از resolveشدن بیمار در `accounting.patients`؛
+- بیماری‌های مزمن و تاریخچهٔ فعال/غیرفعال؛
+- داروها و رویدادهای start، dose-change و stop؛
 - حساسیت‌ها، علائم حیاتی و نتایج آزمایش؛
 - فلگ‌های ساختاریافتهٔ بالینی؛
-- نوبت‌ها، پیگیری‌ها و suggestion log؛
-- سابقهٔ جراحی، سابقهٔ پزشکی و یادداشت‌های بالینی؛
-- نسخه‌های قدیمی JSON و ارتباط آن‌ها با پیگیری و کاربر مقصد.
+- نوبت، پیگیری و suggestion log؛
+- سابقهٔ جراحی، سابقهٔ پزشکی و یادداشت بالینی؛
+- نسخه‌های legacy JSON و ارتباط آن‌ها با پیگیری و کاربر مقصد.
 
-موارد زیر عمداً در این ETL وارد نمی‌شوند:
+موارد زیر عمداً در ETL پرونده وارد نمی‌شوند:
 
 - موجودی کیف پول و `wallet_transactions`؛
-- فاکتور، پرداخت یا ledger حسابداری؛
-- کمپین‌ها، پیام‌ها، approvalها و dispatchهای تعامل؛
+- فاکتور، پرداخت یا ledger مالی؛
+- کمپین، پیام، approval و dispatch تعامل؛
 - activity logهای legacy؛
-- rule/indicatorهای مدیریتی که منبع حقیقت آن‌ها کاتالوگ حلقه است.
+- rule/indicatorهایی که منبع حقیقت آن‌ها کاتالوگ حلقه است.
 
-وجود دادهٔ مالی در مبدأ در گزارش dry-run نمایش داده می‌شود و اجرای واقعی بدون acknowledgment صریح متوقف خواهد شد.
+وجود wallet یا دادهٔ مالی در dry-run گزارش می‌شود. apply بدون acknowledgement صریح
+متوقف خواهد شد؛ acknowledgement به معنی انتقال پول نیست.
 
-## ۲. قراردادهای ایمنی
+---
 
-1. حالت پیش‌فرض فرمان، **dry-run بدون اثر ماندگار** است.
-2. dry-run تمام ردیف‌های برنامه‌ریزی‌شده را با ID منفی داخل transaction برگشت‌پذیر materialize می‌کند؛ بنابراین FK، CHECK، RLS و lookupهای واقعی PostgreSQL بررسی می‌شوند، اما هیچ ردیفی باقی نمی‌ماند و sequence مصرف نمی‌شود.
-3. همهٔ writeها در حالت `--apply` داخل یک transaction واحد هستند.
-4. هر source row یک digest در `clinical.record_import_ledger` می‌گیرد.
-5. اجرای دقیقاً مشابه، replay و idempotent است.
-6. تغییر payload یک source row پس از import قبلی، conflict و rollback کامل ایجاد می‌کند؛ overwrite ساکت وجود ندارد.
-7. هویت بیمار فقط از مرز حسابداری resolve می‌شود. ETL پرونده اجازهٔ ساخت یا تغییر دموگرافی حسابداری را ندارد.
-8. رضایت پیامک هرگز از دادهٔ legacy استنباط نمی‌شود. opt-out محافظه‌کارانه قابل حفظ است، ولی consent جدید ساخته نمی‌شود.
-9. vital خوداظهاری به‌عنوان دادهٔ تأییدنشده وارد می‌شود و تا بازبینی پزشک وارد موتور تصمیم‌یار نمی‌شود.
-10. برای آزمایش کاتالوگی، نام، واحد و محدودهٔ مرجع فقط از کاتالوگ فعال tenant snapshot می‌شوند.
+## ۲. قراردادهای ایمنی غیرقابل‌تغییر
 
-## ۳. پیش‌نیازهای غیرقابل حذف
+1. حالت پیش‌فرض، dry-run بدون اثر ماندگار است.
+2. dry-run ردیف‌ها را با IDهای منفی داخل transaction واقعی PostgreSQL materialize
+   می‌کند؛ FK، CHECK، RLS و lookupها اجرا می‌شوند، سپس کل transaction rollback می‌شود.
+3. dry-run هیچ sequence، target row یا ledger row ماندگاری مصرف نمی‌کند.
+4. تمام writeهای apply در یک transaction واحد انجام می‌شوند.
+5. هر source row یک digest و یک target fingerprint در ledger append-only می‌گیرد.
+6. replay دقیق idempotent است؛ source تغییرکرده یا target دستکاری‌شده conflict است.
+7. `source-id` برای یک تاریخچهٔ monotonic است؛ snapshot ناقص یا دیتابیس دیگر با همان
+   source-id پذیرفته نمی‌شود.
+8. هویت بیمار فقط از مرز accounting resolve می‌شود. ETL اجازهٔ ساخت یا تغییر
+   دموگرافی accounting را ندارد.
+9. رضایت پیامک از legacy استنباط نمی‌شود. opt-out محافظه‌کارانه قابل حفظ است، اما
+   consent جدید ساخته نمی‌شود.
+10. vital خوداظهاری با `verified=false` وارد می‌شود.
+11. metadata آزمایش کاتالوگی فقط از کاتالوگ فعال tenant snapshot می‌شود.
+12. گزارش‌ها به‌صورت پیش‌فرض نام، کد ملی و accounting patient ID را حذف می‌کنند.
+13. reportها با directory mode `0700` و file mode `0600` و replace اتمیک نوشته می‌شوند.
+14. symlink، فایل غیر regular و برخورد مسیر input/output رد می‌شود.
+15. apply فقط از SQLite کاملاً quiesced مجاز است.
 
-پیش از شروع:
+---
 
-- PR مربوطه باید merge و نسخهٔ deployشده باید شامل SQL sliceهای import ledger و sequence sync باشد.
+## ۳. پیش‌نیازهای release
+
+پیش از rehearsal یا cutover:
+
+- commit موردنظر باید شامل SQL sliceهای ledger، fingerprint و sequence sync باشد؛
 - CI همان commit باید در هر سه gate سبز باشد:
-  - backend PostgreSQL pytest؛
+  - PostgreSQL backend pytest؛
   - schema guard؛
-  - Jest، TypeScript، ESLint و Next.js production build.
-- دسترسی اپراتور به فایل مبدأ و PostgreSQL باید ثبت و محدود باشد.
-- یک maintenance window برای توقف writeهای برنامهٔ تخصصی تعیین شود.
-- `pg_dump` یا snapshot قابل‌بازیابی از دیتابیس مقصد گرفته شود.
-- فایل مبدأ باید روی storage رمزگذاری‌شده و با دسترسی حداقلی نگهداری شود.
-- پزشک مسئول یا نمایندهٔ کلینیک باید نمونه‌های بالینی reconciliation را از قبل تعیین کند.
+  - Jest، TypeScript، ESLint و Next.js production build؛
+- دسترسی اپراتور، maintenance window و rollback owner ثبت شده باشند؛
+- backup مقصد گرفته و restore آن تمرین شده باشد؛
+- storage artifactها رمزگذاری‌شده و دسترسی آن حداقلی باشد؛
+- پزشک reviewer و تصمیم‌گیر مالی مشخص باشند؛
+- commit SHA کامل و، در deployment کانتینری، image digest immutable ثبت شده باشد.
 
-## ۴. تهیهٔ snapshot قابل‌اعتماد از SQLite
+---
 
-برنامهٔ کلینیک تخصصی و schedulerهای آن را متوقف کنید. سپس روی همان میزبان:
+## ۴. ساخت snapshot قابل‌اعتماد SQLite
+
+ابتدا برنامهٔ کلینیک تخصصی، scheduler و هر writer دیگر را متوقف کنید:
 
 ```bash
 sqlite3 /srv/specialist/specialist.db "PRAGMA wal_checkpoint(TRUNCATE);"
@@ -64,27 +89,47 @@ sqlite3 /srv/specialist/specialist.db "PRAGMA quick_check;"
 
 خروجی `quick_check` باید دقیقاً `ok` باشد.
 
-از فایل خام روی محل import کپی بگیرید؛ ETL نباید روی تنها نسخهٔ production اجرا شود:
+از دیتابیس کپی خصوصی بسازید:
 
 ```bash
 install -m 0600 /srv/specialist/specialist.db \
-  /secure-migration/specialist-2026-07-13.db
-sha256sum /secure-migration/specialist-2026-07-13.db \
-  > /secure-migration/specialist-2026-07-13.db.sha256
+  /secure-migration/specialist-2026-07-14.db
+sha256sum /secure-migration/specialist-2026-07-14.db \
+  > /secure-migration/specialist-2026-07-14.db.sha256
 ```
 
-وجود فایل WAL غیرخالی باعث توقف فرمان می‌شود. گزینهٔ `--allow-live-source` فقط برای وضعیت اضطراری مستندشده است و در cutover معمول نباید استفاده شود.
-
-## ۵. پشتیبان مقصد و preflight
+این sidecarها را بررسی کنید:
 
 ```bash
-pg_dump --format=custom --file=/secure-migration/halqe-before-record-import.dump \
+ls -l /secure-migration/specialist-2026-07-14.db{-wal,-shm,-journal} 2>/dev/null || true
+```
+
+برای apply، هیچ‌یک از `-wal`، `-shm` یا `-journal` نباید غیرخالی باشند.
+
+### سیاست `--allow-live-source`
+
+این گزینه فقط یک استثنای تشخیصی برای **dry-run** است. فرمان در حالت زیر همیشه fail
+می‌شود:
+
+```text
+--apply --allow-live-source
+```
+
+بنابراین apply روی SQLite زنده، WALدار یا rollback-journalدار ممکن نیست.
+
+---
+
+## ۵. backup مقصد و preflight
+
+```bash
+pg_dump --format=custom \
+  --file=/secure-migration/halqe-before-record-import.dump \
   "$DATABASE_URL"
 sha256sum /secure-migration/halqe-before-record-import.dump \
   > /secure-migration/halqe-before-record-import.dump.sha256
 ```
 
-سپس schema را با نسخهٔ deployشده همگام کنید:
+سپس:
 
 ```bash
 python manage.py apply_schema
@@ -92,7 +137,7 @@ python manage.py dump_openapi --check
 python manage.py check
 ```
 
-تعداد ledgerهای قبلی source را ثبت کنید:
+ledgerهای قبلی source-id را ثبت کنید:
 
 ```sql
 SELECT source_id, source_table, count(*) AS imported_rows
@@ -102,293 +147,376 @@ GROUP BY source_id, source_table
 ORDER BY source_id, source_table;
 ```
 
-## ۶. اجرای dry-run
+---
 
-برای هر فایل مبدأ یک `source-id` پایدار و غیرقابل‌استفاده برای دیتابیس دیگری انتخاب کنید:
+## ۶. جداسازی مسیر artifactها
+
+هیچ output نباید با SQLite یا report ورودی یکسان باشد. hard-link نیز برخورد محسوب
+می‌شود.
+
+ساختار پیشنهادی:
+
+```text
+/secure-migration/source/specialist.db
+/secure-migration/reports/dry-run.json
+/secure-migration/reports/apply.json
+/secure-migration/reports/replay.json
+/secure-migration/reports/verification.json
+/secure-migration/reports/clinician-review.json
+/secure-migration/reports/clinician-signoff.json
+/secure-migration/reports/fresh-verification.json
+/secure-migration/reports/release-manifest.json
+```
+
+هر command برخورد input/output را قبل از تغییر فایل رد می‌کند.
+
+---
+
+## ۷. اجرای dry-run
+
+یک `source-id` پایدار انتخاب کنید که هرگز برای SQLite دیگری استفاده نشود:
 
 ```bash
 python manage.py import_specialist_record \
-  --sqlite /secure-migration/specialist-2026-07-13.db \
-  --source-id sib-gorgan-specialist-primary \
+  --sqlite /secure-migration/source/specialist.db \
+  --source-id clinic-a-specialist-primary \
   --tenant-id 1 \
-  --report /secure-migration/reports/record-dry-run.json
+  --report /secure-migration/reports/dry-run.json
 ```
 
-بدون `--apply` هیچ داده‌ای commit نمی‌شود.
+معیار پذیرش:
 
-### معیار پذیرش گزارش dry-run
+- `mode=dry-run`؛
+- `transaction_status=validated_no_commit`؛
+- `error=null`؛
+- برای هر جدول `source_rows == accounted_rows`؛
+- hash فایل با hash ثبت‌شده برابر باشد؛
+- manifest hash معتبر باشد؛
+- unresolved patient صفر باشد یا waiver رسمی داشته باشد؛
+- `ledger_rows_after` تغییر نکند؛
+- هشدار ناشناخته وجود نداشته باشد؛
+- دادهٔ مالی out-of-scope بررسی شده باشد.
 
-برای هر جدول:
-
-```text
-source_rows == accounted_rows
-```
-
-و باید این شرایط برقرار باشند:
-
-- `mode` برابر `dry-run` باشد؛
-- `error` تهی باشد؛
-- `unresolved_patients` تهی باشد، مگر اینکه تصمیم مکتوب برای `--skip-unresolved` وجود داشته باشد؛
-- `source_file_sha256` با hash فایل کپی‌شده یکسان باشد؛
-- `source_manifest_sha256` مقدار داشته باشد؛
-- `ledger_rows_after` در dry-run مقدار جدیدی ایجاد نکند؛
-- هیچ هشدار ناشناخته یا mapping حذف‌شده وجود نداشته باشد؛
-- داده‌های مالی out-of-scope بررسی و به تیم حسابداری ارجاع شده باشند.
-
-پس از dry-run، نبود اثر ماندگار را بررسی کنید:
+عدم write را دوباره بررسی کنید:
 
 ```sql
 SELECT count(*)
 FROM clinical.record_import_ledger
 WHERE tenant_id = 1
-  AND source_id = 'sib-gorgan-specialist-primary';
+  AND source_id = 'clinic-a-specialist-primary';
 ```
 
-در اولین dry-run این مقدار باید صفر باشد.
+در اولین dry-run باید صفر باشد.
 
-## ۷. بررسی بیمارهای resolve‌نشده
+---
 
-رفتار پیش‌فرض fail-closed است. اگر بیمار در `accounting.patients` پیدا نشود، هیچ child record مربوط به او وارد نمی‌شود و کل import متوقف می‌شود.
+## ۸. بیمار resolve‌نشده
 
-ابتدا مشکل هویت را در فرایند onboarding/accounting حل کنید. استفاده از:
+رفتار پیش‌فرض fail-closed است. اگر بیمار در accounting پیدا نشود، import متوقف و
+تمام transaction rollback می‌شود.
 
-```text
---skip-unresolved
-```
+`--skip-unresolved` فقط با waiver مکتوب مجاز است که شامل این موارد باشد:
 
-فقط در صورتی مجاز است که:
+- source patient rowهای حذف‌شده از wave؛
+- تعداد child rowهای skip‌شده به تفکیک جدول؛
+- owner و برنامهٔ wave بعدی؛
+- تأیید پزشک/مالک داده؛
+- حفظ همان source-id.
 
-- فهرست بیمارهای حذف‌شده از import به گزارش رسمی پیوست شود؛
-- تعداد child rowهای skipشده برای هر جدول مشخص باشد؛
-- پزشک/مالک داده تأیید کند این بیماران در wave بعدی منتقل می‌شوند؛
-- source-id برای اجرای بعدی ثابت بماند.
+تطبیق تقریبی بر اساس نام یا شماره تلفن ممنوع است.
 
-هیچ تطبیق تقریبی بر اساس شباهت نام یا شماره تلفن مجاز نیست.
+---
 
-## ۸. اجرای واقعی
+## ۹. apply واقعی rehearsal
 
-فقط پس از sign-off dry-run:
+فقط روی snapshot quiesced و بعد از dry-run موفق:
 
 ```bash
 python manage.py import_specialist_record \
-  --sqlite /secure-migration/specialist-2026-07-13.db \
-  --source-id sib-gorgan-specialist-primary \
+  --sqlite /secure-migration/source/specialist.db \
+  --source-id clinic-a-specialist-primary \
   --tenant-id 1 \
   --apply \
-  --report /secure-migration/reports/record-apply.json \
-  --imported-by migration-operator-2026-07-13
+  --imported-by migration-operator-2026-07-14 \
+  --report /secure-migration/reports/apply.json
 ```
 
-اگر گزارش dry-run وجود دادهٔ مالی را نشان داده و انتقال مالی در این wave عمداً خارج از دامنه است، فقط با تصمیم مکتوب گزینهٔ زیر اضافه می‌شود:
+در صورت وجود wallet data و تصمیم مکتوب مبنی بر خارج‌بودن آن از این wave:
 
 ```text
 --acknowledge-financial-data-out-of-scope
 ```
 
-این گزینه دادهٔ مالی را وارد نمی‌کند؛ فقط مانع سکوت دربارهٔ حذف آن از دامنه می‌شود.
+معیار پذیرش:
 
-## ۹. آزمون idempotency پس از apply
+- `mode=apply`؛
+- `transaction_status=committed`؛
+- `error=null`؛
+- ledger count با source rowهای skip‌نشده برابر باشد؛
+- هیچ ردیف منفی ماندگار نباشد.
 
-همان فرمان `--apply` را بدون هیچ تغییر در source تکرار کنید. اجرای دوم باید:
+---
 
-- `inserted` جدید نداشته باشد؛
-- ردیف‌ها را `replayed` یا در موارد natural-key موجود `reused` گزارش کند؛
-- count جدول‌های مقصد را تغییر ندهد؛
-- همان manifest را تولید کند؛
-- conflict نداشته باشد.
+## ۱۰. اجرای دوم idempotency
 
-هر اختلاف، cutover را متوقف می‌کند.
+همان apply را بدون تغییر source تکرار و report را جدا ذخیره کنید:
 
-## ۱۰. reconciliation دیتابیسی
-
-### ۱۰.۱ ledger بر اساس جدول
-
-```sql
-SELECT source_table,
-       target_table,
-       count(*) AS rows,
-       count(DISTINCT source_row_id) AS distinct_source_rows
-FROM clinical.record_import_ledger
-WHERE tenant_id = 1
-  AND source_id = 'sib-gorgan-specialist-primary'
-GROUP BY source_table, target_table
-ORDER BY source_table;
+```bash
+python manage.py import_specialist_record \
+  --sqlite /secure-migration/source/specialist.db \
+  --source-id clinic-a-specialist-primary \
+  --tenant-id 1 \
+  --apply \
+  --imported-by migration-operator-2026-07-14 \
+  --report /secure-migration/reports/replay.json
 ```
 
-`rows` و `distinct_source_rows` باید برابر باشند.
+اجرای دوم باید:
 
-### ۱۰.۲ نبود ID منفی بعد از dry-run/apply
+- `inserted=0` داشته باشد؛
+- `planned_*` نداشته باشد؛
+- ردیف‌ها را `replayed` یا طبق waiver `skipped_unresolved` گزارش کند؛
+- ledger count را تغییر ندهد؛
+- file hash و manifest hash یکسان تولید کند.
+
+---
+
+## ۱۱. verifier دیتابیسی GO/NO_GO
+
+```bash
+python manage.py verify_specialist_record_import \
+  --sqlite /secure-migration/source/specialist.db \
+  --apply-report /secure-migration/reports/apply.json \
+  --replay-report /secure-migration/reports/replay.json \
+  --source-id clinic-a-specialist-primary \
+  --tenant-id 1 \
+  --report /secure-migration/reports/verification.json
+```
+
+برای rehearsal نهایی ترجیحاً `--strict-warnings` استفاده شود.
+
+Verifier این موارد را خودکار کنترل می‌کند:
+
+- source/apply/replay hash و manifest؛
+- table accounting و idempotency؛
+- ledger row shape، target existence و target content fingerprint؛
+- orphanهای دارو، appointment، follow-up و prescription؛
+- self-report تأییدشدهٔ ناخواسته؛
+- visibility آزمایش در `clinical.observations`؛
+- natural-keyهای `condition_lab_tests`؛
+- target mutation پس از import.
+
+خروجی باید `decision=GO` و `summary.failed=0` باشد.
+
+---
+
+## ۱۲. نمونه‌برداری و sign-off پزشک
+
+نمونهٔ deterministic بسازید:
+
+```bash
+python manage.py generate_specialist_record_review_sample \
+  --verification-report /secure-migration/reports/verification.json \
+  --source-id clinic-a-specialist-primary \
+  --tenant-id 1 \
+  --per-scenario 1 \
+  --max-patients 25 \
+  --report /secure-migration/reports/clinician-review.json
+```
+
+پزشک packet را تکمیل می‌کند و سپس:
+
+```bash
+python manage.py verify_specialist_record_clinician_signoff \
+  --review-packet /secure-migration/reports/clinician-review.json \
+  --verification-report /secure-migration/reports/verification.json \
+  --source-id clinic-a-specialist-primary \
+  --tenant-id 1 \
+  --report /secure-migration/reports/clinician-signoff.json
+```
+
+این gate علاوه بر hash فایل‌ها، هر بیمار را با ledger، clinical link فعال و UUID
+accounting زنده تطبیق می‌دهد. packet دارای نام، تلفن، کد ملی یا PHI در free text،
+حتی با ارقام فارسی/عربی، `NO_GO` می‌شود.
+
+---
+
+## ۱۳. manifest نهایی و fresh reconciliation
+
+درست پیش از cutover:
+
+```bash
+python manage.py build_specialist_record_release_manifest \
+  --sqlite /secure-migration/source/specialist.db \
+  --apply-report /secure-migration/reports/apply.json \
+  --replay-report /secure-migration/reports/replay.json \
+  --verification-report /secure-migration/reports/verification.json \
+  --review-packet /secure-migration/reports/clinician-review.json \
+  --clinician-signoff-report /secure-migration/reports/clinician-signoff.json \
+  --source-id clinic-a-specialist-primary \
+  --tenant-id 1 \
+  --git-commit 0123456789abcdef0123456789abcdef01234567 \
+  --image-digest sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
+  --fresh-verification-report /secure-migration/reports/fresh-verification.json \
+  --report /secure-migration/reports/release-manifest.json
+```
+
+فرمان verifier دیتابیسی را دوباره اجرا می‌کند. گزارش stale پیش از اجرا حذف می‌شود و
+hash و semantic fingerprint گزارش تازه وارد `release_id` می‌شوند.
+
+فقط این وضعیت قابل قبول است:
+
+```text
+release-manifest.decision = GO
+fresh_database_reconciliation = pass
+```
+
+---
+
+## ۱۴. reconciliation دستی مکمل
+
+### نبود ID منفی
 
 ```sql
-SELECT 'conditions' AS table_name, count(*)
-FROM clinical.conditions WHERE id < 0
+SELECT 'conditions' AS table_name, count(*) FROM clinical.conditions WHERE id < 0
 UNION ALL
-SELECT 'patient_medications', count(*)
-FROM clinical.patient_medications WHERE id < 0
+SELECT 'patient_medications', count(*) FROM clinical.patient_medications WHERE id < 0
 UNION ALL
-SELECT 'lab_results', count(*)
-FROM clinical.lab_results WHERE id < 0;
+SELECT 'lab_results', count(*) FROM clinical.lab_results WHERE id < 0;
 ```
 
 تمام countها باید صفر باشند.
 
-### ۱۰.۳ رویدادهای دارویی orphan
+### MedicationEvent orphan
 
 ```sql
 SELECT count(*)
 FROM clinical.medication_events e
 LEFT JOIN clinical.patient_medications m
-  ON m.tenant_id = e.tenant_id
- AND m.id = e.medication_id
-WHERE e.tenant_id = 1
+  ON m.tenant_id=e.tenant_id AND m.id=e.medication_id
+WHERE e.tenant_id=1
   AND e.medication_id IS NOT NULL
   AND m.id IS NULL;
 ```
 
 باید صفر باشد.
 
-### ۱۰.۴ self-reportهای واردشده
+### self-report
 
 ```sql
 SELECT source, verified, count(*)
 FROM clinical.vital_readings
-WHERE tenant_id = 1
+WHERE tenant_id=1
 GROUP BY source, verified
 ORDER BY source, verified;
 ```
 
-ردیف‌های `patient_self` نباید بدون بازبینی پزشک verified باشند.
+ردیف‌های واردشده با `source=patient_self` نباید بدون بازبینی verified باشند.
 
-### ۱۰.۵ آزمایش‌های کاتالوگی
-
-```sql
-SELECT count(*) AS metadata_mismatch
-FROM clinical.lab_results r
-JOIN clinical.lab_test_catalog c
-  ON c.tenant_id = r.tenant_id
- AND c.test_key = r.test_key
-WHERE r.tenant_id = 1
-  AND (
-      r.test_name IS DISTINCT FROM c.name_fa
-      OR r.unit IS DISTINCT FROM c.unit
-      OR r.ref_low IS DISTINCT FROM c.ref_low
-      OR r.ref_high IS DISTINCT FROM c.ref_high
-  );
-```
-
-برای داده‌های واردشده با کاتالوگ هم‌نسخه، انتظار صفر است. اگر کاتالوگ بعداً تغییر کرده باشد، snapshot تاریخی ممکن است عمداً متفاوت باشد؛ در آن حالت نتیجه باید با timestamp و نسخهٔ کاتالوگ مستند شود.
-
-### ۱۰.۶ sequenceها
+### sequence
 
 ```sql
 SELECT max(id) FROM clinical.conditions;
 SELECT last_value, is_called FROM clinical.conditions_id_seq;
 ```
 
-درج عادی بعدی نباید شناسهٔ موجود را تکرار کند. SQL slice همگام‌سازی identity این قرارداد را برای تمام schemaهای application اعمال می‌کند.
+درج عادی بعدی نباید شناسهٔ موجود را تکرار کند.
 
-## ۱۱. نمونه‌برداری بالینی اجباری
+---
 
-حداقل این cohortها را در UI حلقه و SQLite مبدأ کنار هم بررسی کنید:
+## ۱۵. cutover
 
-1. بیمار با چند بیماری مزمن؛
-2. بیمار با داروی فعال، تغییر دوز و داروی قطع‌شده؛
-3. بیمار دارای حساسیت شدید؛
-4. بیمار دارای vital خوداظهاری؛
-5. بیمار با چند آزمایش و reference range؛
-6. بیمار دارای فلگ enum و تاریخ معاینه؛
-7. بیمار دارای جراحی، سابقهٔ پزشکی و یادداشت بالینی؛
-8. بیمار دارای appointment دوره‌ای و follow-up؛
-9. نسخهٔ آزاد؛
-10. نسخهٔ بیمه‌ای یا JSON legacy نامعمول.
+پس از GO نهایی:
 
-برای هر نمونه این موارد ثبت شوند:
+1. سامانهٔ تخصصی را read-only نگه دارید؛
+2. dual-write ایجاد نکنید؛
+3. تمام writeهای جدید پرونده فقط در حلقه انجام شوند؛
+4. SQLite برای بازهٔ توافق‌شده فقط برای audit قابل‌خواندن بماند؛
+5. audit log، error log و صف بازبینی self-report پایش شوند؛
+6. پزشک مسئول نمایش شرایط، دارو، حساسیت، آزمایش و نسخه را تأیید کند؛
+7. تیم حسابداری wallet/financial out-of-scope را مستقل ببندد؛
+8. release_id و artifact hashها در change record ثبت شوند.
 
-- شناسهٔ بیمار و source rowها؛
-- screenshot یا export sanitised از هر دو سامانه؛
-- نتیجهٔ تطبیق نام/تاریخ/وضعیت/دوز؛
-- امضای بررسی‌کننده و زمان بررسی؛
-- discrepancy و تصمیم اصلاحی.
+---
 
-## ۱۲. cutover
-
-پس از apply و reconciliation:
-
-1. کلینیک تخصصی را در حالت read-only نگه دارید.
-2. dual-write آزاد نکنید؛ دو منبع حقیقت هم‌زمان ایجاد نکنید.
-3. تمام ثبت‌های جدید پرونده فقط در حلقه انجام شوند.
-4. برای یک بازهٔ توافق‌شده، SQLite فقط برای مقایسه و audit قابل‌خواندن بماند.
-5. access log و audit log حلقه پایش شود.
-6. پزشک مسئول نمایش پرونده، دارو، حساسیت و آزمایش را تأیید کند.
-7. تیم حسابداری وضعیت wallet/financial out-of-scope را مستقل ببندد.
-
-## ۱۳. rollback
+## ۱۶. rollback
 
 ### خطا حین import
 
-فرمان transaction کامل را rollback می‌کند. در این حالت:
+transaction کامل rollback می‌شود. در این حالت:
 
-- ledger ناقص نباید باقی بماند؛
+- target و ledger ناقص نباید باقی بمانند؛
 - source تغییر نمی‌کند؛
-- گزارش خطا نگهداری می‌شود؛
-- پس از اصلاح علت، همان source-id دوباره استفاده می‌شود.
+- report با `failed_no_commit` نگهداری می‌شود؛
+- پس از اصلاح، همان source-id استفاده می‌شود.
 
-### خطا پس از commit موفق
+### خطا پس از commit
 
-حذف دستی ردیف‌ها بر اساس timestamp یا ترتیب ID ممنوع است. راه برگشت استاندارد:
+حذف دستی بر اساس timestamp یا ID ممنوع است. مسیر استاندارد:
 
 1. توقف writeهای حلقه؛
-2. نگهداری گزارش apply و ledger برای forensic؛
-3. restore کامل snapshot/backup مقصد که قبل از import گرفته شده بود؛
-4. اجرای validation و smoke test پس از restore؛
-5. ثبت incident و علت rollback.
+2. حفظ source، reportها و ledger برای forensic؛
+3. restore کامل backup پیش از import؛
+4. اجرای schema/health/smoke validation؛
+5. ثبت incident، owner و علت rollback.
 
-یک undo انتخابی فقط با ابزار جداگانه‌ای مجاز است که dependency graph، ledger و ردیف‌های reused را تشخیص دهد؛ چنین undoای نباید با چند `DELETE` دستی جایگزین شود.
+Undo انتخابی فقط با ابزار dependency-aware مجاز است؛ چند `DELETE` دستی جایگزین آن
+نیست.
 
-## ۱۴. نگهداری artifactها
+---
 
-این فایل‌ها باید کنار change record نگهداری شوند:
+## ۱۷. نگهداری artifactها
 
-- hash و کپی read-only SQLite؛
-- hash و backup PostgreSQL قبل از import؛
-- گزارش dry-run؛
-- گزارش apply؛
-- گزارش اجرای دوم idempotency؛
-- خروجی SQL reconciliation؛
-- نمونه‌برداری بالینی و sign-off؛
-- commit SHA و image tag نسخهٔ حلقه؛
-- نام اپراتور و maintenance window.
+این موارد باید private، write-protected و کنار change record نگهداری شوند:
 
-فایل‌های دارای PHI نباید در Git، ticket عمومی، artifact عمومی CI یا پیام‌رسان قرار گیرند.
+- SQLite snapshot و hash؛
+- backup PostgreSQL و hash؛
+- dry-run، apply و replay report؛
+- verification و fresh verification report؛
+- clinician review packet و sign-off؛
+- release manifest و release_id؛
+- commit SHA و image digest؛
+- evidence مربوط به backup/restore؛
+- نام اپراتور، reviewer، migration window و rollback owner؛
+- تصمیم wallet/accounting.
 
-## ۱۵. چک‌لیست go/no-go
+فایل دارای PHI نباید در Git، ticket عمومی، artifact عمومی CI یا پیام‌رسان قرار گیرد.
 
-### Go
+---
 
-- [ ] source quiesced و `quick_check=ok`
+## ۱۸. چک‌لیست GO/NO_GO
+
+### GO
+
+- [ ] source quiesced، sidecarها خالی و `quick_check=ok`
 - [ ] hash source ثبت شده
-- [ ] backup مقصد بازیابی‌پذیر است
+- [ ] backup مقصد restore شده و معتبر است
 - [ ] CI commit deployشده کاملاً سبز است
-- [ ] dry-run بدون error و mismatch است
-- [ ] unresolved patient صفر یا دارای waiver مکتوب است
+- [ ] dry-run برابر `validated_no_commit` است
+- [ ] unresolved patient صفر یا دارای waiver رسمی است
 - [ ] financial exclusions تعیین تکلیف شده‌اند
-- [ ] apply موفق است
-- [ ] اجرای دوم idempotent است
-- [ ] SQL reconciliation بدون orphan/mismatch غیرتوضیح‌داده است
-- [ ] نمونه‌های بالینی تأیید شده‌اند
-- [ ] cutover و rollback owner مشخص دارند
+- [ ] apply موفق و `committed` است
+- [ ] replay idempotent است
+- [ ] verifier دیتابیسی `GO` است
+- [ ] نمونهٔ بالینی کامل و sign-off پزشک `GO` است
+- [ ] fresh verifier `GO` است
+- [ ] release manifest `GO` و release_id ثبت شده است
+- [ ] cutover owner و rollback owner مشخص‌اند
 
-### No-go
+### NO_GO قطعی
 
-هرکدام از موارد زیر انتقال را متوقف می‌کند:
-
-- WAL فعال یا تغییر hash مبدأ در حین اجرا؛
-- source row conflict؛
+- apply همراه `--allow-live-source`؛
+- WAL، SHM یا journal غیرخالی هنگام apply؛
+- برخورد مسیر output با SQLite یا artifact ورودی؛
+- source row conflict یا snapshot ناقص؛
 - unresolved identity بدون waiver؛
-- اختلاف count/manifest؛
-- sequence یا FK failure؛
+- اختلاف count، manifest یا target fingerprint؛
+- sequence/FK failure؛
 - self-report تأییدشدهٔ ناخواسته؛
 - metadata جعل‌پذیر آزمایش؛
+- PHI در packet پزشک؛
 - نبود backup قابل restore؛
 - شکست هر gate CI؛
-- نبود sign-off بالینی.
+- نبود sign-off پزشک؛
+- fresh reconciliation ناموفق؛
+- نبود تصمیم مکتوب wallet/accounting.
