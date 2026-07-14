@@ -2,12 +2,10 @@
 from __future__ import annotations
 
 import os
-
 import bcrypt
 import psycopg
 import pytest
 from ninja.testing import TestClient
-
 from config.api import api
 
 PG_HOST = os.environ.get("PG_HOST", "localhost")
@@ -19,35 +17,26 @@ PG_APP_USER = os.environ.get("PG_APP_USER", "platform_login_test")
 PG_APP_PASSWORD = os.environ.get("PG_APP_PASSWORD", "test_pw")
 
 
-def _conninfo(user=PG_USER, password=PG_PASSWORD) -> str:
-    return (
-        f"host='{PG_HOST}' port='{PG_PORT}' user='{user}' "
-        f"password='{password}' dbname='{TEST_DB}'"
-    )
+def _conninfo(user=PG_USER, password=PG_PASSWORD):
+    return f"host='{PG_HOST}' port='{PG_PORT}' user='{user}' password='{password}' dbname='{TEST_DB}'"
 
 
-def _client() -> TestClient:
+def _client():
     return TestClient(api)
 
 
-def _login(username: str, password: str) -> str:
+def _login(username: str, password: str):
     response = _client().post(
         "/auth/login", json={"username": username, "password": password}
     )
     assert response.status_code == 200, response.text
-    return response.json()["token"]
-
-
-def _auth(token: str) -> dict[str, str]:
-    return {"Authorization": f"Bearer {token}"}
+    return {"Authorization": f"Bearer {response.json()['token']}"}
 
 
 @pytest.fixture(scope="session")
 def accounting_report_ready(django_db_setup):
     manager_password = "report-manager-secret"
     reception_password = "report-reception-secret"
-    manager_hash = bcrypt.hashpw(manager_password.encode(), bcrypt.gensalt())
-    reception_hash = bcrypt.hashpw(reception_password.encode(), bcrypt.gensalt())
     with psycopg.connect(_conninfo(), autocommit=True) as conn:
         conn.execute(
             """
@@ -71,7 +60,10 @@ def accounting_report_ready(django_db_setup):
                 app='accounting', full_name=EXCLUDED.full_name, is_active=TRUE,
                 failed_attempts=0, locked_until=NULL
             """,
-            (manager_hash, reception_hash),
+            (
+                bcrypt.hashpw(manager_password.encode(), bcrypt.gensalt()),
+                bcrypt.hashpw(reception_password.encode(), bcrypt.gensalt()),
+            ),
         )
         conn.execute(
             """
@@ -112,18 +104,18 @@ def accounting_report_ready(django_db_setup):
                  opened_at, closed_at, pricing_version)
             VALUES
                 (880010, 1, 880001, 880101, 880102, 'closed', 'بیمه پایه گزارش',
-                 210000, '2026-07-10', 'morning', 'accounting_report_reception',
+                 210000, '2099-07-10', 'morning', 'accounting_report_reception',
                  'پذیرش گزارش تست', 'accounting_report_manager',
-                 'مدیر گزارش حسابداری', '2026-07-10 08:00:00+03:30',
-                 '2026-07-10 09:00:00+03:30', 'halqe_visit_procedure_v1'),
+                 'مدیر گزارش حسابداری', '2099-07-10 08:00:00+03:30',
+                 '2099-07-10 09:00:00+03:30', 'halqe_visit_procedure_v1'),
                 (880011, 1, 880001, 880101, 880102, 'open', 'آزاد',
-                 30000, '2026-07-11', 'evening', 'accounting_report_reception',
+                 30000, '2099-07-11', 'evening', 'accounting_report_reception',
                  'پذیرش گزارش تست', NULL, NULL,
-                 '2026-07-11 16:00:00+03:30', NULL, 'halqe_visit_v1'),
+                 '2099-07-11 16:00:00+03:30', NULL, 'halqe_visit_v1'),
                 (880020, 2, 880002, 880201, NULL, 'closed', 'بیمه tenant دیگر',
-                 9900000, '2026-07-10', 'morning', 'other_user', 'کاربر دیگر',
-                 'other_manager', 'مدیر دیگر', '2026-07-10 08:00:00+03:30',
-                 '2026-07-10 09:00:00+03:30', 'halqe_visit_v1')
+                 9900000, '2099-07-10', 'morning', 'other_user', 'کاربر دیگر',
+                 'other_manager', 'مدیر دیگر', '2099-07-10 08:00:00+03:30',
+                 '2099-07-10 09:00:00+03:30', 'halqe_visit_v1')
             ON CONFLICT (id) DO NOTHING
             """
         )
@@ -134,11 +126,11 @@ def accounting_report_ready(django_db_setup):
                  work_date, insurance_type, status, price, payment_status,
                  reception_user, invoice_id, doctor_id)
             VALUES
-                (880110, 1, 880001, 'دکتر گزارش', '2026-07-10 08:10:00+03:30',
-                 'morning', '2026-07-10', 'بیمه پایه گزارش', 'done', 100000,
+                (880110, 1, 880001, 'دکتر گزارش', '2099-07-10 08:10:00+03:30',
+                 'morning', '2099-07-10', 'بیمه پایه گزارش', 'done', 100000,
                  'paid', 'accounting_report_reception', 880010, 880101),
-                (880120, 2, 880002, 'دکتر tenant دیگر', '2026-07-10 08:10:00+03:30',
-                 'morning', '2026-07-10', 'بیمه tenant دیگر', 'done', 9900000,
+                (880120, 2, 880002, 'دکتر tenant دیگر', '2099-07-10 08:10:00+03:30',
+                 'morning', '2099-07-10', 'بیمه tenant دیگر', 'done', 9900000,
                  'paid', 'other_user', 880020, 880201)
             ON CONFLICT (id) DO NOTHING
             """
@@ -150,10 +142,10 @@ def accounting_report_ready(django_db_setup):
                  shift, work_date, count, unit_price, total_price,
                  patient_amount, insurance_amount, covered_by_insurance,
                  reception_user, invoice_id, doctor_id, nurse_id)
-            VALUES
-                (880210, 1, 880001, 'تزریق گزارش', '2026-07-10 08:20:00+03:30',
-                 'morning', '2026-07-10', 1, 50000, 50000, 20000, 30000, TRUE,
-                 'accounting_report_reception', 880010, 880101, 880102)
+            VALUES (880210, 1, 880001, 'تزریق گزارش',
+                    '2099-07-10 08:20:00+03:30', 'morning', '2099-07-10',
+                    1, 50000, 50000, 20000, 30000, TRUE,
+                    'accounting_report_reception', 880010, 880101, 880102)
             ON CONFLICT (id) DO NOTHING
             """
         )
@@ -164,10 +156,10 @@ def accounting_report_ready(django_db_setup):
                  shift, work_date, price, patient_amount, insurance_amount,
                  covered_by_insurance, reception_user, invoice_id,
                  performer_type, performer_id, doctor_id)
-            VALUES
-                (880310, 1, 880001, 'پروسیجر گزارش', '2026-07-10 08:30:00+03:30',
-                 'morning', '2026-07-10', 80000, 80000, 0, FALSE,
-                 'accounting_report_reception', 880010, 'doctor', 880101, 880101)
+            VALUES (880310, 1, 880001, 'پروسیجر گزارش',
+                    '2099-07-10 08:30:00+03:30', 'morning', '2099-07-10',
+                    80000, 80000, 0, FALSE, 'accounting_report_reception',
+                    880010, 'doctor', 880101, 880101)
             ON CONFLICT (id) DO NOTHING
             """
         )
@@ -180,11 +172,11 @@ def accounting_report_ready(django_db_setup):
                  doctor_id, nurse_id)
             VALUES
                 (880410, 1, 880001, 'گاز گزارش', 'supply', 1, 12000, 12000,
-                 FALSE, FALSE, '2026-07-10 08:40:00+03:30', 'morning',
-                 '2026-07-10', 'accounting_report_reception', 880010, 880101, 880102),
+                 FALSE, FALSE, '2099-07-10 08:40:00+03:30', 'morning',
+                 '2099-07-10', 'accounting_report_reception', 880010, 880101, 880102),
                 (880411, 1, 880001, 'داروی آورده بیمار', 'drug', 1, 999000, 999000,
-                 TRUE, FALSE, '2026-07-10 08:45:00+03:30', 'morning',
-                 '2026-07-10', 'accounting_report_reception', 880010, 880101, 880102)
+                 TRUE, FALSE, '2099-07-10 08:45:00+03:30', 'morning',
+                 '2099-07-10', 'accounting_report_reception', 880010, 880101, 880102)
             ON CONFLICT (id) DO NOTHING
             """
         )
@@ -201,15 +193,14 @@ def accounting_report_ready(django_db_setup):
             DO UPDATE SET payment_type=EXCLUDED.payment_type, is_paid=EXCLUDED.is_paid
             """
         )
-    return {"manager_password": manager_password, "reception_password": reception_password}
+    return {"manager": manager_password, "reception": reception_password}
 
 
 @pytest.mark.django_db(databases=["default", "accounting_read"], transaction=True)
 def test_overview_preserves_legacy_revenue_and_tenant_boundary(accounting_report_ready):
-    token = _login("accounting_report_manager", accounting_report_ready["manager_password"])
     response = _client().get(
-        "/accounting/reports/overview?date_from=2026-07-10&date_to=2026-07-12",
-        headers=_auth(token),
+        "/accounting/reports/overview?date_from=2099-07-10&date_to=2099-07-12",
+        headers=_login("accounting_report_manager", accounting_report_ready["manager"]),
     )
     assert response.status_code == 200, response.text
     body = response.json()
@@ -228,16 +219,15 @@ def test_overview_preserves_legacy_revenue_and_tenant_boundary(accounting_report
 
 @pytest.mark.django_db(databases=["default", "accounting_read"], transaction=True)
 def test_report_filters_and_service_projection(accounting_report_ready):
-    token = _login("accounting_report_manager", accounting_report_ready["manager_password"])
-    headers = _auth(token)
+    headers = _login("accounting_report_manager", accounting_report_ready["manager"])
     invoices = _client().get(
-        "/accounting/reports/invoices?date_from=2026-07-10&date_to=2026-07-12&status=closed",
+        "/accounting/reports/invoices?date_from=2099-07-10&date_to=2099-07-12&status=closed",
         headers=headers,
     )
     assert invoices.status_code == 200, invoices.text
     assert [row["id"] for row in invoices.json()["rows"]] == [880010]
     services = _client().get(
-        "/accounting/reports/services?date_from=2026-07-10&date_to=2026-07-12",
+        "/accounting/reports/services?date_from=2099-07-10&date_to=2099-07-12",
         headers=headers,
     )
     assert services.status_code == 200, services.text
@@ -249,24 +239,24 @@ def test_report_filters_and_service_projection(accounting_report_ready):
 
 @pytest.mark.django_db(databases=["default", "accounting_read"], transaction=True)
 def test_reports_are_manager_only_and_validation_fails_closed(accounting_report_ready):
-    reception = _login("accounting_report_reception", accounting_report_ready["reception_password"])
-    denied = _client().get("/accounting/reports/overview", headers=_auth(reception))
-    assert denied.status_code == 403
-    manager = _login("accounting_report_manager", accounting_report_ready["manager_password"])
-    invalid = _client().get("/accounting/reports/invoices?status=deleted", headers=_auth(manager))
-    assert invalid.status_code == 422
-    too_large = _client().get(
-        "/accounting/reports/overview?date_from=2020-01-01&date_to=2026-07-10",
-        headers=_auth(manager),
+    denied = _client().get(
+        "/accounting/reports/overview",
+        headers=_login("accounting_report_reception", accounting_report_ready["reception"]),
     )
-    assert too_large.status_code == 422
+    assert denied.status_code == 403
+    manager = _login("accounting_report_manager", accounting_report_ready["manager"])
+    assert _client().get(
+        "/accounting/reports/invoices?status=deleted", headers=manager
+    ).status_code == 422
+    assert _client().get(
+        "/accounting/reports/overview?date_from=2020-01-01&date_to=2026-07-10",
+        headers=manager,
+    ).status_code == 422
 
 
 @pytest.mark.django_db(databases=["default", "accounting_read"], transaction=True)
 def test_platform_read_port_is_select_only_for_reporting_tables(accounting_report_ready):
-    with psycopg.connect(
-        _conninfo(PG_APP_USER, PG_APP_PASSWORD), autocommit=True
-    ) as conn:
+    with psycopg.connect(_conninfo(PG_APP_USER, PG_APP_PASSWORD), autocommit=True) as conn:
         conn.execute("SELECT set_config('app.current_tenant', '1', false)")
         assert conn.execute(
             "SELECT COUNT(*) FROM accounting.medical_staff WHERE tenant_id=1"
@@ -274,6 +264,9 @@ def test_platform_read_port_is_select_only_for_reporting_tables(accounting_repor
         assert conn.execute(
             "SELECT COUNT(*) FROM accounting.payroll_settings WHERE tenant_id=1"
         ).fetchone()[0] >= 1
+        assert conn.execute(
+            "SELECT COUNT(*) FROM accounting.invoice_item_payments WHERE tenant_id=1"
+        ).fetchone()[0] >= 4
         with pytest.raises(psycopg.errors.InsufficientPrivilege):
             conn.execute(
                 "UPDATE accounting.medical_staff SET full_name=full_name WHERE id=880101"
