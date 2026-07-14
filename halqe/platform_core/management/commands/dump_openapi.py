@@ -1,10 +1,10 @@
 """Generate or verify the Halqe OpenAPI contract.
 
-The full pretty JSON remains available for local review and as a CI artifact.
-The committed drift guard is ``docs/openapi.lock.json``: it stores the SHA-256 of
-the complete canonical JSON plus the path/method manifest and counts. Therefore
-any request/response schema change still changes the lock, without requiring a
-365KB generated document to be committed on every integration branch.
+The full canonical JSON is generated for review and retained as a CI artifact.
+The committed drift guard is intentionally compact: SHA-256 of the *complete*
+canonical JSON plus path/operation counts and the API version. The SHA catches
+any request, response, component or route change byte-for-byte; representative
+critical paths are also asserted in ``tests/test_openapi_contract.py``.
 
 Usage:
     python manage.py dump_openapi --output generated-openapi.json
@@ -44,7 +44,7 @@ def _render_schema() -> str:
 
 
 def _schema_lock(rendered: str) -> dict:
-    """Build the exact, reviewable lock for a canonical rendered schema."""
+    """Build the compact exact lock for a canonical rendered schema."""
     schema = json.loads(rendered)
     path_methods = {
         path: sorted(
@@ -54,10 +54,8 @@ def _schema_lock(rendered: str) -> dict:
         )
         for path, methods in sorted(schema.get("paths", {}).items())
     }
-    operations = sum(len(methods) for methods in path_methods.values())
     return {
-        "operations": operations,
-        "path_methods": path_methods,
+        "operations": sum(len(methods) for methods in path_methods.values()),
         "paths": len(path_methods),
         "sha256": hashlib.sha256(rendered.encode("utf-8")).hexdigest(),
         "version": schema.get("info", {}).get("version"),
@@ -74,7 +72,7 @@ def _resolve(path_value: str) -> Path:
 class Command(BaseCommand):
     help = (
         "Generate the django-ninja OpenAPI JSON, verify a full snapshot, or "
-        "verify/write the exact SHA/path-method lock used by unified CI."
+        "verify/write the exact SHA/count lock used by unified CI."
     )
 
     def add_arguments(self, parser):
@@ -99,12 +97,12 @@ class Command(BaseCommand):
         parser.add_argument(
             "--check-lock",
             action="store_true",
-            help="Compare the committed SHA/path-method lock with the live schema.",
+            help="Compare the committed exact SHA/count lock with the live schema.",
         )
         parser.add_argument(
             "--write-lock",
             action="store_true",
-            help="Write the deterministic SHA/path-method lock instead of full JSON.",
+            help="Write the deterministic SHA/count lock instead of full JSON.",
         )
 
     def handle(self, *args, **options):
@@ -134,11 +132,10 @@ class Command(BaseCommand):
                 raise CommandError(f"OpenAPI lock is unreadable: {exc}") from exc
             if existing != lock:
                 raise CommandError(
-                    "OpenAPI lock is STALE — the complete schema hash or its "
-                    "path/method manifest changed. Run `python manage.py "
-                    "dump_openapi --write-lock`, review the full generated CI "
-                    "artifact, and commit the lock only for intentional additive "
-                    "v1 changes."
+                    "OpenAPI lock is STALE — the complete canonical schema hash "
+                    "or its path/operation counts changed. Generate and review the "
+                    "full CI artifact, then run `python manage.py dump_openapi "
+                    "--write-lock` for an intentional additive v1 change."
                 )
             self.stdout.write(
                 self.style.SUCCESS(
