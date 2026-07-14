@@ -9,20 +9,45 @@ review policy:
   accounting UUID;
 * timestamps, scenario assignments, coverage counts and free-text PHI rules must
   satisfy the completed-review policy;
-* sampler vocabulary is normalized before the core verifier runs, preventing a
-  legitimate ``not_present_in_source`` row from being rejected as unknown.
-
-The extra checks are part of the returned decision, not optional post-processing.
+* sampler vocabulary is normalized before the core verifier runs;
+* direct identity fields and mobile/national-ID strings written with Persian,
+  Arabic or Latin digits are rejected from the retained review artifact.
 """
 from __future__ import annotations
 
 from copy import deepcopy
 from pathlib import Path
+import re
 from typing import Any, Mapping
 
 from clinical import _specialist_record_clinician_signoff_core as _core
 from clinical.specialist_record_review_database import verify_review_patient_bindings
 from clinical.specialist_record_review_policy import verify_review_packet_policy
+
+
+_EXTRA_IDENTITY_KEYS = {
+    "nationalid",
+    "phone",
+    "mobile",
+    "mobile_number",
+    "mobile_phone",
+    "telephone",
+    "نام",
+    "نام_بیمار",
+    "کدملی",
+    "کد_ملی",
+    "شماره_تماس",
+    "شماره_موبایل",
+}
+_core._FORBIDDEN_IDENTITY_KEYS = frozenset(
+    set(_core._FORBIDDEN_IDENTITY_KEYS) | _EXTRA_IDENTITY_KEYS
+)
+_DIGIT_TRANSLATION = str.maketrans(
+    "۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩",
+    "01234567890123456789",
+)
+_MOBILE_RE = re.compile(r"(?<!\d)09\d{9}(?!\d)")
+_TEN_DIGIT_RE = re.compile(r"(?<!\d)\d{10}(?!\d)")
 
 
 SpecialistRecordClinicianSignoffError = _core.SpecialistRecordClinicianSignoffError
@@ -63,8 +88,6 @@ class SpecialistRecordClinicianSignoffVerifier(
                 tenant_id=self.tenant_id,
             )
         except Exception:
-            # Release gates must produce a durable NO_GO report instead of losing
-            # all evidence to an uncaught database/connector exception.
             binding = None
         if binding is None:
             self.checks.append(
@@ -95,6 +118,20 @@ class SpecialistRecordClinicianSignoffVerifier(
                 key="review_packet_policy",
                 status=policy.status,
                 detail=policy.detail,
+            )
+        )
+        text_failures = _review_text_phi_failures(packet)
+        self.checks.append(
+            SignoffCheck(
+                key="review_text_phi_guard",
+                status="fail" if text_failures else "pass",
+                detail=(
+                    "Review free text contains no mobile number or valid Iranian "
+                    "national ID in Latin/Persian/Arabic digits."
+                    if not text_failures
+                    else "Review free-text PHI detected: "
+                    + ", ".join(text_failures[:10])
+                ),
             )
         )
 
@@ -129,6 +166,60 @@ def _normalize_packet_for_policy(packet: Mapping[str, Any]) -> dict[str, Any]:
             converted[str(key)] = row
         normalized["coverage"] = converted
     return normalized
+
+
+def _review_text_phi_failures(packet: Mapping[str, Any]) -> list[str]:
+    failures: list[str] = []
+    patients = packet.get("patients")
+    if isinstance(patients, list):
+        for index, item in enumerate(patients):
+            if isinstance(item, Mapping):
+                _scan_identity_text(
+                    item.get("review_notes"),
+                    f"patient-{index}-review-notes",
+                    failures,
+                )
+    signoff = packet.get("signoff")
+    if not isinstance(signoff, Mapping):
+        signoff = packet.get("signoff_template")
+    if isinstance(signoff, Mapping):
+        _scan_identity_text(signoff.get("reviewed_by"), "reviewed-by", failures)
+        discrepancies = signoff.get("discrepancies")
+        if isinstance(discrepancies, list):
+            for index, item in enumerate(discrepancies):
+                if not isinstance(item, Mapping):
+                    continue
+                _scan_identity_text(
+                    item.get("description"),
+                    f"discrepancy-{index}-description",
+                    failures,
+                )
+                _scan_identity_text(
+                    item.get("resolution_note"),
+                    f"discrepancy-{index}-resolution-note",
+                    failures,
+                )
+    return failures
+
+
+def _scan_identity_text(value: Any, path: str, failures: list[str]) -> None:
+    if value is None:
+        return
+    normalized = str(value).translate(_DIGIT_TRANSLATION)
+    if _MOBILE_RE.search(normalized):
+        failures.append(path + "-contains-mobile")
+    for candidate in _TEN_DIGIT_RE.findall(normalized):
+        if _is_iranian_national_id(candidate):
+            failures.append(path + "-contains-national-id")
+            break
+
+
+def _is_iranian_national_id(value: str) -> bool:
+    if len(value) != 10 or not value.isdigit() or len(set(value)) == 1:
+        return False
+    checksum = sum(int(value[index]) * (10 - index) for index in range(9)) % 11
+    control = int(value[9])
+    return control == (checksum if checksum < 2 else 11 - checksum)
 
 
 __all__ = [
