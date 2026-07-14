@@ -19,7 +19,6 @@ export const NAV_LINKS: NavLink[] = [
   { href: "/worklist", label: "پیگیری‌ها", hint: "کارهای باز" },
 ];
 
-/** Accounting links mirror the reception/admin backend role gate. */
 export const ACCOUNTING_LINKS: NavLink[] = [
   { href: "/accounting", label: "پذیرش", hint: "بیمار و ویزیت" },
   { href: "/accounting/invoices", label: "فاکتورها", hint: "مشاهده و اصلاح" },
@@ -29,9 +28,9 @@ export const ACCOUNTING_LINKS: NavLink[] = [
 ];
 
 export const MANAGER_LINKS: NavLink[] = [
-  { href: "/control-room", label: "اتاق کنترل", hint: "اولویت‌بندی جمعیت" },
-  { href: "/manager/outcomes", label: "گزارش outcome", hint: "نتایج درمان" },
-  { href: "/manager/engagement", label: "صف تعامل", hint: "تأیید و ارسال" },
+  { href: "/control-room", label: "اتاقِ کنترل", hint: "اولویت‌بندی جمعیت" },
+  { href: "/manager/outcomes", label: "گزارشِ outcome", hint: "نتایج درمان" },
+  { href: "/manager/engagement", label: "صفِ تعامل", hint: "تأیید و ارسال" },
   { href: "/accounting/settings", label: "تنظیمات مالی", hint: "تعرفه و قرارداد" },
 ];
 
@@ -44,10 +43,7 @@ interface NavProps {
 
 function isLinkActive(href: string, currentPath: string): boolean {
   const isAccountingRoot = href === "/accounting";
-  return (
-    currentPath === href ||
-    (!isAccountingRoot && currentPath.startsWith(`${href}/`))
-  );
+  return currentPath === href || (!isAccountingRoot && currentPath.startsWith(`${href}/`));
 }
 
 function NavItem({ link, currentPath, onNavigate }: {
@@ -69,13 +65,7 @@ function NavItem({ link, currentPath, onNavigate }: {
   );
 }
 
-function NavGroup({
-  label,
-  ariaLabel,
-  links,
-  currentPath,
-  onNavigate,
-}: {
+function NavGroup({ label, ariaLabel, links, currentPath, onNavigate }: {
   label: string;
   ariaLabel: string;
   links: NavLink[];
@@ -91,24 +81,14 @@ function NavGroup({
       </summary>
       <div className={styles.groupPanel}>
         {links.map((link) => (
-          <NavItem
-            key={link.href}
-            link={link}
-            currentPath={currentPath}
-            onNavigate={onNavigate}
-          />
+          <NavItem key={link.href} link={link} currentPath={currentPath} onNavigate={onNavigate} />
         ))}
       </div>
     </details>
   );
 }
 
-export default function Nav({
-  currentPath,
-  pageTitle,
-  onLogout,
-  showManagerLinks,
-}: NavProps) {
+export default function Nav({ currentPath, pageTitle, onLogout, showManagerLinks }: NavProps) {
   const [role, setRole] = useState<string | null>(null);
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -120,10 +100,8 @@ export default function Nav({
     setMobileOpen(false);
   }, [currentPath]);
 
-  const showAccounting =
-    role === "admin" || role === "manager" || role === "reception";
-  const showMgr =
-    showManagerLinks ?? (role === "manager" || role === "admin");
+  const showAccounting = role === "admin" || role === "manager" || role === "reception";
+  const showMgr = showManagerLinks ?? (role === "manager" || role === "admin");
   const closeMobile = () => setMobileOpen(false);
 
   return (
@@ -154,12 +132,7 @@ export default function Nav({
           منو
         </button>
 
-        <button
-          onClick={onLogout}
-          className={styles.logoutBtn}
-          aria-label="خروج از سامانه"
-          type="button"
-        >
+        <button onClick={onLogout} className={styles.logoutBtn} aria-label="خروج از سامانه" type="button">
           خروج
         </button>
       </div>
@@ -171,33 +144,16 @@ export default function Nav({
       >
         <div className={styles.primaryLinks} aria-label="عملیات روزانه">
           {NAV_LINKS.map((link) => (
-            <NavItem
-              key={link.href}
-              link={link}
-              currentPath={currentPath}
-              onNavigate={closeMobile}
-            />
+            <NavItem key={link.href} link={link} currentPath={currentPath} onNavigate={closeMobile} />
           ))}
         </div>
 
         {showAccounting && (
-          <NavGroup
-            label="حسابداری"
-            ariaLabel="حسابداری"
-            links={ACCOUNTING_LINKS}
-            currentPath={currentPath}
-            onNavigate={closeMobile}
-          />
+          <NavGroup label="حسابداری" ariaLabel="حسابداری" links={ACCOUNTING_LINKS} currentPath={currentPath} onNavigate={closeMobile} />
         )}
 
         {showMgr && (
-          <NavGroup
-            label="مدیریت"
-            ariaLabel="مدیریت"
-            links={MANAGER_LINKS}
-            currentPath={currentPath}
-            onNavigate={closeMobile}
-          />
+          <NavGroup label="مدیریت" ariaLabel="مدیریت" links={MANAGER_LINKS} currentPath={currentPath} onNavigate={closeMobile} />
         )}
       </nav>
     </header>
