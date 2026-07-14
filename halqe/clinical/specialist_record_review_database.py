@@ -1,9 +1,9 @@
 """Database-backed binding checks for clinician migration review packets.
 
-Artifact hashes prove that files did not change after review.  This module proves
+Artifact hashes prove that files did not change after review. This module proves
 that each pseudonymous sample row also names the exact patient imported from the
 source ledger and still resolves to the accounting UUID shown in the cockpit
-path.  No demographic field is returned or logged.
+path. No demographic field is returned or logged.
 """
 from __future__ import annotations
 
@@ -36,7 +36,6 @@ class ReviewPatientBindingResult:
         return f"Patient binding failures: {preview}{suffix}"
 
 
-
 def verify_review_patient_bindings(
     *,
     packet: Mapping[str, Any],
@@ -52,7 +51,19 @@ def verify_review_patient_bindings(
             failures=["patient-sample-empty"],
         )
 
-    set_tenant_guc(int(tenant_id))
+    try:
+        normalized_tenant = int(tenant_id)
+    except (TypeError, ValueError):
+        normalized_tenant = 0
+    normalized_source = str(source_id or "").strip()
+    if normalized_tenant <= 0 or not normalized_source:
+        return ReviewPatientBindingResult(
+            passed=False,
+            checked_patients=0,
+            failures=["binding-arguments-invalid"],
+        )
+
+    set_tenant_guc(normalized_tenant)
     failures: list[str] = []
     checked = 0
     for index, item in enumerate(patients):
@@ -76,22 +87,23 @@ def verify_review_patient_bindings(
                   AND source_table='patient_links'
                   AND source_row_id=%s
                 """,
-                [int(tenant_id), source_id, source_row_id],
+                [normalized_tenant, normalized_source, source_row_id],
             )
             ledger = cursor.fetchone()
         if not ledger:
             failures.append(f"source-{source_row_id}:ledger-missing")
             continue
-        ledger_table, ledger_target = ledger
+        ledger_table, raw_ledger_target = ledger
         if ledger_table != "clinical.patient_links":
             failures.append(f"source-{source_row_id}:ledger-target-table")
             continue
-        if int(ledger_target) != target_row_id:
+        ledger_target = _positive_int(raw_ledger_target)
+        if ledger_target is None or ledger_target != target_row_id:
             failures.append(f"source-{source_row_id}:ledger-target-id")
             continue
 
         link = PatientLink.objects.filter(
-            tenant_id=int(tenant_id),
+            tenant_id=normalized_tenant,
             id=target_row_id,
             is_active=True,
         ).only("id", "patient_id").first()
@@ -101,7 +113,7 @@ def verify_review_patient_bindings(
 
         accounting_uuid = get_accounting_patient_uuid_for_review(
             accounting_patient_id=int(link.patient_id),
-            tenant_id=int(tenant_id),
+            tenant_id=normalized_tenant,
         )
         if accounting_uuid != patient_uuid:
             failures.append(f"source-{source_row_id}:accounting-uuid-mismatch")
@@ -115,14 +127,12 @@ def verify_review_patient_bindings(
     )
 
 
-
 def _positive_int(value: Any) -> int | None:
     try:
         number = int(value)
     except (TypeError, ValueError):
         return None
     return number if number > 0 else None
-
 
 
 def _canonical_uuid(value: Any) -> str | None:
