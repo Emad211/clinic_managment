@@ -5,7 +5,11 @@ import json
 
 from django.core.management.base import BaseCommand, CommandError
 
-from clinical.secure_report_io import SecureReportIOError, write_private_text
+from clinical.secure_report_io import (
+    SecureReportIOError,
+    ensure_distinct_artifact_paths,
+    write_private_text,
+)
 from clinical.specialist_record_clinician_signoff import (
     SpecialistRecordClinicianSignoffError,
     SpecialistRecordClinicianSignoffVerifier,
@@ -49,6 +53,17 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
+        try:
+            ensure_distinct_artifact_paths(
+                inputs={
+                    "review_packet": options["review_packet"],
+                    "verification_report": options["verification_report"],
+                },
+                outputs={"clinician_signoff_report": options["report"]},
+            )
+        except SecureReportIOError as exc:
+            raise CommandError(str(exc)) from exc
+
         try:
             result = SpecialistRecordClinicianSignoffVerifier(
                 review_packet_path=options["review_packet"],
