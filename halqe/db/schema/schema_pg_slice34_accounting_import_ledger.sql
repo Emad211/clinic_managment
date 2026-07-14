@@ -1,5 +1,9 @@
 -- ============================================================================
 -- Append-only ledger for SQLite accounting-history migration.
+--
+-- Source and target identities are stored as text rather than overloaded BIGINT
+-- columns. This supports both integer primary keys and composite natural keys
+-- while keeping accounting money-type guards strict and unambiguous.
 -- ============================================================================
 
 CREATE TABLE IF NOT EXISTS accounting.accounting_import_ledger (
@@ -7,36 +11,37 @@ CREATE TABLE IF NOT EXISTS accounting.accounting_import_ledger (
     tenant_id           BIGINT NOT NULL REFERENCES platform.tenants(id),
     source_id           TEXT NOT NULL,
     source_table        TEXT NOT NULL,
-    source_pk           BIGINT NOT NULL,
+    source_key          TEXT NOT NULL,
     target_table        TEXT NOT NULL,
-    target_pk           BIGINT,
-    target_key          TEXT,
+    target_key          TEXT NOT NULL,
     source_sha256       CHAR(64) NOT NULL,
     target_sha256       CHAR(64),
     imported_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
     imported_by         TEXT NOT NULL,
     CONSTRAINT uq_accounting_import_source_row
-        UNIQUE (tenant_id, source_id, source_table, source_pk),
+        UNIQUE (tenant_id, source_id, source_table, source_key),
     CONSTRAINT chk_accounting_import_source_id
         CHECK (length(btrim(source_id)) BETWEEN 3 AND 180),
     CONSTRAINT chk_accounting_import_source_table
         CHECK (source_table ~ '^[a-z_][a-z0-9_]*$'),
+    CONSTRAINT chk_accounting_import_source_key
+        CHECK (length(btrim(source_key)) BETWEEN 1 AND 300),
     CONSTRAINT chk_accounting_import_target_table
         CHECK (target_table ~ '^accounting\.[a-z_][a-z0-9_]*$'),
+    CONSTRAINT chk_accounting_import_target_key
+        CHECK (length(btrim(target_key)) BETWEEN 1 AND 500),
     CONSTRAINT chk_accounting_import_source_digest
         CHECK (source_sha256 ~ '^[0-9a-f]{64}$'),
     CONSTRAINT chk_accounting_import_target_digest
-        CHECK (target_sha256 IS NULL OR target_sha256 ~ '^[0-9a-f]{64}$'),
-    CONSTRAINT chk_accounting_import_target_identity
-        CHECK (target_pk IS NOT NULL OR target_key IS NOT NULL)
+        CHECK (target_sha256 IS NULL OR target_sha256 ~ '^[0-9a-f]{64}$')
 );
 
 CREATE INDEX IF NOT EXISTS idx_accounting_import_source
     ON accounting.accounting_import_ledger
-       (tenant_id, source_id, source_table, source_pk);
+       (tenant_id, source_id, source_table, source_key);
 CREATE INDEX IF NOT EXISTS idx_accounting_import_target
     ON accounting.accounting_import_ledger
-       (tenant_id, target_table, target_pk);
+       (tenant_id, target_table, target_key);
 
 ALTER TABLE accounting.accounting_import_ledger ENABLE ROW LEVEL SECURITY;
 ALTER TABLE accounting.accounting_import_ledger FORCE ROW LEVEL SECURITY;
@@ -60,4 +65,4 @@ REVOKE UPDATE, DELETE, TRUNCATE ON accounting.accounting_import_ledger
 REVOKE ALL ON accounting.accounting_import_ledger FROM clinical_app;
 
 COMMENT ON TABLE accounting.accounting_import_ledger IS
-    'Append-only evidence binding each legacy SQLite accounting row to one Halqe target.';
+    'Append-only evidence binding each legacy SQLite accounting row/key to one Halqe target key.';
