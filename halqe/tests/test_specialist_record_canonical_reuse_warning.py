@@ -42,8 +42,6 @@ def _source(path: Path, *, accounting_patient_id: int) -> Path:
         """,
         [accounting_patient_id],
     )
-    # The seeded target has code='diabetes', but deliberately different canonical
-    # name/metadata. The source row must reuse by code and emit a redacted warning.
     db.execute(
         """
         INSERT INTO conditions
@@ -122,5 +120,61 @@ def test_patient_link_asymmetric_merge_does_not_emit_generic_divergence_warning(
     ).run()
     assert not any(
         "Canonical target differs" in warning and "patient_links#88" in warning
+        for warning in report.warnings
+    )
+
+
+@pytest.mark.django_db(databases=["default", "accounting_read"])
+def test_timezone_equivalent_insert_does_not_emit_false_divergence_warning(
+    seed_data,
+    tmp_path,
+):
+    source = tmp_path / "timezone-equivalent.db"
+    db = sqlite3.connect(source)
+    db.executescript(
+        """
+        CREATE TABLE patient_links (
+            id INTEGER PRIMARY KEY,
+            accounting_patient_id INTEGER,
+            sms_opt_out INTEGER DEFAULT 0,
+            is_active INTEGER DEFAULT 1
+        );
+        CREATE TABLE medical_history (
+            id INTEGER PRIMARY KEY,
+            patient_link_id INTEGER NOT NULL,
+            title TEXT NOT NULL,
+            note TEXT,
+            since TEXT,
+            created_at TEXT
+        );
+        """
+    )
+    db.execute(
+        """
+        INSERT INTO patient_links
+            (id, accounting_patient_id, sms_opt_out, is_active)
+        VALUES (1, ?, 0, 1)
+        """,
+        [seed_data["patient_id"]],
+    )
+    db.execute(
+        """
+        INSERT INTO medical_history
+            (id, patient_link_id, title, note, since, created_at)
+        VALUES (91, 1, 'سابقه timezone تست', 'شرح', '2020-01-01',
+                '2025-01-01 10:00:00')
+        """
+    )
+    db.commit()
+    db.close()
+
+    report = SpecialistRecordImporter(
+        sqlite_path=source,
+        source_id="timezone-equivalent-target-digest",
+        tenant_id=1,
+        apply=True,
+    ).run()
+    assert not any(
+        "Canonical target differs" in warning and "medical_history#91" in warning
         for warning in report.warnings
     )
