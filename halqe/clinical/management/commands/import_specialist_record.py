@@ -5,7 +5,11 @@ import json
 
 from django.core.management.base import BaseCommand, CommandError
 
-from clinical.secure_report_io import SecureReportIOError, write_private_text
+from clinical.secure_report_io import (
+    SecureReportIOError,
+    ensure_distinct_artifact_paths,
+    write_private_text,
+)
 from clinical.specialist_record_import import (
     SpecialistRecordImportError,
     SpecialistRecordImporter,
@@ -19,11 +23,7 @@ class Command(BaseCommand):
     )
 
     def add_arguments(self, parser):
-        parser.add_argument(
-            "--sqlite",
-            required=True,
-            help="Path to a quiesced/copy of specialist.db.",
-        )
+        parser.add_argument("--sqlite", required=True, help="Path to a quiesced/copy of specialist.db.")
         parser.add_argument(
             "--source-id",
             required=True,
@@ -85,6 +85,14 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
+        try:
+            ensure_distinct_artifact_paths(
+                inputs={"sqlite_source": options["sqlite"]},
+                outputs={"import_report": options.get("report")},
+            )
+        except SecureReportIOError as exc:
+            raise CommandError(str(exc)) from exc
+
         importer = SpecialistRecordImporter(
             sqlite_path=options["sqlite"],
             source_id=options["source_id"],
