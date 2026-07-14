@@ -1,4 +1,4 @@
-"""Stale-artifact regression tests for cutover-time reconciliation."""
+"""Stale-artifact and execution-error regressions for fresh reconciliation."""
 from __future__ import annotations
 
 import json
@@ -7,6 +7,14 @@ from clinical.secure_report_io import write_private_text
 from clinical.specialist_record_fresh_verification import (
     run_fresh_import_verification,
 )
+
+
+def _saved_report():
+    return {
+        "checks": [{"key": "stale", "status": "pass"}],
+        "source_file_sha256": "a" * 64,
+        "source_manifest_sha256": "b" * 64,
+    }
 
 
 def test_existing_fresh_report_is_removed_before_verifier_execution(
@@ -44,11 +52,7 @@ def test_existing_fresh_report_is_removed_before_verifier_execution(
         sqlite_path=tmp_path / "source.db",
         apply_report_path=tmp_path / "apply.json",
         replay_report_path=tmp_path / "replay.json",
-        saved_verification_report={
-            "checks": [{"key": "stale", "status": "pass"}],
-            "source_file_sha256": "a" * 64,
-            "source_manifest_sha256": "b" * 64,
-        },
+        saved_verification_report=_saved_report(),
         source_id="stale-source",
         tenant_id=1,
         report_path=target,
@@ -58,3 +62,27 @@ def test_existing_fresh_report_is_removed_before_verifier_execution(
     assert result.report_sha256 is None
     assert not target.exists()
     assert stale_bytes not in (target.read_bytes() if target.exists() else b"")
+
+
+def test_unexpected_verifier_exception_becomes_redacted_no_go(tmp_path, monkeypatch):
+    def explode(_name, **_kwargs):
+        raise RuntimeError("postgres://secret-user:secret-password@private-host/db")
+
+    monkeypatch.setattr(
+        "clinical.specialist_record_fresh_verification.call_command",
+        explode,
+    )
+    result = run_fresh_import_verification(
+        sqlite_path=tmp_path / "source.db",
+        apply_report_path=tmp_path / "apply.json",
+        replay_report_path=tmp_path / "replay.json",
+        saved_verification_report=_saved_report(),
+        source_id="unexpected-error-source",
+        tenant_id=1,
+        report_path=tmp_path / "fresh-error.json",
+    )
+
+    assert result.passed is False
+    assert result.report_sha256 is None
+    assert "failed unexpectedly" in result.detail
+    assert "secret-password" not in result.detail
