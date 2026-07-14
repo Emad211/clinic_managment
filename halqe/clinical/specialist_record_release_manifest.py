@@ -17,6 +17,10 @@ from pathlib import Path
 from typing import Optional
 
 from clinical import _specialist_record_release_manifest_core as _core
+from clinical.secure_report_io import (
+    SecureReportIOError,
+    ensure_distinct_artifact_paths,
+)
 from clinical.specialist_record_fresh_verification import (
     run_fresh_import_verification,
 )
@@ -72,6 +76,18 @@ class SpecialistRecordReleaseManifestBuilder(
                 verification_path.stem + ".fresh-verification.json"
             )
         )
+        try:
+            ensure_distinct_artifact_paths(
+                inputs={
+                    "sqlite_source": self.source_snapshot_path,
+                    **self.paths,
+                },
+                outputs={
+                    "fresh_verification_report": self.fresh_verification_report_path
+                },
+            )
+        except SecureReportIOError as exc:
+            raise SpecialistRecordReleaseManifestError(str(exc)) from exc
 
     def run(self) -> SpecialistRecordReleaseManifest:
         base = super().run()
