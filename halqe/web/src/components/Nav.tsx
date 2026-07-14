@@ -18,7 +18,7 @@ export const NAV_LINKS: NavLink[] = [
   { href: "/worklist", label: "پیگیری‌ها" },
 ];
 
-/** Accounting links mirror the backend role gate. */
+/** Accounting links mirror the reception/admin backend role gate. */
 export const ACCOUNTING_LINKS: NavLink[] = [
   { href: "/accounting", label: "پذیرش" },
   { href: "/accounting/invoices", label: "فاکتورها" },
@@ -31,6 +31,7 @@ export const MANAGER_LINKS: NavLink[] = [
   { href: "/control-room", label: "اتاقِ کنترل" },
   { href: "/manager/outcomes", label: "گزارشِ outcome" },
   { href: "/manager/engagement", label: "صفِ تعامل" },
+  { href: "/accounting/admin", label: "تنظیمات مالی" },
 ];
 
 interface NavProps {
@@ -72,7 +73,7 @@ export default function Nav({
 
   const showAccounting =
     role === "admin" || role === "manager" || role === "reception";
-  const showMgr = showManagerLinks ?? role === "manager";
+  const showMgr = showManagerLinks ?? role === "manager" || role === "admin";
 
   return (
     <header className={styles.topbar} role="banner">
