@@ -27,6 +27,7 @@ from accounting_ops.payment_api import router as accounting_payment_router
 from accounting_ops.nursing_api import router as accounting_nursing_router
 from accounting_ops.procedure_api import router as accounting_procedure_router
 from accounting_ops.invoice_workbench_api import router as accounting_workbench_router
+from accounting_ops.admin_api import router as accounting_admin_router
 
 # Compatibility symbol consumed by existing tests and analytics code.
 from clinical.api.manager import _MIN_N_FOR_RATE  # noqa: F401
@@ -44,6 +45,7 @@ api.add_router("", accounting_payment_router)
 api.add_router("", accounting_nursing_router)
 api.add_router("", accounting_procedure_router)
 api.add_router("", accounting_workbench_router)
+api.add_router("", accounting_admin_router)
 
 api.add_router("", control_room_router)
 api.add_router("", doctor_queue_router)
