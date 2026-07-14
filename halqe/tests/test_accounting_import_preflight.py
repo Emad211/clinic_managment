@@ -48,7 +48,7 @@ def _source(path: Path, *, orphan_payment: bool = False) -> Path:
         "INSERT INTO visit_tariffs(id,insurance_type,tariff_price,nursing_tariff,nursing_covers) VALUES(20,'بیمه ETL',100000,20000,1)"
     )
     db.execute(
-        "INSERT INTO services(id,name,base_price,service_type,is_active) VALUES(30,'خدمت ETL',25000,'visit',1)"
+        "INSERT INTO services(id,name,base_price,service_type,is_active) VALUES(30,'خدمت ETL',25000,'custom',1)"
     )
     db.execute(
         "INSERT INTO nursing_services(id,service_name,unit_price,is_active) VALUES(40,'تزریق ETL',50000,1)"
@@ -193,4 +193,7 @@ def test_nonempty_wal_is_no_go(tmp_path):
         source_id="clinic-live-accounting",
     ).run()
     assert report.decision == "NO_GO"
-    assert any(item["code"] == "quiesced_snapshot" and item["status"] == "FAIL" for item in report.checks)
+    assert any(
+        item["code"] == "quiesced_snapshot" and item["status"] == "FAIL"
+        for item in report.checks
+    )
