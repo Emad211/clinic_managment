@@ -5,7 +5,11 @@ import json
 
 from django.core.management.base import BaseCommand, CommandError
 
-from clinical.secure_report_io import SecureReportIOError, write_private_text
+from clinical.secure_report_io import (
+    SecureReportIOError,
+    ensure_distinct_artifact_paths,
+    write_private_text,
+)
 from clinical.specialist_record_reconciliation import (
     SpecialistRecordReconciliationError,
     SpecialistRecordReconciler,
@@ -81,6 +85,22 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         try:
+            ensure_distinct_artifact_paths(
+                inputs={
+                    "sqlite_source": options["sqlite"],
+                    "apply_report": options["apply_report"],
+                    **(
+                        {"replay_report": options["replay_report"]}
+                        if options.get("replay_report")
+                        else {}
+                    ),
+                },
+                outputs={"verification_report": options.get("report")},
+            )
+        except SecureReportIOError as exc:
+            raise CommandError(str(exc)) from exc
+
+        try:
             result = SpecialistRecordReconciler(
                 sqlite_path=options["sqlite"],
                 apply_report_path=options["apply_report"],
@@ -105,10 +125,11 @@ class Command(BaseCommand):
             result.finalize()
         except SpecialistRecordReconciliationError as exc:
             raise CommandError(str(exc)) from exc
-        except Exception as exc:
+        except Exception:
             raise CommandError(
-                f"Target snapshot reconciliation could not be completed: {exc}"
-            ) from exc
+                "Target snapshot reconciliation could not be completed; no GO "
+                "decision was produced. Inspect the secured server logs."
+            ) from None
 
         payload = result.to_dict()
         rendered = json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True)
