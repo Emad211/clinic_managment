@@ -1,8 +1,9 @@
 """
-django-ninja API — halqe platform v1 (router wiring module).
+django-ninja API — Halqe unified platform v1.
 
-This module is intentionally thin: it imports the shared ``NinjaAPI`` instance,
-registers one router per domain, and keeps endpoint logic inside the domain.
+This module intentionally contains wiring only. Clinical care, the migrated
+specialist record and the isolated accounting write-side remain separate bounded
+contexts while sharing one authenticated API surface under ``/api/v1``.
 """
 from config.api_base import api, _jwt_auth, SYSTEM_TENANT_ID  # noqa: F401
 
@@ -21,7 +22,13 @@ from clinical.api.patient_card import router as patient_card_router
 from clinical.api.self_report import router as self_report_router
 from clinical.api.allergies import router as allergies_router
 
-# tests/test_suggestion_events.py imports this compatibility symbol.
+from accounting_ops.api import router as accounting_router
+from accounting_ops.payment_api import router as accounting_payment_router
+from accounting_ops.nursing_api import router as accounting_nursing_router
+from accounting_ops.procedure_api import router as accounting_procedure_router
+from accounting_ops.invoice_workbench_api import router as accounting_workbench_router
+
+# Compatibility symbol consumed by existing tests and analytics code.
 from clinical.api.manager import _MIN_N_FOR_RATE  # noqa: F401
 
 api.add_router("", auth_router)
@@ -31,6 +38,13 @@ api.add_router("", vitals_router)
 api.add_router("", suggestions_router)
 api.add_router("", worklist_router)
 api.add_router("", encounters_router)
+
+api.add_router("", accounting_router)
+api.add_router("", accounting_payment_router)
+api.add_router("", accounting_nursing_router)
+api.add_router("", accounting_procedure_router)
+api.add_router("", accounting_workbench_router)
+
 api.add_router("", control_room_router)
 api.add_router("", doctor_queue_router)
 api.add_router("", engagement_router)
