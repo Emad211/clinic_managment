@@ -1,344 +1,68 @@
-"""Public facade for the specialist-clinic historical record importer.
+"""Public specialist-record importer with production source-snapshot guards.
 
-The implementation lives in :mod:`clinical._specialist_record_import_core`.
-This facade strengthens five operational boundaries:
-
-* dry-run rows use explicit negative primary keys inside a transaction that is
-  always rolled back, validating real PostgreSQL relationships without leaving
-  data behind or advancing identities;
-* reports and command errors redact raw patient identifiers by default so
-  national IDs and names cannot leak into shell, CI or generic job logs;
-* a reused ``source_id`` must contain every source row already present in its
-  append-only ledger; truncated or unrelated sources fail before commit;
-* every report states whether changes were committed, intentionally rolled back
-  after validation, or failed with no durable import changes;
-* every new ledger row fingerprints the actual target values after insert/reuse,
-  allowing release reconciliation to detect silent target mutation by content,
-  not merely by primary-key existence.
+The complete transactional, redaction, continuity and target-fingerprint logic
+lives in :mod:`clinical._specialist_record_import_target_core`.  This final
+facade forbids committed imports from live SQLite state: ``--allow-live-source``
+is a diagnostic dry-run exception only, and non-empty WAL/SHM/rollback-journal
+sidecars block apply before any PostgreSQL write is attempted.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Any, Mapping, Optional
+from pathlib import Path
 
-from django.db import connection, transaction
-from psycopg import sql
-
-from clinical import _specialist_record_import_core as _core
-from clinical._specialist_record_import_core import (
-    FinancialDataOutOfScopeError,
-    ImportConflictError,
-    SourceDatabaseError,
-    SourceRowChangedError,
-    SpecialistRecordImportError,
-    SQLiteSnapshot,
-    TableStats,
-    UnresolvedPatientError,
-)
+from clinical import _specialist_record_import_target_core as _target
 
 
-@dataclass
-class ImportReport(_core.ImportReport):
-    """Operator-facing report with an explicit durability state."""
+FinancialDataOutOfScopeError = _target.FinancialDataOutOfScopeError
+ImportConflictError = _target.ImportConflictError
+ImportReport = _target.ImportReport
+SourceDatabaseError = _target.SourceDatabaseError
+SourceRowChangedError = _target.SourceRowChangedError
+SpecialistRecordImportError = _target.SpecialistRecordImportError
+SQLiteSnapshot = _target.SQLiteSnapshot
+TableStats = _target.TableStats
+UnresolvedPatientError = _target.UnresolvedPatientError
 
-    transaction_status: str = "not_started"
 
+class SpecialistRecordImporter(_target.SpecialistRecordImporter):
+    """Importer that permits apply only from a fully quiesced SQLite snapshot."""
 
-class SpecialistRecordImporter(_core.SpecialistRecordImporter):
-    """Importer with monotonic source identity and PHI-safe reporting."""
+    _LIVE_SIDECARS = ("-wal", "-shm", "-journal")
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        base = self.report
-        self.report = ImportReport(
-            source_id=base.source_id,
-            source_path=base.source_path,
-            tenant_id=base.tenant_id,
-            mode=base.mode,
-        )
-        self._target_snapshot_columns: dict[tuple[str, int], tuple[str, ...]] = {}
-
-    def _redact_sensitive_report(self) -> None:
-        """Remove direct patient identifiers from operator-facing report data."""
-        redacted_unresolved = []
-        for item in self.report.unresolved_patients:
-            redacted_unresolved.append(
-                {
-                    "source_patient_link_id": item.get("source_patient_link_id"),
-                    "has_national_id": bool(item.get("national_id")),
-                    "has_accounting_patient_id": item.get("accounting_patient_id")
-                    not in (None, ""),
-                }
+    def _assert_apply_source_is_quiesced(self) -> None:
+        if not self.apply:
+            return
+        if self.allow_live_source:
+            raise SourceDatabaseError(
+                "--allow-live-source is never permitted with --apply. Create a "
+                "quiesced copy, checkpoint SQLite, and rerun without the flag."
             )
-        self.report.unresolved_patients = redacted_unresolved
-
-        financial = self.report.financial_data_out_of_scope
-        if isinstance(financial, dict):
-            wallets = financial.get("nonzero_patient_wallets") or []
-            financial["nonzero_patient_wallets"] = [
-                {
-                    "source_patient_link_id": item.get("source_patient_link_id"),
-                    "wallet_balance": item.get("wallet_balance"),
-                }
-                for item in wallets
-            ]
-
-    def _durable_ledger_count(self) -> int | None:
-        """Read the post-transaction ledger count; failure here must not mask root cause."""
-        try:
-            _core.set_tenant_guc(self.tenant_id)
-            with connection.cursor() as cursor:
-                cursor.execute(
-                    """
-                    SELECT COUNT(*)
-                    FROM clinical.record_import_ledger
-                    WHERE tenant_id=%s AND source_id=%s
-                    """,
-                    [self.tenant_id, self.source_id],
-                )
-                return int(cursor.fetchone()[0])
-        except Exception:
-            return None
-
-    def _mark_failed_no_commit(self) -> None:
-        self.report.transaction_status = "failed_no_commit"
-        self.report.ledger_rows_after = self._durable_ledger_count()
-        message = (
-            "No import changes were committed. Per-table inserted/reused counters "
-            "in this failed report describe attempted work before rollback."
-        )
-        if message not in self.report.warnings:
-            self.report.warnings.append(message)
-
-    def _assert_source_continuity(self) -> None:
-        """Reject a source snapshot that omits rows imported under this source-id."""
-        manifest_rows = {
-            (str(table), int(source_row_id))
-            for table, source_row_id, _digest in self._manifest
-        }
-        _core.set_tenant_guc(self.tenant_id)
-        with connection.cursor() as cursor:
-            cursor.execute(
-                """
-                SELECT source_table, source_row_id
-                FROM clinical.record_import_ledger
-                WHERE tenant_id=%s AND source_id=%s
-                ORDER BY source_table, source_row_id
-                """,
-                [self.tenant_id, self.source_id],
-            )
-            ledger_rows = {
-                (str(table), int(source_row_id))
-                for table, source_row_id in cursor.fetchall()
-            }
-
-        missing = sorted(ledger_rows - manifest_rows)
-        if missing:
-            preview = ", ".join(
-                f"{table}#{source_row_id}" for table, source_row_id in missing[:10]
-            )
-            suffix = "" if len(missing) <= 10 else f" (+{len(missing) - 10} more)"
-            raise _core.ImportConflictError(
-                "The current SQLite snapshot is missing source rows previously "
-                f"recorded for source_id={self.source_id!r}: {preview}{suffix}. "
-                "Do not reuse a source-id for another database or a truncated snapshot."
+        active = []
+        for suffix in self._LIVE_SIDECARS:
+            sidecar = Path(str(self.path) + suffix)
+            try:
+                nonempty = sidecar.exists() and sidecar.is_file() and sidecar.stat().st_size > 0
+            except OSError as exc:
+                raise SourceDatabaseError(
+                    f"Cannot inspect SQLite sidecar {sidecar.name}: {exc}"
+                ) from exc
+            if nonempty:
+                active.append(sidecar.name)
+        if active:
+            raise SourceDatabaseError(
+                "Committed import requires a quiesced SQLite snapshot; non-empty "
+                "sidecar files are present: "
+                + ", ".join(active)
             )
 
     def run(self) -> ImportReport:
-        self.report.transaction_status = "running"
         try:
-            # An outer transaction surrounds BOTH apply and dry-run. The core uses
-            # an inner savepoint. This lets source-continuity validation roll back
-            # newly imported target and ledger rows before the outer commit.
-            with transaction.atomic():
-                report = super().run()
-                self._assert_source_continuity()
-                if not self.apply:
-                    transaction.set_rollback(True)
-
-            if self.apply:
-                self.report.transaction_status = "committed"
-            else:
-                self.report.transaction_status = "validated_no_commit"
+            self._assert_apply_source_is_quiesced()
+        except SourceDatabaseError:
+            self.report.transaction_status = "failed_no_commit"
             self.report.ledger_rows_after = self._durable_ledger_count()
-        except _core.UnresolvedPatientError:
-            source_ids = [
-                item.get("source_patient_link_id")
-                for item in self.report.unresolved_patients
-            ]
-            self._redact_sensitive_report()
-            self._mark_failed_no_commit()
-            rendered_ids = ",".join(
-                str(item) for item in source_ids if item is not None
-            ) or "unknown"
-            # Suppress the original exception context: it contains the legacy
-            # full_name/national_id detail and a generic traceback sink could log it.
-            raise _core.UnresolvedPatientError(
-                "Cannot resolve specialist patient row(s) to accounting.patients; "
-                f"source patient_link id(s): {rendered_ids}. "
-                "See the redacted reconciliation report and inspect the secured "
-                "SQLite snapshot directly."
-            ) from None
-        except Exception:
-            self._redact_sensitive_report()
-            self._mark_failed_no_commit()
             raise
-
-        self._redact_sensitive_report()
-        return report
-
-    def _begin(
-        self,
-        *,
-        source_table: str,
-        row: Mapping[str, Any],
-        payload: Mapping[str, Any],
-        expected_target_table: str,
-    ):
-        result = super()._begin(
-            source_table=source_table,
-            row=row,
-            payload=payload,
-            expected_target_table=expected_target_table,
-        )
-        source_row_id = int(result[0])
-        schema_name, table_name = expected_target_table.split(".", 1)
-        filtered = self._filtered_payload(schema_name, table_name, payload)
-        columns = tuple(sorted(filtered))
-        if not columns:
-            raise _core.ImportConflictError(
-                f"No target snapshot columns for {source_table}#{source_row_id}."
-            )
-        self._target_snapshot_columns[(source_table, source_row_id)] = columns
-        return result
-
-    def _read_actual_target_payload(
-        self,
-        *,
-        target_table: str,
-        target_row_id: Optional[int],
-        target_key: str,
-        columns: tuple[str, ...],
-    ) -> dict[str, Any]:
-        assert self.pg is not None
-        schema_name, table_name = target_table.split(".", 1)
-        selected = sql.SQL(", ").join(sql.Identifier(column) for column in columns)
-        if target_row_id is not None:
-            query = sql.SQL(
-                "SELECT {} FROM {}.{} WHERE tenant_id=%s AND id=%s"
-            ).format(
-                selected,
-                sql.Identifier(schema_name),
-                sql.Identifier(table_name),
-            )
-            self.pg.execute(query, [self.tenant_id, target_row_id])
-        elif target_table == "clinical.condition_lab_tests":
-            condition_code, separator, lab_test_key = target_key.partition("|")
-            if not separator or not condition_code or not lab_test_key:
-                raise _core.ImportConflictError(
-                    f"Invalid natural target key for {target_table}: {target_key!r}"
-                )
-            query = sql.SQL(
-                """
-                SELECT {} FROM clinical.condition_lab_tests
-                WHERE tenant_id=%s AND condition_code=%s AND lab_test_key=%s
-                """
-            ).format(selected)
-            self.pg.execute(
-                query,
-                [self.tenant_id, condition_code, lab_test_key],
-            )
-        else:
-            raise _core.ImportConflictError(
-                f"Target row id is required for snapshotting {target_table}."
-            )
-
-        found = self.pg.fetchone()
-        if found is None:
-            rendered_target = (
-                f"#{target_row_id}" if target_row_id is not None else f":{target_key}"
-            )
-            raise _core.ImportConflictError(
-                f"Cannot fingerprint missing target {target_table}{rendered_target}."
-            )
-        return dict(zip(columns, found))
-
-    def _ledger_add(
-        self,
-        *,
-        source_table: str,
-        source_row_id: int,
-        target_table: str,
-        target_row_id: Optional[int],
-        target_key: str,
-        payload_sha256: str,
-    ) -> None:
-        if not self.apply:
-            return
-        assert self.pg is not None
-        columns = self._target_snapshot_columns.get((source_table, source_row_id))
-        if not columns:
-            raise _core.ImportConflictError(
-                f"Missing target snapshot definition for {source_table}#{source_row_id}."
-            )
-        actual_payload = self._read_actual_target_payload(
-            target_table=target_table,
-            target_row_id=target_row_id,
-            target_key=target_key,
-            columns=columns,
-        )
-        target_payload_sha256 = self._digest(actual_payload)
-        self.pg.execute(
-            """
-            INSERT INTO clinical.record_import_ledger
-                (tenant_id, source_id, source_table, source_row_id,
-                 target_table, target_row_id, target_key, payload_sha256,
-                 target_payload_columns, target_payload_sha256, imported_by)
-            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-            """,
-            [
-                self.tenant_id,
-                self.source_id,
-                source_table,
-                source_row_id,
-                target_table,
-                target_row_id,
-                target_key,
-                payload_sha256,
-                list(columns),
-                target_payload_sha256,
-                self.imported_by,
-            ],
-        )
-
-    def _insert(
-        self,
-        schema: str,
-        table: str,
-        payload: Mapping[str, Any],
-    ) -> int:
-        if self.apply:
-            return super()._insert(schema, table, payload)
-
-        assert self.pg is not None
-        columns_available = self._columns(schema, table)
-        if "id" not in columns_available:
-            # Composite-key tables are handled explicitly by the core importer;
-            # retain its no-write behaviour if one ever reaches this method.
-            return super()._insert(schema, table, payload)
-
-        target_id = self._pseudo()
-        values = self._filtered_payload(schema, table, payload)
-        values = {"id": target_id, **values}
-        columns = list(values)
-        query = sql.SQL("INSERT INTO {}.{} ({}) VALUES ({}) RETURNING id").format(
-            sql.Identifier(schema),
-            sql.Identifier(table),
-            sql.SQL(", ").join(sql.Identifier(column) for column in columns),
-            sql.SQL(", ").join(sql.Placeholder() for _ in columns),
-        )
-        self.pg.execute(query, [values[column] for column in columns])
-        return int(self.pg.fetchone()[0])
+        return super().run()
 
 
 __all__ = [
