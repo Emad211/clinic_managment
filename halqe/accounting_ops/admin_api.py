@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime
 import logging
-from typing import Any, Optional
+from typing import Optional
 
 from django.core.exceptions import ImproperlyConfigured
 from ninja import Router, Schema
@@ -22,7 +22,6 @@ from accounting_ops.admin_service import (
 from accounting_ops.service import AccountingCommandError
 from config.api_base import _jwt_auth
 from config.errors import ErrorSchema, error_response
-
 
 logger = logging.getLogger(__name__)
 router = Router()
@@ -230,7 +229,7 @@ def accounting_admin_config(request):
 
 @router.post(
     "/accounting/admin/staff",
-    response={201: StaffDTO, **_ERROR_RESPONSES},
+    response={201: StaffDTO} | _ERROR_RESPONSES,
     auth=_jwt_auth,
     tags=["accounting-admin"],
 )
@@ -249,7 +248,7 @@ def accounting_admin_staff(request, payload: StaffInput):
 
 @router.post(
     "/accounting/admin/insurance-schemes",
-    response={201: InsuranceSchemeDTO, **_ERROR_RESPONSES},
+    response={201: InsuranceSchemeDTO} | _ERROR_RESPONSES,
     auth=_jwt_auth,
     tags=["accounting-admin"],
 )
@@ -268,7 +267,7 @@ def accounting_admin_insurance_scheme(request, payload: InsuranceSchemeInput):
 
 @router.post(
     "/accounting/admin/visit-tariffs",
-    response={201: VisitTariffDTO, **_ERROR_RESPONSES},
+    response={201: VisitTariffDTO} | _ERROR_RESPONSES,
     auth=_jwt_auth,
     tags=["accounting-admin"],
 )
@@ -287,7 +286,7 @@ def accounting_admin_visit_tariff(request, payload: VisitTariffInput):
 
 @router.post(
     "/accounting/admin/catalogs/{catalog_type}",
-    response={201: CatalogItemDTO, **_ERROR_RESPONSES},
+    response={201: CatalogItemDTO} | _ERROR_RESPONSES,
     auth=_jwt_auth,
     tags=["accounting-admin"],
 )
@@ -308,7 +307,7 @@ def accounting_admin_catalog(
 
 @router.post(
     "/accounting/admin/exclusions",
-    response={201: ExclusionDTO, **_ERROR_RESPONSES},
+    response={201: ExclusionDTO} | _ERROR_RESPONSES,
     auth=_jwt_auth,
     tags=["accounting-admin"],
 )
@@ -327,7 +326,7 @@ def accounting_admin_exclusion(request, payload: ExclusionInput):
 
 @router.delete(
     "/accounting/admin/exclusions/{exclusion_id}",
-    response={200: DeleteDTO, **_ERROR_RESPONSES},
+    response={200: DeleteDTO} | _ERROR_RESPONSES,
     auth=_jwt_auth,
     tags=["accounting-admin"],
 )
@@ -344,7 +343,7 @@ def accounting_admin_delete_exclusion(request, exclusion_id: int):
 
 @router.post(
     "/accounting/admin/payroll-settings",
-    response={201: PayrollDTO, **_ERROR_RESPONSES},
+    response={201: PayrollDTO} | _ERROR_RESPONSES,
     auth=_jwt_auth,
     tags=["accounting-admin"],
 )
