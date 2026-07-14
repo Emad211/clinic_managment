@@ -1,9 +1,4 @@
-/**
- * API client for the Halqe platform backend — barrel module.
- *
- * Shared request/auth internals remain private in `./api/_core`; domain modules
- * expose the public typed contract consumed by pages and components.
- */
+/** Unified Halqe web API barrel. */
 export {
   saveToken,
   getToken,
@@ -29,3 +24,8 @@ export * from "./api/self-report";
 export * from "./api/manager-analytics";
 export * from "./api/engagement";
 export * from "./api/control-room";
+export * from "./api/accounting";
+export * from "./api/accounting-payments";
+export * from "./api/accounting-nursing";
+export * from "./api/accounting-procedures";
+export * from "./api/accounting-invoice-workbench";
