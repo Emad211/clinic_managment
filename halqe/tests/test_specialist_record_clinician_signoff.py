@@ -1,7 +1,6 @@
 """Release-level clinician sign-off verification tests."""
 from __future__ import annotations
 
-from copy import deepcopy
 from datetime import UTC, datetime
 import hashlib
 from io import StringIO
@@ -19,6 +18,7 @@ from clinical.specialist_record_clinician_signoff import (
     SpecialistRecordClinicianSignoffError,
     SpecialistRecordClinicianSignoffVerifier,
 )
+from clinical.specialist_record_review_database import ReviewPatientBindingResult
 
 
 SOURCE_ID = "clinician-signoff-test-source"
@@ -27,11 +27,31 @@ MANIFEST_HASH = "b" * 64
 PATIENT_UUID = "00000000-0000-0000-0000-000000000101"
 
 
+@pytest.fixture(autouse=True)
+def _artifact_tests_use_a_verified_patient_binding(monkeypatch):
+    """Keep this module focused on artifact policy; DB binding has integration tests."""
+
+    def verified_binding(*, packet, source_id, tenant_id):
+        patients = packet.get("patients") if isinstance(packet, dict) else []
+        count = len(patients) if isinstance(patients, list) else 0
+        return ReviewPatientBindingResult(
+            passed=count > 0,
+            checked_patients=count,
+            failures=[] if count > 0 else ["patient-sample-empty"],
+        )
+
+    monkeypatch.setattr(
+        "clinical.specialist_record_clinician_signoff.verify_review_patient_bindings",
+        verified_binding,
+    )
+
+
 def _verification_payload() -> dict:
     return {
         "decision": "GO",
         "source_id": SOURCE_ID,
         "tenant_id": 1,
+        "generated_at": datetime.now(UTC).isoformat(),
         "source_file_sha256": SOURCE_HASH,
         "source_manifest_sha256": MANIFEST_HASH,
         "summary": {"passed": 12, "warnings": 0, "failed": 0},
@@ -142,6 +162,12 @@ def test_completed_packet_produces_release_go(tmp_path):
     assert result.discrepancy_count == 0
     assert result.summary["failed"] == 0
     assert all(item.status == "pass" for item in result.checks)
+    assert next(
+        item for item in result.checks if item.key == "patient_database_binding"
+    ).status == "pass"
+    assert next(
+        item for item in result.checks if item.key == "review_packet_policy"
+    ).status == "pass"
 
 
 def test_pending_patient_is_no_go(tmp_path):
@@ -197,6 +223,7 @@ def test_major_or_critical_discrepancy_must_be_fixed(tmp_path):
         "resolved_at": datetime.now(UTC).isoformat(),
     }
     payload["signoff_template"]["discrepancies"] = [discrepancy]
+    payload["signoff_template"]["reviewed_at"] = datetime.now(UTC).isoformat()
     _write_json(packet, payload)
 
     result = _run(verification, packet)
@@ -207,6 +234,7 @@ def test_major_or_critical_discrepancy_must_be_fixed(tmp_path):
 
     discrepancy["disposition"] = "fixed"
     discrepancy["resolution_note"] = "داده اصلاح و دوباره بررسی شد."
+    payload["signoff_template"]["reviewed_at"] = datetime.now(UTC).isoformat()
     _write_json(packet, payload)
     assert _run(verification, packet).decision == "GO"
 
