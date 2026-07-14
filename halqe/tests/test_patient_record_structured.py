@@ -53,12 +53,14 @@ def structured_record_ready(seed_clinical_data):
     second_uuid = uuid.UUID("22222222-3333-4444-5555-666666666666")
     with psycopg.connect(_conninfo(), autocommit=True) as conn:
         # A second enrolled patient in the SAME tenant proves ownership filters,
-        # not merely tenant filtering.
+        # not merely tenant filtering. The test does not exercise national-id
+        # matching, so identity remains UUID-only and cannot collide with the
+        # accounting characterization fixtures running in the same database.
         conn.execute(
             """
             INSERT INTO accounting.patients
                 (tenant_id, uuid, name, family_name, national_id, phone_number)
-            VALUES (1, %s, 'بیمار', 'دوم', '0013546759', '09120000009')
+            VALUES (1, %s, 'بیمار', 'دوم', NULL, '09120000009')
             ON CONFLICT (uuid) DO NOTHING
             """,
             (second_uuid,),
