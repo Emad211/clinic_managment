@@ -1,0 +1,666 @@
+.layout {
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at 85% 8%, color-mix(in srgb, var(--color-primary) 9%, transparent), transparent 30rem),
+    linear-gradient(180deg, var(--color-bg), color-mix(in srgb, var(--color-bg) 88%, white));
+}
+
+.main {
+  width: min(1320px, 100%);
+  margin-inline: auto;
+  padding: clamp(1rem, 3vw, 2rem);
+}
+
+.hero {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-6);
+  padding: clamp(1.35rem, 3vw, 2.2rem);
+  border: 1px solid color-mix(in srgb, var(--color-primary) 20%, var(--color-border));
+  border-radius: calc(var(--radius) + 0.5rem);
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--color-primary-light) 74%, white), white 62%),
+    var(--color-surface);
+  box-shadow: 0 22px 60px color-mix(in srgb, var(--color-primary-dark) 10%, transparent);
+}
+
+.hero::after {
+  content: "";
+  position: absolute;
+  inset-inline-end: -5rem;
+  inset-block-start: -7rem;
+  width: 19rem;
+  height: 19rem;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--color-primary) 10%, transparent);
+  pointer-events: none;
+}
+
+.hero h1 {
+  position: relative;
+  z-index: 1;
+  margin: 0 0 var(--space-2);
+  color: var(--color-primary-dark);
+  font-size: clamp(1.55rem, 4vw, 2.25rem);
+  letter-spacing: -0.035em;
+}
+
+.hero p {
+  position: relative;
+  z-index: 1;
+  max-width: 780px;
+  margin: 0;
+  color: var(--color-text-muted);
+  line-height: 1.95;
+}
+
+.eyebrow {
+  position: relative;
+  z-index: 1;
+  display: inline-block;
+  margin-bottom: var(--space-2);
+  color: var(--color-primary);
+  font-size: 0.73rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  direction: ltr;
+}
+
+.heroActions {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.heroActions button,
+.secondaryLink {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.65rem 1rem;
+  border: 1px solid color-mix(in srgb, var(--color-primary) 26%, var(--color-border));
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, white 87%, transparent);
+  color: var(--color-primary-dark);
+  font: inherit;
+  font-weight: 700;
+  text-decoration: none;
+  backdrop-filter: blur(8px);
+}
+
+.heroActions button:hover:not(:disabled),
+.secondaryLink:hover {
+  border-color: var(--color-primary);
+  background: white;
+  text-decoration: none;
+}
+
+.heroActions button:disabled,
+.primaryButton:disabled,
+.rowList button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-3);
+  margin-block: var(--space-5);
+}
+
+.metrics article {
+  position: relative;
+  overflow: hidden;
+  min-width: 0;
+  padding: var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--color-surface) 94%, transparent);
+  box-shadow: var(--shadow-sm);
+}
+
+.metrics article::before {
+  content: "";
+  position: absolute;
+  inset-inline-start: 0;
+  inset-block: 0;
+  width: 4px;
+  background: linear-gradient(var(--color-primary), color-mix(in srgb, var(--color-primary) 35%, transparent));
+}
+
+.metrics span,
+.metrics strong,
+.metrics small {
+  display: block;
+}
+
+.metrics span {
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+  font-weight: 650;
+}
+
+.metrics strong {
+  margin-block: 0.2rem;
+  color: var(--color-primary-dark);
+  font-size: 1.65rem;
+}
+
+.metrics small {
+  color: var(--color-text-muted);
+  font-size: 0.74rem;
+}
+
+.workspaceNav {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-2);
+  margin-bottom: var(--space-5);
+  padding: var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: calc(var(--radius) + 0.25rem);
+  background: color-mix(in srgb, var(--color-surface) 92%, transparent);
+  box-shadow: var(--shadow-sm);
+}
+
+.workspaceNav button {
+  min-height: 58px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 0.12rem;
+  padding: 0.65rem 0.85rem;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-text);
+  font: inherit;
+  text-align: right;
+}
+
+.workspaceNav button:hover {
+  background: var(--color-surface-raised);
+}
+
+.workspaceNav button strong {
+  font-size: 0.9rem;
+}
+
+.workspaceNav button span {
+  color: var(--color-text-muted);
+  font-size: 0.72rem;
+}
+
+.workspaceNav .workspaceActive {
+  border-color: color-mix(in srgb, var(--color-primary) 25%, var(--color-border));
+  background: var(--color-primary-light);
+  color: var(--color-primary-dark);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-primary) 5%, transparent);
+}
+
+.workspace {
+  animation: workspace-in 180ms ease-out;
+}
+
+@keyframes workspace-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.workspaceGrid,
+.workspaceGridWide,
+.gridTwoTop {
+  display: grid;
+  grid-template-columns: minmax(320px, 0.85fr) minmax(0, 1.35fr);
+  gap: var(--space-4);
+  align-items: start;
+}
+
+.workspaceGridWide {
+  grid-template-columns: minmax(390px, 1fr) minmax(0, 1fr);
+}
+
+.stack {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.formCard,
+.listCard,
+.fullCard {
+  border: 1px solid var(--color-border);
+  border-radius: calc(var(--radius) + 0.2rem);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-sm);
+}
+
+.formCard,
+.fullCard {
+  padding: clamp(1rem, 2vw, 1.35rem);
+}
+
+.listCard {
+  overflow: hidden;
+}
+
+.cardHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.listCard > .cardHeader {
+  padding: var(--space-4);
+  margin: 0;
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-surface-raised);
+}
+
+.cardHeader h2 {
+  margin: 0 0 0.15rem;
+  color: var(--color-primary-dark);
+  font-size: 1.02rem;
+}
+
+.cardHeader p {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 0.78rem;
+  line-height: 1.7;
+}
+
+.cardHeader > button {
+  min-height: 34px;
+  padding: 0.35rem 0.65rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-primary-dark);
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 650;
+}
+
+.formCard {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.formCard label,
+.tariffForm label,
+.exclusionForm label {
+  display: grid;
+  gap: 0.4rem;
+  color: var(--color-text-muted);
+  font-size: 0.82rem;
+  font-weight: 650;
+}
+
+.formCard input,
+.formCard select,
+.formCard textarea,
+.tariffForm input,
+.tariffForm select,
+.exclusionForm input,
+.exclusionForm select {
+  width: 100%;
+  min-height: 43px;
+  padding: 0.58rem 0.72rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: inherit;
+  font-weight: 400;
+}
+
+.formCard input:hover,
+.formCard select:hover,
+.tariffForm input:hover,
+.tariffForm select:hover,
+.exclusionForm input:hover,
+.exclusionForm select:hover {
+  border-color: color-mix(in srgb, var(--color-primary) 45%, var(--color-border));
+}
+
+.formCard input:focus-visible,
+.formCard select:focus-visible,
+.tariffForm input:focus-visible,
+.tariffForm select:focus-visible,
+.exclusionForm input:focus-visible,
+.exclusionForm select:focus-visible,
+.primaryButton:focus-visible,
+.heroActions button:focus-visible,
+.secondaryLink:focus-visible,
+.workspaceNav button:focus-visible,
+.rowList button:focus-visible,
+.tableWrap button:focus-visible,
+.cardHeader > button:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--color-focus-ring) 36%, transparent);
+  outline-offset: 2px;
+}
+
+.twoColumns {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+.checkRow {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+.check {
+  display: inline-flex !important;
+  grid-template-columns: none !important;
+  align-items: center;
+  gap: 0.45rem !important;
+  min-height: 38px;
+  color: var(--color-text) !important;
+}
+
+.check input {
+  width: 1.08rem;
+  min-height: 1.08rem;
+  accent-color: var(--color-primary);
+}
+
+.primaryButton {
+  min-height: 44px;
+  padding: 0.62rem 1rem;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: linear-gradient(135deg, var(--color-primary), var(--color-primary-dark));
+  color: white;
+  font: inherit;
+  font-weight: 750;
+  box-shadow: 0 8px 20px color-mix(in srgb, var(--color-primary) 20%, transparent);
+}
+
+.primaryButton:hover:not(:disabled) {
+  filter: brightness(1.04);
+  transform: translateY(-1px);
+}
+
+.rowList {
+  display: grid;
+  gap: 1px;
+  background: var(--color-border);
+}
+
+.fullCard > .rowList {
+  margin: var(--space-4) calc(-1 * clamp(1rem, 2vw, 1.35rem)) calc(-1 * clamp(1rem, 2vw, 1.35rem));
+  border-top: 1px solid var(--color-border);
+}
+
+.rowList article {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  min-height: 66px;
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-surface);
+}
+
+.rowList article:hover {
+  background: color-mix(in srgb, var(--color-primary-light) 32%, var(--color-surface));
+}
+
+.rowList article > div {
+  min-width: 0;
+}
+
+.rowList strong,
+.rowList span {
+  display: block;
+}
+
+.rowList strong {
+  overflow: hidden;
+  color: var(--color-text);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rowList span {
+  margin-top: 0.15rem;
+  color: var(--color-text-muted);
+  font-size: 0.76rem;
+  line-height: 1.6;
+}
+
+.rowList button,
+.tableWrap button {
+  flex: 0 0 auto;
+  min-height: 34px;
+  padding: 0.35rem 0.7rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-primary-dark);
+  font: inherit;
+  font-size: 0.77rem;
+  font-weight: 650;
+}
+
+.rowList .dangerButton {
+  border-color: color-mix(in srgb, var(--color-danger) 42%, var(--color-border));
+  color: var(--color-danger);
+}
+
+.inactiveRow {
+  opacity: 0.68;
+}
+
+.inactiveRow strong {
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
+}
+
+.tariffForm {
+  display: grid;
+  grid-template-columns: 1.35fr 1fr 0.85fr 0.85fr;
+  gap: var(--space-3);
+  align-items: end;
+}
+
+.tariffForm .checkRow {
+  grid-column: 1 / -1;
+}
+
+.tariffForm .primaryButton {
+  grid-column: 1 / -1;
+  justify-self: start;
+  min-width: 180px;
+}
+
+.exclusionForm {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1.2fr auto;
+  align-items: end;
+  gap: var(--space-3);
+}
+
+.exclusionForm .primaryButton {
+  min-width: 120px;
+}
+
+.tableWrap {
+  overflow-x: auto;
+  margin: var(--space-4) calc(-1 * clamp(1rem, 2vw, 1.35rem)) calc(-1 * clamp(1rem, 2vw, 1.35rem));
+  border-top: 1px solid var(--color-border);
+}
+
+.tableWrap table {
+  width: 100%;
+  min-width: 760px;
+  border-collapse: collapse;
+}
+
+.tableWrap th,
+.tableWrap td {
+  padding: 0.8rem;
+  border-bottom: 1px solid var(--color-border);
+  text-align: right;
+  vertical-align: middle;
+}
+
+.tableWrap th {
+  background: var(--color-surface-raised);
+  color: var(--color-text-muted);
+  font-size: 0.77rem;
+  font-weight: 700;
+}
+
+.tableWrap tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.tableWrap tbody tr:hover {
+  background: var(--color-primary-light);
+}
+
+.financialWarning {
+  padding: var(--space-3);
+  border: 1px solid color-mix(in srgb, var(--color-warn) 45%, var(--color-border));
+  border-inline-start-width: 4px;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, #fff7e6 82%, var(--color-surface));
+  color: #74470a;
+  font-size: 0.79rem;
+  line-height: 1.8;
+}
+
+.errorBox,
+.noticeBox,
+.stateBox {
+  margin-top: var(--space-4);
+  padding: var(--space-4);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-sm);
+}
+
+.errorBox {
+  border-inline-start: 4px solid var(--color-danger);
+  color: var(--color-danger);
+}
+
+.noticeBox {
+  border-inline-start: 4px solid var(--color-ok);
+  color: var(--color-text);
+}
+
+.stateBox,
+.empty {
+  color: var(--color-text-muted);
+  text-align: center;
+}
+
+.stateBox {
+  min-height: 180px;
+  display: grid;
+  place-items: center;
+  border: 1px dashed var(--color-border);
+}
+
+.empty {
+  padding: var(--space-6);
+  background: var(--color-surface);
+}
+
+@media (max-width: 1050px) {
+  .metrics,
+  .workspaceNav {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .workspaceGrid,
+  .workspaceGridWide {
+    grid-template-columns: 1fr;
+  }
+
+  .tariffForm {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .exclusionForm {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 720px) {
+  .main {
+    padding: var(--space-4);
+  }
+
+  .hero {
+    flex-direction: column;
+  }
+
+  .heroActions,
+  .heroActions button,
+  .secondaryLink {
+    width: 100%;
+  }
+
+  .metrics,
+  .workspaceNav,
+  .twoColumns,
+  .tariffForm,
+  .exclusionForm {
+    grid-template-columns: 1fr;
+  }
+
+  .workspaceNav button {
+    align-items: center;
+    text-align: center;
+  }
+
+  .formCard,
+  .fullCard {
+    padding: var(--space-4);
+  }
+
+  .rowList article,
+  .cardHeader {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .rowList button,
+  .cardHeader > button,
+  .primaryButton,
+  .tariffForm .primaryButton,
+  .exclusionForm .primaryButton {
+    width: 100%;
+  }
+
+  .tariffForm .checkRow,
+  .tariffForm .primaryButton {
+    grid-column: auto;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .workspace,
+  .primaryButton {
+    animation: none;
+    transition: none;
+  }
+}
