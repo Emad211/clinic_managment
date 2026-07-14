@@ -114,6 +114,90 @@
         "title": "AllergyIn",
         "type": "object"
       },
+      "AppointmentDTO": {
+        "properties": {
+          "appt_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Appt Type"
+          },
+          "chief_complaint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Chief Complaint"
+          },
+          "doctor_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Doctor Id"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "recurrence_months": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recurrence Months"
+          },
+          "reminder_sent": {
+            "title": "Reminder Sent",
+            "type": "boolean"
+          },
+          "scheduled_at": {
+            "format": "date-time",
+            "title": "Scheduled At",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "scheduled_at",
+          "status",
+          "reminder_sent"
+        ],
+        "title": "AppointmentDTO",
+        "type": "object"
+      },
       "ApprovalListResponse": {
         "description": "Pending queue list.",
         "properties": {
@@ -207,6 +291,137 @@
           "card_url"
         ],
         "title": "CardTokenOut",
+        "type": "object"
+      },
+      "CatalogConditionDTO": {
+        "properties": {
+          "code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Code"
+          },
+          "color": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Color"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "display_order": {
+            "title": "Display Order",
+            "type": "integer"
+          },
+          "icon": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Icon"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "display_order"
+        ],
+        "title": "CatalogConditionDTO",
+        "type": "object"
+      },
+      "ClinicalNoteDTO": {
+        "properties": {
+          "body": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Body"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "recorded_at": {
+            "format": "date-time",
+            "title": "Recorded At",
+            "type": "string"
+          },
+          "recorded_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recorded By"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "recorded_at"
+        ],
+        "title": "ClinicalNoteDTO",
+        "type": "object"
+      },
+      "ClinicalNoteIn": {
+        "properties": {
+          "body": {
+            "title": "Body",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "body"
+        ],
+        "title": "ClinicalNoteIn",
         "type": "object"
       },
       "ClinicalRecordDTO": {
@@ -694,6 +909,53 @@
           "diagnosed_at"
         ],
         "title": "ConditionDTO",
+        "type": "object"
+      },
+      "ConditionIn": {
+        "properties": {
+          "condition_id": {
+            "title": "Condition Id",
+            "type": "integer"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "onset_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Onset Date"
+          },
+          "stage": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stage"
+          }
+        },
+        "required": [
+          "condition_id"
+        ],
+        "title": "ConditionIn",
         "type": "object"
       },
       "ControlDTO": {
@@ -1250,6 +1512,24 @@
         "title": "DdiDTO",
         "type": "object"
       },
+      "DeleteOut": {
+        "properties": {
+          "deleted": {
+            "title": "Deleted",
+            "type": "boolean"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "deleted",
+          "id"
+        ],
+        "title": "DeleteOut",
+        "type": "object"
+      },
       "DemographicsDTO": {
         "description": "Accounting demographics (read-only) + derived ``age``.\n\nExtends the boundary ``PatientDTO`` additively: every existing field is\npreserved byte-for-byte; only ``age`` (computed from birthdate by the\nsummary service) is added. We do NOT mutate PatientDTO itself — that DTO is\nthe accounting-port boundary contract.",
         "properties": {
@@ -1628,6 +1908,75 @@
           }
         },
         "title": "DoneVisitIn",
+        "type": "object"
+      },
+      "DrugCatalogDTO": {
+        "properties": {
+          "drug_class_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Drug Class Key"
+          },
+          "generic_fa": {
+            "title": "Generic Fa",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "standard_doses": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Standard Doses",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "generic_fa"
+        ],
+        "title": "DrugCatalogDTO",
+        "type": "object"
+      },
+      "DrugClassDTO": {
+        "properties": {
+          "class_key": {
+            "title": "Class Key",
+            "type": "string"
+          },
+          "display_order": {
+            "title": "Display Order",
+            "type": "integer"
+          },
+          "glucose_lowering": {
+            "title": "Glucose Lowering",
+            "type": "boolean"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "class_key",
+          "label",
+          "glucose_lowering",
+          "display_order"
+        ],
+        "title": "DrugClassDTO",
         "type": "object"
       },
       "EncounterListResponse": {
@@ -2115,6 +2464,178 @@
         "title": "ErrorSchema",
         "type": "object"
       },
+      "FlagOptionDTO": {
+        "properties": {
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "value",
+          "label"
+        ],
+        "title": "FlagOptionDTO",
+        "type": "object"
+      },
+      "FlagsPatchIn": {
+        "properties": {
+          "clear_keys": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Clear Keys",
+            "type": "array"
+          },
+          "values": {
+            "additionalProperties": true,
+            "title": "Values",
+            "type": "object"
+          }
+        },
+        "title": "FlagsPatchIn",
+        "type": "object"
+      },
+      "FollowupDTO": {
+        "properties": {
+          "appointment_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Appointment Id"
+          },
+          "assigned_to": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assigned To"
+          },
+          "call_log": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Call Log"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          },
+          "due_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Due Date"
+          },
+          "fulfillment": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fulfillment"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "resolved_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolved At"
+          },
+          "source_event": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Event"
+          },
+          "source_rule": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Rule"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "created_at"
+        ],
+        "title": "FollowupDTO",
+        "type": "object"
+      },
       "FollowupTaskDTO": {
         "description": "Full task DTO returned after a state change.",
         "properties": {
@@ -2251,6 +2772,83 @@
           "improving"
         ],
         "title": "IndicatorDeltaDTO",
+        "type": "object"
+      },
+      "LabCatalogDTO": {
+        "properties": {
+          "category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category"
+          },
+          "display_order": {
+            "title": "Display Order",
+            "type": "integer"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "name_fa": {
+            "title": "Name Fa",
+            "type": "string"
+          },
+          "ref_high": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ref High"
+          },
+          "ref_low": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ref Low"
+          },
+          "suggested": {
+            "title": "Suggested",
+            "type": "boolean"
+          },
+          "test_key": {
+            "title": "Test Key",
+            "type": "string"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit"
+          }
+        },
+        "required": [
+          "id",
+          "test_key",
+          "name_fa",
+          "display_order",
+          "suggested"
+        ],
+        "title": "LabCatalogDTO",
         "type": "object"
       },
       "LabIn": {
@@ -2441,6 +3039,213 @@
         "title": "LabResultCreatedDTO",
         "type": "object"
       },
+      "LabResultDTO": {
+        "properties": {
+          "encounter_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Encounter Id"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "recorded_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recorded By"
+          },
+          "ref_high": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ref High"
+          },
+          "ref_low": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ref Low"
+          },
+          "taken_at": {
+            "format": "date-time",
+            "title": "Taken At",
+            "type": "string"
+          },
+          "test_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Test Key"
+          },
+          "test_name": {
+            "title": "Test Name",
+            "type": "string"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "required": [
+          "id",
+          "test_name",
+          "taken_at"
+        ],
+        "title": "LabResultDTO",
+        "type": "object"
+      },
+      "LabResultIn": {
+        "properties": {
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "ref_high": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ref High"
+          },
+          "ref_low": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ref Low"
+          },
+          "taken_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Taken At"
+          },
+          "test_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Test Key"
+          },
+          "test_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Test Name"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "title": "LabResultIn",
+        "type": "object"
+      },
       "LabsAddedResponse": {
         "description": "Response from POST /encounters/{id}/labs (list add).",
         "properties": {
@@ -2529,6 +3334,89 @@
           "password"
         ],
         "title": "LoginRequest",
+        "type": "object"
+      },
+      "MedicalHistoryDTO": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "since": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Since"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "created_at"
+        ],
+        "title": "MedicalHistoryDTO",
+        "type": "object"
+      },
+      "MedicalHistoryIn": {
+        "properties": {
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "since": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Since"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title"
+        ],
+        "title": "MedicalHistoryIn",
         "type": "object"
       },
       "MedicationDTO": {
@@ -2626,6 +3514,42 @@
           "created_at"
         ],
         "title": "MedicationDTO",
+        "type": "object"
+      },
+      "MedicationDoseIn": {
+        "properties": {
+          "change_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Change Date"
+          },
+          "dose": {
+            "title": "Dose",
+            "type": "string"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "required": [
+          "dose"
+        ],
+        "title": "MedicationDoseIn",
         "type": "object"
       },
       "MedicationEffectDTO": {
@@ -2816,6 +3740,212 @@
           "drug_name"
         ],
         "title": "MedicationEffectDTO",
+        "type": "object"
+      },
+      "MedicationEventDTO": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By"
+          },
+          "dose": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dose"
+          },
+          "drug_name": {
+            "title": "Drug Name",
+            "type": "string"
+          },
+          "event_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Event Date"
+          },
+          "event_type": {
+            "title": "Event Type",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "medication_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Medication Id"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "required": [
+          "id",
+          "drug_name",
+          "event_type",
+          "created_at"
+        ],
+        "title": "MedicationEventDTO",
+        "type": "object"
+      },
+      "MedicationIn": {
+        "properties": {
+          "dose": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dose"
+          },
+          "drug_class": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Drug Class"
+          },
+          "drug_name": {
+            "title": "Drug Name",
+            "type": "string"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "refill_due_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Refill Due Date"
+          },
+          "refill_interval_days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Refill Interval Days"
+          },
+          "schedule": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Schedule"
+          },
+          "start_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Date"
+          }
+        },
+        "required": [
+          "drug_name"
+        ],
+        "title": "MedicationIn",
+        "type": "object"
+      },
+      "MedicationStopIn": {
+        "properties": {
+          "end_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End Date"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "title": "MedicationStopIn",
         "type": "object"
       },
       "PatientDTO": {
@@ -3221,6 +4351,214 @@
         "title": "PopulationThresholdListDTO",
         "type": "object"
       },
+      "PrescriptionDTO": {
+        "properties": {
+          "encounter_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Encounter Id"
+          },
+          "followup_task_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Followup Task Id"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "insurer": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Insurer"
+          },
+          "issued_at": {
+            "format": "date-time",
+            "title": "Issued At",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PrescriptionItemDTO"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "mode": {
+            "title": "Mode",
+            "type": "string"
+          },
+          "portal_rx_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Portal Rx Id"
+          },
+          "prescriber_user_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prescriber User Id"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "mode",
+          "issued_at"
+        ],
+        "title": "PrescriptionDTO",
+        "type": "object"
+      },
+      "PrescriptionItemDTO": {
+        "properties": {
+          "dose_unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dose Unit"
+          },
+          "dose_value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dose Value"
+          },
+          "drug_class": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Drug Class"
+          },
+          "drug_name": {
+            "title": "Drug Name",
+            "type": "string"
+          },
+          "duration_days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration Days"
+          },
+          "frequency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Frequency"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "instructions": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Instructions"
+          },
+          "quantity": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quantity"
+          },
+          "route": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Route"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "drug_name",
+          "source"
+        ],
+        "title": "PrescriptionItemDTO",
+        "type": "object"
+      },
       "PrescriptionItemIn": {
         "description": "One prescription item.\n\ndrug_name is required; all other fields are optional.\nfrequency must be one of: od, bid, tid, qid, qod, weekly, monthly, prn,\n  with_meal, bedtime, other (or omitted).\nroute must be one of: oral, sublingual, sc, im, iv, topical, inhaled, other\n  (or omitted).\nquantity and duration_days must be > 0 if provided.",
         "properties": {
@@ -3583,6 +4921,302 @@
         "title": "PublicCardResponse",
         "type": "object"
       },
+      "RecordConditionDTO": {
+        "properties": {
+          "condition_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Condition Code"
+          },
+          "condition_id": {
+            "title": "Condition Id",
+            "type": "integer"
+          },
+          "condition_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Condition Name"
+          },
+          "diagnosed_at": {
+            "format": "date-time",
+            "title": "Diagnosed At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "is_active": {
+            "title": "Is Active",
+            "type": "boolean"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "onset_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Onset Date"
+          },
+          "stage": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stage"
+          }
+        },
+        "required": [
+          "id",
+          "condition_id",
+          "is_active",
+          "diagnosed_at"
+        ],
+        "title": "RecordConditionDTO",
+        "type": "object"
+      },
+      "RecordFlagDTO": {
+        "properties": {
+          "category": {
+            "title": "Category",
+            "type": "string"
+          },
+          "display_order": {
+            "title": "Display Order",
+            "type": "integer"
+          },
+          "flag_key": {
+            "title": "Flag Key",
+            "type": "string"
+          },
+          "flag_type": {
+            "title": "Flag Type",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "options": {
+            "items": {
+              "$ref": "#/components/schemas/FlagOptionDTO"
+            },
+            "title": "Options",
+            "type": "array"
+          },
+          "record_section": {
+            "title": "Record Section",
+            "type": "string"
+          },
+          "recorded_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recorded By"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "required": [
+          "id",
+          "flag_key",
+          "label",
+          "flag_type",
+          "category",
+          "record_section",
+          "display_order"
+        ],
+        "title": "RecordFlagDTO",
+        "type": "object"
+      },
+      "RecordMedicationDTO": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "dose": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dose"
+          },
+          "drug_class": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Drug Class"
+          },
+          "drug_name": {
+            "title": "Drug Name",
+            "type": "string"
+          },
+          "end_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End Date"
+          },
+          "events": {
+            "items": {
+              "$ref": "#/components/schemas/MedicationEventDTO"
+            },
+            "title": "Events",
+            "type": "array"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "is_active": {
+            "title": "Is Active",
+            "type": "boolean"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "refill_due_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Refill Due Date"
+          },
+          "schedule": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Schedule"
+          },
+          "start_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Date"
+          }
+        },
+        "required": [
+          "id",
+          "drug_name",
+          "is_active",
+          "created_at"
+        ],
+        "title": "RecordMedicationDTO",
+        "type": "object"
+      },
       "ReportTokenOut": {
         "description": "توکنِ self-report صادرشده برای بیمار.",
         "properties": {
@@ -3927,6 +5561,139 @@
           "status"
         ],
         "title": "SendApprovalOut",
+        "type": "object"
+      },
+      "StructuredRecordDTO": {
+        "properties": {
+          "appointments": {
+            "items": {
+              "$ref": "#/components/schemas/AppointmentDTO"
+            },
+            "title": "Appointments",
+            "type": "array"
+          },
+          "clinical_notes": {
+            "items": {
+              "$ref": "#/components/schemas/ClinicalNoteDTO"
+            },
+            "title": "Clinical Notes",
+            "type": "array"
+          },
+          "condition_catalog": {
+            "items": {
+              "$ref": "#/components/schemas/CatalogConditionDTO"
+            },
+            "title": "Condition Catalog",
+            "type": "array"
+          },
+          "conditions": {
+            "items": {
+              "$ref": "#/components/schemas/RecordConditionDTO"
+            },
+            "title": "Conditions",
+            "type": "array"
+          },
+          "drug_catalog": {
+            "items": {
+              "$ref": "#/components/schemas/DrugCatalogDTO"
+            },
+            "title": "Drug Catalog",
+            "type": "array"
+          },
+          "drug_classes": {
+            "items": {
+              "$ref": "#/components/schemas/DrugClassDTO"
+            },
+            "title": "Drug Classes",
+            "type": "array"
+          },
+          "flag_catalog": {
+            "items": {
+              "$ref": "#/components/schemas/RecordFlagDTO"
+            },
+            "title": "Flag Catalog",
+            "type": "array"
+          },
+          "followups": {
+            "items": {
+              "$ref": "#/components/schemas/FollowupDTO"
+            },
+            "title": "Followups",
+            "type": "array"
+          },
+          "lab_catalog": {
+            "items": {
+              "$ref": "#/components/schemas/LabCatalogDTO"
+            },
+            "title": "Lab Catalog",
+            "type": "array"
+          },
+          "labs": {
+            "items": {
+              "$ref": "#/components/schemas/LabResultDTO"
+            },
+            "title": "Labs",
+            "type": "array"
+          },
+          "medical_history": {
+            "items": {
+              "$ref": "#/components/schemas/MedicalHistoryDTO"
+            },
+            "title": "Medical History",
+            "type": "array"
+          },
+          "medications": {
+            "items": {
+              "$ref": "#/components/schemas/RecordMedicationDTO"
+            },
+            "title": "Medications",
+            "type": "array"
+          },
+          "orphan_medication_events": {
+            "items": {
+              "$ref": "#/components/schemas/MedicationEventDTO"
+            },
+            "title": "Orphan Medication Events",
+            "type": "array"
+          },
+          "patient_link_id": {
+            "title": "Patient Link Id",
+            "type": "integer"
+          },
+          "prescriptions": {
+            "items": {
+              "$ref": "#/components/schemas/PrescriptionDTO"
+            },
+            "title": "Prescriptions",
+            "type": "array"
+          },
+          "surgeries": {
+            "items": {
+              "$ref": "#/components/schemas/SurgeryDTO"
+            },
+            "title": "Surgeries",
+            "type": "array"
+          }
+        },
+        "required": [
+          "patient_link_id",
+          "condition_catalog",
+          "conditions",
+          "medications",
+          "orphan_medication_events",
+          "flag_catalog",
+          "surgeries",
+          "medical_history",
+          "clinical_notes",
+          "labs",
+          "lab_catalog",
+          "appointments",
+          "followups",
+          "prescriptions",
+          "drug_classes",
+          "drug_catalog"
+        ],
+        "title": "StructuredRecordDTO",
         "type": "object"
       },
       "SuggestionActionRequest": {
@@ -4354,6 +6121,89 @@
           "sections"
         ],
         "title": "SuggestionsResponseDTO",
+        "type": "object"
+      },
+      "SurgeryDTO": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "performed_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Performed On"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "created_at"
+        ],
+        "title": "SurgeryDTO",
+        "type": "object"
+      },
+      "SurgeryIn": {
+        "properties": {
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "performed_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Performed On"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title"
+        ],
+        "title": "SurgeryIn",
         "type": "object"
       },
       "TokenResponse": {
@@ -7070,6 +8920,973 @@
         "summary": "Get Patient Record",
         "tags": [
           "patients"
+        ]
+      }
+    },
+    "/api/v1/patients/{patient_uuid}/record/conditions": {
+      "post": {
+        "operationId": "clinical_api_patient_record_create_condition",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "patient_uuid",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Patient Uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConditionIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecordConditionDTO"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorSchema"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorSchema"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorSchema"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "security": [
+          {
+            "JWTBearer": []
+          }
+        ],
+        "summary": "Create Condition",
+        "tags": [
+          "patient-record"
+        ]
+      }
+    },
+    "/api/v1/patients/{patient_uuid}/record/conditions/{patient_condition_id}": {
+      "delete": {
+        "operationId": "clinical_api_patient_record_remove_condition",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "patient_uuid",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Patient Uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "patient_condition_id",
+            "required": true,
+            "schema": {
+              "title": "Patient Condition Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeleteOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorSchema"
+                }
+              }
+            },
+            "description": "Not Found"
+          }
+        },
+        "security": [
+          {
+            "JWTBearer": []
+          }
+        ],
+        "summary": "Remove Condition",
+        "tags": [
+          "patient-record"
+        ]
+      }
+    },
+    "/api/v1/patients/{patient_uuid}/record/flags": {
+      "patch": {
+        "operationId": "clinical_api_patient_record_update_flags",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "patient_uuid",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Patient Uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FlagsPatchIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/RecordFlagDTO"
+                  },
+                  "title": "Response",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorSchema"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorSchema"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "security": [
+          {
+            "JWTBearer": []
+          }
+        ],
+        "summary": "Update Flags",
+        "tags": [
+          "patient-record"
+        ]
+      }
+    },
+    "/api/v1/patients/{patient_uuid}/record/labs": {
+      "post": {
+        "operationId": "clinical_api_patient_record_create_lab",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "patient_uuid",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Patient Uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LabResultIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabResultDTO"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorSchema"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorSchema"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "security": [
+          {
+            "JWTBearer": []
+          }
+        ],
+        "summary": "Create Lab",
+        "tags": [
+          "patient-record"
+        ]
+      }
+    },
+    "/api/v1/patients/{patient_uuid}/record/labs/{lab_id}": {
+      "delete": {
+        "operationId": "clinical_api_patient_record_remove_lab",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "patient_uuid",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Patient Uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "lab_id",
+            "required": true,
+            "schema": {
+              "title": "Lab Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeleteOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorSchema"
+                }
+              }
+            },
+            "description": "Not Found"
+          }
+        },
+        "security": [
+          {
+            "JWTBearer": []
+          }
+        ],
+        "summary": "Remove Lab",
+        "tags": [
+          "patient-record"
+        ]
+      }
+    },
+    "/api/v1/patients/{patient_uuid}/record/medical-history": {
+      "post": {
+        "operationId": "clinical_api_patient_record_create_medical_history_endpoint",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "patient_uuid",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Patient Uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MedicalHistoryIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MedicalHistoryDTO"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorSchema"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorSchema"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "security": [
+          {
+            "JWTBearer": []
+          }
+        ],
+        "summary": "Create Medical History Endpoint",
+        "tags": [
+          "patient-record"
+        ]
+      }
+    },
+    "/api/v1/patients/{patient_uuid}/record/medical-history/{history_id}": {
+      "delete": {
+        "operationId": "clinical_api_patient_record_remove_medical_history",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "patient_uuid",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Patient Uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "history_id",
+            "required": true,
+            "schema": {
+              "title": "History Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeleteOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorSchema"
+                }
+              }
+            },
+            "description": "Not Found"
+          }
+        },
+        "security": [
+          {
+            "JWTBearer": []
+          }
+        ],
+        "summary": "Remove Medical History",
+        "tags": [
+          "patient-record"
+        ]
+      }
+    },
+    "/api/v1/patients/{patient_uuid}/record/medications": {
+      "post": {
+        "operationId": "clinical_api_patient_record_create_medication",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "patient_uuid",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Patient Uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MedicationIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecordMedicationDTO"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorSchema"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorSchema"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "security": [
+          {
+            "JWTBearer": []
+          }
+        ],
+        "summary": "Create Medication",
+        "tags": [
+          "patient-record"
+        ]
+      }
+    },
+    "/api/v1/patients/{patient_uuid}/record/medications/{medication_id}/dose": {
+      "post": {
+        "operationId": "clinical_api_patient_record_change_dose_endpoint",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "patient_uuid",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Patient Uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "medication_id",
+            "required": true,
+            "schema": {
+              "title": "Medication Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MedicationDoseIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecordMedicationDTO"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorSchema"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorSchema"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "security": [
+          {
+            "JWTBearer": []
+          }
+        ],
+        "summary": "Change Dose Endpoint",
+        "tags": [
+          "patient-record"
+        ]
+      }
+    },
+    "/api/v1/patients/{patient_uuid}/record/medications/{medication_id}/stop": {
+      "post": {
+        "operationId": "clinical_api_patient_record_stop_medication_endpoint",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "patient_uuid",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Patient Uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "medication_id",
+            "required": true,
+            "schema": {
+              "title": "Medication Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MedicationStopIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecordMedicationDTO"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorSchema"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorSchema"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "security": [
+          {
+            "JWTBearer": []
+          }
+        ],
+        "summary": "Stop Medication Endpoint",
+        "tags": [
+          "patient-record"
+        ]
+      }
+    },
+    "/api/v1/patients/{patient_uuid}/record/notes": {
+      "post": {
+        "operationId": "clinical_api_patient_record_create_note",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "patient_uuid",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Patient Uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClinicalNoteIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClinicalNoteDTO"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorSchema"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorSchema"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "security": [
+          {
+            "JWTBearer": []
+          }
+        ],
+        "summary": "Create Note",
+        "tags": [
+          "patient-record"
+        ]
+      }
+    },
+    "/api/v1/patients/{patient_uuid}/record/notes/{note_id}": {
+      "delete": {
+        "operationId": "clinical_api_patient_record_remove_note",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "patient_uuid",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Patient Uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "note_id",
+            "required": true,
+            "schema": {
+              "title": "Note Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeleteOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorSchema"
+                }
+              }
+            },
+            "description": "Not Found"
+          }
+        },
+        "security": [
+          {
+            "JWTBearer": []
+          }
+        ],
+        "summary": "Remove Note",
+        "tags": [
+          "patient-record"
+        ]
+      }
+    },
+    "/api/v1/patients/{patient_uuid}/record/structured": {
+      "get": {
+        "operationId": "clinical_api_patient_record_structured_record",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "patient_uuid",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Patient Uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StructuredRecordDTO"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "JWTBearer": []
+          }
+        ],
+        "summary": "Structured Record",
+        "tags": [
+          "patient-record"
+        ]
+      }
+    },
+    "/api/v1/patients/{patient_uuid}/record/surgeries": {
+      "post": {
+        "operationId": "clinical_api_patient_record_create_surgery",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "patient_uuid",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Patient Uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SurgeryIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SurgeryDTO"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorSchema"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorSchema"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "security": [
+          {
+            "JWTBearer": []
+          }
+        ],
+        "summary": "Create Surgery",
+        "tags": [
+          "patient-record"
+        ]
+      }
+    },
+    "/api/v1/patients/{patient_uuid}/record/surgeries/{surgery_id}": {
+      "delete": {
+        "operationId": "clinical_api_patient_record_remove_surgery",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "patient_uuid",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Patient Uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "surgery_id",
+            "required": true,
+            "schema": {
+              "title": "Surgery Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeleteOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorSchema"
+                }
+              }
+            },
+            "description": "Not Found"
+          }
+        },
+        "security": [
+          {
+            "JWTBearer": []
+          }
+        ],
+        "summary": "Remove Surgery",
+        "tags": [
+          "patient-record"
         ]
       }
     },

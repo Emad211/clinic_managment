@@ -9,6 +9,13 @@ class ClinicalConfig(AppConfig):
     label = "clinical"
     default_auto_field = "django.db.models.BigAutoField"
 
+    def import_models(self):
+        """Load the split structured-record model module during registry phase 2."""
+        super().import_models()
+        # Defining managed=False models in a focused module keeps models.py from
+        # becoming another god file. Importing here is earlier/safer than ready().
+        from clinical import record_models  # noqa: F401
+
     def ready(self):
         # Boot invariant (step 76): fail-closed SMS go-live config check.
         register(_check_sms_live_config)
