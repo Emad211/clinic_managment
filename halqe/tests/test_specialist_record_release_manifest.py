@@ -1,7 +1,6 @@
 """Final artifact-chain release manifest tests."""
 from __future__ import annotations
 
-from copy import deepcopy
 from datetime import UTC, datetime
 import hashlib
 from io import StringIO
@@ -22,6 +21,7 @@ from clinical.specialist_record_release_manifest import (
     SpecialistRecordReleaseManifestBuilder,
     SpecialistRecordReleaseManifestError,
 )
+from clinical.specialist_record_review_database import ReviewPatientBindingResult
 
 
 SOURCE_ID = "release-manifest-test-source"
@@ -29,6 +29,25 @@ MANIFEST_HASH = "d" * 64
 COMMIT_SHA = "e" * 40
 IMAGE_DIGEST = "sha256:" + "f" * 64
 PATIENT_UUID = "00000000-0000-0000-0000-000000000202"
+
+
+@pytest.fixture(autouse=True)
+def _artifact_chain_uses_controlled_database_binding(monkeypatch):
+    """Release hash-chain tests mock only the already integration-tested DB hop."""
+
+    def verified_binding(*, packet, source_id, tenant_id):
+        patients = packet.get("patients") if isinstance(packet, dict) else []
+        count = len(patients) if isinstance(patients, list) else 0
+        return ReviewPatientBindingResult(
+            passed=count > 0,
+            checked_patients=count,
+            failures=[] if count > 0 else ["patient-sample-empty"],
+        )
+
+    monkeypatch.setattr(
+        "clinical.specialist_record_clinician_signoff.verify_review_patient_bindings",
+        verified_binding,
+    )
 
 
 def _write_json(path: Path, payload: dict) -> Path:
@@ -43,6 +62,7 @@ def _verification(source_hash: str) -> dict:
         "decision": "GO",
         "source_id": SOURCE_ID,
         "tenant_id": 1,
+        "generated_at": datetime.now(UTC).isoformat(),
         "source_file_sha256": source_hash,
         "source_manifest_sha256": MANIFEST_HASH,
         "summary": {"passed": 10, "warnings": 0, "failed": 0},
@@ -67,7 +87,7 @@ def _import_report(source_hash: str, *, replay: bool) -> dict:
             "patient_links": {
                 "source_rows": 1,
                 "inserted": 0 if replay else 1,
-                "reused": 1 if replay else 0,
+                "reused": 0,
                 "replayed": 1 if replay else 0,
                 "skipped": 0,
             },
@@ -83,10 +103,11 @@ def _import_report(source_hash: str, *, replay: bool) -> dict:
 
 
 def _packet(source_hash: str, verification_raw: bytes) -> dict:
+    generated_at = datetime.now(UTC).isoformat()
     return {
         "source_id": SOURCE_ID,
         "tenant_id": 1,
-        "generated_at": datetime.now(UTC).isoformat(),
+        "generated_at": generated_at,
         "verification_report_sha256": hashlib.sha256(verification_raw).hexdigest(),
         "source_file_sha256": source_hash,
         "source_manifest_sha256": MANIFEST_HASH,
@@ -127,7 +148,7 @@ def _packet(source_hash: str, verification_raw: bytes) -> dict:
         "warnings": [],
         "signoff_template": {
             "reviewed_by": "doctor-release-reviewer",
-            "reviewed_at": datetime.now(UTC).isoformat(),
+            "reviewed_at": generated_at,
             "decision": "approved",
             "acknowledged_warnings": [],
             "discrepancies": [],
@@ -246,20 +267,25 @@ def test_claimed_coverage_without_patient_assignment_is_no_go(tmp_path):
     packet["patients"][0]["scenarios"] = [
         {"key": "multiple_conditions", "label": "چند بیماری"}
     ]
-    # Re-sign the altered packet so the final manifest must catch the coverage
-    # inconsistency independently rather than merely a stale hash.
     _write_json(paths["packet"], packet)
+
     fresh_signoff = SpecialistRecordClinicianSignoffVerifier(
         review_packet_path=paths["packet"],
         verification_report_path=paths["verification"],
         source_id=SOURCE_ID,
         tenant_id=1,
     ).run()
-    assert fresh_signoff.decision == "GO"
+    assert fresh_signoff.decision == "NO_GO"
+    assert next(
+        item for item in fresh_signoff.checks if item.key == "review_packet_policy"
+    ).status == "fail"
     _write_json(paths["signoff"], fresh_signoff.to_dict())
 
     result = _builder(paths).run()
     assert result.decision == "NO_GO"
+    assert next(
+        item for item in result.checks if item.key == "fresh_clinician_verification"
+    ).status == "fail"
     detail = next(
         item for item in result.checks if item.key == "actual_scenario_coverage"
     )
