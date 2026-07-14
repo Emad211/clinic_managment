@@ -7,16 +7,16 @@ CREATE TABLE IF NOT EXISTS accounting.accounting_import_ledger (
     tenant_id           BIGINT NOT NULL REFERENCES platform.tenants(id),
     source_id           TEXT NOT NULL,
     source_table        TEXT NOT NULL,
-    source_row_id       BIGINT NOT NULL,
+    source_pk           BIGINT NOT NULL,
     target_table        TEXT NOT NULL,
-    target_row_id       BIGINT,
+    target_pk           BIGINT,
     target_key          TEXT,
     source_sha256       CHAR(64) NOT NULL,
     target_sha256       CHAR(64),
     imported_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
     imported_by         TEXT NOT NULL,
     CONSTRAINT uq_accounting_import_source_row
-        UNIQUE (tenant_id, source_id, source_table, source_row_id),
+        UNIQUE (tenant_id, source_id, source_table, source_pk),
     CONSTRAINT chk_accounting_import_source_id
         CHECK (length(btrim(source_id)) BETWEEN 3 AND 180),
     CONSTRAINT chk_accounting_import_source_table
@@ -28,15 +28,15 @@ CREATE TABLE IF NOT EXISTS accounting.accounting_import_ledger (
     CONSTRAINT chk_accounting_import_target_digest
         CHECK (target_sha256 IS NULL OR target_sha256 ~ '^[0-9a-f]{64}$'),
     CONSTRAINT chk_accounting_import_target_identity
-        CHECK (target_row_id IS NOT NULL OR target_key IS NOT NULL)
+        CHECK (target_pk IS NOT NULL OR target_key IS NOT NULL)
 );
 
 CREATE INDEX IF NOT EXISTS idx_accounting_import_source
     ON accounting.accounting_import_ledger
-       (tenant_id, source_id, source_table, source_row_id);
+       (tenant_id, source_id, source_table, source_pk);
 CREATE INDEX IF NOT EXISTS idx_accounting_import_target
     ON accounting.accounting_import_ledger
-       (tenant_id, target_table, target_row_id);
+       (tenant_id, target_table, target_pk);
 
 ALTER TABLE accounting.accounting_import_ledger ENABLE ROW LEVEL SECURITY;
 ALTER TABLE accounting.accounting_import_ledger FORCE ROW LEVEL SECURITY;
