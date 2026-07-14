@@ -31,6 +31,7 @@ export const MANAGER_LINKS: NavLink[] = [
   { href: "/control-room", label: "اتاقِ کنترل", hint: "اولویت‌بندی جمعیت" },
   { href: "/manager/outcomes", label: "گزارشِ outcome", hint: "نتایج درمان" },
   { href: "/manager/engagement", label: "صفِ تعامل", hint: "تأیید و ارسال" },
+  { href: "/accounting/reports", label: "گزارش‌های مالی", hint: "درآمد و عملکرد" },
   { href: "/accounting/settings", label: "تنظیمات مالی", hint: "تعرفه و قرارداد" },
 ];
 
