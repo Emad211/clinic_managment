@@ -7,16 +7,19 @@ facade adds two release-facing guarantees:
 * apply is permitted only from a fully quiesced SQLite snapshot;
 * when a natural-key match reuses a canonical target whose actual values differ
   from the transformed source payload, the discrepancy is reported using only
-  source table/row identity. Strict reconciliation can therefore block silent
-  semantic divergence without copying clinical values into operator logs.
+  source table/row identity.
 
-``patient_links`` are excluded from the generic divergence warning because their
-merge policy is explicit and asymmetric: accounting owns demographics, consent
-is never imported, opt-out may only become safer, and inactive target enrollment
-is never silently reactivated.
+Comparable digests normalize aware datetimes to UTC and all finite numerics to a
+stable decimal string. The same instant returned by PostgreSQL in UTC therefore
+does not differ from a Tehran-offset source timestamp.
 """
 from __future__ import annotations
 
+from datetime import UTC, date, datetime
+from decimal import Decimal, InvalidOperation
+import hashlib
+import json
+import math
 from pathlib import Path
 from typing import Any, Mapping, Optional
 
@@ -104,7 +107,7 @@ class SpecialistRecordImporter(_target.SpecialistRecordImporter):
             filtered = self._filtered_payload(schema_name, table_name, payload)
             comparable = {column: filtered.get(column) for column in columns}
             self._source_target_payload_sha256[(source_table, source_row_id)] = (
-                self._digest(comparable)
+                _comparable_digest(comparable)
             )
         return result
 
@@ -132,7 +135,7 @@ class SpecialistRecordImporter(_target.SpecialistRecordImporter):
             target_key=target_key,
             columns=columns,
         )
-        if self._digest(actual) == source_digest:
+        if _comparable_digest(actual) == source_digest:
             return
         self._reported_target_divergence.add(identity)
         self.report.warnings.append(
@@ -196,6 +199,45 @@ class SpecialistRecordImporter(_target.SpecialistRecordImporter):
             digest=digest,
             reused=reused,
         )
+
+
+def _comparable_digest(value: Any) -> str:
+    normalized = _normalize_comparable(value)
+    rendered = json.dumps(
+        normalized,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return hashlib.sha256(rendered).hexdigest()
+
+
+def _normalize_comparable(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        return {
+            str(key): _normalize_comparable(item)
+            for key, item in sorted(value.items(), key=lambda pair: str(pair[0]))
+        }
+    if isinstance(value, (list, tuple)):
+        return [_normalize_comparable(item) for item in value]
+    if isinstance(value, datetime):
+        if value.tzinfo is None:
+            return value.isoformat()
+        return value.astimezone(UTC).isoformat()
+    if isinstance(value, date):
+        return value.isoformat()
+    if isinstance(value, bool) or value is None or isinstance(value, str):
+        return value
+    if isinstance(value, (int, float, Decimal)):
+        if isinstance(value, float) and not math.isfinite(value):
+            return str(value)
+        try:
+            numeric = Decimal(str(value)).normalize()
+        except (InvalidOperation, ValueError):
+            return str(value)
+        rendered = format(numeric, "f")
+        return "0" if rendered in {"-0", "-0.0"} else rendered
+    return str(value)
 
 
 __all__ = [
