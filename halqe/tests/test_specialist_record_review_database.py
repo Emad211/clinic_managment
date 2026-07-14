@@ -12,7 +12,6 @@ from clinical.specialist_record_review_database import (
 from platform_core.tenant_context import set_tenant_guc
 
 
-
 def _insert_ledger(
     *,
     source_id: str,
@@ -28,7 +27,7 @@ def _insert_ledger(
                 (tenant_id, source_id, source_table, source_row_id,
                  target_table, target_row_id, target_key,
                  payload_sha256, imported_by)
-            VALUES (1, %s, 'patient_links', %s, %s, %s, NULL, %s,
+            VALUES (1, %s, 'patient_links', %s, %s, %s, %s, %s,
                     'review-binding-test')
             """,
             [
@@ -36,10 +35,10 @@ def _insert_ledger(
                 source_row_id,
                 target_table,
                 target_row_id,
+                f"id:{target_row_id}",
                 "a" * 64,
             ],
         )
-
 
 
 def _packet(seed_data, *, source_row_id: int, target_id: int, patient_uuid: str):
