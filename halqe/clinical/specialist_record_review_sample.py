@@ -7,12 +7,17 @@ critical mechanical and clinical checks all explicitly passed.
 """
 from __future__ import annotations
 
+from collections import Counter
 import re
 import stat
 from typing import Any
 
 from clinical import _specialist_record_review_sample_core as _core
 
+# ``_select`` in the extracted core performs deterministic set-cover accounting
+# with Counter. Keep the compatibility binding here while the public facade owns
+# the hardened verifier-report contract.
+_core.Counter = Counter
 
 ReviewScenario = _core.ReviewScenario
 ReviewCandidate = _core.ReviewCandidate
