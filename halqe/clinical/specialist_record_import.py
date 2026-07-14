@@ -1,16 +1,13 @@
 """Public specialist-record importer with production source-snapshot guards.
 
 The complete transactional, redaction, continuity and target-fingerprint logic
-lives in :mod:`clinical._specialist_record_import_target_core`. This final
-facade adds two release-facing guarantees:
+lives in :mod:`clinical._specialist_record_import_target_core`. This facade adds:
 
-* apply is permitted only from a fully quiesced SQLite snapshot;
-* when a natural-key match reuses a canonical target whose actual values differ
-  from the transformed source payload, the discrepancy is reported using only
-  source table/row identity.
+* apply only from a fully quiesced SQLite snapshot;
+* accounting identity resolution only through the SELECT-only accounting port;
+* visible, PHI-free warnings when canonical target reuse differs semantically.
 
-Comparable digests normalize aware datetimes to UTC, finite numerics to a stable
-decimal string and psycopg ``Jsonb`` wrappers to their underlying JSON value.
+Comparable digests normalize timezone, numeric and JSON representations.
 """
 from __future__ import annotations
 
@@ -24,6 +21,7 @@ from typing import Any, Mapping, Optional
 
 from psycopg.types.json import Jsonb
 
+from accounting_port.review import resolve_accounting_patient_for_record_import
 from clinical import _specialist_record_import_target_core as _target
 
 
@@ -39,7 +37,7 @@ UnresolvedPatientError = _target.UnresolvedPatientError
 
 
 class SpecialistRecordImporter(_target.SpecialistRecordImporter):
-    """Quiesced-source importer with visible canonical-reuse divergence."""
+    """Quiesced-source importer with explicit bounded-domain identity access."""
 
     _LIVE_SIDECARS = ("-wal", "-shm", "-journal")
 
@@ -77,6 +75,30 @@ class SpecialistRecordImporter(_target.SpecialistRecordImporter):
                 "sidecar files are present: "
                 + ", ".join(active)
             )
+
+    def _resolve_accounting_patient(self, row: Mapping[str, Any]) -> Optional[int]:
+        resolution = resolve_accounting_patient_for_record_import(
+            tenant_id=self.tenant_id,
+            accounting_patient_id=row.get("accounting_patient_id"),
+            national_id=self._clean(row.get("national_id")),
+        )
+        source_row_id = row.get("id")
+        source_label = (
+            f"patient_links#{source_row_id}"
+            if source_row_id is not None
+            else "patient_links row"
+        )
+        if resolution.duplicate_national_id:
+            raise ImportConflictError(
+                "Multiple accounting patients match the national identity for "
+                f"{source_label}; the identifier itself was not logged."
+            )
+        if resolution.conflict:
+            raise ImportConflictError(
+                "The two exact identity keys resolve to different accounting "
+                f"patients for {source_label}; target IDs were not logged."
+            )
+        return resolution.patient_id
 
     def run(self) -> ImportReport:
         try:
