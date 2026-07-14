@@ -98,6 +98,20 @@ class NursingRepository:
             (tenant_id, staff_id, staff_type),
         ).fetchone()
 
+    def get_active_staff(
+        self,
+        *,
+        tenant_id: int,
+        staff_id: int,
+        staff_type: str,
+    ) -> Optional[dict[str, Any]]:
+        """Stable singular lookup used by invoice and nursing command services."""
+        return self.get_active_staff_member(
+            tenant_id=tenant_id,
+            staff_id=staff_id,
+            staff_type=staff_type,
+        )
+
     def shift_staff(
         self, *, tenant_id: int, work_date, shift: str
     ) -> Optional[dict[str, Any]]:
