@@ -2,7 +2,7 @@
 
 Clinical release verification needs to prove that a selected clinical
 ``patient_link_id`` still resolves to the UUID written into the pseudonymous
-review packet.  It crosses the clinical → accounting boundary only through this
+review packet. It crosses the clinical → accounting boundary only through this
 SELECT-only port and never mutates accounting demographics.
 """
 from __future__ import annotations
@@ -10,7 +10,6 @@ from __future__ import annotations
 from typing import Optional
 
 from django.db import connections, transaction
-
 
 
 def get_accounting_patient_uuid_for_review(
@@ -21,9 +20,11 @@ def get_accounting_patient_uuid_for_review(
         return None
     with transaction.atomic(using="accounting_read"):
         with connections["accounting_read"].cursor() as cursor:
-            # RLS policy uses the same tenant GUC as the default application role.
+            # Use the canonical application GUC. Accounting is currently protected
+            # by SELECT-only grants rather than RLS, but this keeps the port correct
+            # if accounting RLS is enabled later and matches every clinical policy.
             cursor.execute(
-                "SELECT set_config('app.tenant_id', %s, true)",
+                "SELECT set_config('app.current_tenant', %s, true)",
                 [str(int(tenant_id))],
             )
             cursor.execute(
