@@ -1,9 +1,4 @@
-"""Generate or verify the Halqe OpenAPI contract.
-
-The full canonical JSON is generated for review and retained as a CI artifact.
-The committed drift guard is compact and exact: all 32 bytes of SHA-256 for the
-complete canonical JSON plus path/operation counts and API version.
-"""
+"""Generate or verify the exact Halqe OpenAPI contract."""
 from __future__ import annotations
 
 import hashlib
@@ -20,41 +15,47 @@ _HTTP_VERBS = ("get", "post", "put", "patch", "delete")
 
 def _render_schema() -> str:
     from config.api import api
-
-    schema = api.get_openapi_schema()
     return json.dumps(
-        schema, indent=2, sort_keys=True, ensure_ascii=False
+        api.get_openapi_schema(), indent=2, sort_keys=True, ensure_ascii=False
     ) + "\n"
+
+
+def _digest_words(digest: bytes) -> list[int]:
+    return [
+        int.from_bytes(digest[offset:offset + 8], "big", signed=True)
+        for offset in range(0, len(digest), 8)
+    ]
 
 
 def _schema_lock(rendered: str) -> dict:
     schema = json.loads(rendered)
     path_methods = {
         path: sorted(
-            verb.lower()
-            for verb in methods
-            if verb.lower() in _HTTP_VERBS
+            verb.lower() for verb in methods if verb.lower() in _HTTP_VERBS
         )
         for path, methods in sorted(schema.get("paths", {}).items())
     }
-    digest = hashlib.sha256(rendered.encode("utf-8")).digest()
     return {
         "operations": sum(len(methods) for methods in path_methods.values()),
         "paths": len(path_methods),
-        "sha256_bytes": list(digest),
+        "sha256_words": _digest_words(
+            hashlib.sha256(rendered.encode("utf-8")).digest()
+        ),
         "version": schema.get("info", {}).get("version"),
     }
 
 
 def _digest_hex(lock: dict) -> str:
-    return bytes(lock["sha256_bytes"]).hex()
+    digest = b"".join(
+        int(word).to_bytes(8, "big", signed=True)
+        for word in lock["sha256_words"]
+    )
+    return digest.hex()
 
 
 def _resolve(path_value: str) -> Path:
     path = Path(path_value)
-    if not path.is_absolute():
-        path = Path(settings.BASE_DIR) / path
-    return path
+    return path if path.is_absolute() else Path(settings.BASE_DIR) / path
 
 
 class Command(BaseCommand):
@@ -68,10 +69,8 @@ class Command(BaseCommand):
         parser.add_argument("--write-lock", action="store_true")
 
     def handle(self, *args, **options):
-        modes = sum(bool(options[name]) for name in ("check", "check_lock", "write_lock"))
-        if modes > 1:
-            raise CommandError("Choose only one of --check, --check-lock, or --write-lock.")
-
+        if sum(bool(options[name]) for name in ("check", "check_lock", "write_lock")) > 1:
+            raise CommandError("Choose only one OpenAPI output mode.")
         rendered = _render_schema()
         lock = _schema_lock(rendered)
         out_path = _resolve(options["output"])
@@ -79,26 +78,21 @@ class Command(BaseCommand):
 
         if options["check_lock"]:
             if not lock_path.exists():
-                raise CommandError(
-                    f"OpenAPI lock missing: {lock_path}. Run `manage.py dump_openapi --write-lock`."
-                )
+                raise CommandError(f"OpenAPI lock missing: {lock_path}")
             try:
                 existing = json.loads(lock_path.read_text(encoding="utf-8"))
             except (OSError, json.JSONDecodeError) as exc:
                 raise CommandError(f"OpenAPI lock is unreadable: {exc}") from exc
             if existing != lock:
                 raise CommandError(
-                    "OpenAPI lock is STALE — the complete canonical schema digest "
-                    "or path/operation counts changed. Review the full CI artifact "
-                    "and regenerate the lock for an intentional additive v1 change."
+                    "OpenAPI lock is STALE. Review the generated contract artifact "
+                    "and regenerate the lock for an intentional API change."
                 )
-            self.stdout.write(
-                self.style.SUCCESS(
-                    f"OpenAPI lock is up to date: {lock_path} "
-                    f"({lock['paths']} paths, {lock['operations']} operations, "
-                    f"sha256={_digest_hex(lock)})"
-                )
-            )
+            self.stdout.write(self.style.SUCCESS(
+                f"OpenAPI lock is up to date: {lock_path} "
+                f"({lock['paths']} paths, {lock['operations']} operations, "
+                f"sha256={_digest_hex(lock)})"
+            ))
             return
 
         if options["write_lock"]:
@@ -107,33 +101,25 @@ class Command(BaseCommand):
                 json.dumps(lock, indent=2, sort_keys=True, ensure_ascii=False) + "\n",
                 encoding="utf-8",
             )
-            self.stdout.write(
-                self.style.SUCCESS(
-                    f"Wrote OpenAPI lock → {lock_path}\n"
-                    f"  paths      : {lock['paths']}\n"
-                    f"  operations : {lock['operations']}\n"
-                    f"  sha256     : {_digest_hex(lock)}\n"
-                    f"  version    : {lock['version']}"
-                )
-            )
+            self.stdout.write(self.style.SUCCESS(
+                f"Wrote OpenAPI lock → {lock_path}\n"
+                f"  paths: {lock['paths']}\n"
+                f"  operations: {lock['operations']}\n"
+                f"  sha256: {_digest_hex(lock)}"
+            ))
             return
 
         if options["check"]:
-            if not out_path.exists():
-                raise CommandError(f"Snapshot missing: {out_path}. Run `manage.py dump_openapi`.")
-            if out_path.read_text(encoding="utf-8") != rendered:
+            if not out_path.exists() or out_path.read_text(encoding="utf-8") != rendered:
                 raise CommandError("OpenAPI full snapshot is STALE.")
             self.stdout.write(self.style.SUCCESS(f"OpenAPI snapshot is up to date: {out_path}"))
             return
 
         out_path.parent.mkdir(parents=True, exist_ok=True)
         out_path.write_text(rendered, encoding="utf-8")
-        self.stdout.write(
-            self.style.SUCCESS(
-                f"Wrote OpenAPI contract → {out_path}\n"
-                f"  paths      : {lock['paths']}\n"
-                f"  operations : {lock['operations']}\n"
-                f"  sha256     : {_digest_hex(lock)}\n"
-                f"  version    : {lock['version']}"
-            )
-        )
+        self.stdout.write(self.style.SUCCESS(
+            f"Wrote OpenAPI contract → {out_path}\n"
+            f"  paths: {lock['paths']}\n"
+            f"  operations: {lock['operations']}\n"
+            f"  sha256: {_digest_hex(lock)}"
+        ))
