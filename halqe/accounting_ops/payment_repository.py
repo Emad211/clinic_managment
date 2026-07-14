@@ -82,13 +82,18 @@ class PaymentRepository:
         invoice_id: int,
         visit_id: int,
     ) -> Optional[dict[str, Any]]:
-        """Compatibility wrapper retained for first-slice callers/tests."""
-        return self.get_item(
+        """Return a visit item with both canonical ``amount`` and legacy ``price``."""
+        row = self.get_item(
             tenant_id=tenant_id,
             invoice_id=invoice_id,
             item_type="visit",
             item_id=visit_id,
         )
+        if not row:
+            return None
+        result = dict(row)
+        result["price"] = result["amount"]
+        return result
 
     def set_item_payment(
         self,
