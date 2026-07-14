@@ -1,15 +1,16 @@
 """Public final release manifest with a mandatory fresh database reconciliation.
 
 The artifact-chain implementation lives in
-:mod:`clinical._specialist_record_release_manifest_core`.  This facade adds the
+:mod:`clinical._specialist_record_release_manifest_core`. This facade adds the
 last cutover-time invariant: after validating all saved artifacts and clinician
 approval, rerun ``verify_specialist_record_import`` against the current database
-and exact SQLite snapshot.  The private fresh report and its normalized semantic
+and exact SQLite snapshot. The private fresh report and its normalized semantic
 fingerprint are bound into the final deterministic release id.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import UTC, datetime
 import hashlib
 import json
 from pathlib import Path
@@ -122,7 +123,7 @@ class SpecialistRecordReleaseManifestBuilder(
             release_id=release_id,
             source_id=base.source_id,
             tenant_id=base.tenant_id,
-            generated_at=base.generated_at,
+            generated_at=datetime.now(UTC).isoformat(),
             git_commit=base.git_commit,
             image_digest=base.image_digest,
             source_file_sha256=base.source_file_sha256,
