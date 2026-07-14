@@ -73,7 +73,8 @@ export default function Nav({
 
   const showAccounting =
     role === "admin" || role === "manager" || role === "reception";
-  const showMgr = showManagerLinks ?? role === "manager" || role === "admin";
+  const showMgr =
+    showManagerLinks ?? (role === "manager" || role === "admin");
 
   return (
     <header className={styles.topbar} role="banner">
