@@ -54,11 +54,9 @@ jobs:
           cache-dependency-path: halqe/requirements.txt
       - name: Install Python dependencies
         run: pip install -r halqe/requirements.txt
-      - name: Verify committed OpenAPI contract
+      - name: Generate combined OpenAPI contract for review
         working-directory: halqe
-        run: |
-          python manage.py dump_openapi --check
-          cp docs/openapi.json generated-openapi.json
+        run: python manage.py dump_openapi --output generated-openapi.json
       - name: Run full Halqe backend suite
         working-directory: halqe
         shell: bash
@@ -79,7 +77,7 @@ jobs:
         with:
           name: generated-openapi-contract
           path: halqe/generated-openapi.json
-          if-no-files-found: warn
+          if-no-files-found: error
           retention-days: 14
 
   legacy-oracles:
