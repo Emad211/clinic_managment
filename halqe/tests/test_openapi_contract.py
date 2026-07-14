@@ -1,9 +1,10 @@
 """Exact OpenAPI drift guard for the unified Halqe platform.
 
 The full canonical JSON is generated as a CI artifact for human review. The
-committed ``docs/openapi.lock.json`` stores its SHA-256 plus every path/method;
-therefore response-schema drift, route drift and count drift are all detected
-without checking a large generated document into every integration branch.
+committed ``docs/openapi.lock.json`` stores SHA-256 of that complete document,
+plus path/operation counts. Representative clinical, accounting and manager
+paths are asserted explicitly below so accidental domain removal has a readable
+failure in addition to the exact byte-level hash mismatch.
 """
 from __future__ import annotations
 
@@ -19,13 +20,13 @@ from platform_core.management.commands.dump_openapi import (
 )
 
 
-EXPECTED_OPERATION_COUNT = 87
-EXPECTED_PATH_COUNT = 83
+EXPECTED_OPERATION_COUNT = 95
+EXPECTED_PATH_COUNT = 91
 EXPECTED_API_VERSION = "0.1.0"
 _HTTP_VERBS = ("get", "post", "put", "patch", "delete")
 
 # Representative spine: clinical safety/care, structured specialist record,
-# accounting reception/payment/nursing/procedure/workbench, and management.
+# accounting reception/payment/nursing/procedure/workbench/admin, and management.
 CORE_PATHS = [
     "/api/v1/auth/login",
     "/api/v1/patients",
@@ -45,6 +46,11 @@ CORE_PATHS = [
     "/api/v1/accounting/invoices/{invoice_id}/nursing-items",
     "/api/v1/accounting/invoices/{invoice_id}/procedure-items",
     "/api/v1/accounting/invoices/{invoice_id}/financials",
+    "/api/v1/accounting/admin/config",
+    "/api/v1/accounting/admin/staff",
+    "/api/v1/accounting/admin/insurance-schemes",
+    "/api/v1/accounting/admin/visit-tariffs",
+    "/api/v1/accounting/admin/payroll-settings",
     "/api/v1/manager/population-thresholds",
     "/api/v1/control-room",
     "/api/v1/doctor-queue",
@@ -143,4 +149,4 @@ class TestCommittedLock:
         committed = json.loads(_lock_path().read_text(encoding="utf-8"))
         assert committed["paths"] == EXPECTED_PATH_COUNT
         assert committed["operations"] == EXPECTED_OPERATION_COUNT
-        assert len(committed["path_methods"]) == EXPECTED_PATH_COUNT
+        assert committed["sha256"] == _schema_lock(_render_schema())["sha256"]
