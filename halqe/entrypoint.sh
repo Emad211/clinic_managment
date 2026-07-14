@@ -1,27 +1,11 @@
 #!/bin/sh
-# halqe/entrypoint.sh
-# Idempotent container startup for the halqe Django backend.
-#
-# Sequence:
-#   1) Wait for Postgres to be reachable (lightweight TCP poll — compose
-#      healthcheck is the primary gate, but this gives us a safety net).
-#   2) apply_schema  — DDL slices (superuser path, idempotent).
-#   3) ensure_app_role — create/refresh the least-privilege LOGIN role.
-#   4) exec gunicorn  — hand off to the WSGI server (no runserver).
-#
-# All env vars are injected by docker-compose; nothing is hard-coded here.
-# Re-running this script is always safe (idempotent steps).
-
+# halqe/entrypoint.sh — idempotent backend container startup.
 set -e
 
-# ---------------------------------------------------------------------------
-# 1) Wait for Postgres
-# ---------------------------------------------------------------------------
 PG_HOST="${PG_HOST:-postgres}"
 PG_PORT="${PG_PORT:-5432}"
 
 echo "entrypoint: waiting for Postgres at ${PG_HOST}:${PG_PORT} ..."
-# Poll until the port accepts a connection (max 60s, 2s interval).
 i=0
 until python -c "
 import socket, sys
@@ -42,34 +26,31 @@ except OSError:
 done
 echo "entrypoint: Postgres is reachable."
 
-# ---------------------------------------------------------------------------
-# 2) Apply schema slices (superuser — DDL + GRANTs)
-# ---------------------------------------------------------------------------
 echo "entrypoint: running apply_schema ..."
 python manage.py apply_schema
 echo "entrypoint: apply_schema done."
 
-# ---------------------------------------------------------------------------
-# 3) Ensure least-privilege app LOGIN role exists
-# ---------------------------------------------------------------------------
 echo "entrypoint: running ensure_app_role ..."
 python manage.py ensure_app_role
 echo "entrypoint: ensure_app_role done."
 
-# ---------------------------------------------------------------------------
-# 4) Start gunicorn
-# ---------------------------------------------------------------------------
+# Incremental accounting rollout: do not take the existing clinical platform
+# down merely because the new writer secret has not been provisioned yet.
+# Once PG_ACCOUNTING_PASSWORD is present, bootstrap the isolated write role.
+if [ -n "${PG_ACCOUNTING_PASSWORD:-}" ]; then
+    echo "entrypoint: running ensure_accounting_role ..."
+    python manage.py ensure_accounting_role
+    echo "entrypoint: ensure_accounting_role done."
+else
+    echo "entrypoint: PG_ACCOUNTING_PASSWORD is unset; accounting write API remains disabled."
+fi
+
 WORKERS="${GUNICORN_WORKERS:-3}"
 echo "entrypoint: starting gunicorn with ${WORKERS} workers ..."
-# Access-log format: host, request LINE, status, bytes, response time
-# (%(L)s, seconds) and the X-Request-ID echoed by RequestIdMiddleware.
-# %({x-request-id}o)s reads the RESPONSE header (the 'o' variant), which the
-# middleware always sets — even when the request arrived without one — so every
-# access line carries the same rid as the Django structured logs
-# (request_id=…), letting an operator join the two for a single request.
-# PII-free: only the request LINE is logged — never Authorization/cookies or any
-# request/response body.
-GUNICORN_ACCESS_FMT='%(h)s "%(r)s" %(s)s %(b)s %(L)s rid=%({x-request-id}o)s'
+# Privacy contract: use method + URL PATH + protocol instead of %(r)s. Gunicorn's
+# request-line atom includes the query string, which can contain patient search
+# values such as national_id or phone. %(U)s deliberately excludes query args.
+GUNICORN_ACCESS_FMT='%(h)s "%(m)s %(U)s %(H)s" %(s)s %(b)s %(L)s rid=%({x-request-id}o)s'
 exec gunicorn config.wsgi:application \
     --bind 0.0.0.0:8000 \
     --workers "${WORKERS}" \
