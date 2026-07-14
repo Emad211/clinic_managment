@@ -1,8 +1,8 @@
 """Run and validate a fresh database reconciliation for final release.
 
 The clinician packet is intentionally bound to the earlier verifier report used
-for sampling.  Immediately before cutover we run the same verifier again against
-the current database and source snapshot.  The fresh report is retained as a
+for sampling. Immediately before cutover we run the same verifier again against
+the current database and source snapshot. The fresh report is retained as a
 private artifact and a normalized fingerprint is included in the final release
 manifest, preventing stale database verification from being reused.
 """
@@ -34,7 +34,6 @@ class FreshImportVerificationResult:
     payload: Optional[dict[str, Any]] = None
 
 
-
 def run_fresh_import_verification(
     *,
     sqlite_path: str | Path,
@@ -47,6 +46,34 @@ def run_fresh_import_verification(
 ) -> FreshImportVerificationResult:
     """Execute ``verify_specialist_record_import`` and validate its fresh report."""
     target = Path(report_path).expanduser().absolute()
+    if target.is_symlink():
+        return FreshImportVerificationResult(
+            passed=False,
+            report_path=target,
+            report_sha256=None,
+            semantic_fingerprint=None,
+            detail="Refusing to replace a fresh verifier report through a symlink.",
+        )
+    if target.exists():
+        if not target.is_file():
+            return FreshImportVerificationResult(
+                passed=False,
+                report_path=target,
+                report_sha256=None,
+                semantic_fingerprint=None,
+                detail="Fresh verifier report path is not a regular file.",
+            )
+        try:
+            target.unlink()
+        except OSError as exc:
+            return FreshImportVerificationResult(
+                passed=False,
+                report_path=target,
+                report_sha256=None,
+                semantic_fingerprint=None,
+                detail=f"Cannot remove stale fresh verifier report: {exc}",
+            )
+
     stdout = StringIO()
     command_error: Optional[str] = None
     try:
@@ -171,7 +198,6 @@ def run_fresh_import_verification(
     )
 
 
-
 def _status_map(value: Any) -> dict[str, str]:
     if not isinstance(value, list):
         return {}
@@ -185,7 +211,6 @@ def _status_map(value: Any) -> dict[str, str]:
             return {}
         result[key] = status
     return result
-
 
 
 def _integer_or_none(value: Any) -> Optional[int]:
