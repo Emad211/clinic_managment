@@ -1,31 +1,31 @@
-"""
-tests/test_openapi_contract.py — API contract drift guard.
+"""Exact OpenAPI drift guard for the unified Halqe platform.
 
-The committed ``docs/openapi.json`` is the locked API contract. These tests are
-the silent-drift tripwire: additive v1 changes must update the operation/path
-counts and regenerate the snapshot; breaking changes require a new API version.
+The full canonical JSON is generated as a CI artifact for human review. The
+committed ``docs/openapi.lock.json`` stores its SHA-256 plus every path/method;
+therefore response-schema drift, route drift and count drift are all detected
+without checking a large generated document into every integration branch.
 """
 from __future__ import annotations
 
 import json
 from pathlib import Path
 
-import pytest
 from django.conf import settings
 
 from config.api import api
+from platform_core.management.commands.dump_openapi import (
+    _render_schema,
+    _schema_lock,
+)
 
-# The structured patient-record migration adds fifteen additive operations across
-# fifteen new paths under /api/v1. No existing path, method or response contract
-# was removed or renamed.
-EXPECTED_OPERATION_COUNT = 62
-EXPECTED_PATH_COUNT = 59
+
+EXPECTED_OPERATION_COUNT = 87
+EXPECTED_PATH_COUNT = 83
 EXPECTED_API_VERSION = "0.1.0"
-
 _HTTP_VERBS = ("get", "post", "put", "patch", "delete")
 
-# Representative spine — one path per bounded domain plus the new structured
-# patient-record aggregate. Losing any of these indicates router drift.
+# Representative spine: clinical safety/care, structured specialist record,
+# accounting reception/payment/nursing/procedure/workbench, and management.
 CORE_PATHS = [
     "/api/v1/auth/login",
     "/api/v1/patients",
@@ -39,6 +39,12 @@ CORE_PATHS = [
     "/api/v1/patients/{patient_uuid}/suggestions",
     "/api/v1/worklist",
     "/api/v1/patients/{patient_uuid}/encounters",
+    "/api/v1/accounting/patients/search",
+    "/api/v1/accounting/invoices/visit",
+    "/api/v1/accounting/invoices/{invoice_id}/detail",
+    "/api/v1/accounting/invoices/{invoice_id}/nursing-items",
+    "/api/v1/accounting/invoices/{invoice_id}/procedure-items",
+    "/api/v1/accounting/invoices/{invoice_id}/financials",
     "/api/v1/manager/population-thresholds",
     "/api/v1/control-room",
     "/api/v1/doctor-queue",
@@ -63,21 +69,21 @@ def _count_operations(schema: dict) -> int:
     )
 
 
+def _lock_path() -> Path:
+    return Path(settings.BASE_DIR) / "docs" / "openapi.lock.json"
+
+
 class TestOpenApiSurface:
     def test_operation_count_is_locked(self):
-        schema = _live_schema()
-        actual = _count_operations(schema)
+        actual = _count_operations(_live_schema())
         assert actual == EXPECTED_OPERATION_COUNT, (
             f"API operation count changed: expected {EXPECTED_OPERATION_COUNT}, "
-            f"got {actual}. If this is an intentional ADDITIVE change within "
-            f"/api/v1, update EXPECTED_OPERATION_COUNT and regenerate "
-            f"docs/openapi.json. Breaking changes require /api/v2 "
-            f"(see docs/api_versioning.md)."
+            f"got {actual}. Intentional additive v1 changes must regenerate and "
+            "review docs/openapi.lock.json plus the full CI artifact."
         )
 
     def test_path_count_is_locked(self):
-        schema = _live_schema()
-        actual = len(schema.get("paths", {}))
+        actual = len(_live_schema().get("paths", {}))
         assert actual == EXPECTED_PATH_COUNT, (
             f"API path count changed: expected {EXPECTED_PATH_COUNT}, got {actual}."
         )
@@ -91,8 +97,8 @@ class TestOpenApiSurface:
         paths = _live_schema().get("paths", {})
         rogue = [path for path in paths if not path.startswith("/api/v1/")]
         assert not rogue, (
-            f"Found path(s) NOT under /api/v1: {rogue}. v1 is the only mounted "
-            f"version; a v2 surface must be a separate NinjaAPI mount."
+            f"Found path(s) NOT under /api/v1: {rogue}. A breaking surface must "
+            "be mounted separately as /api/v2."
         )
 
     def test_version_field(self):
@@ -111,37 +117,30 @@ class TestPublicRoutesContract:
         assert not missing, f"Public contract path(s) missing from schema: {missing}"
 
     def test_card_token_is_get(self):
-        paths = _live_schema().get("paths", {})
-        assert "get" in paths["/api/v1/card/{token}"]
+        assert "get" in _live_schema()["paths"]["/api/v1/card/{token}"]
 
     def test_patient_report_is_post(self):
-        paths = _live_schema().get("paths", {})
-        assert "post" in paths["/api/v1/patient-report/{token}"]
+        assert "post" in _live_schema()["paths"]["/api/v1/patient-report/{token}"]
 
 
-class TestCommittedSnapshot:
-    def _snapshot_path(self) -> Path:
-        return Path(settings.BASE_DIR) / "docs" / "openapi.json"
-
-    def test_snapshot_file_exists(self):
-        assert self._snapshot_path().exists(), (
-            "docs/openapi.json missing — run `python manage.py dump_openapi`."
+class TestCommittedLock:
+    def test_lock_file_exists(self):
+        assert _lock_path().exists(), (
+            "docs/openapi.lock.json missing — run "
+            "`python manage.py dump_openapi --write-lock`."
         )
 
-    def test_snapshot_matches_live_schema(self):
-        snap_path = self._snapshot_path()
-        if not snap_path.exists():
-            pytest.skip("snapshot missing; covered by test_snapshot_file_exists")
-        committed = json.loads(snap_path.read_text(encoding="utf-8"))
-        live = json.loads(json.dumps(_live_schema()))
-        assert committed == live, (
-            "docs/openapi.json is STALE vs the live API schema. Run "
-            "`python manage.py dump_openapi` and commit the result."
+    def test_lock_matches_complete_live_schema(self):
+        committed = json.loads(_lock_path().read_text(encoding="utf-8"))
+        live_lock = _schema_lock(_render_schema())
+        assert committed == live_lock, (
+            "OpenAPI lock is STALE vs the complete canonical schema. Generate "
+            "the full JSON for review, then run `python manage.py dump_openapi "
+            "--write-lock` for an intentional additive v1 change."
         )
 
-    def test_snapshot_operation_count(self):
-        snap_path = self._snapshot_path()
-        if not snap_path.exists():
-            pytest.skip("snapshot missing; covered by test_snapshot_file_exists")
-        committed = json.loads(snap_path.read_text(encoding="utf-8"))
-        assert _count_operations(committed) == EXPECTED_OPERATION_COUNT
+    def test_lock_counts_match_constants(self):
+        committed = json.loads(_lock_path().read_text(encoding="utf-8"))
+        assert committed["paths"] == EXPECTED_PATH_COUNT
+        assert committed["operations"] == EXPECTED_OPERATION_COUNT
+        assert len(committed["path_methods"]) == EXPECTED_PATH_COUNT
