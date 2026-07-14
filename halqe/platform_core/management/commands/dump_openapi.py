@@ -1,30 +1,20 @@
-"""
-Management command: dump_openapi
+"""Generate or verify the Halqe OpenAPI contract.
 
-نوشتنِ snapshotِ قراردادِ OpenAPI پلتفرم به یک فایلِ JSON (پیش‌فرض:
-``halqe/docs/openapi.json``). این فایلِ متعهدشده «قفلِ قرارداد» است: reviewerها /
-CI آن را diff می‌گیرند تا هر تغییرِ ناخواسته در سطحِ API (endpoint جدید/حذف‌شده،
-تغییرِ schema) را زودهنگام بگیرند — همان ایده‌ای که در snapshotهای OpenAPIِ فازِ
-cleanup استفاده شد.
-
-طراحی:
-  * منبعِ schema تنها ``config.api.api.get_openapi_schema()`` است (همان NinjaAPI
-    که در ``urls.py`` زیر ``/api/v1/`` mount می‌شود) — هیچ سطحِ APIِ جدیدی اینجا
-    ساخته یا تغییر داده نمی‌شود؛ فقط snapshot گرفته می‌شود.
-  * خروجی با ``indent=2`` + ``sort_keys=True`` + ``ensure_ascii=False`` نوشته
-    می‌شود تا diffها معنادار و پایدار باشند (ترتیبِ کلیدها مستقل از نسخهٔ پایتون)
-    و رشته‌های فارسیِ توضیحات به‌صورتِ خوانا (نه ``\\uXXXX``) ذخیره شوند.
-  * یک خطِ newline در انتها برای سازگاری با ابزارهای POSIX/Git.
-
-idempotent: اجرای مجدد بدونِ تغییرِ کد → همان بایت‌ها (no-op diff).
+The full pretty JSON remains available for local review and as a CI artifact.
+The committed drift guard is ``docs/openapi.lock.json``: it stores the SHA-256 of
+the complete canonical JSON plus the path/method manifest and counts. Therefore
+any request/response schema change still changes the lock, without requiring a
+365KB generated document to be committed on every integration branch.
 
 Usage:
-    python manage.py dump_openapi
-    python manage.py dump_openapi --output docs/openapi.json
-    python manage.py dump_openapi --check          # CI mode: fail اگر فایل قدیمی است
+    python manage.py dump_openapi --output generated-openapi.json
+    python manage.py dump_openapi --check-lock
+    python manage.py dump_openapi --write-lock
+    python manage.py dump_openapi --check          # legacy full-snapshot mode
 """
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 
@@ -32,23 +22,16 @@ from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
 
 
-# Default snapshot location: halqe/docs/openapi.json (relative to BASE_DIR).
 _DEFAULT_OUTPUT = "docs/openapi.json"
+_DEFAULT_LOCK = "docs/openapi.lock.json"
+_HTTP_VERBS = ("get", "post", "put", "patch", "delete")
 
 
 def _render_schema() -> str:
-    """
-    Serialize the live ninja OpenAPI schema to a stable, pretty JSON string.
-
-    Import is done lazily inside the function so that simply *loading* this
-    command module (as Django does at startup for command discovery) does not
-    pull in the whole router graph before ``django.setup()`` has finished.
-    """
-    # Lazy import — config.api wires every domain router onto the NinjaAPI.
+    """Serialize the live Ninja schema deterministically."""
     from config.api import api
 
     schema = api.get_openapi_schema()
-    # ``OpenAPISchema`` is a dict subclass, so json.dumps handles it directly.
     return (
         json.dumps(
             schema,
@@ -60,12 +43,38 @@ def _render_schema() -> str:
     )
 
 
+def _schema_lock(rendered: str) -> dict:
+    """Build the exact, reviewable lock for a canonical rendered schema."""
+    schema = json.loads(rendered)
+    path_methods = {
+        path: sorted(
+            verb.lower()
+            for verb in methods
+            if verb.lower() in _HTTP_VERBS
+        )
+        for path, methods in sorted(schema.get("paths", {}).items())
+    }
+    operations = sum(len(methods) for methods in path_methods.values())
+    return {
+        "operations": operations,
+        "path_methods": path_methods,
+        "paths": len(path_methods),
+        "sha256": hashlib.sha256(rendered.encode("utf-8")).hexdigest(),
+        "version": schema.get("info", {}).get("version"),
+    }
+
+
+def _resolve(path_value: str) -> Path:
+    path = Path(path_value)
+    if not path.is_absolute():
+        path = Path(settings.BASE_DIR) / path
+    return path
+
+
 class Command(BaseCommand):
     help = (
-        "Dump the django-ninja OpenAPI contract to a JSON file (default "
-        "docs/openapi.json), pretty-printed with stable key order so diffs "
-        "catch accidental contract changes. Use --check in CI to fail when the "
-        "committed snapshot is stale."
+        "Generate the django-ninja OpenAPI JSON, verify a full snapshot, or "
+        "verify/write the exact SHA/path-method lock used by unified CI."
     )
 
     def add_arguments(self, parser):
@@ -74,27 +83,89 @@ class Command(BaseCommand):
             "-o",
             dest="output",
             default=_DEFAULT_OUTPUT,
-            help=(
-                "Output path (relative paths resolve against BASE_DIR). "
-                f"Default: {_DEFAULT_OUTPUT}"
-            ),
+            help=f"Full JSON output path. Default: {_DEFAULT_OUTPUT}",
+        )
+        parser.add_argument(
+            "--lock-output",
+            dest="lock_output",
+            default=_DEFAULT_LOCK,
+            help=f"OpenAPI lock path. Default: {_DEFAULT_LOCK}",
         )
         parser.add_argument(
             "--check",
             action="store_true",
-            help=(
-                "Do not write. Exit non-zero if the on-disk snapshot differs "
-                "from the live schema (CI drift guard)."
-            ),
+            help="Legacy mode: compare the full JSON output file with the live schema.",
+        )
+        parser.add_argument(
+            "--check-lock",
+            action="store_true",
+            help="Compare the committed SHA/path-method lock with the live schema.",
+        )
+        parser.add_argument(
+            "--write-lock",
+            action="store_true",
+            help="Write the deterministic SHA/path-method lock instead of full JSON.",
         )
 
     def handle(self, *args, **options):
-        output = options["output"]
-        out_path = Path(output)
-        if not out_path.is_absolute():
-            out_path = Path(settings.BASE_DIR) / out_path
+        modes = sum(
+            bool(options[name])
+            for name in ("check", "check_lock", "write_lock")
+        )
+        if modes > 1:
+            raise CommandError(
+                "Choose only one of --check, --check-lock, or --write-lock."
+            )
 
         rendered = _render_schema()
+        lock = _schema_lock(rendered)
+        out_path = _resolve(options["output"])
+        lock_path = _resolve(options["lock_output"])
+
+        if options["check_lock"]:
+            if not lock_path.exists():
+                raise CommandError(
+                    f"OpenAPI lock missing: {lock_path}. Run `manage.py "
+                    "dump_openapi --write-lock`."
+                )
+            try:
+                existing = json.loads(lock_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError) as exc:
+                raise CommandError(f"OpenAPI lock is unreadable: {exc}") from exc
+            if existing != lock:
+                raise CommandError(
+                    "OpenAPI lock is STALE — the complete schema hash or its "
+                    "path/method manifest changed. Run `python manage.py "
+                    "dump_openapi --write-lock`, review the full generated CI "
+                    "artifact, and commit the lock only for intentional additive "
+                    "v1 changes."
+                )
+            self.stdout.write(
+                self.style.SUCCESS(
+                    f"OpenAPI lock is up to date: {lock_path} "
+                    f"({lock['paths']} paths, {lock['operations']} operations, "
+                    f"sha256={lock['sha256']})"
+                )
+            )
+            return
+
+        if options["write_lock"]:
+            lock_path.parent.mkdir(parents=True, exist_ok=True)
+            lock_path.write_text(
+                json.dumps(lock, indent=2, sort_keys=True, ensure_ascii=False)
+                + "\n",
+                encoding="utf-8",
+            )
+            self.stdout.write(
+                self.style.SUCCESS(
+                    f"Wrote OpenAPI lock → {lock_path}\n"
+                    f"  paths      : {lock['paths']}\n"
+                    f"  operations : {lock['operations']}\n"
+                    f"  sha256     : {lock['sha256']}\n"
+                    f"  version    : {lock['version']}"
+                )
+            )
+            return
 
         if options["check"]:
             if not out_path.exists():
@@ -104,11 +175,8 @@ class Command(BaseCommand):
             existing = out_path.read_text(encoding="utf-8")
             if existing != rendered:
                 raise CommandError(
-                    "OpenAPI snapshot is STALE — the live API schema differs "
-                    f"from {out_path}.\n"
-                    "Run `python manage.py dump_openapi` and commit the result. "
-                    "If this is an intentional contract change, make sure it is "
-                    "an additive change within /api/v1 (see docs/api_versioning.md)."
+                    "OpenAPI full snapshot is STALE. Generate it again or use "
+                    "--check-lock for the committed unified contract guard."
                 )
             self.stdout.write(
                 self.style.SUCCESS(f"OpenAPI snapshot is up to date: {out_path}")
@@ -117,22 +185,12 @@ class Command(BaseCommand):
 
         out_path.parent.mkdir(parents=True, exist_ok=True)
         out_path.write_text(rendered, encoding="utf-8")
-
-        # Count operations for the operator's confirmation line (PII-free).
-        from config.api import api  # already imported by _render_schema
-
-        schema = api.get_openapi_schema()
-        ops = sum(
-            1
-            for methods in schema.get("paths", {}).values()
-            for verb in methods
-            if verb.lower() in ("get", "post", "put", "patch", "delete")
-        )
         self.stdout.write(
             self.style.SUCCESS(
                 f"Wrote OpenAPI contract → {out_path}\n"
-                f"  paths      : {len(schema.get('paths', {}))}\n"
-                f"  operations : {ops}\n"
-                f"  version    : {schema.get('info', {}).get('version')}"
+                f"  paths      : {lock['paths']}\n"
+                f"  operations : {lock['operations']}\n"
+                f"  sha256     : {lock['sha256']}\n"
+                f"  version    : {lock['version']}"
             )
         )
