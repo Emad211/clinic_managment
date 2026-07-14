@@ -6,7 +6,11 @@ from pathlib import Path
 
 from django.core.management.base import BaseCommand, CommandError
 
-from clinical.secure_report_io import SecureReportIOError, write_private_text
+from clinical.secure_report_io import (
+    SecureReportIOError,
+    ensure_distinct_artifact_paths,
+    write_private_text,
+)
 from clinical.specialist_record_release_manifest import (
     SpecialistRecordReleaseManifestBuilder,
     SpecialistRecordReleaseManifestError,
@@ -63,6 +67,26 @@ class Command(BaseCommand):
             fresh_path = verification.with_name(
                 verification.stem + ".fresh-verification.json"
             )
+        try:
+            ensure_distinct_artifact_paths(
+                inputs={
+                    "sqlite_source": options["sqlite"],
+                    "apply_report": options["apply_report"],
+                    "replay_report": options["replay_report"],
+                    "verification_report": options["verification_report"],
+                    "review_packet": options["review_packet"],
+                    "clinician_signoff_report": options[
+                        "clinician_signoff_report"
+                    ],
+                },
+                outputs={
+                    "fresh_verification_report": fresh_path,
+                    "release_manifest": options["report"],
+                },
+            )
+        except SecureReportIOError as exc:
+            raise CommandError(str(exc)) from exc
+
         try:
             result = SpecialistRecordReleaseManifestBuilder(
                 source_snapshot_path=options["sqlite"],
