@@ -90,6 +90,11 @@ def run_fresh_import_verification(
         )
     except CommandError as exc:
         command_error = str(exc)
+    except Exception:
+        # Database/driver failures must become a durable fail-closed decision.
+        # Do not include raw exception text because it may contain connection or
+        # source details unsuitable for shared operator logs.
+        command_error = "fresh verifier execution failed unexpectedly"
 
     if target.is_symlink() or not target.exists() or not target.is_file():
         return FreshImportVerificationResult(
