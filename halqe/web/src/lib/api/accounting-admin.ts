@@ -79,17 +79,49 @@ export interface AccountingAdminConfigurationDTO {
   payroll_settings: AccountingPayrollSettingDTO[];
 }
 
-export type StaffInput = Omit<AccountingAdminStaffDTO, "created_at">;
-export type InsuranceSchemeInput = Omit<AccountingInsuranceSchemeDTO, "created_at">;
-export type VisitTariffInput = Omit<
-  AccountingAdminVisitTariffDTO,
-  "created_at" | "updated_at"
->;
-export type CatalogItemInput = Omit<AccountingAdminCatalogItemDTO, "created_at">;
-export type ExclusionInput = Omit<
-  AccountingAdminExclusionDTO,
-  "created_at" | "service_name"
->;
+export interface StaffInput {
+  id?: number | null;
+  full_name: string;
+  staff_type: "doctor" | "nurse";
+  is_active?: boolean;
+}
+
+export interface InsuranceSchemeInput {
+  id?: number | null;
+  code: string;
+  name: string;
+  is_supplementary?: boolean;
+  is_base?: boolean;
+  is_active?: boolean;
+}
+
+export interface VisitTariffInput {
+  id?: number | null;
+  insurance_type: string;
+  insurance_scheme_id?: number | null;
+  tariff_price?: number;
+  nursing_tariff?: number;
+  nursing_covers?: boolean;
+  is_active?: boolean;
+  is_supplementary?: boolean;
+  is_base_tariff?: boolean;
+}
+
+export interface CatalogItemInput {
+  id?: number | null;
+  name: string;
+  price?: number;
+  category?: "drug" | "supply" | null;
+  is_active?: boolean;
+}
+
+export interface ExclusionInput {
+  id?: number | null;
+  insurance_type: string;
+  nursing_service_id: number;
+  note?: string | null;
+}
+
 export type PayrollInput = Omit<
   AccountingPayrollSettingDTO,
   "id" | "staff_name" | "staff_type" | "updated_at"
@@ -100,7 +132,7 @@ export function apiGetAccountingAdminConfiguration(): Promise<AccountingAdminCon
 }
 
 export function apiSaveAccountingStaff(
-  payload: Partial<StaffInput> & Pick<StaffInput, "full_name" | "staff_type">,
+  payload: StaffInput,
 ): Promise<AccountingAdminStaffDTO> {
   return apiFetch("/accounting/admin/staff", {
     method: "POST",
@@ -109,7 +141,7 @@ export function apiSaveAccountingStaff(
 }
 
 export function apiSaveAccountingInsuranceScheme(
-  payload: Partial<InsuranceSchemeInput> & Pick<InsuranceSchemeInput, "code" | "name">,
+  payload: InsuranceSchemeInput,
 ): Promise<AccountingInsuranceSchemeDTO> {
   return apiFetch("/accounting/admin/insurance-schemes", {
     method: "POST",
@@ -118,7 +150,7 @@ export function apiSaveAccountingInsuranceScheme(
 }
 
 export function apiSaveAccountingVisitTariff(
-  payload: Partial<VisitTariffInput> & Pick<VisitTariffInput, "insurance_type">,
+  payload: VisitTariffInput,
 ): Promise<AccountingAdminVisitTariffDTO> {
   return apiFetch("/accounting/admin/visit-tariffs", {
     method: "POST",
@@ -128,7 +160,7 @@ export function apiSaveAccountingVisitTariff(
 
 export function apiSaveAccountingCatalogItem(
   catalogType: AccountingCatalogType,
-  payload: Partial<CatalogItemInput> & Pick<CatalogItemInput, "name">,
+  payload: CatalogItemInput,
 ): Promise<AccountingAdminCatalogItemDTO> {
   return apiFetch(`/accounting/admin/catalogs/${catalogType}`, {
     method: "POST",
@@ -137,8 +169,7 @@ export function apiSaveAccountingCatalogItem(
 }
 
 export function apiSaveAccountingExclusion(
-  payload: Partial<ExclusionInput> &
-    Pick<ExclusionInput, "insurance_type" | "nursing_service_id">,
+  payload: ExclusionInput,
 ): Promise<AccountingAdminExclusionDTO> {
   return apiFetch("/accounting/admin/exclusions", {
     method: "POST",
