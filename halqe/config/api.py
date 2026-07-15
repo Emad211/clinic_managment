@@ -24,6 +24,7 @@ from accounting_ops.invoice_workbench_api import router as accounting_workbench_
 from accounting_ops.admin_api import router as accounting_admin_router
 from accounting_ops.report_api import router as accounting_report_router
 from accounting_ops.payroll_api import router as accounting_payroll_router
+from accounting_ops.audit_api import router as accounting_audit_router
 
 from clinical.api.manager import _MIN_N_FOR_RATE  # noqa: F401
 
@@ -42,6 +43,7 @@ api.add_router("", accounting_workbench_router)
 api.add_router("", accounting_admin_router)
 api.add_router("", accounting_report_router)
 api.add_router("", accounting_payroll_router)
+api.add_router("", accounting_audit_router)
 api.add_router("", control_room_router)
 api.add_router("", doctor_queue_router)
 api.add_router("", engagement_router)
