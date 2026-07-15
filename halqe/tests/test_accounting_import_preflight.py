@@ -16,85 +16,47 @@ from accounting_ops.import_preflight import AccountingImportPreflight
 
 
 def _ensure_column(db: sqlite3.Connection, table: str, column: str, kind: str) -> None:
-    columns = {row[1] for row in db.execute(f"PRAGMA table_info({table})")}
-    if column not in columns:
+    if column not in {row[1] for row in db.execute(f"PRAGMA table_info({table})")}:
         db.execute(f"ALTER TABLE {table} ADD COLUMN {column} {kind}")
 
 
 def _source(path: Path, *, orphan_payment: bool = False) -> Path:
-    schema_path = (
+    schema = (
         Path(settings.BASE_DIR).parent
         / "webapp" / "src" / "adapters" / "sqlite" / "schema.sql"
-    )
+    ).read_text(encoding="utf-8")
     db = sqlite3.connect(path)
-    db.executescript(schema_path.read_text(encoding="utf-8"))
+    db.executescript(schema)
     _ensure_column(db, "invoices", "work_date", "TEXT")
     _ensure_column(db, "invoices", "shift", "TEXT")
     for table in ("visits", "injections", "procedures", "consumables_ledger"):
         _ensure_column(db, table, "work_date", "TEXT")
 
-    db.executescript(
-        """
-        INSERT INTO medical_staff(id,full_name,staff_type,is_active)
-        VALUES(1,'دکتر ETL','doctor',1),(2,'پرستار ETL','nurse',1);
-        INSERT INTO patients(id,name,family_name,national_id,phone_number)
-        VALUES(10,'بیمار','ETL','0013546821','09121112233');
-        INSERT INTO visit_tariffs(id,insurance_type,tariff_price,nursing_tariff,nursing_covers)
-        VALUES(20,'بیمه ETL',100000,20000,1);
-        INSERT INTO services(id,name,base_price,service_type,is_active)
-        VALUES(30,'خدمت ETL',25000,'custom',1);
-        INSERT INTO nursing_services(id,service_name,unit_price,is_active)
-        VALUES(40,'تزریق ETL',50000,1);
-        INSERT INTO injection_types(id,type_name,base_price,is_active)
-        VALUES(41,'تزریق ETL',50000,1);
-        INSERT INTO procedure_tariffs(id,name,unit_price,is_active)
-        VALUES(50,'پروسیجر ETL',80000,1);
-        INSERT INTO consumable_tariffs(id,name,default_price,category,is_active)
-        VALUES(60,'گاز ETL',12000,'supply',1);
-        INSERT INTO insurance_nursing_exclusions(id,insurance_type,nursing_service_id,note)
-        VALUES(70,'بیمه ETL',40,'استثنا');
-        INSERT INTO payroll_settings(
-            id,staff_id,base_morning,visit_fee,injection_percent,
-            procedure_percent,tax_percent,nursing_percent,nurse_procedure_percent
-        ) VALUES(80,1,100000,20000,30,40,10,6,35);
-        INSERT INTO invoices(
-            id,patient_id,doctor_id,nurse_id,status,insurance_type,total_amount,
-            opened_by,work_date,shift
-        ) VALUES(100,10,1,2,'closed','بیمه ETL',230000,'admin','2099-01-01','morning');
-        INSERT INTO visits(
-            id,patient_id,doctor_name,visit_date,shift,insurance_type,status,
-            price,payment_status,reception_user,invoice_id,doctor_id,work_date
-        ) VALUES(110,10,'دکتر ETL','2099-01-01 08:00:00','morning','بیمه ETL',
-                 'done',100000,'paid','admin',100,1,'2099-01-01');
-        INSERT INTO visit_items(id,visit_id,service_id,quantity,price_at_time)
-        VALUES(111,110,30,1,25000);
-        INSERT INTO injections(
-            id,patient_id,injection_type,injection_date,shift,count,unit_price,
-            total_price,reception_user,invoice_id,doctor_id,nurse_id,work_date
-        ) VALUES(120,10,'تزریق ETL','2099-01-01 08:10:00','morning',1,
-                 50000,50000,'admin',100,1,2,'2099-01-01');
-        INSERT INTO procedures(
-            id,patient_id,procedure_type,procedure_date,shift,price,
-            reception_user,invoice_id,performer_type,performer_id,
-            doctor_id,nurse_id,work_date
-        ) VALUES(130,10,'پروسیجر ETL','2099-01-01 08:20:00','morning',80000,
-                 'admin',100,'nurse',2,1,2,'2099-01-01');
-        INSERT INTO consumables_ledger(
-            id,patient_id,item_name,category,quantity,unit_price,total_cost,
-            patient_provided,is_exception,usage_date,shift,reception_user,
-            invoice_id,doctor_id,nurse_id,work_date
-        ) VALUES(140,10,'گاز ETL','supply',1,12000,12000,0,0,
-                 '2099-01-01 08:30:00','morning','admin',100,1,2,'2099-01-01');
-        """
-    )
-    payment_item = 999 if orphan_payment else 110
+    db.execute("INSERT INTO patients(id,name,family_name) VALUES(10,'بیمار','ETL')")
     db.execute(
-        """
-        INSERT INTO invoice_item_payments(
-            invoice_id,item_type,item_id,payment_type,is_paid
-        ) VALUES(100,'visit',?,'card',1)
-        """,
-        [payment_item],
+        "INSERT INTO invoices(id,patient_id,status,total_amount,work_date,shift) "
+        "VALUES(100,10,'closed',230000,'2099-01-01','morning')"
+    )
+    db.execute(
+        "INSERT INTO visits(id,patient_id,visit_date,price,invoice_id,work_date) "
+        "VALUES(110,10,'2099-01-01 08:00:00',100000,100,'2099-01-01')"
+    )
+    db.execute(
+        "INSERT INTO injections(id,patient_id,injection_type,injection_date,total_price,invoice_id,work_date) "
+        "VALUES(120,10,'تزریق ETL','2099-01-01 08:10:00',50000,100,'2099-01-01')"
+    )
+    db.execute(
+        "INSERT INTO procedures(id,patient_id,procedure_type,procedure_date,price,invoice_id,work_date) "
+        "VALUES(130,10,'پروسیجر ETL','2099-01-01 08:20:00',80000,100,'2099-01-01')"
+    )
+    db.execute(
+        "INSERT INTO consumables_ledger(id,patient_id,item_name,total_cost,patient_provided,is_exception,invoice_id,work_date) "
+        "VALUES(140,10,'گاز ETL',12000,0,0,100,'2099-01-01')"
+    )
+    db.execute(
+        "INSERT INTO invoice_item_payments(invoice_id,item_type,item_id,payment_type,is_paid) "
+        "VALUES(100,'visit',?,'card',1)",
+        [999 if orphan_payment else 110],
     )
     db.commit()
     db.close()
@@ -131,10 +93,7 @@ def test_orphan_payment_fails_closed(tmp_path):
         source_id="clinic-orphan-accounting",
     ).run()
     assert report.decision == "NO_GO"
-    check = next(
-        item for item in report.checks
-        if item["code"] == "payment_item_references"
-    )
+    check = next(item for item in report.checks if item["code"] == "payment_item_references")
     assert check["status"] == "FAIL"
     assert check["evidence"]["orphan_rows"] == 1
 
