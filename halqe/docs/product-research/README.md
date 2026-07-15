@@ -44,20 +44,36 @@
 - dashboard بیمار باید «اقدام بعدی» را ساده کند، نه اینکه پروندهٔ پزشک را کوچک‌شده نمایش دهد.
 - caregiver access باید رسمی، قابل ابطال و audit‌شده باشد؛ اشتراک رمز بیمار پذیرفته نیست.
 - چندمستأجری فقط `tenant_id` نیست؛ تنظیم workflow، نقش، شعبه، کاتالوگ، payer و سیاست ارتباط نیز tenant-scoped است.
+- Care Loop بدون owner، SLA، evidence و closure code کامل محسوب نمی‌شود.
+- suggestion، decision، care plan و task موجودیت‌های جدا هستند.
+- interruptive alert یک منبع کمیاب است و باید tier، suppression و budget داشته باشد.
 - هیچ نتیجهٔ سلامت، ROI یا superiority پیش از دادهٔ پایلوت ادعا نمی‌شود.
 
-## اسناد این دورها
+## اسناد پژوهش
+
+### دور اول
 
 - [`2026-07-15_round-01_deep_product_research.md`](2026-07-15_round-01_deep_product_research.md): سنتز کلان محصول، UX، موتور بالینی، رقبا، چندمستأجری و gap map.
-- [`2026-07-15_round-02_patient_portal_prd.md`](2026-07-15_round-02_patient_portal_prd.md): PRD پژوهشی پرتال احراز‌شدهٔ بیمار، صفحهٔ امروز، care plan، self-monitoring، پیام امن و caregiver access.
-- [`EVIDENCE_REGISTER.md`](EVIDENCE_REGISTER.md): رجیستر شواهد علمی، استانداردها، صفحات رسمی رقبا و شواهد کد.
 
-## وضعیت ابزار پژوهش در این دور
+### دور دوم
+
+- [`2026-07-15_round-02_closed_loop_dashboard_cds.md`](2026-07-15_round-02_closed_loop_dashboard_cds.md): سنتز عمیق Care Loop، داشبورد action-first، staff workbench، موتور علمی، multi-tenancy و ترتیب ساخت.
+- [`2026-07-15_round-02_patient_portal_prd.md`](2026-07-15_round-02_patient_portal_prd.md): PRD پژوهشی پرتال احراز‌شدهٔ بیمار، صفحهٔ امروز، care plan، self-monitoring، پیام امن و caregiver access.
+- [`CARE_LOOP_PRODUCT_BLUEPRINT.md`](CARE_LOOP_PRODUCT_BLUEPRINT.md): مفاهیم دامنه، stateها، closure contract، مسیر مهاجرت از FollowupTask و MVP حلقه‌بسته.
+- [`COMPETITOR_CAPABILITY_MATRIX_2026.md`](COMPETITOR_CAPABILITY_MATRIX_2026.md): ماتریس MyChart، Omada، Dario، Welldoc، Cadence، Huma، Halqe فعلی و Halqe هدف.
+
+### رجیستر شواهد
+
+- [`EVIDENCE_REGISTER.md`](EVIDENCE_REGISTER.md): رجیستر پایهٔ شواهد علمی، استانداردها، صفحات رسمی رقبا و شواهد کد.
+- [`EVIDENCE_REGISTER_ROUND_02.md`](EVIDENCE_REGISTER_ROUND_02.md): الحاقیهٔ شواهد عملیات حلقه‌بسته، UX بیمار/همراه، حاکمیت CDS و gapهای مدل فعلی.
+
+## وضعیت ابزار پژوهش
 
 - کد و اسناد پروژه از شاخهٔ `agent/halqe-unified-migration-audit` خوانده شد.
 - پژوهش دانشگاهی با Scholar Gateway انجام شد.
-- سهمیهٔ جستجوی Consensus در این حساب تا ۱ اوت ۲۰۲۶ مصرف شده بود؛ بنابراین در این دور نتیجهٔ تازه‌ای از Consensus وارد نشده است. در دور بعدی پس از بازشدن سهمیه، جستجوهای تکرارشونده برای replication انجام می‌شود.
-- منابع رسمی وب برای استانداردها و capability mapping رقبا استفاده شدند.
+- سهمیهٔ جستجوی Consensus در این حساب تا ۱ اوت ۲۰۲۶ مصرف شده بود؛ replication با Consensus پس از بازشدن سهمیه در برنامه می‌ماند.
+- منابع رسمی وب برای استانداردها، حاکمیت و capability mapping رقبا استفاده شدند.
+- ادعاهای vendor از شواهد peer-reviewed جدا ثبت شدند.
 
 ## نحوهٔ افزودن دور بعدی
 
@@ -80,4 +96,4 @@ YYYY-MM-DD_round-NN_<topic>.md
 آزمایش/تحقیق بعدی
 ```
 
-اسناد پژوهش، roadmap اجرایی یا دستور بالینی نیستند. تبدیل هر فرضیه به قابلیت نیازمند acceptance criteria، طراحی UX، threat model، review بالینی و تست است.
+اسناد پژوهش، roadmap اجرایی یا دستور بالینی نیستند. تبدیل هر فرضیه به قابلیت نیازمند acceptance criteria، طراحی UX، threat model، review بالینی، evidence appraisal و تست است.
