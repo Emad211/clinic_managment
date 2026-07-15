@@ -28,10 +28,13 @@ class Command(BaseCommand):
         parser.add_argument("--restore-verification", required=True)
         parser.add_argument(
             "--dual-run-report",
-            action="append",
+            nargs="+",
             dest="dual_run_reports",
             required=True,
-            help="Repeat once for every all/morning/evening/night daily report.",
+            help=(
+                "One or more report paths. Supply every all/morning/evening/night "
+                "daily report after this option."
+            ),
         )
         parser.add_argument("--source-id", required=True)
         parser.add_argument("--tenant-id", required=True, type=int)
