@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
+import json
 from typing import Any
 
 import psycopg
@@ -56,6 +57,11 @@ class RestoreVerificationReport:
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
+
+
+def _json_shape(value: Any) -> Any:
+    """Normalize tuples/dataclasses to the exact shape persisted in JSON."""
+    return json.loads(json.dumps(value, ensure_ascii=False, sort_keys=True, default=str))
 
 
 def _named(items: list[dict[str, Any]], keys: tuple[str, ...]) -> dict[str, dict[str, Any]]:
@@ -134,10 +140,10 @@ def verify_restored_backup(
 
     kwargs = _connection_kwargs(database_name=restored_database, restored=True)
     with psycopg.connect(**kwargs) as conn:
-        actual_database = capture_database_fingerprint(conn).to_dict()
+        actual_database = _json_shape(capture_database_fingerprint(conn).to_dict())
         conn.rollback()
 
-    expected_database = payload["database"]
+    expected_database = _json_shape(payload["database"])
     report = RestoreVerificationReport(
         decision="VERIFIED",
         manifest_sha256=payload["manifest_sha256"],
