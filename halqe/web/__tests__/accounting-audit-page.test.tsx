@@ -70,7 +70,7 @@ test("renders audit rows and applies text filters", async () => {
   render(<AccountingAuditPage />);
   expect(await screen.findByRole("heading", { name: "بازبینی رویدادهای حسابداری" })).toBeInTheDocument();
   expect(await screen.findByText("تغییر پرداخت آزمایشی")).toBeInTheDocument();
-  expect(screen.getByText("مدیر نمونه")).toBeInTheDocument();
+  expect(screen.getAllByText("مدیر نمونه")).toHaveLength(2);
   expect(screen.getAllByText("فاکتور").length).toBeGreaterThan(0);
 
   fireEvent.change(screen.getByLabelText("جست‌وجوی متن"), {
