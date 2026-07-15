@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
-from pathlib import Path
 from typing import Any
 
 import psycopg
@@ -15,8 +14,8 @@ from platform_core.backup_canonical import (
 )
 
 
-_PROTECTED_SCHEMAS = ("platform", "accounting", "clinical")
-_REQUIRED_ROLES = ("platform_app", "accounting_app", "clinical_app")
+PROTECTED_SCHEMAS = ["platform", "accounting", "clinical"]
+REQUIRED_ROLES = ["platform_app", "accounting_app", "clinical_app"]
 
 
 @dataclass(frozen=True)
@@ -78,20 +77,14 @@ class DatabaseFingerprint:
 
 
 def _dict_rows(cursor) -> list[dict[str, Any]]:
-    columns = [column.name for column in cursor.description]
-    return [dict(zip(columns, row)) for row in cursor.fetchall()]
+    names = [column.name for column in cursor.description]
+    return [dict(zip(names, row)) for row in cursor.fetchall()]
 
 
-def _query_records(conn: psycopg.Connection, query: str) -> list[dict[str, Any]]:
-    with conn.cursor() as cursor:
-        cursor.execute(query, [_PROTECTED_SCHEMAS])
-        return _dict_rows(cursor)
-
-
-def _catalogs(conn: psycopg.Connection) -> tuple[CatalogFingerprint, ...]:
-    queries = {
+def _catalog_queries() -> dict[str, str]:
+    return {
         "schemas": """
-            SELECT n.nspname AS schema_name, COALESCE(n.nspacl::text,'') AS acl
+            SELECT n.nspname AS schema_name,COALESCE(n.nspacl::text,'') AS acl
             FROM pg_namespace n WHERE n.nspname=ANY(%s)
             ORDER BY n.nspname
         """,
@@ -100,8 +93,7 @@ def _catalogs(conn: psycopg.Connection) -> tuple[CatalogFingerprint, ...]:
                    c.relrowsecurity,c.relforcerowsecurity,
                    COALESCE(c.relacl::text,'') AS acl
             FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
-            WHERE n.nspname=ANY(%s)
-              AND c.relkind IN ('r','p','v','m','S')
+            WHERE n.nspname=ANY(%s) AND c.relkind IN ('r','p','v','m','S')
             ORDER BY n.nspname,c.relname,c.relkind
         """,
         "columns": """
@@ -141,7 +133,8 @@ def _catalogs(conn: psycopg.Connection) -> tuple[CatalogFingerprint, ...]:
             ORDER BY n.nspname,t.relname,i.relname
         """,
         "policies": """
-            SELECT n.nspname AS schema_name,c.relname,p.polname,p.polpermissive,p.polcmd,
+            SELECT n.nspname AS schema_name,c.relname,p.polname,
+                   p.polpermissive,p.polcmd,
                    ARRAY(
                      SELECT COALESCE(r.rolname,'public')
                      FROM unnest(p.polroles) role_oid
@@ -172,27 +165,32 @@ def _catalogs(conn: psycopg.Connection) -> tuple[CatalogFingerprint, ...]:
                    COALESCE(p.proacl::text,'') AS acl,
                    pg_get_functiondef(p.oid) AS definition
             FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
-            WHERE n.nspname=ANY(%s)
+            WHERE n.nspname=ANY(%s) AND p.prokind IN ('f','p')
             ORDER BY n.nspname,p.proname,identity_arguments
         """,
     }
-    fingerprints: list[CatalogFingerprint] = []
-    for category, query in queries.items():
-        records = _query_records(conn, query)
+
+
+def _catalogs(conn: psycopg.Connection) -> tuple[CatalogFingerprint, ...]:
+    result: list[CatalogFingerprint] = []
+    for category, query in _catalog_queries().items():
+        with conn.cursor() as cursor:
+            cursor.execute(query, [PROTECTED_SCHEMAS])
+            records = _dict_rows(cursor)
         count, digest = digest_records(records)
-        fingerprints.append(CatalogFingerprint(category, count, digest))
-    return tuple(fingerprints)
+        result.append(CatalogFingerprint(category, count, digest))
+    return tuple(result)
 
 
 def _table_metadata(
     conn: psycopg.Connection,
     relation_oid: int,
 ) -> tuple[tuple[ColumnFingerprint, ...], tuple[str, ...]]:
-    columns = conn.execute(
+    rows = conn.execute(
         """
-        SELECT a.attname,format_type(a.atttypid,a.atttypmod) AS data_type,
-               a.attnotnull,a.attidentity,a.attgenerated,
-               pg_get_expr(d.adbin,d.adrelid,true) AS default_expression
+        SELECT a.attname,format_type(a.atttypid,a.atttypmod),a.attnotnull,
+               a.attidentity,a.attgenerated,
+               pg_get_expr(d.adbin,d.adrelid,true)
         FROM pg_attribute a
         LEFT JOIN pg_attrdef d ON d.adrelid=a.attrelid AND d.adnum=a.attnum
         WHERE a.attrelid=%s AND a.attnum>0 AND NOT a.attisdropped
@@ -200,7 +198,7 @@ def _table_metadata(
         """,
         [relation_oid],
     ).fetchall()
-    rendered_columns = tuple(
+    columns = tuple(
         ColumnFingerprint(
             name=row[0],
             data_type=row[1],
@@ -209,7 +207,7 @@ def _table_metadata(
             generated=row[4] or "",
             default=row[5],
         )
-        for row in columns
+        for row in rows
     )
     primary_key = tuple(
         row[0]
@@ -226,7 +224,7 @@ def _table_metadata(
             [relation_oid],
         ).fetchall()
     )
-    return rendered_columns, primary_key
+    return columns, primary_key
 
 
 def _table_fingerprint(
@@ -241,31 +239,28 @@ def _table_fingerprint(
         raise BackupVerificationError(
             f"Cannot fingerprint table without a primary key: {schema_name}.{table_name}"
         )
-    select_columns = sql.SQL(",").join(sql.Identifier(column.name) for column in columns)
-    order_columns = sql.SQL(",").join(sql.Identifier(column) for column in primary_key)
     query = sql.SQL("SELECT {} FROM {}.{} ORDER BY {}").format(
-        select_columns,
+        sql.SQL(",").join(sql.Identifier(column.name) for column in columns),
         sql.Identifier(schema_name),
         sql.Identifier(table_name),
-        order_columns,
+        sql.SQL(",").join(sql.Identifier(column) for column in primary_key),
     )
 
     def records():
-        cursor_name = f"backup_{relation_oid}"
-        with conn.cursor(name=cursor_name) as cursor:
+        with conn.cursor(name=f"backup_{relation_oid}") as cursor:
             cursor.itersize = 1000
             cursor.execute(query)
             for row in cursor:
                 yield [canonical(value) for value in row]
 
-    row_count, row_digest = digest_records(records())
+    row_count, row_sha256 = digest_records(records())
     return TableFingerprint(
         schema=schema_name,
         table=table_name,
         columns=columns,
         primary_key=primary_key,
         row_count=row_count,
-        row_sha256=row_digest,
+        row_sha256=row_sha256,
     )
 
 
@@ -277,7 +272,7 @@ def _tables(conn: psycopg.Connection) -> tuple[TableFingerprint, ...]:
         WHERE n.nspname=ANY(%s) AND c.relkind='r'
         ORDER BY n.nspname,c.relname
         """,
-        [_PROTECTED_SCHEMAS],
+        [PROTECTED_SCHEMAS],
     ).fetchall()
     return tuple(
         _table_fingerprint(
@@ -298,7 +293,7 @@ def _sequences(conn: psycopg.Connection) -> tuple[SequenceFingerprint, ...]:
         WHERE n.nspname=ANY(%s) AND c.relkind='S'
         ORDER BY n.nspname,c.relname
         """,
-        [_PROTECTED_SCHEMAS],
+        [PROTECTED_SCHEMAS],
     ).fetchall()
     result: list[SequenceFingerprint] = []
     for schema_name, sequence_name in rows:
@@ -328,13 +323,9 @@ def capture_database_fingerprint(conn: psycopg.Connection) -> DatabaseFingerprin
         FROM pg_database WHERE datname=current_database()
         """
     ).fetchone()
-    database_name, server_version_num, encoding, collate, ctype, timezone = metadata
+    database_name, version_num, encoding, collate, ctype, timezone = metadata
     extensions = tuple(
-        {
-            "name": row[0],
-            "version": row[1],
-            "schema": row[2],
-        }
+        {"name": row[0], "version": row[1], "schema": row[2]}
         for row in conn.execute(
             """
             SELECT e.extname,e.extversion,n.nspname
@@ -360,25 +351,24 @@ def capture_database_fingerprint(conn: psycopg.Connection) -> DatabaseFingerprin
                    rolcanlogin,rolreplication,rolbypassrls
             FROM pg_roles WHERE rolname=ANY(%s) ORDER BY rolname
             """,
-            [_REQUIRED_ROLES],
+            [REQUIRED_ROLES],
         ).fetchall()
     )
-    if {role["name"] for role in required_roles} != set(_REQUIRED_ROLES):
+    if {role["name"] for role in required_roles} != set(REQUIRED_ROLES):
         raise BackupVerificationError("Required Halqe database roles are missing")
-    schema_ledger: tuple[dict[str, Any], ...]
-    exists = conn.execute(
+    has_ledger = conn.execute(
         "SELECT to_regclass('platform.schema_version') IS NOT NULL"
     ).fetchone()[0]
-    if exists:
-        schema_ledger = tuple(
-            {"filename": row[0], "checksum": row[1]}
-            for row in conn.execute(
+    schema_ledger = tuple(
+        {"filename": row[0], "checksum": row[1]}
+        for row in (
+            conn.execute(
                 "SELECT filename,checksum FROM platform.schema_version ORDER BY filename"
             ).fetchall()
+            if has_ledger
+            else []
         )
-    else:
-        schema_ledger = tuple()
-
+    )
     catalogs = _catalogs(conn)
     tables = _tables(conn)
     sequences = _sequences(conn)
@@ -397,9 +387,10 @@ def capture_database_fingerprint(conn: psycopg.Connection) -> DatabaseFingerprin
     }
     schema_sha256 = aggregate_digest(schema_payload)
     content_sha256 = aggregate_digest(content_payload)
+    server_major = int(version_num) // 10000
     database_sha256 = aggregate_digest(
         {
-            "server_major": int(server_version_num) // 10000,
+            "server_major": server_major,
             "timezone": timezone,
             "schema_sha256": schema_sha256,
             "content_sha256": content_sha256,
@@ -407,8 +398,8 @@ def capture_database_fingerprint(conn: psycopg.Connection) -> DatabaseFingerprin
     )
     return DatabaseFingerprint(
         database_name=database_name,
-        server_version_num=int(server_version_num),
-        server_major=int(server_version_num) // 10000,
+        server_version_num=int(version_num),
+        server_major=server_major,
         encoding=encoding,
         collate=collate,
         ctype=ctype,
