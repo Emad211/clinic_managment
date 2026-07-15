@@ -1,4 +1,4 @@
-# به‌روزرسانی حسابرسی یکپارچه — گزارش، حقوق و ETL مالی
+# به‌روزرسانی حسابرسی یکپارچه — گزارش، حقوق، audit و ETL مالی
 
 این addendum وضعیت جدید شاخهٔ یکپارچه را نسبت به
 `UNIFIED_MIGRATION_AUDIT.md` ثبت می‌کند. کد و تست‌های synthetic کامل شده‌اند؛ این
@@ -18,6 +18,18 @@
 - تفکیک پایه شیفت، سهم ویزیت، تزریق، پروسیجر، مالیات و خالص؛
 - read port فیزیکی SELECT-only برای گزارش‌ها؛
 - tenant isolation و manager/admin authorization.
+
+### بازبینی رویدادهای حسابداری
+
+- workspace مدیریتی `/accounting/audit` با UI فارسی، responsive و keyboard-friendly؛
+- فیلتر بازه، کاربر، نوع/دسته عملیات، فاکتور، بیمار و متن؛
+- pagination، summary دسته‌ها و CSV همان صفحه؛
+- نمایش کنترل‌شدهٔ before/after و metadata محدودشده؛
+- endpoint فقط‌خواندنی `/accounting/audit/logs`؛
+- transaction اجباری READ ONLY روی `accounting_read`؛
+- مجوز صریح SELECT برای `platform_app` و revoke کامل از `clinical_app`؛
+- indexهای tenant-leading برای تاریخ، کاربر، فاکتور، بیمار، دسته و نوع عملیات؛
+- تست manager-only، tenant isolation، validation، API client و UI 403.
 
 ### مهاجرت تاریخی مالی
 
@@ -61,12 +73,13 @@
 - مالیات مطابق legacy فقط در شاخه پزشک کسر می‌شود؛
 - صفحه payroll فقط preview است و سند پرداخت ایجاد نمی‌کند.
 
-## اعتبارسنجی آخرین head کد ETL و verifier
+## اعتبارسنجی آخرین head audit
 
-- backend PostgreSQL: **۹۰۵ passed**، یک skipped، صفر failed؛
+- backend PostgreSQL: **۹۰۷ passed**، یک skipped، صفر failed؛
+- audit API، filters، pagination، role و tenant isolation: passed؛
 - dry-run، apply، replay، source drift و target drift: passed؛
 - verification سالم، source mismatch، target mismatch و child اضافه: passed؛
-- exact OpenAPI lock: passed؛
+- exact OpenAPI lock: **۹۶ path و ۱۰۰ operation**؛
 - schema guard: passed؛
 - accounting money oracle: passed؛
 - specialist suite: passed؛
@@ -93,7 +106,6 @@
 2. بررسی و تصویب mapping مقدارهای واقعی `services.service_type`؛
 3. dry-run و apply rehearsal در محیط staging؛
 4. نمونه‌برداری انسانی فاکتور، آیتم، پرداخت، بیمه و payroll؛
-5. audit search مدیریتی؛
-6. backup/restore rehearsal؛
-7. dual-run و reconciliation صندوق/بیمه/payroll؛
-8. تصمیم رسمی GO/NO_GO برای cutover.
+5. backup/restore rehearsal؛
+6. dual-run و reconciliation صندوق/بیمه/payroll؛
+7. تصمیم رسمی GO/NO_GO برای cutover.
