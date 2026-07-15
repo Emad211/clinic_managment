@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+from io import StringIO
+import json
 import os
+import stat
 
 from django.core.management import call_command
+from django.core.management.base import CommandError
 import psycopg
 import pytest
 
@@ -38,7 +42,7 @@ def dual_run_database(django_db_setup):
         verbosity=0,
     )
     with psycopg.connect(_conninfo(), autocommit=True) as conn:
-        for tenant_id in (67, 68):
+        for tenant_id in (67, 68, 69):
             conn.execute(
                 "INSERT INTO platform.tenants(id,name,is_active) "
                 "VALUES(%s,%s,TRUE) ON CONFLICT(id) DO NOTHING",
@@ -111,3 +115,52 @@ def test_dual_run_detects_money_and_mapping_drift(tmp_path, dual_run_database):
     )
     assert missing_map.decision == "NO_GO"
     assert any(item.path.startswith("payroll.rows") for item in missing_map.differences)
+
+
+@pytest.mark.django_db(databases=["default", "accounting_read"], transaction=True)
+def test_dual_run_command_writes_private_go_and_no_go_reports(
+    tmp_path,
+    dual_run_database,
+):
+    source = build_dual_run_source(tmp_path / "dual-command.db")
+    source_id = "dual-run-command-source"
+    _apply(source, tenant_id=69, source_id=source_id)
+    report_path = tmp_path / "private" / "dual-run.json"
+    stdout = StringIO()
+
+    call_command(
+        "compare_accounting_dual_run",
+        sqlite=str(source),
+        source_id=source_id,
+        tenant_id=69,
+        date_from="2099-01-01",
+        date_to="2099-01-01",
+        report=str(report_path),
+        stdout=stdout,
+    )
+    assert stat.S_IMODE(report_path.parent.stat().st_mode) == 0o700
+    assert stat.S_IMODE(report_path.stat().st_mode) == 0o600
+    assert json.loads(report_path.read_text(encoding="utf-8"))["decision"] == "GO"
+    assert "Accounting dual-run GO" in stdout.getvalue()
+
+    with psycopg.connect(_conninfo(), autocommit=True) as conn:
+        conn.execute(
+            "UPDATE accounting.invoice_item_payments SET is_paid=FALSE "
+            "WHERE tenant_id=69 AND item_type='visit'"
+        )
+    with pytest.raises(CommandError, match="NO_GO"):
+        call_command(
+            "compare_accounting_dual_run",
+            sqlite=str(source),
+            source_id=source_id,
+            tenant_id=69,
+            date_from="2099-01-01",
+            date_to="2099-01-01",
+            report=str(report_path),
+        )
+    failed = json.loads(report_path.read_text(encoding="utf-8"))
+    assert failed["decision"] == "NO_GO"
+    assert any(
+        item["path"] == "financial.totals.payment_paid_count"
+        for item in failed["differences"]
+    )
