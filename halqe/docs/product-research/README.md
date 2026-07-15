@@ -46,9 +46,10 @@
 - چندمستأجری فقط `tenant_id` نیست؛ تنظیم workflow، نقش، شعبه، کاتالوگ، payer و سیاست ارتباط نیز tenant-scoped است.
 - هیچ نتیجهٔ سلامت، ROI یا superiority پیش از دادهٔ پایلوت ادعا نمی‌شود.
 
-## اسناد این دور
+## اسناد این دورها
 
-- [`2026-07-15_round-01_deep_product_research.md`](2026-07-15_round-01_deep_product_research.md): سنتز محصول، UX، موتور بالینی، رقبا، چندمستأجری و gap map.
+- [`2026-07-15_round-01_deep_product_research.md`](2026-07-15_round-01_deep_product_research.md): سنتز کلان محصول، UX، موتور بالینی، رقبا، چندمستأجری و gap map.
+- [`2026-07-15_round-02_patient_portal_prd.md`](2026-07-15_round-02_patient_portal_prd.md): PRD پژوهشی پرتال احراز‌شدهٔ بیمار، صفحهٔ امروز، care plan، self-monitoring، پیام امن و caregiver access.
 - [`EVIDENCE_REGISTER.md`](EVIDENCE_REGISTER.md): رجیستر شواهد علمی، استانداردها، صفحات رسمی رقبا و شواهد کد.
 
 ## وضعیت ابزار پژوهش در این دور
