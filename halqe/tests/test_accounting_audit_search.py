@@ -79,6 +79,28 @@ def accounting_audit_ready(django_db_setup):
         ).fetchone()[0]
         conn.execute(
             """
+            INSERT INTO accounting.patients(id,tenant_id,name,family_name)
+            VALUES
+                (920001,1,'بیمار','آلفا'),
+                (999002,2,'بیمار','tenant دیگر')
+            ON CONFLICT(id) DO NOTHING
+            """
+        )
+        conn.execute(
+            """
+            INSERT INTO accounting.invoices(
+                id,tenant_id,patient_id,status,total_amount,work_date,shift,
+                opened_at,opened_by,pricing_version
+            ) VALUES
+                (910001,1,920001,'closed',120000,'2099-01-01','morning',
+                 '2099-01-01 07:45:00+03:30','accounting_audit_manager','legacy'),
+                (999001,2,999002,'closed',999999,'2099-01-01','morning',
+                 '2099-01-01 07:45:00+03:30','other-audit-user','legacy')
+            ON CONFLICT(id) DO NOTHING
+            """
+        )
+        conn.execute(
+            """
             DELETE FROM accounting.activity_logs
             WHERE (tenant_id=1 AND username='accounting_audit_manager')
                OR (tenant_id=2 AND username='other-audit-user')
