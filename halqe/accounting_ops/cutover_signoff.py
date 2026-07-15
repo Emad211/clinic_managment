@@ -30,12 +30,21 @@ def _key(value: Any) -> str:
     return re.sub(r"[^0-9a-zA-Zآ-ی]+", "", str(value)).lower()
 
 
+_SENSITIVE_NORMALIZED = {_key(value) for value in _SENSITIVE_KEYS}
+
+
+def _integer(value: Any, *, label: str) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError) as exc:
+        raise AccountingCutoverSignoffError(f"{label} must be an integer") from exc
+
+
 def _private_json(path: str | Path, *, label: str) -> tuple[dict[str, Any], str]:
     source = Path(path).expanduser().absolute()
     if source.is_symlink() or not source.is_file():
         raise AccountingCutoverSignoffError(f"{label} must be a regular non-symlink file")
-    mode = stat.S_IMODE(source.stat().st_mode)
-    if mode & 0o077:
+    if stat.S_IMODE(source.stat().st_mode) & 0o077:
         raise AccountingCutoverSignoffError(f"{label} must be owner-only (chmod 600)")
     try:
         payload = json.loads(source.read_text(encoding="utf-8"))
@@ -58,29 +67,33 @@ def _timestamp(value: Any, *, label: str) -> datetime:
 
 def _contains_sensitive(value: Any) -> bool:
     if isinstance(value, Mapping):
-        for key, item in value.items():
-            if _key(key) in {_key(entry) for entry in _SENSITIVE_KEYS}:
-                return True
-            if _contains_sensitive(item):
-                return True
-        return False
+        return any(
+            _key(key) in _SENSITIVE_NORMALIZED or _contains_sensitive(item)
+            for key, item in value.items()
+        )
     if isinstance(value, list):
         return any(_contains_sensitive(item) for item in value)
     if isinstance(value, str):
-        normalized = value.translate(_DIGITS)
-        if _MOBILE.search(normalized):
-            return True
+        return bool(_MOBILE.search(value.translate(_DIGITS)))
     return False
 
 
 def _consecutive(values: list[date]) -> bool:
-    return all(right - left == timedelta(days=1) for left, right in zip(values, values[1:]))
+    return all(
+        right - left == timedelta(days=1)
+        for left, right in zip(values, values[1:])
+    )
 
 
 def _dual_key(payload: Mapping[str, Any]) -> str:
     if payload.get("date_from") != payload.get("date_to"):
         raise AccountingCutoverSignoffError("Each cutover dual-run report must cover one day")
-    day = date.fromisoformat(str(payload["date_from"]))
+    try:
+        day = date.fromisoformat(str(payload["date_from"]))
+    except (KeyError, TypeError, ValueError) as exc:
+        raise AccountingCutoverSignoffError(
+            "Dual-run report date must use YYYY-MM-DD"
+        ) from exc
     shift = payload.get("shift") or "all"
     if shift not in _REQUIRED_SCOPES:
         raise AccountingCutoverSignoffError(f"Unsupported dual-run scope: {shift}")
@@ -120,21 +133,20 @@ def verify_accounting_cutover_signoff(
     if not dual_reports:
         raise AccountingCutoverSignoffError("At least one dual-run report is required")
 
-    try:
-        required_days = int(packet.get("required_consecutive_days"))
-    except (TypeError, ValueError) as exc:
-        raise AccountingCutoverSignoffError(
-            "required_consecutive_days must be an integer"
-        ) from exc
+    required_days = _integer(
+        packet.get("required_consecutive_days"),
+        label="required_consecutive_days",
+    )
     if required_days < 1 or required_days > 31:
         raise AccountingCutoverSignoffError(
             "required_consecutive_days must be between 1 and 31"
         )
+    command_tenant = _integer(tenant_id, label="tenant_id")
 
     report = AccountingCutoverSignoffReport(
         decision="GO",
         source_id=source_id,
-        tenant_id=int(tenant_id),
+        tenant_id=command_tenant,
         reviewed_by=str(packet.get("reviewed_by") or "") or None,
         reviewed_at=str(packet.get("reviewed_at") or "") or None,
         required_consecutive_days=required_days,
@@ -149,16 +161,19 @@ def verify_accounting_cutover_signoff(
         },
     )
     now = datetime.now(UTC) + timedelta(minutes=5)
-    reviewed_at = None
     try:
         reviewed_at = _timestamp(packet.get("reviewed_at"), label="reviewed_at")
     except AccountingCutoverSignoffError:
-        pass
+        reviewed_at = None
+    try:
+        packet_tenant = _integer(packet.get("tenant_id"), label="packet tenant_id")
+    except AccountingCutoverSignoffError:
+        packet_tenant = -1
     report.add(
         "packet_identity",
         packet.get("version") == 1
         and packet.get("source_id") == source_id
-        and int(packet.get("tenant_id") or 0) == int(tenant_id),
+        and packet_tenant == command_tenant,
         "Packet version, source-id and tenant must match the command",
     )
     report.add(
@@ -187,10 +202,16 @@ def verify_accounting_cutover_signoff(
         "Packet hashes must exactly bind every supplied machine-verification artifact",
     )
 
+    try:
+        import_tenant = _integer(
+            import_report.get("tenant_id"), label="import verification tenant_id"
+        )
+    except AccountingCutoverSignoffError:
+        import_tenant = -1
     import_ok = (
         import_report.get("decision") == "VERIFIED"
         and import_report.get("source_id") == source_id
-        and int(import_report.get("tenant_id") or 0) == int(tenant_id)
+        and import_tenant == command_tenant
         and not import_report.get("errors")
         and all(item.get("status") == "PASS" for item in import_report.get("checks", []))
     )
@@ -211,28 +232,38 @@ def verify_accounting_cutover_signoff(
     )
 
     dual_ok = True
-    source_hashes: set[tuple[str, str]] = set()
     scopes_by_day: dict[str, set[str]] = {}
+    source_hashes_by_day: dict[str, set[tuple[str, str]]] = {}
     for key, (payload, _digest) in dual_reports.items():
         day, scope = key.split(":", 1)
         scopes_by_day.setdefault(day, set()).add(scope)
-        source_hashes.add(
+        source_hashes_by_day.setdefault(day, set()).add(
             (
                 str(payload.get("source_file_sha256") or ""),
                 str(payload.get("source_manifest_sha256") or ""),
             )
         )
+        try:
+            dual_tenant = _integer(payload.get("tenant_id"), label="dual tenant_id")
+        except AccountingCutoverSignoffError:
+            dual_tenant = -1
         dual_ok = dual_ok and (
             payload.get("decision") == "GO"
             and not payload.get("differences")
             and not payload.get("errors")
             and payload.get("source_id") == source_id
-            and int(payload.get("tenant_id") or 0) == int(tenant_id)
+            and dual_tenant == command_tenant
             and payload.get("financial_source") == payload.get("financial_target")
             and payload.get("payroll_source") == payload.get("payroll_target")
         )
     dates = sorted(date.fromisoformat(day) for day in scopes_by_day)
-    complete_scopes = all(scopes == _REQUIRED_SCOPES for scopes in scopes_by_day.values())
+    complete_scopes = all(
+        scopes == _REQUIRED_SCOPES for scopes in scopes_by_day.values()
+    )
+    daily_source_identity = all(
+        len(values) == 1 and all(next(iter(values)))
+        for values in source_hashes_by_day.values()
+    )
     report.add(
         "dual_run_reports",
         dual_ok,
@@ -244,9 +275,8 @@ def verify_accounting_cutover_signoff(
         len(dates) >= required_days
         and complete_scopes
         and _consecutive(dates)
-        and len(source_hashes) == 1
-        and all(source_hashes.pop()) if len(source_hashes) == 1 else False,
-        "Required consecutive dates must each include all/morning/evening/night and one source snapshot identity",
+        and daily_source_identity,
+        "Required consecutive dates must each include all/morning/evening/night from one daily snapshot",
         observed_dates=[item.isoformat() for item in dates],
         scopes={key: sorted(value) for key, value in sorted(scopes_by_day.items())},
     )
