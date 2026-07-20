@@ -2,9 +2,21 @@
 {% block title %}تنظیمات{% endblock %}
 {% block content %}
 <div class="topbar">
-    <h1><svg class="icon icon-lg"><use href="#i-settings"></use></svg> تنظیمات پیامک</h1>
+    <h1><svg class="icon icon-lg"><use href="#i-settings"></use></svg> تنظیمات کلینیک</h1>
 </div>
-<div class="page-intro">انتخابِ پنلِ پیامک، کلیدها و قالبِ پیامِ یادآوری نوبت. پنلِ فعالِ پروژه: <b>کاوه‌نگار</b>.</div>
+<div class="page-intro">شبکهٔ محلی، پنل‌های پیامک، کارت بیمار و اطلاعات سربرگ نسخه.</div>
+
+<div class="card" style="max-width:680px;margin-bottom:var(--s4);">
+    <div class="section-title">
+        <svg class="icon"><use href="#i-monitor"></use></svg>
+        <span>دسترسی از شبکهٔ محلی</span>
+        <span class="section-sub">اجرای Specialist و حسابداری روی یک سرور و استفاده از همهٔ کامپیوترها</span>
+    </div>
+    <div class="help" style="margin-bottom:var(--s3);">IPهای سرور، آدرس‌های قابل کپی، وضعیت پل فقط‌خواندنی حسابداری و فرمان‌های Windows Firewall را در صفحهٔ شبکه ببینید.</div>
+    <a class="btn" href="{{ url_for('network.index') }}">
+        <svg class="icon"><use href="#i-monitor"></use></svg> باز کردن تنظیمات شبکه
+    </a>
+</div>
 
 <form method="post" style="max-width:680px;">
 
