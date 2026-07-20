@@ -10,9 +10,17 @@ class WalletRepository:
         return int(row["wallet_balance"]) if row else 0
 
     def adjust(self, pid: int, amount: int, *, reason: str, note: str = None,
-               campaign_id: int = None, expires_at: str = None, created_by: str = None) -> int:
+               campaign_id: int = None, expires_at: str = None, created_by: str = None,
+               idempotency_key: str = None) -> int:
         """Apply a credit (+) or debit (-) and record a transaction. Returns new balance."""
         db = get_db()
+        if idempotency_key:
+            prior = db.execute(
+                "SELECT balance_after FROM wallet_transactions WHERE idempotency_key=?",
+                (idempotency_key,),
+            ).fetchone()
+            if prior:
+                return int(prior["balance_after"])
         current = self.get_balance(pid)
         new_balance = current + int(amount)
         if new_balance < 0:
@@ -21,9 +29,11 @@ class WalletRepository:
         db.execute("UPDATE patient_links SET wallet_balance=? WHERE id=?", (new_balance, pid))
         db.execute(
             """INSERT INTO wallet_transactions
-               (patient_link_id, amount, balance_after, reason, campaign_id, note, expires_at, created_by)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-            (pid, amount, new_balance, reason, campaign_id, note, expires_at, created_by),
+               (patient_link_id, amount, balance_after, reason, campaign_id, note, expires_at,
+                created_by, idempotency_key)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (pid, amount, new_balance, reason, campaign_id, note, expires_at, created_by,
+             idempotency_key),
         )
         db.commit()
         return new_balance

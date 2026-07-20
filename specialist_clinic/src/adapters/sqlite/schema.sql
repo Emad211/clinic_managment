@@ -42,6 +42,7 @@ CREATE TABLE IF NOT EXISTS wallet_transactions (
     balance_after INTEGER NOT NULL,
     reason TEXT,                        -- 'campaign','manual','redeem','expire'
     campaign_id INTEGER,
+    idempotency_key TEXT,
     note TEXT,
     expires_at TEXT,                    -- gregorian YYYY-MM-DD (optional)
     created_by TEXT,
@@ -49,6 +50,8 @@ CREATE TABLE IF NOT EXISTS wallet_transactions (
     FOREIGN KEY (patient_link_id) REFERENCES patient_links(id)
 );
 CREATE INDEX IF NOT EXISTS idx_wallet_tx_patient ON wallet_transactions (patient_link_id, created_at DESC);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_wallet_tx_idempotency
+    ON wallet_transactions(idempotency_key) WHERE idempotency_key IS NOT NULL;
 
 -- Conditions catalog
 CREATE TABLE IF NOT EXISTS conditions (
@@ -198,6 +201,11 @@ CREATE TABLE IF NOT EXISTS sms_campaigns (
     total_recipients INTEGER DEFAULT 0,
     sent_count INTEGER DEFAULT 0,
     failed_count INTEGER DEFAULT 0,
+    delivered_count INTEGER DEFAULT 0,
+    pending_count INTEGER DEFAULT 0,
+    blacklist_count INTEGER DEFAULT 0,
+    claim_token TEXT,
+    claim_at TIMESTAMP,
     created_by TEXT,
     created_at TIMESTAMP DEFAULT (datetime('now', '+3 hours', '+30 minutes')),
     FOREIGN KEY (template_id) REFERENCES sms_templates(id)
@@ -211,14 +219,28 @@ CREATE TABLE IF NOT EXISTS sms_messages (
     recipient TEXT NOT NULL,
     body TEXT NOT NULL,
     status TEXT NOT NULL DEFAULT 'pending',  -- pending, sent, failed
+    provider TEXT,
+    provider_request_id TEXT,
     provider_msgid TEXT,
+    idempotency_key TEXT,
     delivery_status TEXT,
+    delivery_status_int INTEGER,
+    delivery_checked_at TIMESTAMP,
+    next_status_check_at TIMESTAMP,
+    delivered_at TIMESTAMP,
+    send_attempts INTEGER NOT NULL DEFAULT 0,
+    last_attempt_at TIMESTAMP,
+    retryable INTEGER NOT NULL DEFAULT 0,
     error TEXT,
     sent_at TIMESTAMP,
     created_at TIMESTAMP DEFAULT (datetime('now', '+3 hours', '+30 minutes')),
     FOREIGN KEY (campaign_id) REFERENCES sms_campaigns(id),
     FOREIGN KEY (patient_link_id) REFERENCES patient_links(id)
 );
+CREATE UNIQUE INDEX IF NOT EXISTS idx_sms_messages_idempotency
+    ON sms_messages(idempotency_key) WHERE idempotency_key IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_sms_messages_delivery_due
+    ON sms_messages(provider, next_status_check_at, delivery_status);
 
 -- Campaign audience split (for incrementality / lift): who was treated vs held out.
 -- Recorded at send time only when a campaign has holdout_percent > 0.

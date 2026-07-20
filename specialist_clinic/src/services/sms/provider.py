@@ -15,11 +15,68 @@ class SendResult:
     error: Optional[str] = None
     pending: bool = False   # submitted, but the panel's response timed out / was unclear
                             # (likely sent) — callers should log it as pending, NOT failed
+    provider_request_id: Optional[str] = None
+    delivery_status: Optional[str] = None
+    delivery_status_int: Optional[int] = None
+    retryable: bool = False
+
+
+@dataclass
+class OutgoingSms:
+    ref_id: str
+    recipient: str
+    body: str
+
+
+@dataclass
+class BatchItemResult:
+    ref_id: str
+    ok: bool
+    provider_request_id: Optional[str] = None
+    provider_msgid: Optional[str] = None
+    delivery_status: Optional[str] = None
+    error: Optional[str] = None
+    pending: bool = False
+    retryable: bool = False
+
+
+@dataclass
+class DeliveryUpdate:
+    provider_request_id: Optional[str]
+    provider_msgid: Optional[str]
+    recipient: Optional[str]
+    status: str
+    status_int: Optional[int] = None
+    delivered_at: Optional[str] = None
+
+
+@dataclass
+class BatchSendResult:
+    items: list[BatchItemResult]
+    error: Optional[str] = None
+    pending: bool = False
 
 
 class SmsProvider:
     def send(self, recipient: str, body: str, message_type: Optional[str] = None) -> SendResult:  # pragma: no cover
         raise NotImplementedError
+
+    def send_batch(self, messages: list[OutgoingSms], message_type: Optional[str] = None) -> BatchSendResult:
+        items = []
+        for message in messages:
+            result = self.send(message.recipient, message.body, message_type)
+            items.append(BatchItemResult(
+                ref_id=message.ref_id, ok=result.ok,
+                provider_request_id=result.provider_request_id,
+                provider_msgid=result.provider_msgid,
+                delivery_status=result.delivery_status,
+                error=result.error, pending=result.pending, retryable=result.retryable,
+            ))
+        return BatchSendResult(items=items)
+
+    def fetch_delivery(self, *, request_id: str | None = None,
+                       message_id: str | None = None) -> list[DeliveryUpdate]:
+        return []
 
 
 class NullProvider(SmsProvider):

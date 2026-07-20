@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}گزارش تحویل پیامک{% endblock %}
+{% block content %}
+{% set hub_tab = 'messages' %}{% include "sms/_hub_tabs.html" %}
+<div class="topbar"><h1><svg class="icon icon-lg"><use href="#i-list-checks"></use></svg> گزارش تحویل پیامک</h1>
+<form method="post" action="{{ url_for('sms.reconcile_messages') }}"><button class="btn" type="submit"><svg class="icon"><use href="#i-activity"></use></svg> به‌روزرسانی وضعیت‌ها</button></form></div>
+<div class="card">
+<form method="get" class="flex items-end gap-2 wrap">
+ <div class="fld"><label>وضعیت</label><select name="delivery_status"><option value="">همه</option>{% for key,label in statuses.items() %}<option value="{{ key }}" {% if request.args.get('delivery_status')==key %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></div>
+ <div class="fld"><label>Provider</label><select name="provider"><option value="">همه</option><option value="mediana" {% if request.args.get('provider')=='mediana' %}selected{% endif %}>مدیانا</option><option value="kavenegar" {% if request.args.get('provider')=='kavenegar' %}selected{% endif %}>کاوه‌نگار</option></select></div>
+ <div class="fld"><label>کمپین</label><select name="campaign_id"><option value="">همه</option>{% for c in campaigns %}<option value="{{ c.id }}" {% if request.args.get('campaign_id')|int==c.id %}selected{% endif %}>{{ c.name }}</option>{% endfor %}</select></div>
+ <button class="btn btn-ghost" type="submit">اعمال فیلتر</button>
+</form></div>
+<div class="card"><div class="table-wrap"><table><thead><tr><th>گیرنده</th><th>منبع</th><th>کمپین/بیمار</th><th>وضعیت تحویل</th><th>شناسه مدیانا</th><th>آخرین استعلام</th><th></th></tr></thead><tbody>
+{% for m in messages %}<tr><td class="nums">{{ m.recipient }}</td><td>{{ m.provider or '—' }}</td><td>{{ m.campaign_name or 'تکی' }}{% if m.patient_name %}<div class="muted text-xs">{{ m.patient_name }}</div>{% endif %}</td><td><span class="badge {% if m.delivery_status=='Delivered' %}badge-ok{% elif m.delivery_status in ['NumberBlackListed','OperatorBlackList','Failed','Undelivered'] %}badge-danger{% elif m.delivery_status in ['SubmissionUnknown','StatusUnknown'] %}badge-warn{% else %}badge-info{% endif %}">{{ status_label(m.delivery_status) }}</span>{% if m.error %}<div class="muted text-xs">{{ m.error }}</div>{% endif %}</td><td class="muted text-xs nums">{{ m.provider_msgid or m.provider_request_id or '—' }}</td><td class="muted">{{ m.delivery_checked_at|jalali if m.delivery_checked_at else '—' }}</td><td><form method="post" action="{{ url_for('sms.reconcile_messages') }}"><input type="hidden" name="message_id" value="{{ m.id }}"><button class="btn btn-sm btn-ghost" type="submit" title="فقط استعلام؛ ارسال مجدد انجام نمی‌شود"><svg class="icon icon-sm"><use href="#i-activity"></use></svg> استعلام</button></form></td></tr>{% else %}<tr><td colspan="7" class="muted">پیامی مطابق فیلترها وجود ندارد.</td></tr>{% endfor %}
+</tbody></table></div><div class="alert-banner alert-warn"><svg class="icon"><use href="#i-alert"></use></svg><span>برای پیام‌های timeout یا وضعیت مبهم، جهت جلوگیری از پیام تکراری ارسال مجدد خودکار انجام نمی‌شود.</span></div></div>
+{% endblock %}

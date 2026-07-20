@@ -2,11 +2,12 @@
 from __future__ import annotations
 
 import random
+import uuid
 
 from src.adapters.sqlite.core import get_db
 from src.adapters.sqlite.sms_repo import SmsRepository
 from src.adapters.sqlite.wallet_repo import WalletRepository
-from src.services.sms.provider import get_provider
+from src.services.sms.provider import get_provider, OutgoingSms
 from src.services.sms.compliance import sanitize
 from src.common.utils import iran_now
 
@@ -89,6 +90,10 @@ def run_campaign(campaign_id: int) -> dict:
     if not campaign:
         return {'error': 'campaign not found'}
 
+    token = uuid.uuid4().hex
+    if not repo.claim_campaign(campaign_id, token):
+        return {'error': 'campaign already running', 'duplicate': True}
+
     recipients = resolve_segment(campaign['segment'])
 
     # Holdout / control split for incrementality (only when holdout_percent > 0).
@@ -96,7 +101,10 @@ def run_campaign(campaign_id: int) -> dict:
     # the campaign's causal lift can be measured later (treated vs control revenue).
     holdout_pct = int(campaign.get('holdout_percent') or 0)
     control_ids = set()
-    if holdout_pct > 0 and len(recipients) >= 2:
+    existing_audience = repo.get_audience(campaign_id)
+    if existing_audience:
+        control_ids = {r['patient_link_id'] for r in existing_audience if r['grp'] == 'control'}
+    elif holdout_pct > 0 and len(recipients) >= 2:
         n_control = max(1, round(len(recipients) * holdout_pct / 100.0))
         n_control = min(n_control, len(recipients) - 1)  # always keep at least one treated
         for r in random.sample(recipients, n_control):
@@ -125,52 +133,72 @@ def run_campaign(campaign_id: int) -> dict:
 
     wallet = WalletRepository()
     provider = get_provider()
-    sent = failed = pending = 0
-    for r in treated:
-        balance = 0
-        if is_credit and credit_amount > 0:
-            balance = wallet.adjust(
-                r['id'], credit_amount, reason='campaign', campaign_id=campaign_id,
-                note=campaign['name'], expires_at=expires_at, created_by='campaign',
+    provider_name = provider.__class__.__name__.replace('Provider', '').lower() or 'null'
+    claimed = []
+    try:
+        for r in treated:
+            balance = 0
+            key = f"campaign:{campaign_id}:patient:{r['id']}"
+            if is_credit and credit_amount > 0:
+                balance = wallet.adjust(
+                    r['id'], credit_amount, reason='campaign', campaign_id=campaign_id,
+                    note=campaign['name'], expires_at=expires_at, created_by='campaign',
+                    idempotency_key=f"wallet:{key}",
+                )
+            body = sanitize(personalize(campaign['body'], name=r['full_name'],
+                                        credit=credit_amount, balance=balance))
+            msg_id = repo.add_message(
+                campaign_id=campaign_id, patient_link_id=r['id'], recipient=r['phone_number'],
+                body=body, provider=provider_name, idempotency_key=key,
             )
-        body = sanitize(personalize(campaign['body'], name=r['full_name'],
-                                    credit=credit_amount, balance=balance))
-        msg_id = repo.add_message(
-            campaign_id=campaign_id, patient_link_id=r['id'],
-            recipient=r['phone_number'], body=body,
-        )
-        result = provider.send(r['phone_number'], body, message_type=msg_type)
-        if result.ok:
-            sent += 1
-            repo.mark_message(msg_id, 'sent', provider_msgid=result.provider_msgid)
-        elif getattr(result, 'pending', False):
-            # Slow/absent panel response — likely sent; log as pending, not failed.
-            pending += 1
-            repo.mark_message(msg_id, 'pending', error=result.error)
-        else:
-            failed += 1
-            repo.mark_message(msg_id, 'failed', error=result.error)
+            if repo.claim_message_attempt(msg_id):
+                claimed.append((msg_id, key, r['phone_number'], body))
 
-    repo.update_campaign_status(campaign_id, 'done',
-                                total_recipients=len(treated), sent_count=sent, failed_count=failed)
-    return {'total': len(treated), 'sent': sent, 'failed': failed, 'pending': pending,
-            'control': len(control_ids)}
+        for start in range(0, len(claimed), 100):
+            chunk = claimed[start:start + 100]
+            result = provider.send_batch(
+                [OutgoingSms(ref_id=key, recipient=phone, body=body)
+                 for _, key, phone, body in chunk], message_type=msg_type)
+            by_ref = {item.ref_id: item for item in result.items}
+            for msg_id, key, _, _ in chunk:
+                item = by_ref.get(key)
+                if item is None:
+                    repo.mark_submission(msg_id, ok=False, pending=True,
+                                         error='پاسخ متناظر از سرویس‌دهنده دریافت نشد')
+                else:
+                    repo.mark_submission(
+                        msg_id, ok=item.ok, pending=item.pending,
+                        provider_request_id=item.provider_request_id,
+                        provider_msgid=item.provider_msgid, delivery_status=item.delivery_status,
+                        error=item.error, retryable=item.retryable)
+        repo.refresh_campaign_counts(campaign_id)
+        counts = repo.get_campaign(campaign_id)
+        return {'total': len(treated), 'sent': counts['sent_count'],
+                'failed': counts['failed_count'], 'pending': counts['pending_count'],
+                'control': len(control_ids)}
+    finally:
+        repo.release_campaign(campaign_id, token, 'done')
 
 
 def send_single(patient_link_id: int, recipient: str, body: str, campaign_id: int = None,
-                message_type: str = 'Informational') -> bool:
+                message_type: str = 'Informational', idempotency_key: str = None) -> bool:
     """Send a one-off SMS (e.g. an appointment reminder) and log it.
 
     Defaults to 'Informational' since one-off sends are service messages.
     """
     repo = SmsRepository()
+    provider = get_provider()
     msg_id = repo.add_message(campaign_id=campaign_id, patient_link_id=patient_link_id,
-                              recipient=recipient, body=body)
-    result = get_provider().send(recipient, body, message_type=message_type)
-    if result.ok:
-        repo.mark_message(msg_id, 'sent', provider_msgid=result.provider_msgid)
-    elif getattr(result, 'pending', False):
-        repo.mark_message(msg_id, 'pending', error=result.error)
-    else:
-        repo.mark_message(msg_id, 'failed', error=result.error)
+                              recipient=recipient, body=body,
+                              provider=provider.__class__.__name__.replace('Provider', '').lower(),
+                              idempotency_key=idempotency_key)
+    if not repo.claim_message_attempt(msg_id):
+        return (repo.get_message(msg_id) or {}).get('status') == 'sent'
+    result = provider.send(recipient, body, message_type=message_type)
+    repo.mark_submission(msg_id, ok=result.ok, pending=result.pending,
+                         provider_request_id=result.provider_request_id,
+                         provider_msgid=result.provider_msgid,
+                         delivery_status=result.delivery_status,
+                         delivery_status_int=result.delivery_status_int,
+                         error=result.error, retryable=result.retryable)
     return result.ok

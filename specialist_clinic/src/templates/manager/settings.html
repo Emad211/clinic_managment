@@ -2,11 +2,72 @@
 {% block title %}تنظیمات{% endblock %}
 {% block content %}
 <div class="topbar">
-    <h1><svg class="icon icon-lg"><use href="#i-settings"></use></svg> تنظیمات پیامک</h1>
+    <h1><svg class="icon icon-lg"><use href="#i-settings"></use></svg> تنظیمات</h1>
 </div>
-<div class="page-intro">انتخابِ پنلِ پیامک، کلیدها و قالبِ پیامِ یادآوری نوبت. پنلِ فعالِ پروژه: <b>کاوه‌نگار</b>.</div>
+<div class="page-intro">تنظیم دسترسی شبکهٔ درمانگاه، پیامک، کارت بیمار و سربرگ نسخه.</div>
 
-<form method="post" style="max-width:680px;">
+<section class="card network-settings" aria-labelledby="network-settings-title">
+    <div class="section-title">
+        <svg class="icon"><use href="#i-building"></use></svg>
+        <span id="network-settings-title">دسترسی شبکهٔ درمانگاه</span>
+        <span class="section-sub">اجرای کلینیک تخصصی روی همهٔ سیستم‌های متصل به شبکه</span>
+    </div>
+
+    <div class="network-primary">
+        <div>
+            <div class="network-label">نشانی پیشنهادی کلینیک تخصصی</div>
+            <code id="specialist-network-url" class="network-url nums" dir="ltr">{{ network_info.primary_url }}</code>
+        </div>
+        <div class="network-actions">
+            <button type="button" class="btn btn-sm network-copy" data-copy-target="specialist-network-url">
+                <svg class="icon"><use href="#i-clipboard"></use></svg> کپی نشانی
+            </button>
+            <a class="btn btn-secondary btn-sm" href="{{ network_info.primary_url }}" target="_blank" rel="noopener">باز کردن</a>
+        </div>
+    </div>
+
+    <div class="network-facts">
+        <div><span>نام سیستم</span><b class="nums" dir="ltr">{{ network_info.hostname }}</b></div>
+        <div><span>پورت کلینیک تخصصی</span><b class="nums">{{ network_info.port }}</b></div>
+        <div><span>اتصال داده‌های حسابداری</span>
+            {% if network_info.accounting_bridge_available %}
+            <b class="network-status is-online"><svg class="icon icon-sm"><use href="#i-shield"></use></svg> متصل، فقط‌خواندنی</b>
+            {% else %}
+            <b class="network-status is-offline"><svg class="icon icon-sm"><use href="#i-alert"></use></svg> در دسترس نیست</b>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="network-addresses">
+        <div class="network-label">نشانی‌های قابل استفاده</div>
+        {% for address in network_info.addresses %}
+        <div class="network-address-row">
+            <div>
+                <code id="network-url-{{ loop.index }}" class="nums" dir="ltr">{{ address.specialist_url }}</code>
+                <span class="badge">{{ 'فقط همین سیستم' if address.is_localhost else 'شبکه درمانگاه' }}</span>
+            </div>
+            <button type="button" class="btn btn-ghost btn-sm network-copy" data-copy-target="network-url-{{ loop.index }}" aria-label="کپی نشانی">
+                <svg class="icon"><use href="#i-clipboard"></use></svg>
+            </button>
+        </div>
+        {% endfor %}
+    </div>
+
+    <div class="network-peer">
+        <div>
+            <b>اپ حسابداری</b>
+            <div class="help">در همان سیستم و شبکه، روی پورت ۸۰۸۰ در دسترس است.</div>
+        </div>
+        <a href="{{ network_info.accounting_url }}" target="_blank" rel="noopener" class="btn btn-secondary btn-sm nums" dir="ltr">{{ network_info.accounting_url }}</a>
+    </div>
+
+    <div class="alert-banner alert-info network-note">
+        <svg class="icon"><use href="#i-info"></use></svg>
+        <div>سیستم‌ها باید به یک شبکهٔ داخلی یا Wi-Fi متصل باشند. اگر نشانی باز نشد، دسترسی پورت <span class="nums">{{ network_info.port }}</span> را در Windows Firewall مجاز کنید. اتصال پرونده‌های حسابداری همچنان فقط‌خواندنی باقی می‌ماند.</div>
+    </div>
+</section>
+
+<form method="post" class="settings-form">
 
     <!-- پنلِ فعال -->
     <div class="card">
@@ -110,7 +171,10 @@
         </label>
         <div class="fld" style="margin-top:var(--s2);">
             <label>نشانیِ پایهٔ عمومی (برای لینک و QR)</label>
-            <input type="text" name="public_base_url" value="{{ data.public_base_url }}" placeholder="مثلاً http://192.168.1.10:8090" style="direction:ltr;text-align:left;">
+            <div class="network-input-row">
+                <input id="public-base-url" type="text" name="public_base_url" value="{{ data.public_base_url }}" placeholder="مثلاً http://192.168.1.10:8090" style="direction:ltr;text-align:left;">
+                <button type="button" class="btn btn-secondary btn-sm" id="use-network-url">استفاده از نشانی شبکه</button>
+            </div>
             <div class="help">برای تبلتِ پذیرش، IPِ کلینیک در شبکه را بگذارید تا QR روی موبایلِ بیمار باز شود؛ خالی = نشانیِ همین مرورگر. (مسیرِ اینترنتی بعداً: دامنهٔ عمومی.)</div>
         </div>
         <div class="help"><svg class="icon icon-sm"><use href="#i-info"></use></svg> تحویلِ داخلِ درمانگاه (تبلت/QR روی شبکهٔ کلینیک) همین حالا کار می‌کند؛ ارسالِ پیامکی به موبایلِ بیمار نیازمندِ زیرساختِ اینترنتی + احراز هویتِ پنل است.</div>
@@ -171,4 +235,37 @@
         </div>
     </div>
 </div>
+<div id="copy-feedback" class="copy-feedback" role="status" aria-live="polite"></div>
+<script>
+(() => {
+    const feedback = document.getElementById('copy-feedback');
+    const showFeedback = (message) => {
+        feedback.textContent = message;
+        feedback.classList.add('show');
+        window.setTimeout(() => feedback.classList.remove('show'), 1800);
+    };
+    document.querySelectorAll('.network-copy').forEach((button) => {
+        button.addEventListener('click', async () => {
+            const value = document.getElementById(button.dataset.copyTarget)?.textContent.trim();
+            if (!value) return;
+            try {
+                await navigator.clipboard.writeText(value);
+                showFeedback('نشانی کپی شد');
+            } catch (_) {
+                const input = document.createElement('textarea');
+                input.value = value;
+                document.body.appendChild(input);
+                input.select();
+                document.execCommand('copy');
+                input.remove();
+                showFeedback('نشانی کپی شد');
+            }
+        });
+    });
+    document.getElementById('use-network-url')?.addEventListener('click', () => {
+        document.getElementById('public-base-url').value = document.getElementById('specialist-network-url').textContent.trim();
+        showFeedback('نشانی شبکه در فیلد کارت بیمار قرار گرفت؛ برای ثبت، تنظیمات را ذخیره کنید');
+    });
+})();
+</script>
 {% endblock %}

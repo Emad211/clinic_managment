@@ -72,6 +72,9 @@ class Scheduler:
         # 2) Due scheduled campaigns (manual broadcasts)
         self._run_due_campaigns()
 
+        # 2b) Delivery reconciliation never sends; it only follows accepted Mediana IDs.
+        self._reconcile_sms_delivery()
+
         # 3) Weekly backup (Saturday ~3 AM)
         if now.weekday() == 5 and now.hour == 3 and self._last_backup_day != today:
             self._backup()
@@ -106,6 +109,13 @@ class Scheduler:
                 run_campaign(c['id'])
         except Exception:
             logger.exception("[scheduler] campaign error")
+
+    def _reconcile_sms_delivery(self):
+        try:
+            from src.services.sms.delivery_service import DeliveryService
+            DeliveryService().reconcile()
+        except Exception:
+            logger.exception("[scheduler] SMS delivery reconciliation error")
 
     def _backup(self):
         """Weekly snapshot of THIS app's DB (specialist.db; the accounting DB is never

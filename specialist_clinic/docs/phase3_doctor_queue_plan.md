@@ -1,6 +1,6 @@
 # نقشهٔ فاز ۳ — پنلِ پزشک: صفِ زنده + نمای سادهٔ ویزیت + «مرحله بعد»
 
-> برگرفته از مشورتِ تیم (`clinical-product-advisor` + `frontend-dev-advisor` + `backend-dev-advisor`، ۱۴۰۵/۰۳/۳۱). هم‌خانواده: [ADR-0002](../../halqe/docs/adr/0002-context-boundaries.md) · [ADR-0003](../../halqe/docs/adr/0003-integration-seam-outbox.md) · [`record_redesign_plan.md`](record_redesign_plan.md).
+> برگرفته از مشورتِ تیم (`clinical-product-advisor` + `frontend-dev-advisor` + `backend-dev-advisor`، ۱۴۰۵/۰۳/۳۱). هم‌خانواده: [`record_redesign_plan.md`](record_redesign_plan.md).
 
 ## هدف (جریانِ پزشک)
 پذیرش فاکتورِ **ویزیت** را باز می‌کند → بیمار به **صفِ زندهٔ پزشک** (در نوبت/انجام‌شده) می‌رود → پزشک انتخاب می‌کند → **پروندهٔ سادهٔ ویزیت** (اطلاعاتِ قبلی + ورودِ جدید) → دکمهٔ **«مرحله بعد»**.

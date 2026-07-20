@@ -1,15 +1,15 @@
-# CLAUDE.md
+# AGENTS.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to Codex (Codex.ai/code) when working with code in this repository.
 
 ## ⛳ دستور همیشگی — اول از همه بخوان · STANDING RULE: read before ANY task
 
 **دستور اولِ کاربر (always, every task):** پیش از شروع هر کاری در این پروژه، ابتدا **هر ۳ منبع** را بخوان و مبنا قرار بده —
-1. **مموری (Memory):** `~/.claude/projects/.../memory/MEMORY.md` و فایل‌های مموریِ مرتبط — چه‌کسی/چه/چرا که در کد نیست.
-2. **CLAUDE.md:** همین فایل + نزدیک‌ترین CLAUDE.md به محلِ کار (مثل [`specialist_clinic/CLAUDE.md`](specialist_clinic/CLAUDE.md)) — قوانین معماری و «کد چطور کار می‌کند».
+1. **مموری (Memory):** `~/.Codex/projects/.../memory/MEMORY.md` و فایل‌های مموریِ مرتبط — چه‌کسی/چه/چرا که در کد نیست.
+2. **AGENTS.md:** همین فایل + نزدیک‌ترین AGENTS.md به محلِ کار (مثل [`specialist_clinic/AGENTS.md`](specialist_clinic/AGENTS.md)) — قوانین معماری و «کد چطور کار می‌کند».
 3. **گراف دانشِ graphify:** گرافِ همان اپ/پوشه‌ای که در آن کار می‌کنی، مثل [`specialist_clinic/graphify-out/GRAPH_REPORT.md`](specialist_clinic/graphify-out/GRAPH_REPORT.md) و `graph.json` — نقشهٔ نود/جامعه/god-node. برای پرسش `/graphify query "…"`؛ اگر اپی هنوز گراف ندارد با `/graphify` بساز.
 
-فقط بعد از خواندن این سه شروع کن. `MEMORY.md` و `CLAUDE.md` خودکار لود می‌شوند، اما `GRAPH_REPORT.md` را باید صریحاً Read کنی. اگر کد به‌طور معنادار تغییر کرد، گراف را با `/graphify --update` تازه کن.
+فقط بعد از خواندن این سه شروع کن. `MEMORY.md` و `AGENTS.md` خودکار لود می‌شوند، اما `GRAPH_REPORT.md` را باید صریحاً Read کنی. اگر کد به‌طور معنادار تغییر کرد، گراف را با `/graphify --update` تازه کن.
 
 ---
 
@@ -28,7 +28,7 @@ Most domain comments and UI strings are Persian. The product is RTL/Jalali throu
 
 ## Per-app deep docs
 
-[`specialist_clinic/CLAUDE.md`](specialist_clinic/CLAUDE.md) is the authoritative guide for the Specialist Clinic app (its layering, the ADA clinical engine, the `patient_links` model, conventions, gotchas). Read it before working there. `webapp/` follows the same conventions described below but has no separate CLAUDE.md yet.
+[`specialist_clinic/AGENTS.md`](specialist_clinic/AGENTS.md) is the authoritative guide for the Specialist Clinic app (its layering, the ADA clinical engine, the `patient_links` model, conventions, gotchas). Read it before working there. `webapp/` follows the same conventions described below but has no separate AGENTS.md yet.
 
 ## Running
 
@@ -83,4 +83,4 @@ A route calls a service; a service calls a repository. **Do not put SQL in route
 
 `webapp/clinic_new.db` **is committed to git** (it carries real seeded data) — be deliberate about committing changes to it. `specialist.db` is not tracked.
 
-When working in `specialist_clinic/`, follow [`specialist_clinic/CLAUDE.md`](specialist_clinic/CLAUDE.md) for that app's specifics (the ADA rule engine, `patient_links`, the read-only bridge, threshold-sync rule).
+When working in `specialist_clinic/`, follow [`specialist_clinic/AGENTS.md`](specialist_clinic/AGENTS.md) for that app's specifics (the ADA rule engine, `patient_links`, the read-only bridge, threshold-sync rule).

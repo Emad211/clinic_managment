@@ -139,6 +139,32 @@ def _run_migrations(db):
     _ensure_column(db, "sms_campaigns", "credit_amount", "INTEGER DEFAULT 0")
     _ensure_column(db, "sms_campaigns", "credit_expires_days", "INTEGER")
     _ensure_column(db, "sms_campaigns", "holdout_percent", "INTEGER NOT NULL DEFAULT 0")
+    _ensure_column(db, "sms_campaigns", "delivered_count", "INTEGER DEFAULT 0")
+    _ensure_column(db, "sms_campaigns", "pending_count", "INTEGER DEFAULT 0")
+    _ensure_column(db, "sms_campaigns", "blacklist_count", "INTEGER DEFAULT 0")
+    _ensure_column(db, "sms_campaigns", "claim_token", "TEXT")
+    _ensure_column(db, "sms_campaigns", "claim_at", "TIMESTAMP")
+    _ensure_column(db, "wallet_transactions", "idempotency_key", "TEXT")
+    _ensure_column(db, "sms_messages", "provider", "TEXT")
+    _ensure_column(db, "sms_messages", "provider_request_id", "TEXT")
+    _ensure_column(db, "sms_messages", "idempotency_key", "TEXT")
+    _ensure_column(db, "sms_messages", "delivery_status_int", "INTEGER")
+    _ensure_column(db, "sms_messages", "delivery_checked_at", "TIMESTAMP")
+    _ensure_column(db, "sms_messages", "next_status_check_at", "TIMESTAMP")
+    _ensure_column(db, "sms_messages", "delivered_at", "TIMESTAMP")
+    _ensure_column(db, "sms_messages", "send_attempts", "INTEGER NOT NULL DEFAULT 0")
+    _ensure_column(db, "sms_messages", "last_attempt_at", "TIMESTAMP")
+    _ensure_column(db, "sms_messages", "retryable", "INTEGER NOT NULL DEFAULT 0")
+    try:
+        db.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_sms_messages_idempotency "
+                   "ON sms_messages(idempotency_key) WHERE idempotency_key IS NOT NULL")
+        db.execute("CREATE INDEX IF NOT EXISTS idx_sms_messages_delivery_due "
+                   "ON sms_messages(provider, next_status_check_at, delivery_status)")
+        db.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_wallet_tx_idempotency "
+                   "ON wallet_transactions(idempotency_key) WHERE idempotency_key IS NOT NULL")
+        db.commit()
+    except Exception:
+        pass
     # Medication lifecycle: stop date for effect/timeline tracking
     _ensure_column(db, "patient_medications", "end_date", "TEXT")
     # Pharmacologic class (drives the treatment/risk engines)

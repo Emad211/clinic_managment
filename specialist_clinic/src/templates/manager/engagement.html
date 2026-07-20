@@ -20,8 +20,8 @@
     <div class="section-title"><svg class="icon"><use href="#i-shield"></use></svg> گاردریل‌های پیامکِ خودکار</div>
     <form method="post" action="{{ url_for('manager.engagement_settings') }}">
         <div class="grid grid-4" style="align-items:flex-end;">
-            <div class="fld"><label>شروع ساعتِ مجاز</label><input type="text" name="quiet_start" value="{{ settings.quiet_start }}" placeholder="08:00"></div>
-            <div class="fld"><label>پایان ساعتِ مجاز</label><input type="text" name="quiet_end" value="{{ settings.quiet_end }}" placeholder="21:00"></div>
+            <div class="fld"><label>شروع ساعتِ مجاز</label><input type="time" class="time-input" name="quiet_start" value="{{ settings.quiet_start }}" step="900" lang="fa-IR" required></div>
+            <div class="fld"><label>پایان ساعتِ مجاز</label><input type="time" class="time-input" name="quiet_end" value="{{ settings.quiet_end }}" step="900" lang="fa-IR" required></div>
             <div class="fld"><label>سقفِ پیامک در روز (هر بیمار)</label><input type="number" name="daily_cap" min="1" max="10" value="{{ settings.daily_cap }}"></div>
             <button class="btn" type="submit"><svg class="icon"><use href="#i-save"></use></svg> ذخیرهٔ گاردریل‌ها</button>
         </div>

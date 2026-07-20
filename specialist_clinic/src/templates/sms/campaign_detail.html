@@ -8,7 +8,7 @@
         {% elif campaign.campaign_type=='reminder' %}<span class="badge badge-info">یادآوری</span>
         {% else %}<span class="badge badge-muted">اطلاع‌رسانی</span>{% endif %}
     </h1>
-    <a class="btn btn-ghost" href="{{ url_for('sms.campaigns') }}"><svg class="icon"><use href="#i-arrow-left"></use></svg> بازگشت</a>
+    <div class="flex gap-2"><form method="post" action="{{ url_for('sms.reconcile_messages') }}"><input type="hidden" name="campaign_id" value="{{ campaign.id }}"><button class="btn" type="submit"><svg class="icon"><use href="#i-activity"></use></svg> به‌روزرسانی وضعیت</button></form><a class="btn btn-ghost" href="{{ url_for('sms.campaigns') }}"><svg class="icon"><use href="#i-arrow-left"></use></svg> بازگشت</a></div>
 </div>
 
 <div class="card">
@@ -21,7 +21,7 @@
         <div class="card kpi kpi-ok" style="margin:0;">
             <div class="ic"><svg class="icon"><use href="#i-check"></use></svg></div>
             <div class="num c-ok">{{ campaign.sent_count|fa_num }}</div>
-            <div class="label">ارسال موفق</div>
+            <div class="label">پذیرفته‌شده</div>
         </div>
         <div class="card kpi kpi-warn" style="margin:0;">
             <div class="ic"><svg class="icon"><use href="#i-alert"></use></svg></div>
@@ -41,6 +41,12 @@
             <div class="label">وضعیت</div>
         </div>
         {% endif %}
+    </div>
+    <div class="grid grid-4" style="margin-top:var(--s3);">
+        <div class="mini"><div class="m-num c-ok">{{ campaign.delivered_count|fa_num }}</div><div class="m-lbl">تحویل‌شده</div></div>
+        <div class="mini"><div class="m-num">{{ campaign.pending_count|fa_num }}</div><div class="m-lbl">در حال ارسال</div></div>
+        <div class="mini"><div class="m-num c-warn">{{ campaign.blacklist_count|fa_num }}</div><div class="m-lbl">لیست سیاه</div></div>
+        <div class="mini"><div class="m-num c-danger">{{ campaign.failed_count|fa_num }}</div><div class="m-lbl">ناموفق</div></div>
     </div>
 
     {% if campaign.campaign_type=='wallet_credit' %}
@@ -94,15 +100,15 @@
     {% if messages %}
     <div class="table-wrap">
     <table>
-        <thead><tr><th>گیرنده</th><th>متن</th><th>وضعیت</th><th>شناسه/خطا</th><th>زمان</th></tr></thead>
+        <thead><tr><th>گیرنده</th><th>متن</th><th>وضعیت تحویل</th><th>شناسه/خطا</th><th>آخرین استعلام / تحویل</th></tr></thead>
         <tbody>
         {% for m in messages %}
             <tr>
                 <td>{{ m.recipient }}</td>
                 <td class="muted text-xs">{{ m.body[:60] }}…</td>
-                <td>{% if m.status=='sent' %}<span class="badge badge-ok">ارسال شد</span>{% elif m.status=='failed' %}<span class="badge badge-danger">ناموفق</span>{% elif m.status=='pending' %}<span class="badge badge-warn" title="پاسخِ پنل با تأخیر؛ احتمالاً ارسال شده">در انتظار تأیید</span>{% else %}<span class="badge badge-muted">در صف</span>{% endif %}</td>
-                <td class="muted text-xs">{{ m.provider_msgid or m.error or '—' }}</td>
-                <td class="muted">{{ m.sent_at|jalali if m.sent_at else '—' }}</td>
+                <td><span class="badge {% if m.delivery_status=='Delivered' %}badge-ok{% elif m.delivery_status in ['NumberBlackListed','OperatorBlackList','Failed','Undelivered'] %}badge-danger{% elif m.delivery_status in ['SubmissionUnknown','StatusUnknown'] %}badge-warn{% else %}badge-info{% endif %}">{{ status_label(m.delivery_status) }}</span></td>
+                <td class="muted text-xs nums">{{ m.provider_msgid or m.provider_request_id or m.error or '—' }}</td>
+                <td class="muted">{{ m.delivery_checked_at|jalali if m.delivery_checked_at else '—' }}{% if m.delivered_at %}<div class="text-xs c-ok">تحویل: {{ m.delivered_at|jalali }}</div>{% endif %}</td>
             </tr>
         {% endfor %}
         </tbody>

@@ -284,6 +284,9 @@ label{display:block;color:var(--muted);font-size:12px;margin:var(--s3) 0 var(--s
 input[type=number]{-moz-appearance:textfield;}
 input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none;margin:0;}
 input[type=checkbox],input[type=radio]{width:auto;accent-color:var(--primary);}
+.time-input{direction:ltr;text-align:center;color-scheme:dark;font-variant-numeric:tabular-nums;cursor:pointer;}
+.time-input::-webkit-calendar-picker-indicator{cursor:pointer;opacity:.85;}
+.time-input::-webkit-calendar-picker-indicator:hover{opacity:1;}
 .req{color:var(--danger-fg);margin-inline-start:2px;}
 .help{color:var(--faint);font-size:11.5px;margin-top:4px;}
 
@@ -446,12 +449,56 @@ input[type=checkbox],input[type=radio]{width:auto;accent-color:var(--primary);}
 }
 
 /* Persian datepicker — dark harmonisation */
-.datepicker-plot-area{font-family:'Vazirmatn',Tahoma,sans-serif!important;background:var(--panel)!important;
-    border:1px solid var(--line)!important;border-radius:12px!important;box-shadow:var(--shadow-lg)!important;color:var(--text)!important;}
-.datepicker-plot-area .header,.datepicker-plot-area .navigator{background:transparent!important;color:var(--text)!important;}
-.datepicker-plot-area .table-days td span:hover,.datepicker-plot-area .month-item:hover,.datepicker-plot-area .year-item:hover{background:var(--primary-soft)!important;color:#fff!important;}
-.datepicker-plot-area .table-days td span.selected,.datepicker-plot-area .selected{background:var(--primary)!important;color:#fff!important;}
-.datepicker-plot-area .table-days td.disabled span,.datepicker-plot-area .other-month{color:var(--faint)!important;}
+.datepicker-plot-area{
+    font-family:'Vazirmatn',Tahoma,sans-serif!important;
+    background:var(--panel)!important;color:var(--text)!important;
+    border:1px solid var(--line)!important;border-radius:12px!important;
+    box-shadow:var(--shadow-lg)!important;
+}
+.datepicker-plot-area *{font-family:inherit!important;}
+.datepicker-plot-area .datepicker-navigator,
+.datepicker-plot-area .datepicker-day-view .month-grid-box .header{
+    background:transparent!important;color:var(--text)!important;
+}
+.datepicker-plot-area .datepicker-navigator .pwt-btn-next,
+.datepicker-plot-area .datepicker-navigator .pwt-btn-switch,
+.datepicker-plot-area .datepicker-navigator .pwt-btn-prev,
+.datepicker-plot-area .toolbox .pwt-btn-submit,
+.datepicker-plot-area .toolbox .pwt-btn-calendar,
+.datepicker-plot-area .toolbox .pwt-btn-today{
+    background:var(--panel2)!important;color:var(--text)!important;
+}
+.datepicker-plot-area .datepicker-day-view .month-grid-box .header .header-row-cell{
+    color:var(--muted)!important;
+}
+.datepicker-plot-area .datepicker-day-view .table-days td span,
+.datepicker-plot-area .datepicker-month-view .month-item,
+.datepicker-plot-area .datepicker-year-view .year-item{
+    background:transparent!important;color:var(--text)!important;text-shadow:none!important;
+}
+.datepicker-plot-area .datepicker-day-view .table-days td span:hover,
+.datepicker-plot-area .datepicker-month-view .month-item:hover,
+.datepicker-plot-area .datepicker-year-view .year-item:hover{
+    background:var(--primary-soft)!important;color:var(--text)!important;
+}
+.datepicker-plot-area .datepicker-day-view .table-days td.today span{
+    background:var(--info-soft)!important;color:var(--info-fg)!important;
+}
+.datepicker-plot-area .datepicker-day-view .table-days td.selected span,
+.datepicker-plot-area .datepicker-month-view .month-item.selected,
+.datepicker-plot-area .datepicker-year-view .year-item.selected{
+    background:var(--primary)!important;color:#fff!important;text-shadow:none!important;
+}
+.datepicker-plot-area .datepicker-day-view .table-days td.disabled span,
+.datepicker-plot-area .datepicker-day-view .table-days td span.other-month,
+.datepicker-plot-area .datepicker-month-view .month-item-disable,
+.datepicker-plot-area .datepicker-year-view .year-item-disable{
+    background:transparent!important;color:var(--faint)!important;opacity:.55;
+}
+.datepicker-plot-area .datepicker-navigator [class*='pwt-btn']:hover,
+.datepicker-plot-area .toolbox [class*='pwt-btn']:hover{
+    background:var(--primary-soft)!important;color:var(--text)!important;
+}
 
 /* ========================================================================== */
 /*  PATIENT COCKPIT — header · tabs · vital stats · prioritized suggestions    */
@@ -550,3 +597,23 @@ input[type=checkbox],input[type=radio]{width:auto;accent-color:var(--primary);}
 .nav-tile .nt-ic.t-danger{background:var(--danger-soft);color:var(--danger-fg);}
 .nav-tile b{color:var(--text);font-weight:700;display:block;}
 .nav-tile small{color:var(--muted);font-size:11.5px;}
+
+/* manager settings: clinic LAN access */
+.settings-form,.network-settings{max-width:680px;}
+.network-settings{margin-bottom:var(--s4);}
+.network-primary{display:flex;align-items:center;justify-content:space-between;gap:var(--s4);padding:var(--s4);background:var(--primary-soft);border:1px solid var(--primary);border-radius:var(--r-sm);}
+.network-label{font-size:12px;color:var(--muted);margin-bottom:5px;}
+.network-url{font-size:17px;color:var(--text);font-weight:700;overflow-wrap:anywhere;}
+.network-actions,.network-input-row{display:flex;align-items:center;gap:var(--s2);flex-wrap:wrap;}
+.network-input-row input{flex:1;min-width:220px;}
+.network-facts{display:grid;grid-template-columns:repeat(3,1fr);gap:var(--s2);margin-top:var(--s3);}
+.network-facts>div{display:flex;flex-direction:column;gap:5px;padding:var(--s3);background:var(--bg2);border:1px solid var(--line);border-radius:var(--r-sm);}
+.network-facts span{font-size:11px;color:var(--muted);}.network-facts b{font-size:12px;}
+.network-status{display:inline-flex;align-items:center;gap:5px}.network-status.is-online{color:var(--ok-fg)}.network-status.is-offline{color:var(--danger-fg)}
+.network-addresses{margin-top:var(--s4);}
+.network-address-row{display:flex;align-items:center;justify-content:space-between;gap:var(--s2);padding:9px 0;border-bottom:1px solid var(--line);}
+.network-address-row>div{display:flex;align-items:center;gap:var(--s2);flex-wrap:wrap;min-width:0;}.network-address-row code{overflow-wrap:anywhere;}
+.network-peer{display:flex;align-items:center;justify-content:space-between;gap:var(--s3);margin-top:var(--s4);padding:var(--s3);border:1px solid var(--line);border-radius:var(--r-sm);}
+.network-note{margin-top:var(--s4);}.copy-feedback{position:fixed;inset-inline-start:50%;bottom:24px;transform:translateX(-50%) translateY(16px);opacity:0;pointer-events:none;background:var(--panel2);border:1px solid var(--line-strong);border-radius:var(--r-sm);padding:9px 14px;color:var(--text);font-size:12px;z-index:100;transition:opacity var(--t) var(--ease),transform var(--t) var(--ease);}
+.copy-feedback.show{opacity:1;transform:translateX(-50%) translateY(0);}
+@media(max-width:700px){.network-primary,.network-peer{align-items:stretch;flex-direction:column}.network-facts{grid-template-columns:1fr}.network-actions .btn{flex:1}.network-peer>a{width:100%;overflow-wrap:anywhere}.network-input-row{align-items:stretch;flex-direction:column}.network-input-row input{min-width:0}.network-input-row .btn{width:100%}}

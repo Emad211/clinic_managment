@@ -129,7 +129,10 @@
             jQuery('input.jdate').persianDatepicker({
                 format:'YYYY/MM/DD', autoClose:true, initialValue:false, observer:true,
                 calendar:{persian:{locale:'fa'}},
-                toolbox:{ todayButton:{enabled:true, text:{fa:'امروز'}} }
+                toolbox:{
+                    todayButton:{enabled:true, text:{fa:'امروز'}},
+                    calendarSwitch:{enabled:false}
+                }
             });
         }
     });

@@ -6,6 +6,9 @@ from src.services.auth_service import AuthService
 from src.services.protocol_service import ProtocolService
 from src.services.followup_service import FollowupService
 from src.services.activity_logger import log_activity
+from src.adapters import accounting_bridge
+from src.common.network import get_network_info
+from src.config.settings import Config
 
 bp = Blueprint("manager", __name__, url_prefix="/manager")
 
@@ -99,7 +102,15 @@ def settings():
         'patient_card_enabled': repo.get_setting('patient_card_enabled', '0'),
         'public_base_url': repo.get_setting('public_base_url', ''),
     }
-    return render_template("manager/settings.html", data=data, active_page='manager')
+    try:
+        request_port = int(request.host.rsplit(':', 1)[1])
+    except (IndexError, ValueError):
+        request_port = Config.PORT
+    network_info = get_network_info(request_port)
+    network_info['accounting_bridge_available'] = accounting_bridge.is_available()
+    return render_template(
+        "manager/settings.html", data=data, network_info=network_info, active_page='manager'
+    )
 
 
 @bp.route("/users", methods=["GET", "POST"])

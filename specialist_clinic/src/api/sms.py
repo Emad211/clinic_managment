@@ -106,12 +106,40 @@ def campaign_detail(cid):
     total_credit = (campaign.get('credit_amount') or 0) * len(recipients) if campaign.get('campaign_type') == 'wallet_credit' else 0
     from src.services.revenue_service import RevenueService
     incrementality = RevenueService().campaign_incrementality(cid)
+    from src.services.sms.delivery_service import status_label
     return render_template("sms/campaign_detail.html", campaign=campaign, messages=messages,
                            segments=SEGMENTS, campaign_types=CAMPAIGN_TYPES,
                            recipients_count=len(recipients), total_credit=total_credit,
                            incrementality=incrementality,
                            provider_ready=repo.provider_configured(),
+                           status_label=status_label,
                            active_page='sms')
+
+
+@bp.route("/messages")
+@login_required
+def messages_report():
+    repo = SmsRepository()
+    rows = repo.list_messages_filtered(
+        campaign_id=request.args.get('campaign_id', type=int),
+        delivery_status=request.args.get('delivery_status') or None,
+        provider=request.args.get('provider') or None)
+    from src.services.sms.delivery_service import STATUS_LABELS, status_label
+    return render_template("sms/messages.html", messages=rows, campaigns=repo.list_campaigns(),
+                           statuses=STATUS_LABELS, status_label=status_label,
+                           active_page='sms')
+
+
+@bp.route("/messages/reconcile", methods=["POST"])
+@login_required
+def reconcile_messages():
+    from src.services.sms.delivery_service import DeliveryService
+    result = DeliveryService().reconcile(
+        message_ids=[request.form.get('message_id', type=int)] if request.form.get('message_id') else None,
+        campaign_id=request.form.get('campaign_id', type=int))
+    log_activity("sms_delivery_reconcile", f"استعلام دستی پیامک: {result}")
+    flash(f"وضعیت {result['updated']} پیام به‌روزرسانی شد", "success")
+    return redirect(request.referrer or url_for('sms.messages_report'))
 
 
 @bp.route("/campaign/<int:cid>/send", methods=["POST"])
