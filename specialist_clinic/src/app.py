@@ -82,6 +82,7 @@ def create_app(test_config=None):
     from src.api.ext import bp as ext_bp
     from src.api.doctor_queue import bp as doctor_queue_bp
     from src.api.patient_card import bp as patient_card_bp
+    from src.api.network import bp as network_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(dashboard_bp)
@@ -95,6 +96,7 @@ def create_app(test_config=None):
     app.register_blueprint(ext_bp)
     app.register_blueprint(doctor_queue_bp)
     app.register_blueprint(patient_card_bp)
+    app.register_blueprint(network_bp)
 
     # ---- Jinja filters ----
     @app.template_filter("jalali")
