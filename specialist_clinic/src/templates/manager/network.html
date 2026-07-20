@@ -1,0 +1,177 @@
+{% extends "base.html" %}
+{% block title %}شبکهٔ محلی{% endblock %}
+{% block content %}
+<div class="topbar">
+    <h1><svg class="icon icon-lg"><use href="#i-building"></use></svg> شبکهٔ محلی کلینیک</h1>
+    <a class="btn btn-ghost" href="{{ url_for('manager.settings') }}">بازگشت به تنظیمات</a>
+</div>
+<div class="page-intro">
+    یک کامپیوتر نقشِ سرور را دارد؛ حسابداری و Specialist فقط روی همان کامپیوتر اجرا می‌شوند و بقیهٔ دستگاه‌ها با مرورگر وصل می‌شوند. فایل‌های SQLite را روی شبکه Share نکنید.
+</div>
+
+<div class="grid grid-2" style="align-items:start;">
+    <section class="card">
+        <div class="section-title">
+            <svg class="icon"><use href="#i-activity"></use></svg>
+            <span>آدرس Specialist Clinic</span>
+            <span class="section-sub">پورت {{ specialist.port }}</span>
+        </div>
+        {% if specialist.preferred_url %}
+        <div class="alert-banner" style="display:block;text-align:center;background:var(--ok-soft);border-color:rgba(34,197,94,.32);color:var(--ok-fg);">
+            <div class="muted" style="margin-bottom:var(--s2);">این آدرس را روی کامپیوترها و تبلت‌های دیگر باز کنید</div>
+            <code id="specialist-url" style="font-size:1.15rem;direction:ltr;display:block;overflow-wrap:anywhere;">{{ specialist.preferred_url }}</code>
+            <button class="btn" type="button" style="margin-top:var(--s3);" onclick="copyText('specialist-url', this)">کپی آدرس</button>
+        </div>
+        {% endif %}
+        <div class="help" style="margin-top:var(--s3);">سرور Specialist در حالت محلی روی <code>0.0.0.0:{{ specialist.port }}</code> گوش می‌دهد؛ آدرس <code>0.0.0.0</code> را در مرورگر وارد نکنید و از IP نمایش‌داده‌شده استفاده کنید.</div>
+    </section>
+
+    <section class="card">
+        <div class="section-title">
+            <svg class="icon"><use href="#i-clipboard"></use></svg>
+            <span>اتصال فقط‌خواندنی حسابداری</span>
+            <span class="section-sub">clinic_new.db</span>
+        </div>
+        {% if accounting.available %}
+        <div class="alert-banner" style="background:var(--ok-soft);border-color:rgba(34,197,94,.32);color:var(--ok-fg);">
+            <svg class="icon"><use href="#i-check"></use></svg>
+            <div><b>پل حسابداری متصل است.</b><br>Specialist اطلاعات بیمار، صف و درآمد را فقط می‌خواند.</div>
+        </div>
+        {% else %}
+        <div class="alert-banner alert-warn">
+            <svg class="icon"><use href="#i-info"></use></svg>
+            <div><b>دیتابیس حسابداری در مسیر تنظیم‌شده پیدا نشد.</b><br>Specialist مستقل بالا می‌آید، اما داده‌های زندهٔ حسابداری در دسترس نیستند.</div>
+        </div>
+        {% endif %}
+        <div class="fld" style="margin-top:var(--s3);">
+            <label>مسیر دیتابیس حسابداری روی کامپیوتر سرور</label>
+            <input readonly value="{{ accounting.database_path }}" style="direction:ltr;text-align:left;">
+            <div class="help">این مسیر باید محلیِ همان کامپیوتری باشد که هر دو اپ روی آن اجرا می‌شوند. برای مسیر متفاوت، متغیر <code>ACCOUNTING_DB_PATH</code> را قبل از اجرای Specialist تنظیم کنید.</div>
+        </div>
+        {% if accounting.preferred_url %}
+        <div class="fld">
+            <label>آدرس حسابداری برای دستگاه‌های دیگر</label>
+            <div style="display:flex;gap:var(--s2);align-items:center;">
+                <input id="accounting-url" readonly value="{{ accounting.preferred_url }}" style="direction:ltr;text-align:left;">
+                <button class="btn btn-ghost" type="button" onclick="copyInput('accounting-url', this)">کپی</button>
+            </div>
+        </div>
+        {% endif %}
+    </section>
+</div>
+
+<section class="card" style="margin-top:var(--s4);">
+    <div class="section-title">
+        <svg class="icon"><use href="#i-list-checks"></use></svg>
+        <span>IPهای شناسایی‌شدهٔ سرور</span>
+        <span class="section-sub">{{ specialist.hostname }}</span>
+    </div>
+    <div class="grid grid-2">
+        {% for ip in specialist.local_ips %}
+        <div class="mini" style="padding:var(--s3);">
+            <div style="display:flex;justify-content:space-between;gap:var(--s3);align-items:center;">
+                <code style="direction:ltr;font-size:1rem;">{{ ip }}</code>
+                {% if ip == '127.0.0.1' %}
+                <span class="badge badge-muted">فقط همین کامپیوتر</span>
+                {% elif ip.startswith('192.168.') %}
+                <span class="badge badge-ok">LAN / Wi-Fi</span>
+                {% elif ip.startswith('10.') %}
+                <span class="badge badge-info">شبکه سازمانی</span>
+                {% elif ip.startswith('172.') %}
+                <span class="badge badge-warn">LAN / VM / VPN</span>
+                {% else %}
+                <span class="badge badge-info">شبکه</span>
+                {% endif %}
+            </div>
+            <div class="help" style="direction:ltr;text-align:left;margin-top:var(--s2);">http://{{ ip }}:{{ specialist.port }}</div>
+        </div>
+        {% endfor %}
+    </div>
+</section>
+
+<div class="grid grid-2" style="margin-top:var(--s4);align-items:start;">
+    <section class="card">
+        <div class="section-title">
+            <svg class="icon"><use href="#i-list-checks"></use></svg>
+            <span>راه‌اندازی درست</span>
+        </div>
+        <ol style="line-height:2;padding-right:1.25rem;">
+            <li>روی کامپیوتر سرور، ابتدا حسابداری را روی پورت <code>8080</code> اجرا کنید.</li>
+            <li>سپس Specialist را روی پورت <code>8090</code> اجرا کنید.</li>
+            <li>همهٔ کامپیوترها باید به همان مودم، Wi-Fi یا سوئیچ LAN متصل باشند.</li>
+            <li>روی کلاینت‌ها چیزی نصب نکنید؛ فقط URLهای بالا را در مرورگر باز کنید.</li>
+            <li>برای کامپیوتر سرور در مودم DHCP Reservation یا IP ثابت تعریف کنید تا آدرس عوض نشود.</li>
+        </ol>
+        <div class="alert-banner alert-warn" style="margin-top:var(--s3);">
+            <svg class="icon"><use href="#i-info"></use></svg>
+            <div>فایل‌های <code>clinic_new.db</code> و <code>specialist.db</code> باید فقط روی سرور بمانند. بازکردن مستقیم SQLite از چند کامپیوتر یا Share کردن فایل دیتابیس، معماری این پروژه نیست.</div>
+        </div>
+    </section>
+
+    <section class="card">
+        <div class="section-title">
+            <svg class="icon"><use href="#i-settings"></use></svg>
+            <span>Windows Firewall</span>
+            <span class="section-sub">PowerShell با Run as administrator</span>
+        </div>
+        <div class="fld">
+            <label>بازکردن پورت حسابداری</label>
+            <textarea id="fw-accounting" readonly rows="2" style="direction:ltr;text-align:left;font-family:monospace;">New-NetFirewallRule -DisplayName "Clinic Accounting 8080" -Direction Inbound -Protocol TCP -LocalPort 8080 -Action Allow -Profile Private</textarea>
+            <button class="btn btn-ghost" type="button" onclick="copyInput('fw-accounting', this)">کپی دستور</button>
+        </div>
+        <div class="fld" style="margin-top:var(--s3);">
+            <label>بازکردن پورت Specialist</label>
+            <textarea id="fw-specialist" readonly rows="2" style="direction:ltr;text-align:left;font-family:monospace;">New-NetFirewallRule -DisplayName "Specialist Clinic 8090" -Direction Inbound -Protocol TCP -LocalPort 8090 -Action Allow -Profile Private</textarea>
+            <button class="btn btn-ghost" type="button" onclick="copyInput('fw-specialist', this)">کپی دستور</button>
+        </div>
+        <div class="help">قانون‌ها فقط برای پروفایل شبکهٔ Private ساخته می‌شوند. شبکهٔ درمانگاه را در Windows روی Private قرار دهید؛ پورت‌ها را روی اینترنت یا روتر Port Forward نکنید.</div>
+    </section>
+</div>
+
+<section class="card" style="margin-top:var(--s4);">
+    <div class="section-title">
+        <svg class="icon"><use href="#i-shield"></use></svg>
+        <span>چک‌لیست قبل از استفادهٔ واقعی</span>
+    </div>
+    <div class="grid grid-2">
+        <div>✓ رمز پیش‌فرض <code>admin/admin</code> را تغییر دهید.</div>
+        <div>✓ یک <code>SECRET_KEY</code> قوی و ثابت تنظیم کنید.</div>
+        <div>✓ فقط شبکهٔ داخلیِ قابل‌اعتماد اجازهٔ دسترسی داشته باشد.</div>
+        <div>✓ از هر دو دیتابیس روی خود سرور بکاپ منظم بگیرید.</div>
+        <div>✓ روی کلاینت‌ها فقط Bookmark بسازید؛ دیتابیس کپی نشود.</div>
+        <div>✓ IP سرور را ثابت/رزرو کنید.</div>
+    </div>
+</section>
+
+<script>
+function copied(button) {
+    const old = button.textContent;
+    button.textContent = 'کپی شد ✓';
+    setTimeout(() => { button.textContent = old; }, 1600);
+}
+function fallbackCopy(value, button) {
+    const area = document.createElement('textarea');
+    area.value = value;
+    document.body.appendChild(area);
+    area.select();
+    document.execCommand('copy');
+    document.body.removeChild(area);
+    copied(button);
+}
+function copyValue(value, button) {
+    if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(value).then(() => copied(button)).catch(() => fallbackCopy(value, button));
+    } else {
+        fallbackCopy(value, button);
+    }
+}
+function copyText(id, button) {
+    const el = document.getElementById(id);
+    if (el) copyValue(el.textContent.trim(), button);
+}
+function copyInput(id, button) {
+    const el = document.getElementById(id);
+    if (el) copyValue(el.value, button);
+}
+</script>
+{% endblock %}
