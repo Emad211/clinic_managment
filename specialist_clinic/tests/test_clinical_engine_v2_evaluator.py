@@ -257,6 +257,17 @@ def test_latest_selector_normalizes_aware_and_naive_tehran_timestamps():
     assert result.fact_ids == ("aware",)
 
 
+def test_latest_selector_enforces_its_optional_within_days_window():
+    expression = leaf(
+        op=">=", value=7,
+        selector={"aggregation": "latest", "within_days": 30},
+    )
+    old = fact(value=8.2, effective_at=AS_OF - timedelta(days=31), fact_id="old")
+    result = RuleEvaluator().evaluate_expression(expression, snapshot(old))
+    assert result.state is PredicateState.UNKNOWN
+    assert result.reason_code == "STALE"
+
+
 def test_temporal_selectors_distinguish_no_source_from_no_recent_event():
     old = fact(value=True, effective_at=AS_OF - timedelta(days=120))
     recently = leaf(op="truthy", selector={"aggregation": "recently_completed", "within_days": 90})
@@ -579,6 +590,11 @@ def test_silent_ruleset_contains_routine_error_without_losing_independent_result
         ("TRUE", "FIRED"), ("ERROR", "ERROR")
     ]
     assert json.loads(run["summary_json"])["counts"] == {"ERROR": 1, "FIRED": 1}
+    assert json.loads(run["summary_json"])["recommendations"] == 1
+    recommendation = json.loads(evaluations[0]["recommendation_json"])
+    assert recommendation["suggestion_only"] is True
+    assert recommendation["presentation"] == "NON_INTERRUPTIVE"
+    assert evaluations[1]["recommendation_json"] is None
     assert db.execute(
         "SELECT COUNT(*) c FROM clinical_recommendation_events WHERE run_id=?", (run_id,)
     ).fetchone()["c"] == 0

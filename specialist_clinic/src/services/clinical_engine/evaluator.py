@@ -150,9 +150,19 @@ def evaluation_payload(result: EvaluationResult) -> dict[str, Any]:
         "outcome": result.outcome.value,
         "trace": predicate_trace_payload(result.predicate),
         "data_issues": [data_issue_payload(issue) for issue in result.data_issues],
-        "suppression": None,
+        "suppression": suppression_payload(result.suppression),
         "recommendations": [],
         "error": error,
+    }
+
+
+def suppression_payload(suppression) -> dict[str, Any] | None:
+    if suppression is None:
+        return None
+    return {
+        "reason_code": suppression.reason_code,
+        "message_fa": suppression.message_fa,
+        "caused_by_rule_code": suppression.caused_by_rule_code,
     }
 
 
@@ -335,9 +345,18 @@ class RuleEvaluator:
                 return facts, "CONFLICTING"
             return facts, None
         if aggregation == "latest":
-            latest_time = max(_local_naive(fact.effective_at) for fact in facts)
+            candidates = facts
+            if "within_days" in selector:
+                days = selector["within_days"]
+                candidates = tuple(
+                    fact for fact in facts
+                    if 0 <= _age_seconds(as_of_at, fact.effective_at) <= days * 86400
+                )
+                if not candidates:
+                    return facts, "STALE"
+            latest_time = max(_local_naive(fact.effective_at) for fact in candidates)
             latest = tuple(
-                fact for fact in facts
+                fact for fact in candidates
                 if _local_naive(fact.effective_at) == latest_time
             )
             if len(latest) != 1:

@@ -299,6 +299,13 @@ def test_temporal_selector_requires_an_explicit_window():
     assert "MISSING_SELECTOR_WINDOW" in diagnostic_codes(RuleCompiler(), rule)
 
 
+def test_latest_selector_may_use_a_freshness_window_from_reference_artefacts():
+    rule = valid_rule()
+    rule["condition"]["selector"] = {"aggregation": "latest", "within_days": 30}
+
+    assert RuleCompiler().validate(rule) == ()
+
+
 def test_minimum_count_is_rejected_for_non_count_selector():
     rule = valid_rule()
     rule["condition"]["selector"] = {"aggregation": "single", "minimum_count": 2}

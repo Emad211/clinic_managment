@@ -9,6 +9,7 @@ from .enums import (
     FactStatus,
     FreshnessStatus,
     PredicateState,
+    Presentation,
     RunStatus,
     RuleLifecycleStatus,
     RulesetStatus,
@@ -23,16 +24,20 @@ from .rules import (
     AllExpression,
     AnyExpression,
     CompiledRule,
+    HardExclusion,
     LeafExpression,
     NotExpression,
     RuleDefinition,
+    SafetyPolicy,
 )
 from .results import (
     CompilationDiagnostic,
     DataIssue,
     EvaluationResult,
     PredicateResult,
+    Recommendation,
     RuleCompilationError,
+    Suppression,
 )
 
 __all__ = [
@@ -44,6 +49,7 @@ __all__ = [
     "CompilationDiagnostic",
     "DataIssue",
     "CompiledRule",
+    "HardExclusion",
     "ConflictStatus",
     "DiagnosticSeverity",
     "EvaluationResult",
@@ -56,6 +62,8 @@ __all__ = [
     "NotExpression",
     "PredicateState",
     "PredicateResult",
+    "Presentation",
+    "Recommendation",
     "RunStatus",
     "RuleLifecycleStatus",
     "RulesetStatus",
@@ -65,5 +73,7 @@ __all__ = [
     "RuleDefinition",
     "RuleOutcome",
     "RuleSeverity",
+    "SafetyPolicy",
+    "Suppression",
     "VerificationStatus",
 ]

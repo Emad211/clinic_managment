@@ -40,6 +40,10 @@ V2_TABLES = {
     "clinical_recommendation_events",
     "clinical_decision_events",
 }
+SAFETY_ARTIFACT_DIR = (
+    SPECIALIST_ROOT / "src" / "domain" / "clinical_engine" /
+    "rule_artifacts" / "2026.1-draft.1"
+)
 
 
 def _valid_rule():
@@ -123,6 +127,45 @@ def _valid_rule():
             "change_note": "initial draft",
         },
     }
+
+
+def test_pr06_safety_artefacts_compile_and_store_as_draft_without_touching_legacy_catalog(
+    storage_app,
+):
+    _, _, _, _ = storage_app
+    from src.adapters.sqlite.core import get_db
+
+    db = get_db()
+    legacy_before = db.execute("SELECT COUNT(*) c FROM clinical_rules").fetchone()["c"]
+    manifest = json.loads(
+        (SAFETY_ARTIFACT_DIR / "manifest.json").read_text(encoding="utf-8")
+    )
+    repository = ClinicalEngineRulesRepository()
+    compiler = RuleCompiler()
+    members = []
+    for item in manifest["rules"]:
+        raw = json.loads(
+            (SAFETY_ARTIFACT_DIR / item["file"]).read_text(encoding="utf-8")
+        )
+        assert raw["governance"]["status"] == "DRAFT"
+        assert raw["evidence"]["local_validation_status"] == "NOT_REVIEWED"
+        compiled = compiler.compile(raw)
+        rule_version_id = repository.create_rule_version(
+            compiled, created_by="pytest-pr06"
+        )
+        members.append({
+            "rule_version_id": rule_version_id,
+            "sort_order": item["sort_order"],
+        })
+    ruleset_id = repository.create_ruleset(
+        manifest["ruleset_code"], manifest["version"], members,
+        created_by="pytest-pr06",
+        note="technical shadow draft; not clinically approved",
+    )
+    stored = repository.get_ruleset(ruleset_id)
+    assert stored["status"] == "DRAFT"
+    assert [item["phase"] for item in stored["members"]] == ["PREFLIGHT", "SAFETY"]
+    assert db.execute("SELECT COUNT(*) c FROM clinical_rules").fetchone()["c"] == legacy_before
 
 
 @pytest.fixture()

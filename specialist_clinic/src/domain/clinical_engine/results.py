@@ -3,7 +3,14 @@
 from dataclasses import dataclass
 from typing import Any
 
-from .enums import ClinicalPhase, DiagnosticSeverity, PredicateState, RuleOutcome
+from .enums import (
+    ActionType,
+    ClinicalPhase,
+    DiagnosticSeverity,
+    PredicateState,
+    Presentation,
+    RuleOutcome,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -48,6 +55,24 @@ class DataIssue:
 
 
 @dataclass(frozen=True, slots=True)
+class Suppression:
+    reason_code: str
+    message_fa: str
+    caused_by_rule_code: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class Recommendation:
+    recommendation_key: str
+    action_type: ActionType
+    text_fa: str
+    suggestion_only: bool
+    requires_clinician_confirmation: bool
+    presentation: Presentation
+    may_create_internal_task: bool = False
+
+
+@dataclass(frozen=True, slots=True)
 class EvaluationResult:
     rule_code: str
     rule_version: str
@@ -55,6 +80,7 @@ class EvaluationResult:
     predicate: PredicateResult
     phase: ClinicalPhase = ClinicalPhase.ROUTINE
     data_issues: tuple[DataIssue, ...] = ()
+    suppression: Suppression | None = None
     missing_facts: tuple[str, ...] = ()
     suppression_reasons: tuple[str, ...] = ()
     diagnostics: tuple[CompilationDiagnostic, ...] = ()

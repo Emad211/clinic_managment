@@ -39,8 +39,33 @@
               "additionalProperties": false
             }
           },
-          "suppression": {"type": ["object", "null"]},
-          "recommendations": {"type": "array", "maxItems": 0},
+          "suppression": {
+            "type": ["object", "null"],
+            "properties": {
+              "reason_code": {"type": "string"},
+              "message_fa": {"type": "string"},
+              "caused_by_rule_code": {"type": ["string", "null"]}
+            },
+            "required": ["reason_code", "message_fa", "caused_by_rule_code"],
+            "additionalProperties": false
+          },
+          "recommendations": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["recommendation_key", "action_type", "text_fa", "suggestion_only", "requires_clinician_confirmation", "presentation", "may_create_internal_task"],
+              "properties": {
+                "recommendation_key": {"type": "string"},
+                "action_type": {"enum": ["redflag", "safety_alert", "suggest_med", "flag_risk", "set_target", "classify", "create_followup", "schedule_screening", "vaccine", "educate"]},
+                "text_fa": {"type": "string"},
+                "suggestion_only": {"const": true},
+                "requires_clinician_confirmation": {"type": "boolean"},
+                "presentation": {"enum": ["INTERRUPTIVE", "PROMINENT", "NON_INTERRUPTIVE", "HIDDEN"]},
+                "may_create_internal_task": {"type": "boolean"}
+              },
+              "additionalProperties": false
+            }
+          },
           "error": {
             "type": ["object", "null"],
             "properties": {"code": {"type": "string"}, "message": {"type": "string"}},

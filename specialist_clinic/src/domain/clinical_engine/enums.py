@@ -49,6 +49,13 @@ class RuleSeverity(StrEnum):
     CRITICAL = "CRITICAL"
 
 
+class Presentation(StrEnum):
+    INTERRUPTIVE = "INTERRUPTIVE"
+    PROMINENT = "PROMINENT"
+    NON_INTERRUPTIVE = "NON_INTERRUPTIVE"
+    HIDDEN = "HIDDEN"
+
+
 class DiagnosticSeverity(StrEnum):
     ERROR = "ERROR"
     WARNING = "WARNING"

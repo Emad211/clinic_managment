@@ -50,6 +50,21 @@ Expression: TypeAlias = LeafExpression | AllExpression | AnyExpression | NotExpr
 
 
 @dataclass(frozen=True, slots=True)
+class HardExclusion:
+    exclusion_id: str
+    condition: Expression
+    effect: str
+    message_fa: str
+
+
+@dataclass(frozen=True, slots=True)
+class SafetyPolicy:
+    redflag_exclusions: tuple[Expression, ...]
+    hard_exclusions: tuple[HardExclusion, ...]
+    on_safety_error: str
+
+
+@dataclass(frozen=True, slots=True)
 class RuleDefinition:
     schema_version: str
     dsl_version: str
@@ -64,7 +79,7 @@ class RuleDefinition:
     required_facts: tuple[Mapping[str, Any], ...]
     eligibility: Expression
     condition: Expression
-    safety: Mapping[str, Any]
+    safety: SafetyPolicy
     recommendation: Mapping[str, Any]
     evidence: Mapping[str, Any]
     governance: Mapping[str, Any]

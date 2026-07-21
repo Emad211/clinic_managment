@@ -26,9 +26,11 @@ from src.domain.clinical_engine.rules import (
     AnyExpression,
     CompiledRule,
     Expression,
+    HardExclusion,
     LeafExpression,
     NotExpression,
     RuleDefinition,
+    SafetyPolicy,
     freeze,
 )
 
@@ -150,7 +152,7 @@ class RuleCompiler:
             required_facts=tuple(freeze(item) for item in raw["required_facts"]),
             eligibility=components["eligibility"],
             condition=components["condition"],
-            safety=freeze(raw["safety"]),
+            safety=components["safety"],
             recommendation=freeze(raw["recommendation"]),
             evidence=freeze(raw["evidence"]),
             governance=freeze(raw["governance"]),
@@ -213,16 +215,31 @@ class RuleCompiler:
 
         eligibility = self._compile_expression(raw["eligibility"], "$.eligibility", node_ids, fact_keys, diagnostics)
         condition = self._compile_expression(raw["condition"], "$.condition", node_ids, fact_keys, diagnostics)
-        for index, expr in enumerate(raw["safety"]["redflag_exclusions"]):
-            self._compile_expression(expr, f"$.safety.redflag_exclusions[{index}]", node_ids, fact_keys, diagnostics)
+        redflag_exclusions = tuple(
+            self._compile_expression(
+                expr, f"$.safety.redflag_exclusions[{index}]",
+                node_ids, fact_keys, diagnostics,
+            )
+            for index, expr in enumerate(raw["safety"]["redflag_exclusions"])
+        )
         exclusion_ids: set[str] = set()
+        hard_exclusions: list[HardExclusion] = []
         for index, exclusion in enumerate(raw["safety"]["hard_exclusions"]):
             path = f"$.safety.hard_exclusions[{index}]"
             exclusion_id = exclusion["exclusion_id"]
             if exclusion_id in exclusion_ids:
                 diagnostics.append(self._error("DUPLICATE_EXCLUSION_ID", path, f"Duplicate exclusion_id {exclusion_id!r}."))
             exclusion_ids.add(exclusion_id)
-            self._compile_expression(exclusion["condition"], f"{path}.condition", node_ids, fact_keys, diagnostics)
+            condition_expr = self._compile_expression(
+                exclusion["condition"], f"{path}.condition",
+                node_ids, fact_keys, diagnostics,
+            )
+            hard_exclusions.append(HardExclusion(
+                exclusion_id=exclusion_id,
+                condition=condition_expr,
+                effect=exclusion["effect"],
+                message_fa=exclusion["message_fa"],
+            ))
 
         undeclared = sorted(fact_keys - set(declared_keys))
         for key in undeclared:
@@ -253,6 +270,11 @@ class RuleCompiler:
         components = {
             "eligibility": eligibility,
             "condition": condition,
+            "safety": SafetyPolicy(
+                redflag_exclusions=redflag_exclusions,
+                hard_exclusions=tuple(hard_exclusions),
+                on_safety_error=raw["safety"]["on_safety_error"],
+            ),
             "node_ids": node_ids,
             "fact_keys": fact_keys,
         }
@@ -322,7 +344,7 @@ class RuleCompiler:
                     "MISSING_SELECTOR_WINDOW", f"{path}.selector",
                     f"{aggregation} requires within_days.",
                 ))
-            if "within_days" in selector and aggregation not in temporal:
+            if "within_days" in selector and aggregation not in {*temporal, "latest"}:
                 diagnostics.append(self._error(
                     "INCOMPATIBLE_SELECTOR_WINDOW", f"{path}.selector",
                     "within_days is incompatible with this aggregation.",

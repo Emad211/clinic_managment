@@ -14,11 +14,16 @@ from src.adapters.sqlite.clinical_engine_rules_repo import ClinicalEngineRulesRe
 from src.domain.clinical_engine import FactSnapshot, RunStatus
 from src.common.utils import IRAN_TZ
 from src.services.clinical_engine.compiler import RuleCompiler
+from src.services.clinical_engine.composer import (
+    RecommendationComposer,
+    recommendation_payload,
+)
 from src.services.clinical_engine.evaluator import RuleEvaluator, evaluation_payload
+from src.services.clinical_engine.safety import SafetyKernel
 from src.services.clinical_engine.legacy_adapter import LegacyFactBundleAdapter
 
 
-ENGINE_VERSION = "2.0.0-evaluator-shadow"
+ENGINE_VERSION = "2.0.0-safety-shadow"
 DEFAULT_RULESET_CODE = "general-outpatient"
 
 
@@ -125,16 +130,19 @@ class FactBuilder:
 
 
 class ShadowFactCapture:
-    """Persist facts and silent evaluations; never returns recommendations."""
+    """Persist silent safety evaluations; never returns or presents v2 output."""
 
     def __init__(self, repository=None, builder=None, audit=None, rules=None,
-                 compiler=None, evaluator=None, ruleset_code=DEFAULT_RULESET_CODE):
+                 compiler=None, evaluator=None, safety=None, composer=None,
+                 ruleset_code=DEFAULT_RULESET_CODE):
         self.repository = repository or ClinicalEngineFactRepository()
         self.builder = builder or FactBuilder(repository=self.repository)
         self.audit = audit or ClinicalEngineAuditRepository()
         self.rules = rules or ClinicalEngineRulesRepository()
         self.compiler = compiler or RuleCompiler()
         self.evaluator = evaluator or RuleEvaluator()
+        self.safety = safety or SafetyKernel(self.evaluator)
+        self.composer = composer or RecommendationComposer()
         self.ruleset_code = ruleset_code
 
     def capture(self, patient_link_id: int, *, as_of_at: datetime,
@@ -162,17 +170,17 @@ class ShadowFactCapture:
 
         counts: Counter[str] = Counter()
         try:
+            compiled_entries = []
+            compile_failures = {}
+            safety_precheck_failed = False
             for member in ruleset["members"]:
                 try:
                     compiled = self.compiler.compile(json.loads(member["rule_json"]))
-                    result = self.evaluator.evaluate(compiled, snapshot)
-                    result_payload = evaluation_payload(result)
-                    predicate_state = result.predicate.state
-                    outcome = result.outcome
+                    compiled_entries.append((member, compiled))
                 except Exception as exc:
-                    predicate_state = "ERROR"
-                    outcome = "ERROR"
-                    result_payload = {
+                    compile_failures[int(member["rule_version_id"])] = {
+                        "predicate_state": "ERROR",
+                        "outcome": "ERROR",
                         "trace": {
                             "node_id": "compile-error", "kind": "PREDICATE",
                             "state": "ERROR", "message_fa": "قاعدهٔ ذخیره‌شده قابل اجرا نیست.",
@@ -182,29 +190,71 @@ class ShadowFactCapture:
                         "data_issues": [],
                         "error": {"code": "STORED_RULE_INVALID", "message": str(exc)},
                     }
+                    if member.get("phase") != "ROUTINE":
+                        safety_precheck_failed = True
+
+            safety_run = self.safety.evaluate(
+                [compiled for _, compiled in compiled_entries], snapshot,
+                safety_precheck_failed=safety_precheck_failed,
+            )
+            resolved_by_identity = {
+                id(item.compiled): item.result for item in safety_run.evaluations
+            }
+            resolved_by_member_id = {
+                int(member["rule_version_id"]): resolved_by_identity[id(compiled)]
+                for member, compiled in compiled_entries
+            }
+            compiled_by_member_id = {
+                int(member["rule_version_id"]): compiled
+                for member, compiled in compiled_entries
+            }
+            recommendation_count = 0
+            for member in ruleset["members"]:
+                member_id = int(member["rule_version_id"])
+                if member_id in compile_failures:
+                    failed = compile_failures[member_id]
+                    predicate_state = failed["predicate_state"]
+                    outcome = failed["outcome"]
+                    result_payload = failed
+                    recommendation = None
+                    suppression = None
+                else:
+                    result = resolved_by_member_id[member_id]
+                    compiled = compiled_by_member_id[member_id]
+                    result_payload = evaluation_payload(result)
+                    predicate_state = result.predicate.state
+                    outcome = result.outcome
+                    recommendation = recommendation_payload(
+                        self.composer.compose(compiled, result)
+                    )
+                    suppression = result_payload["suppression"]
+                    if recommendation:
+                        recommendation_count += 1
                 outcome_value = outcome.value if hasattr(outcome, "value") else outcome
                 counts[outcome_value] += 1
                 self.audit.append_evaluation(
                     run_id=run_id,
-                    rule_version_id=int(member["rule_version_id"]),
+                    rule_version_id=member_id,
                     predicate_state=predicate_state,
                     outcome=outcome,
                     trace=result_payload["trace"],
                     data_issues=result_payload["data_issues"],
-                    recommendation=None,
+                    recommendation=recommendation,
+                    suppression=suppression,
                     error=result_payload["error"],
                 )
-            status = (
-                RunStatus.COMPLETED_WITH_ERRORS
-                if counts.get("ERROR", 0)
-                else RunStatus.COMPLETED
-            )
+            status = safety_run.status
+            if compile_failures and status is RunStatus.COMPLETED:
+                status = RunStatus.COMPLETED_WITH_ERRORS
             self.audit.complete_run(
                 run_id, status=status,
                 summary={
                     "mode": "shadow",
                     "evaluated_rules": sum(counts.values()),
-                    "recommendations": 0,
+                    "recommendations": recommendation_count,
+                    "redflag_active": bool(safety_run.redflag_rule_codes),
+                    "redflag_rule_codes": list(safety_run.redflag_rule_codes),
+                    "routine_outputs_blocked": safety_run.routine_outputs_blocked,
                     "counts": dict(sorted(counts.items())),
                 },
             )
