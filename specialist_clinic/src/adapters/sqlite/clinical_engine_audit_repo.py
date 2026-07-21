@@ -264,3 +264,52 @@ class ClinicalEngineAuditRepository:
             ).fetchall()
         ]
         return result
+
+    def latest_presentable_run(self, patient_link_id: int) -> dict | None:
+        """Return the latest terminal, non-failed run as decoded read-only data."""
+        db = get_db()
+        row = db.execute(
+            """SELECT * FROM clinical_engine_runs
+               WHERE patient_link_id=?
+                 AND run_status IN ('COMPLETED', 'COMPLETED_WITH_ERRORS',
+                                    'SAFETY_FAILED')
+               ORDER BY started_at DESC, rowid DESC LIMIT 1""",
+            (patient_link_id,),
+        ).fetchone()
+        if not row:
+            return None
+        run = dict(row)
+        for key in (
+            "fact_snapshot_json", "summary_json", "error_json",
+            "legacy_compare_json",
+        ):
+            run[key.removesuffix("_json")] = (
+                json.loads(run[key]) if run.get(key) else None
+            )
+        evaluations = []
+        rows = db.execute(
+            """SELECT e.*, r.rule_code, r.action_type, r.rule_json
+               FROM clinical_rule_evaluations e
+               JOIN clinical_rule_versions r ON r.id=e.rule_version_id
+               WHERE e.run_id=? ORDER BY e.id""",
+            (run["run_id"],),
+        ).fetchall()
+        for item in rows:
+            evaluation = dict(item)
+            rule_document = json.loads(evaluation.pop("rule_json"))
+            evaluation.update({
+                "rule_title": rule_document.get("title", evaluation["rule_code"]),
+                "severity": rule_document.get("severity"),
+                "priority": rule_document.get("priority"),
+                "semantic_key": rule_document.get("semantic_key"),
+            })
+            for key in (
+                "trace_json", "data_issues_json", "recommendation_json",
+                "suppression_json", "error_json",
+            ):
+                evaluation[key.removesuffix("_json")] = (
+                    json.loads(evaluation[key]) if evaluation.get(key) else None
+                )
+            evaluations.append(evaluation)
+        run["evaluations"] = evaluations
+        return run

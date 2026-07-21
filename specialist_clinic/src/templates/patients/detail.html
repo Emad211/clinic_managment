@@ -1,5 +1,8 @@
 {% extends "base.html" %}
 {% block title %}{{ patient.full_name }}{% endblock %}
+{% block head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/clinical-engine-v2.css') }}">
+{% endblock %}
 
 {% set lvlclass = {'danger':'c-danger','warn':'c-warn','ok':'c-ok','none':'muted'} %}
 {% set lvlcolor = {'danger':'var(--danger-fg)','warn':'var(--warn-fg)','ok':'var(--ok-fg)','none':'var(--muted)'} %}
@@ -109,6 +112,10 @@
 <!-- ============ TAB: COCKPIT ============ -->
 <!-- ============================================================= -->
 <section class="tab-pane" data-pane="cockpit" role="tabpanel">
+
+    {% if clinical_v2 %}
+        {% include "patients/_clinical_engine_v2.html" %}
+    {% endif %}
 
     {# ---- RED FLAGS (dominant) ---- #}
     {% for sec in redflag_secs %}

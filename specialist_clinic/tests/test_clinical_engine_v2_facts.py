@@ -299,6 +299,41 @@ def test_invalid_mode_fails_closed_to_off(facts_app):
     assert ClinicalEngineFactRepository().get_mode() == "off"
 
 
+def test_on_selected_mode_is_limited_to_seeded_demo_patients(facts_app):
+    from src.adapters.sqlite.core import get_db
+
+    db = get_db()
+    selected = _insert_patient(db, national_id="TEST0001")
+    ordinary = _insert_patient(db, national_id="REAL0001")
+    db.execute("UPDATE settings SET value='on_selected' WHERE key='clinical_engine_v2_mode'")
+    db.commit()
+
+    repository = ClinicalEngineFactRepository()
+    assert repository.get_mode() == "on_selected"
+    assert repository.is_selected_patient(selected) is True
+    assert repository.is_selected_patient(ordinary) is False
+
+
+def test_on_selected_capture_writes_only_for_seeded_demo_patient(facts_app):
+    from src.adapters.sqlite.core import get_db
+
+    db = get_db()
+    selected = _insert_patient(db, national_id="TEST0010")
+    ordinary = _insert_patient(db, national_id="REAL0010")
+    db.execute("UPDATE settings SET value='on_selected' WHERE key='clinical_engine_v2_mode'")
+    db.commit()
+
+    capture = ShadowFactCapture()
+    assert capture.capture(ordinary, as_of_at=AS_OF) is None
+    selected_run = capture.capture(selected, as_of_at=AS_OF)
+    assert selected_run
+    rows = db.execute(
+        "SELECT patient_link_id, summary_json FROM clinical_engine_runs"
+    ).fetchall()
+    assert [row["patient_link_id"] for row in rows] == [selected]
+    assert json.loads(rows[0]["summary_json"])["mode"] == "on_selected"
+
+
 def test_legacy_engine_output_is_identical_while_shadow_adds_audit_only(facts_app):
     from src.adapters.sqlite.core import get_db
     from src.services.rule_engine import RuleEngine

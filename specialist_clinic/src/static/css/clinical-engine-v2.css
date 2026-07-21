@@ -1,0 +1,29 @@
+.cev2{border-color:var(--line-strong)}
+.cev2-head{display:flex;align-items:flex-start;justify-content:space-between;gap:var(--s4);margin-bottom:var(--s4)}
+.cev2-head .section-title{margin-bottom:var(--s2);flex-wrap:wrap}
+.cev2-disclaimer{margin:0;color:var(--muted);font-size:12.5px;line-height:1.8;max-width:72ch}
+.cev2-run{display:flex;flex-direction:column;gap:var(--s1);color:var(--muted);font-size:11px;text-align:end}
+.cev2-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--s4)}
+.cev2-group{min-width:0;border:1px solid var(--line);border-inline-start:3px solid var(--primary);border-radius:var(--r-sm);background:var(--panel2);padding:var(--s4)}
+.cev2-group.tone-danger{border-inline-start-color:var(--danger)}
+.cev2-group.tone-warn{border-inline-start-color:var(--warn)}
+.cev2-group-head{display:flex;align-items:center;justify-content:space-between;gap:var(--s3);flex-wrap:wrap;margin-bottom:var(--s3)}
+.cev2-group h3,.cev2-item h4{margin:0}
+.cev2-group h3{font-size:14px}
+.cev2-items{display:grid;gap:var(--s3)}
+.cev2-item{min-width:0;padding-top:var(--s3);border-top:1px solid var(--line-soft)}
+.cev2-item:first-child{padding-top:0;border-top:0}
+.cev2-item h4{font-size:13.5px}
+.cev2-item p{margin:var(--s2) 0;color:var(--text);line-height:1.8;font-size:13px}
+.cev2-state{display:flex;align-items:center;gap:var(--s2);flex-wrap:wrap}
+.cev2-reason{margin-top:var(--s3)}
+.cev2-reason summary,.cev2-notice summary{width:max-content;max-width:100%;cursor:pointer;color:var(--primary);font-size:12px;font-weight:600;border-radius:var(--r-sm)}
+.cev2-reason summary:focus-visible,.cev2-notice summary:focus-visible{outline:2px solid var(--primary);outline-offset:3px}
+.cev2-reason-body{margin-top:var(--s2);padding:var(--s3);border:1px solid var(--line-soft);border-radius:var(--r-sm);color:var(--muted);font-size:12px;overflow-wrap:anywhere}
+.cev2-reason-body ul,.cev2-notice ul{margin:var(--s1) 0 var(--s2);padding-inline-start:var(--s5)}
+.cev2-reason-body code{direction:ltr;unicode-bidi:embed}
+.cev2-notices{display:grid;gap:var(--s2);margin-bottom:var(--s4)}
+.cev2-notice{display:flex;align-items:flex-start;gap:var(--s2);padding:var(--s3);border:1px solid var(--warn);border-radius:var(--r-sm);background:var(--warn-soft)}
+.cev2-notice strong,.cev2-notice span{display:block;font-size:12.5px;line-height:1.7}
+@media (max-width:900px){.cev2-grid{grid-template-columns:1fr}.cev2-head{flex-direction:column}.cev2-run{text-align:start}}
+@media (prefers-reduced-motion:reduce){.cev2 *{scroll-behavior:auto!important}}

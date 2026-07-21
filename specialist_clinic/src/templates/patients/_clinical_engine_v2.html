@@ -1,0 +1,89 @@
+<section class="cev2 card" aria-labelledby="cev2-title">
+    <header class="cev2-head">
+        <div>
+            <div class="section-title" id="cev2-title">
+                <svg class="icon" aria-hidden="true"><use href="#i-activity"></use></svg>
+                موتور بالینی نسخهٔ ۲
+                <span class="badge badge-info">پیش‌نمایش منتخب</span>
+            </div>
+            <p class="cev2-disclaimer">
+                پیشنهاد برای مرور پزشک است؛ هیچ دارو، تشخیص، هدف یا اقدام درمانی اعمال نشده است.
+            </p>
+        </div>
+        {% if clinical_v2.run_id %}
+        <div class="cev2-run" aria-label="مشخصات اجرای موتور">
+            <span>وضعیت: {{ clinical_v2.run_status }}</span>
+            <span>نسخه: {{ clinical_v2.engine_version }}</span>
+        </div>
+        {% endif %}
+    </header>
+
+    {% if clinical_v2.empty %}
+    <p class="empty-mini" role="status">{{ clinical_v2.message_fa }}</p>
+    {% endif %}
+
+    {% if clinical_v2.notices %}
+    <div class="cev2-notices" aria-label="موارد متوقف‌شده و نقص داده">
+        {% for notice in clinical_v2.notices %}
+        <div class="cev2-notice" role="status">
+            <svg class="icon icon-sm" aria-hidden="true"><use href="#i-alert"></use></svg>
+            <div>
+                <strong>{{ notice.title }}</strong>
+                <span>{{ notice.message }}</span>
+                {% if notice.data_issues %}
+                <details>
+                    <summary>داده‌های لازم برای بررسی</summary>
+                    <ul>
+                        {% for issue in notice.data_issues %}
+                        <li>{{ issue.message_fa or issue.fact_key }}</li>
+                        {% endfor %}
+                    </ul>
+                </details>
+                {% endif %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    <div class="cev2-grid">
+        {% for group in clinical_v2.groups %}
+        <article class="cev2-group tone-{{ group.tone }}" aria-labelledby="cev2-group-{{ loop.index }}">
+            <div class="cev2-group-head">
+                <h3 id="cev2-group-{{ loop.index }}">{{ group.label }}</h3>
+                <span class="badge badge-muted">{{ group['items']|length|fa_num }} پیشنهاد · اعمال نشده</span>
+            </div>
+            <div class="cev2-items">
+                {% for item in group['items'] %}
+                <section class="cev2-item" aria-labelledby="cev2-item-{{ loop.index }}-{{ item.rule_code }}">
+                    <h4 id="cev2-item-{{ loop.index }}-{{ item.rule_code }}">{{ item.title }}</h4>
+                    <p>{{ item.text }}</p>
+                    <div class="cev2-state">
+                        <span class="badge badge-info">پیشنهاد</span>
+                        <span class="badge badge-muted">اعمال نشده</span>
+                        {% if item.requires_confirmation %}
+                        <span class="muted text-xs">نیازمند تأیید پزشک پیش از هر اقدام</span>
+                        {% endif %}
+                    </div>
+                    <details class="cev2-reason">
+                        <summary>چرا این پیشنهاد نمایش داده شده؟</summary>
+                        <div class="cev2-reason-body">
+                            <strong>قواعد مؤثر</strong>
+                            <ul>{% for reason in item.reasons %}<li>{{ reason }}</li>{% endfor %}</ul>
+                            {% if item.fact_ids %}
+                            <strong>منابع دادهٔ همین اجرا</strong>
+                            <ul>{% for fact_id in item.fact_ids %}<li><code>{{ fact_id }}</code></li>{% endfor %}</ul>
+                            {% endif %}
+                            {% if item.data_issues %}
+                            <strong>محدودیت داده</strong>
+                            <ul>{% for issue in item.data_issues %}<li>{{ issue.message_fa or issue.fact_key }}</li>{% endfor %}</ul>
+                            {% endif %}
+                        </div>
+                    </details>
+                </section>
+                {% endfor %}
+            </div>
+        </article>
+        {% endfor %}
+    </div>
+</section>

@@ -150,6 +150,7 @@ def detail(pid):
 
     from src.services.analytics_service import AnalyticsService
     from src.services.rule_engine import RuleEngine
+    from src.services.clinical_engine.facade import ClinicalEngineReadOnlyFacade
     from src.adapters.sqlite.clinical_rules_repo import ClinicalRulesRepository
     from src.adapters.sqlite.flags_repo import ClinicalFlagsRepository
     from src.adapters.sqlite.core import get_db
@@ -160,6 +161,7 @@ def detail(pid):
 
     # ADA decision support (suggestion-only) + physician action log
     clinical_support = RuleEngine().grouped(pid)
+    clinical_v2 = ClinicalEngineReadOnlyFacade().patient_detail(pid)
     _rows = get_db().execute(
         "SELECT rule_code, status, acted_by FROM suggestion_log WHERE patient_link_id=?", (pid,)).fetchall()
     suggestion_status = {r['rule_code']: dict(r) for r in _rows}
@@ -293,6 +295,7 @@ def detail(pid):
         visits_count=adata['visits_count'],
         last_visit=adata['last_visit'],
         clinical_support=clinical_support,
+        clinical_v2=clinical_v2,
         suggestion_status=suggestion_status,
         prescriptions=prescriptions,
     )

@@ -73,6 +73,20 @@ class Recommendation:
 
 
 @dataclass(frozen=True, slots=True)
+class ResolvedEvaluation:
+    """An evaluation after semantic deduplication/conflict handling.
+
+    ``merged_rule_codes`` is provenance, not a clinical decision.  It lets the
+    presentation layer explain which equivalent rules contributed to one card.
+    """
+
+    compiled: Any
+    result: "EvaluationResult"
+    merged_rule_codes: tuple[str, ...] = ()
+    merged_titles: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
 class EvaluationResult:
     rule_code: str
     rule_version: str

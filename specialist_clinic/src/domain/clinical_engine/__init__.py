@@ -36,6 +36,7 @@ from .results import (
     EvaluationResult,
     PredicateResult,
     Recommendation,
+    ResolvedEvaluation,
     RuleCompilationError,
     Suppression,
 )
@@ -64,6 +65,7 @@ __all__ = [
     "PredicateResult",
     "Presentation",
     "Recommendation",
+    "ResolvedEvaluation",
     "RunStatus",
     "RuleLifecycleStatus",
     "RulesetStatus",

@@ -20,10 +20,17 @@ _PRESENTATION = {
 }
 
 
-def recommendation_payload(recommendation: Recommendation | None) -> dict[str, Any] | None:
+def recommendation_payload(
+    recommendation: Recommendation | None,
+    *,
+    title_fa: str | None = None,
+    semantic_key: str | None = None,
+    merged_rule_codes: tuple[str, ...] = (),
+    merged_titles: tuple[str, ...] = (),
+) -> dict[str, Any] | None:
     if recommendation is None:
         return None
-    return {
+    payload = {
         "recommendation_key": recommendation.recommendation_key,
         "action_type": recommendation.action_type.value,
         "text_fa": recommendation.text_fa,
@@ -32,6 +39,14 @@ def recommendation_payload(recommendation: Recommendation | None) -> dict[str, A
         "presentation": recommendation.presentation.value,
         "may_create_internal_task": recommendation.may_create_internal_task,
     }
+    if title_fa is not None:
+        payload["title_fa"] = title_fa
+    if semantic_key is not None:
+        payload["semantic_key"] = semantic_key
+    if merged_rule_codes:
+        payload["merged_rule_codes"] = list(merged_rule_codes)
+        payload["merged_titles"] = list(merged_titles)
+    return payload
 
 
 class RecommendationComposer:

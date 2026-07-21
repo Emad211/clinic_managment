@@ -54,7 +54,17 @@ class ClinicalEngineFactRepository:
             "SELECT value FROM settings WHERE key='clinical_engine_v2_mode'"
         ).fetchone()
         mode = str(row["value"] if row else "off").strip().lower()
-        return mode if mode in {"off", "shadow"} else "off"
+        return mode if mode in {"off", "shadow", "on_selected"} else "off"
+
+    def is_selected_patient(self, patient_link_id: int) -> bool:
+        """Limit the first visible rollout to the ten seeded demo patients."""
+        row = get_db().execute(
+            "SELECT national_id FROM patient_links WHERE id=?", (patient_link_id,)
+        ).fetchone()
+        if not row:
+            return False
+        national_id = str(row["national_id"] or "").strip().upper()
+        return national_id in {f"TEST{index:04d}" for index in range(1, 11)}
 
     def load_bundle(self, patient_link_id: int) -> dict[str, Any]:
         db = get_db()

@@ -18,12 +18,13 @@ from src.services.clinical_engine.composer import (
     RecommendationComposer,
     recommendation_payload,
 )
+from src.services.clinical_engine.conflicts import ConflictResolver
 from src.services.clinical_engine.evaluator import RuleEvaluator, evaluation_payload
 from src.services.clinical_engine.safety import SafetyKernel
 from src.services.clinical_engine.legacy_adapter import LegacyFactBundleAdapter
 
 
-ENGINE_VERSION = "2.0.0-safety-shadow"
+ENGINE_VERSION = "2.1.0-conflict-readonly"
 DEFAULT_RULESET_CODE = "general-outpatient"
 
 
@@ -130,10 +131,11 @@ class FactBuilder:
 
 
 class ShadowFactCapture:
-    """Persist silent safety evaluations; never returns or presents v2 output."""
+    """Persist audited evaluations for shadow or explicitly selected rollout."""
 
     def __init__(self, repository=None, builder=None, audit=None, rules=None,
                  compiler=None, evaluator=None, safety=None, composer=None,
+                 conflicts=None,
                  ruleset_code=DEFAULT_RULESET_CODE):
         self.repository = repository or ClinicalEngineFactRepository()
         self.builder = builder or FactBuilder(repository=self.repository)
@@ -143,11 +145,16 @@ class ShadowFactCapture:
         self.evaluator = evaluator or RuleEvaluator()
         self.safety = safety or SafetyKernel(self.evaluator)
         self.composer = composer or RecommendationComposer()
+        self.conflicts = conflicts or ConflictResolver()
         self.ruleset_code = ruleset_code
 
     def capture(self, patient_link_id: int, *, as_of_at: datetime,
                 encounter_key: str | None = None, created_by: str | None = None) -> str | None:
-        if self.repository.get_mode() != "shadow":
+        mode = self.repository.get_mode()
+        if mode == "off" or (
+            mode == "on_selected"
+            and not self.repository.is_selected_patient(patient_link_id)
+        ):
             return None
         snapshot = self.builder.build(patient_link_id, as_of_at=as_of_at,
                                       encounter_key=encounter_key)
@@ -163,7 +170,7 @@ class ShadowFactCapture:
         if not ruleset:
             self.audit.complete_run(
                 run_id, status=RunStatus.COMPLETED,
-                summary={"mode": "shadow", "evaluated_rules": 0,
+                summary={"mode": mode, "evaluated_rules": 0,
                          "recommendations": 0},
             )
             return run_id
@@ -197,8 +204,9 @@ class ShadowFactCapture:
                 [compiled for _, compiled in compiled_entries], snapshot,
                 safety_precheck_failed=safety_precheck_failed,
             )
+            conflict_run = self.conflicts.resolve(safety_run.evaluations)
             resolved_by_identity = {
-                id(item.compiled): item.result for item in safety_run.evaluations
+                id(item.compiled): item for item in conflict_run
             }
             resolved_by_member_id = {
                 int(member["rule_version_id"]): resolved_by_identity[id(compiled)]
@@ -219,13 +227,18 @@ class ShadowFactCapture:
                     recommendation = None
                     suppression = None
                 else:
-                    result = resolved_by_member_id[member_id]
+                    resolved = resolved_by_member_id[member_id]
+                    result = resolved.result
                     compiled = compiled_by_member_id[member_id]
                     result_payload = evaluation_payload(result)
                     predicate_state = result.predicate.state
                     outcome = result.outcome
                     recommendation = recommendation_payload(
-                        self.composer.compose(compiled, result)
+                        self.composer.compose(compiled, result),
+                        title_fa=compiled.definition.title,
+                        semantic_key=compiled.definition.semantic_key,
+                        merged_rule_codes=resolved.merged_rule_codes,
+                        merged_titles=resolved.merged_titles,
                     )
                     suppression = result_payload["suppression"]
                     if recommendation:
@@ -249,7 +262,7 @@ class ShadowFactCapture:
             self.audit.complete_run(
                 run_id, status=status,
                 summary={
-                    "mode": "shadow",
+                    "mode": mode,
                     "evaluated_rules": sum(counts.values()),
                     "recommendations": recommendation_count,
                     "redflag_active": bool(safety_run.redflag_rule_codes),
