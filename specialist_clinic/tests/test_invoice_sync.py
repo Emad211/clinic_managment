@@ -397,7 +397,11 @@ class TestScenario5FloorBranch:
         # The real test: insert id=50 (below cursor=100) with a RECENT closed_at
         # (within 30 days from today). The floor branch should catch it.
         conn = sqlite3.connect(acc_db)
-        late_closed_at = "2026-06-19 15:00:00"  # within FLOOR_DAYS=30 of 2026-06-20
+        # Keep this inside the rolling floor window regardless of the day the
+        # suite runs; a hard-coded June date made the test expire in July.
+        from datetime import timedelta
+        from src.common.utils import iran_now
+        late_closed_at = (iran_now() - timedelta(days=1)).strftime("%Y-%m-%d 15:00:00")
         _acc_add_invoice(conn, pid, "closed", total=9999, invoice_id=50,
                          closed_at=late_closed_at)
         conn.close()
