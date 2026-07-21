@@ -336,6 +336,7 @@ CREATE TABLE IF NOT EXISTS settings (
     value TEXT,
     updated_at TIMESTAMP DEFAULT (datetime('now', '+3 hours', '+30 minutes'))
 );
+INSERT OR IGNORE INTO settings (key, value) VALUES ('clinical_engine_v2_mode', 'off');
 
 -- Activity logs
 CREATE TABLE IF NOT EXISTS activity_logs (
@@ -731,3 +732,274 @@ CREATE TABLE IF NOT EXISTS doctor_visit_log (
     FOREIGN KEY (patient_link_id) REFERENCES patient_links(id)
 );
 CREATE INDEX IF NOT EXISTS idx_doctor_visit_log_workdate ON doctor_visit_log(work_date, status);
+
+-- ============================================================================
+-- Clinical Engine v2: immutable rule/ruleset versions and append-only audit.
+-- These tables live beside the legacy clinical_rules/suggestion_log tables.
+-- Runtime remains disabled by clinical_engine_v2_mode=off until later PRs.
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS clinical_rule_versions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    rule_code TEXT NOT NULL,
+    version TEXT NOT NULL,
+    schema_version TEXT NOT NULL DEFAULT '2.0',
+    dsl_version TEXT NOT NULL DEFAULT '2.0',
+    phase TEXT NOT NULL CHECK (phase IN ('PREFLIGHT', 'SAFETY', 'ROUTINE')),
+    action_type TEXT NOT NULL,
+    rule_json TEXT NOT NULL,
+    content_hash TEXT NOT NULL,
+    source_legacy_rule_id INTEGER,
+    lifecycle_status TEXT NOT NULL DEFAULT 'DRAFT'
+        CHECK (lifecycle_status IN ('DRAFT', 'VALIDATED', 'APPROVED', 'SILENT',
+                                    'ACTIVE', 'SUSPENDED', 'RETIRED')),
+    created_by TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    approved_by TEXT,
+    approved_at TEXT,
+    supersedes_rule_version_id INTEGER,
+    retired_at TEXT,
+    change_note TEXT,
+    UNIQUE(rule_code, version),
+    UNIQUE(content_hash),
+    FOREIGN KEY(source_legacy_rule_id) REFERENCES clinical_rules(id),
+    FOREIGN KEY(supersedes_rule_version_id) REFERENCES clinical_rule_versions(id)
+);
+CREATE INDEX IF NOT EXISTS idx_rule_versions_code
+ON clinical_rule_versions(rule_code, id DESC);
+CREATE INDEX IF NOT EXISTS idx_rule_versions_status
+ON clinical_rule_versions(lifecycle_status, phase);
+
+CREATE TABLE IF NOT EXISTS clinical_rulesets (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ruleset_code TEXT NOT NULL,
+    version TEXT NOT NULL,
+    content_hash TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'DRAFT'
+        CHECK (status IN ('DRAFT', 'SILENT', 'ACTIVE', 'SUSPENDED', 'RETIRED')),
+    created_by TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    activated_by TEXT,
+    activated_at TEXT,
+    retired_at TEXT,
+    note TEXT,
+    UNIQUE(ruleset_code, version),
+    UNIQUE(content_hash)
+);
+CREATE INDEX IF NOT EXISTS idx_rulesets_status
+ON clinical_rulesets(ruleset_code, status);
+
+CREATE TABLE IF NOT EXISTS clinical_ruleset_members (
+    ruleset_id INTEGER NOT NULL,
+    rule_version_id INTEGER NOT NULL,
+    phase TEXT NOT NULL CHECK (phase IN ('PREFLIGHT', 'SAFETY', 'ROUTINE')),
+    sort_order INTEGER NOT NULL DEFAULT 100,
+    PRIMARY KEY(ruleset_id, rule_version_id),
+    FOREIGN KEY(ruleset_id) REFERENCES clinical_rulesets(id),
+    FOREIGN KEY(rule_version_id) REFERENCES clinical_rule_versions(id)
+);
+CREATE INDEX IF NOT EXISTS idx_ruleset_members_order
+ON clinical_ruleset_members(ruleset_id, phase, sort_order, rule_version_id);
+
+CREATE TABLE IF NOT EXISTS clinical_engine_runs (
+    run_id TEXT PRIMARY KEY,
+    patient_link_id INTEGER NOT NULL,
+    encounter_key TEXT,
+    as_of_at TEXT NOT NULL,
+    started_at TEXT NOT NULL,
+    completed_at TEXT,
+    run_status TEXT NOT NULL
+        CHECK (run_status IN ('RUNNING', 'COMPLETED', 'COMPLETED_WITH_ERRORS',
+                              'SAFETY_FAILED', 'FACT_BUILD_FAILED', 'AUDIT_FAILED')),
+    engine_version TEXT NOT NULL,
+    ruleset_id INTEGER,
+    fact_snapshot_json TEXT NOT NULL,
+    fact_snapshot_hash TEXT NOT NULL,
+    summary_json TEXT,
+    error_json TEXT,
+    legacy_compare_json TEXT,
+    created_by TEXT,
+    FOREIGN KEY(patient_link_id) REFERENCES patient_links(id),
+    FOREIGN KEY(ruleset_id) REFERENCES clinical_rulesets(id)
+);
+CREATE INDEX IF NOT EXISTS idx_engine_runs_patient_time
+ON clinical_engine_runs(patient_link_id, as_of_at DESC);
+CREATE INDEX IF NOT EXISTS idx_engine_runs_status
+ON clinical_engine_runs(run_status, started_at DESC);
+CREATE INDEX IF NOT EXISTS idx_engine_runs_ruleset
+ON clinical_engine_runs(ruleset_id, started_at DESC);
+
+CREATE TABLE IF NOT EXISTS clinical_rule_evaluations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_id TEXT NOT NULL,
+    rule_version_id INTEGER NOT NULL,
+    predicate_state TEXT NOT NULL
+        CHECK (predicate_state IN ('TRUE', 'FALSE', 'UNKNOWN', 'ERROR')),
+    outcome TEXT NOT NULL
+        CHECK (outcome IN ('FIRED', 'NOT_FIRED', 'NEEDS_DATA', 'NOT_APPLICABLE',
+                           'SUPPRESSED', 'ERROR')),
+    trace_json TEXT NOT NULL,
+    data_issues_json TEXT,
+    recommendation_json TEXT,
+    suppression_json TEXT,
+    error_json TEXT,
+    duration_ms REAL,
+    created_at TEXT NOT NULL,
+    UNIQUE(run_id, rule_version_id),
+    FOREIGN KEY(run_id) REFERENCES clinical_engine_runs(run_id),
+    FOREIGN KEY(rule_version_id) REFERENCES clinical_rule_versions(id)
+);
+CREATE INDEX IF NOT EXISTS idx_rule_eval_run_outcome
+ON clinical_rule_evaluations(run_id, outcome);
+CREATE INDEX IF NOT EXISTS idx_rule_eval_rule
+ON clinical_rule_evaluations(rule_version_id, outcome, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS clinical_recommendation_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_id TEXT NOT NULL,
+    evaluation_id INTEGER,
+    recommendation_key TEXT NOT NULL,
+    action_type TEXT NOT NULL,
+    event_type TEXT NOT NULL
+        CHECK (event_type IN ('CREATED', 'PRESENTED', 'SUPPRESSED', 'SUPERSEDED')),
+    payload_json TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY(run_id) REFERENCES clinical_engine_runs(run_id),
+    FOREIGN KEY(evaluation_id) REFERENCES clinical_rule_evaluations(id)
+);
+CREATE INDEX IF NOT EXISTS idx_rec_events_run
+ON clinical_recommendation_events(run_id, event_type, id);
+CREATE INDEX IF NOT EXISTS idx_rec_events_key
+ON clinical_recommendation_events(recommendation_key, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS clinical_decision_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    recommendation_event_id INTEGER NOT NULL,
+    patient_link_id INTEGER NOT NULL,
+    decision TEXT NOT NULL
+        CHECK (decision IN ('ACCEPTED', 'DISMISSED', 'DEFERRED', 'CORRECTED')),
+    reason_code TEXT,
+    reason_text TEXT,
+    actor_user_id INTEGER,
+    actor_username TEXT NOT NULL,
+    occurred_at TEXT NOT NULL,
+    supersedes_event_id INTEGER,
+    legacy_source_suggestion_log_id INTEGER,
+    FOREIGN KEY(recommendation_event_id) REFERENCES clinical_recommendation_events(id),
+    FOREIGN KEY(patient_link_id) REFERENCES patient_links(id),
+    FOREIGN KEY(actor_user_id) REFERENCES users(id),
+    FOREIGN KEY(supersedes_event_id) REFERENCES clinical_decision_events(id),
+    FOREIGN KEY(legacy_source_suggestion_log_id) REFERENCES suggestion_log(id)
+);
+CREATE INDEX IF NOT EXISTS idx_decision_events_recommendation
+ON clinical_decision_events(recommendation_event_id, occurred_at, id);
+CREATE INDEX IF NOT EXISTS idx_decision_events_patient
+ON clinical_decision_events(patient_link_id, occurred_at DESC);
+
+-- A run may be finalized once; all terminal runs and audit children are immutable.
+CREATE TRIGGER IF NOT EXISTS trg_engine_runs_terminal_no_update
+BEFORE UPDATE ON clinical_engine_runs
+WHEN OLD.run_status <> 'RUNNING'
+BEGIN
+    SELECT RAISE(ABORT, 'terminal clinical_engine_runs are immutable');
+END;
+CREATE TRIGGER IF NOT EXISTS trg_engine_runs_identity_immutable
+BEFORE UPDATE OF patient_link_id, encounter_key, as_of_at, started_at,
+                 engine_version, ruleset_id, fact_snapshot_json,
+                 fact_snapshot_hash, created_by
+ON clinical_engine_runs
+BEGIN
+    SELECT RAISE(ABORT, 'clinical_engine_run identity and snapshot are immutable');
+END;
+CREATE TRIGGER IF NOT EXISTS trg_engine_runs_no_delete
+BEFORE DELETE ON clinical_engine_runs
+BEGIN
+    SELECT RAISE(ABORT, 'clinical_engine_runs cannot be deleted');
+END;
+CREATE TRIGGER IF NOT EXISTS trg_rule_evaluations_no_update
+BEFORE UPDATE ON clinical_rule_evaluations BEGIN
+    SELECT RAISE(ABORT, 'clinical_rule_evaluations are immutable');
+END;
+CREATE TRIGGER IF NOT EXISTS trg_rule_evaluations_running_insert_only
+BEFORE INSERT ON clinical_rule_evaluations
+WHEN (SELECT run_status FROM clinical_engine_runs WHERE run_id=NEW.run_id) <> 'RUNNING'
+BEGIN
+    SELECT RAISE(ABORT, 'evaluations require a RUNNING clinical_engine_run');
+END;
+CREATE TRIGGER IF NOT EXISTS trg_rule_evaluations_no_delete
+BEFORE DELETE ON clinical_rule_evaluations BEGIN
+    SELECT RAISE(ABORT, 'clinical_rule_evaluations cannot be deleted');
+END;
+CREATE TRIGGER IF NOT EXISTS trg_recommendation_events_no_update
+BEFORE UPDATE ON clinical_recommendation_events BEGIN
+    SELECT RAISE(ABORT, 'clinical_recommendation_events are immutable');
+END;
+CREATE TRIGGER IF NOT EXISTS trg_recommendation_events_no_delete
+BEFORE DELETE ON clinical_recommendation_events BEGIN
+    SELECT RAISE(ABORT, 'clinical_recommendation_events cannot be deleted');
+END;
+CREATE TRIGGER IF NOT EXISTS trg_recommendation_events_running_insert_only
+BEFORE INSERT ON clinical_recommendation_events
+WHEN (SELECT run_status FROM clinical_engine_runs WHERE run_id=NEW.run_id) <> 'RUNNING'
+BEGIN
+    SELECT RAISE(ABORT, 'recommendation events require a RUNNING clinical_engine_run');
+END;
+CREATE TRIGGER IF NOT EXISTS trg_recommendation_evaluation_same_run
+BEFORE INSERT ON clinical_recommendation_events
+WHEN NEW.evaluation_id IS NOT NULL
+ AND (SELECT run_id FROM clinical_rule_evaluations WHERE id=NEW.evaluation_id) <> NEW.run_id
+BEGIN
+    SELECT RAISE(ABORT, 'recommendation evaluation must belong to the same run');
+END;
+CREATE TRIGGER IF NOT EXISTS trg_decision_events_no_update
+BEFORE UPDATE ON clinical_decision_events BEGIN
+    SELECT RAISE(ABORT, 'clinical_decision_events are immutable');
+END;
+CREATE TRIGGER IF NOT EXISTS trg_decision_events_no_delete
+BEFORE DELETE ON clinical_decision_events BEGIN
+    SELECT RAISE(ABORT, 'clinical_decision_events cannot be deleted');
+END;
+CREATE TRIGGER IF NOT EXISTS trg_decision_events_terminal_run_only
+BEFORE INSERT ON clinical_decision_events
+WHEN (SELECT r.run_status
+      FROM clinical_recommendation_events e
+      JOIN clinical_engine_runs r ON r.run_id=e.run_id
+      WHERE e.id=NEW.recommendation_event_id) = 'RUNNING'
+BEGIN
+    SELECT RAISE(ABORT, 'clinical decisions require a terminal engine run');
+END;
+
+-- Rule content and ruleset identity are versioned; lifecycle fields may change.
+CREATE TRIGGER IF NOT EXISTS trg_rule_version_content_immutable
+BEFORE UPDATE OF rule_code, version, schema_version, dsl_version, phase,
+                 action_type, rule_json, content_hash, source_legacy_rule_id,
+                 created_by, created_at, supersedes_rule_version_id
+ON clinical_rule_versions BEGIN
+    SELECT RAISE(ABORT, 'clinical rule version content is immutable');
+END;
+CREATE TRIGGER IF NOT EXISTS trg_rule_versions_no_delete
+BEFORE DELETE ON clinical_rule_versions BEGIN
+    SELECT RAISE(ABORT, 'clinical rule versions cannot be deleted');
+END;
+CREATE TRIGGER IF NOT EXISTS trg_ruleset_identity_immutable
+BEFORE UPDATE OF ruleset_code, version, content_hash, created_by, created_at
+ON clinical_rulesets BEGIN
+    SELECT RAISE(ABORT, 'clinical ruleset identity is immutable');
+END;
+CREATE TRIGGER IF NOT EXISTS trg_rulesets_no_delete
+BEFORE DELETE ON clinical_rulesets BEGIN
+    SELECT RAISE(ABORT, 'clinical rulesets cannot be deleted');
+END;
+CREATE TRIGGER IF NOT EXISTS trg_ruleset_members_draft_insert_only
+BEFORE INSERT ON clinical_ruleset_members
+WHEN (SELECT status FROM clinical_rulesets WHERE id = NEW.ruleset_id) <> 'DRAFT'
+BEGIN
+    SELECT RAISE(ABORT, 'members can only be added to a DRAFT ruleset');
+END;
+CREATE TRIGGER IF NOT EXISTS trg_ruleset_members_no_update
+BEFORE UPDATE ON clinical_ruleset_members BEGIN
+    SELECT RAISE(ABORT, 'create a new ruleset version');
+END;
+CREATE TRIGGER IF NOT EXISTS trg_ruleset_members_no_delete
+BEFORE DELETE ON clinical_ruleset_members BEGIN
+    SELECT RAISE(ABORT, 'retire the ruleset instead');
+END;

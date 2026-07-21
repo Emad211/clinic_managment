@@ -3,11 +3,43 @@ import sys
 import sqlite3
 import pkgutil
 
-from flask import g
+from flask import g, current_app
 
 from src.config.settings import Config
 
 _initialized = False
+
+_CLINICAL_ENGINE_V2_TABLES = frozenset({
+    "clinical_rule_versions",
+    "clinical_rulesets",
+    "clinical_ruleset_members",
+    "clinical_engine_runs",
+    "clinical_rule_evaluations",
+    "clinical_recommendation_events",
+    "clinical_decision_events",
+})
+_CLINICAL_ENGINE_V2_TRIGGERS = frozenset({
+    "trg_engine_runs_terminal_no_update",
+    "trg_engine_runs_identity_immutable",
+    "trg_engine_runs_no_delete",
+    "trg_rule_evaluations_running_insert_only",
+    "trg_rule_evaluations_no_update",
+    "trg_rule_evaluations_no_delete",
+    "trg_recommendation_events_running_insert_only",
+    "trg_recommendation_evaluation_same_run",
+    "trg_recommendation_events_no_update",
+    "trg_recommendation_events_no_delete",
+    "trg_decision_events_terminal_run_only",
+    "trg_decision_events_no_update",
+    "trg_decision_events_no_delete",
+    "trg_rule_version_content_immutable",
+    "trg_rule_versions_no_delete",
+    "trg_ruleset_identity_immutable",
+    "trg_rulesets_no_delete",
+    "trg_ruleset_members_draft_insert_only",
+    "trg_ruleset_members_no_update",
+    "trg_ruleset_members_no_delete",
+})
 
 
 def _load_schema_text():
@@ -132,6 +164,42 @@ def _seed_flag_sections(db):
         pass
 
 
+def _ensure_clinical_engine_v2_storage(db):
+    """Verify the additive v2 schema and install its safe-off feature flag.
+
+    Unlike optional catalog seeds, missing audit tables must fail startup loudly:
+    running a clinical engine without its immutable audit store is unsafe.
+    """
+    db.execute(
+        "INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)",
+        ("clinical_engine_v2_mode", "off"),
+    )
+    rows = db.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' "
+        f"AND name IN ({', '.join('?' for _ in _CLINICAL_ENGINE_V2_TABLES)})",
+        tuple(sorted(_CLINICAL_ENGINE_V2_TABLES)),
+    ).fetchall()
+    present = {row["name"] for row in rows}
+    missing = sorted(_CLINICAL_ENGINE_V2_TABLES - present)
+    if missing:
+        raise RuntimeError(
+            "Clinical Engine v2 storage migration incomplete: " + ", ".join(missing)
+        )
+    trigger_rows = db.execute(
+        "SELECT name FROM sqlite_master WHERE type='trigger' "
+        f"AND name IN ({', '.join('?' for _ in _CLINICAL_ENGINE_V2_TRIGGERS)})",
+        tuple(sorted(_CLINICAL_ENGINE_V2_TRIGGERS)),
+    ).fetchall()
+    present_triggers = {row["name"] for row in trigger_rows}
+    missing_triggers = sorted(_CLINICAL_ENGINE_V2_TRIGGERS - present_triggers)
+    if missing_triggers:
+        raise RuntimeError(
+            "Clinical Engine v2 audit guards incomplete: "
+            + ", ".join(missing_triggers)
+        )
+    db.commit()
+
+
 def _run_migrations(db):
     """Additive migrations for existing DBs (new tables come from schema IF NOT EXISTS)."""
     _ensure_column(db, "patient_links", "wallet_balance", "INTEGER NOT NULL DEFAULT 0")
@@ -195,6 +263,7 @@ def _run_migrations(db):
     _ensure_column(db, "processed_invoices", "outreach_done", "INTEGER NOT NULL DEFAULT 0")
     _ensure_column(db, "lab_results", "test_key", "TEXT")
     _seed_flag_sections(db)
+    _ensure_clinical_engine_v2_storage(db)
     # Seed the clinical decision-rule catalog (idempotent; manager edits preserved).
     # Also tags each rule's owning disease module (condition_code) on existing DBs.
     try:
@@ -237,7 +306,10 @@ def get_db():
     global _initialized
     db = getattr(g, '_database', None)
     if db is None:
-        db_path = Config.DATABASE_PATH
+        # The application factory can point tests and packaged deployments at a
+        # different database. Reading Config directly here silently ignored that
+        # override and allowed tests to write into the real clinic database.
+        db_path = current_app.config.get('DATABASE_PATH') or Config.DATABASE_PATH
         db_dir = os.path.dirname(db_path)
         if db_dir and not os.path.exists(db_dir):
             try:

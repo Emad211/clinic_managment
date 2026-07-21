@@ -94,8 +94,41 @@ class ConflictStatus(StrEnum):
 
 
 class RunStatus(StrEnum):
+    RUNNING = "RUNNING"
     COMPLETED = "COMPLETED"
     COMPLETED_WITH_ERRORS = "COMPLETED_WITH_ERRORS"
     SAFETY_FAILED = "SAFETY_FAILED"
     FACT_BUILD_FAILED = "FACT_BUILD_FAILED"
     AUDIT_FAILED = "AUDIT_FAILED"
+
+
+class RuleLifecycleStatus(StrEnum):
+    DRAFT = "DRAFT"
+    VALIDATED = "VALIDATED"
+    APPROVED = "APPROVED"
+    SILENT = "SILENT"
+    ACTIVE = "ACTIVE"
+    SUSPENDED = "SUSPENDED"
+    RETIRED = "RETIRED"
+
+
+class RulesetStatus(StrEnum):
+    DRAFT = "DRAFT"
+    SILENT = "SILENT"
+    ACTIVE = "ACTIVE"
+    SUSPENDED = "SUSPENDED"
+    RETIRED = "RETIRED"
+
+
+class RecommendationEventType(StrEnum):
+    CREATED = "CREATED"
+    PRESENTED = "PRESENTED"
+    SUPPRESSED = "SUPPRESSED"
+    SUPERSEDED = "SUPERSEDED"
+
+
+class ClinicalDecision(StrEnum):
+    ACCEPTED = "ACCEPTED"
+    DISMISSED = "DISMISSED"
+    DEFERRED = "DEFERRED"
+    CORRECTED = "CORRECTED"
