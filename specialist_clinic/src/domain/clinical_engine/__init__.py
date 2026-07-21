@@ -29,6 +29,7 @@ from .rules import (
 )
 from .results import (
     CompilationDiagnostic,
+    DataIssue,
     EvaluationResult,
     PredicateResult,
     RuleCompilationError,
@@ -41,6 +42,7 @@ __all__ = [
     "ClinicalPhase",
     "ClinicalFact",
     "CompilationDiagnostic",
+    "DataIssue",
     "CompiledRule",
     "ConflictStatus",
     "DiagnosticSeverity",

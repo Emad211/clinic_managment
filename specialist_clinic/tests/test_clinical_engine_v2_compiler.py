@@ -290,3 +290,17 @@ def test_structural_diagnostic_includes_json_path():
 
     assert diagnostic.code == "SCHEMA_VALIDATION_ERROR"
     assert diagnostic.path == "$.recommendation.suggestion_only"
+
+
+def test_temporal_selector_requires_an_explicit_window():
+    rule = valid_rule()
+    rule["condition"]["selector"] = {"aggregation": "recently_completed"}
+
+    assert "MISSING_SELECTOR_WINDOW" in diagnostic_codes(RuleCompiler(), rule)
+
+
+def test_minimum_count_is_rejected_for_non_count_selector():
+    rule = valid_rule()
+    rule["condition"]["selector"] = {"aggregation": "single", "minimum_count": 2}
+
+    assert "INCOMPATIBLE_SELECTOR_MINIMUM_COUNT" in diagnostic_codes(RuleCompiler(), rule)

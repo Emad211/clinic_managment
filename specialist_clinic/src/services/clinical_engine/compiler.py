@@ -314,8 +314,26 @@ class RuleCompiler:
             diagnostics.append(self._error("UNSUPPORTED_UNIT", f"{path}.unit", f"Unit {unit!r} is not registered."))
 
         selector = node.get("selector")
-        if selector and "within_days" in selector and selector.get("aggregation") in {"single", "all", "count"}:
-            diagnostics.append(self._error("INCOMPATIBLE_SELECTOR_WINDOW", f"{path}.selector", "within_days is incompatible with this aggregation."))
+        if selector:
+            aggregation = selector.get("aggregation", "single")
+            temporal = {"within_days", "count_within_days", "recently_completed"}
+            if aggregation in temporal and "within_days" not in selector:
+                diagnostics.append(self._error(
+                    "MISSING_SELECTOR_WINDOW", f"{path}.selector",
+                    f"{aggregation} requires within_days.",
+                ))
+            if "within_days" in selector and aggregation not in temporal:
+                diagnostics.append(self._error(
+                    "INCOMPATIBLE_SELECTOR_WINDOW", f"{path}.selector",
+                    "within_days is incompatible with this aggregation.",
+                ))
+            if "minimum_count" in selector and aggregation not in {
+                "count", "count_within_days", "recently_completed"
+            }:
+                diagnostics.append(self._error(
+                    "INCOMPATIBLE_SELECTOR_MINIMUM_COUNT", f"{path}.selector",
+                    "minimum_count requires a count or recently_completed aggregation.",
+                ))
 
         return LeafExpression(
             node_id=node_id,

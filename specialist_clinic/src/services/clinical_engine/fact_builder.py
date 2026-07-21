@@ -3,18 +3,23 @@
 from __future__ import annotations
 
 from datetime import datetime
+from collections import Counter
 import hashlib
 import json
 from typing import Any
 
 from src.adapters.sqlite.clinical_engine_audit_repo import ClinicalEngineAuditRepository
 from src.adapters.sqlite.clinical_engine_fact_repo import ClinicalEngineFactRepository
+from src.adapters.sqlite.clinical_engine_rules_repo import ClinicalEngineRulesRepository
 from src.domain.clinical_engine import FactSnapshot, RunStatus
 from src.common.utils import IRAN_TZ
+from src.services.clinical_engine.compiler import RuleCompiler
+from src.services.clinical_engine.evaluator import RuleEvaluator, evaluation_payload
 from src.services.clinical_engine.legacy_adapter import LegacyFactBundleAdapter
 
 
-ENGINE_VERSION = "2.0.0-fact-shadow"
+ENGINE_VERSION = "2.0.0-evaluator-shadow"
+DEFAULT_RULESET_CODE = "general-outpatient"
 
 
 def _json_default(value: Any):
@@ -120,12 +125,17 @@ class FactBuilder:
 
 
 class ShadowFactCapture:
-    """Persist facts only in shadow mode; never evaluates or returns recommendations."""
+    """Persist facts and silent evaluations; never returns recommendations."""
 
-    def __init__(self, repository=None, builder=None, audit=None):
+    def __init__(self, repository=None, builder=None, audit=None, rules=None,
+                 compiler=None, evaluator=None, ruleset_code=DEFAULT_RULESET_CODE):
         self.repository = repository or ClinicalEngineFactRepository()
         self.builder = builder or FactBuilder(repository=self.repository)
         self.audit = audit or ClinicalEngineAuditRepository()
+        self.rules = rules or ClinicalEngineRulesRepository()
+        self.compiler = compiler or RuleCompiler()
+        self.evaluator = evaluator or RuleEvaluator()
+        self.ruleset_code = ruleset_code
 
     def capture(self, patient_link_id: int, *, as_of_at: datetime,
                 encounter_key: str | None = None, created_by: str | None = None) -> str | None:
@@ -134,12 +144,74 @@ class ShadowFactCapture:
         snapshot = self.builder.build(patient_link_id, as_of_at=as_of_at,
                                       encounter_key=encounter_key)
         payload = snapshot_payload(snapshot)
+        ruleset = self.rules.active_ruleset(self.ruleset_code)
         run_id = self.audit.start_run(
             patient_link_id=patient_link_id, encounter_key=encounter_key,
             as_of_at=as_of_at.isoformat(sep=" ", timespec="seconds"),
-            engine_version=ENGINE_VERSION, fact_snapshot=payload, created_by=created_by,
+            engine_version=ENGINE_VERSION,
+            ruleset_id=ruleset["id"] if ruleset else None,
+            fact_snapshot=payload, created_by=created_by,
         )
-        self.audit.complete_run(run_id, status=RunStatus.COMPLETED,
-                                summary={"mode": "shadow", "evaluated_rules": 0,
-                                         "recommendations": 0})
+        if not ruleset:
+            self.audit.complete_run(
+                run_id, status=RunStatus.COMPLETED,
+                summary={"mode": "shadow", "evaluated_rules": 0,
+                         "recommendations": 0},
+            )
+            return run_id
+
+        counts: Counter[str] = Counter()
+        try:
+            for member in ruleset["members"]:
+                try:
+                    compiled = self.compiler.compile(json.loads(member["rule_json"]))
+                    result = self.evaluator.evaluate(compiled, snapshot)
+                    result_payload = evaluation_payload(result)
+                    predicate_state = result.predicate.state
+                    outcome = result.outcome
+                except Exception as exc:
+                    predicate_state = "ERROR"
+                    outcome = "ERROR"
+                    result_payload = {
+                        "trace": {
+                            "node_id": "compile-error", "kind": "PREDICATE",
+                            "state": "ERROR", "message_fa": "قاعدهٔ ذخیره‌شده قابل اجرا نیست.",
+                            "fact_ids": [], "actual": None, "expected": None,
+                            "reason_code": "STORED_RULE_INVALID", "children": [],
+                        },
+                        "data_issues": [],
+                        "error": {"code": "STORED_RULE_INVALID", "message": str(exc)},
+                    }
+                outcome_value = outcome.value if hasattr(outcome, "value") else outcome
+                counts[outcome_value] += 1
+                self.audit.append_evaluation(
+                    run_id=run_id,
+                    rule_version_id=int(member["rule_version_id"]),
+                    predicate_state=predicate_state,
+                    outcome=outcome,
+                    trace=result_payload["trace"],
+                    data_issues=result_payload["data_issues"],
+                    recommendation=None,
+                    error=result_payload["error"],
+                )
+            status = (
+                RunStatus.COMPLETED_WITH_ERRORS
+                if counts.get("ERROR", 0)
+                else RunStatus.COMPLETED
+            )
+            self.audit.complete_run(
+                run_id, status=status,
+                summary={
+                    "mode": "shadow",
+                    "evaluated_rules": sum(counts.values()),
+                    "recommendations": 0,
+                    "counts": dict(sorted(counts.items())),
+                },
+            )
+        except Exception as exc:
+            self.audit.complete_run(
+                run_id, status=RunStatus.AUDIT_FAILED,
+                error={"code": "SHADOW_EVALUATION_FAILED", "message": str(exc)},
+            )
+            raise
         return run_id

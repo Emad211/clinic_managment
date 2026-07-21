@@ -18,13 +18,35 @@
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["rule_code", "rule_version", "outcome", "predicate_state", "trace"],
+        "required": ["rule_code", "rule_version", "phase", "outcome", "predicate_state", "trace", "data_issues", "recommendations"],
         "properties": {
           "rule_code": {"type": "string"},
           "rule_version": {"type": "string"},
+          "phase": {"enum": ["PREFLIGHT", "SAFETY", "ROUTINE"]},
           "outcome": {"enum": ["FIRED", "NOT_FIRED", "NEEDS_DATA", "NOT_APPLICABLE", "SUPPRESSED", "ERROR"]},
           "predicate_state": {"enum": ["TRUE", "FALSE", "UNKNOWN", "ERROR"]},
           "trace": {"type": "object"},
+          "data_issues": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["fact_key", "issue"],
+              "properties": {
+                "fact_key": {"type": "string"},
+                "issue": {"enum": ["MISSING", "UNKNOWN", "NOT_ASKED", "STALE", "UNVERIFIED", "CONFLICTING", "UNIT_MISMATCH", "INVALID_TYPE", "SOURCE_UNAVAILABLE"]},
+                "message_fa": {"type": "string"}
+              },
+              "additionalProperties": false
+            }
+          },
+          "suppression": {"type": ["object", "null"]},
+          "recommendations": {"type": "array", "maxItems": 0},
+          "error": {
+            "type": ["object", "null"],
+            "properties": {"code": {"type": "string"}, "message": {"type": "string"}},
+            "required": ["code", "message"],
+            "additionalProperties": false
+          },
           "missing_facts": {"type": "array", "items": {"type": "string"}},
           "suppression_reasons": {"type": "array", "items": {"type": "string"}},
           "diagnostics": {"type": "array", "items": {"type": "object"}}
