@@ -1,25 +1,27 @@
 # CI Workflows
 
-## ci.yml — سه‌گانهٔ CI
+## `ci.yml` — production Flask applications
 
-### سه job
-| job | suite | عدد |
-|-----|-------|-----|
-| `backend` | pytest halqe (Django + Postgres) | 301 passed + 1 skipped |
-| `schema-guard` | pytest test_pg_schema.py | 79 passed |
-| `web` | jest halqe/web | 122 passed |
+| job | suite |
+|---|---|
+| `specialist-clinic` | تمام تست‌های `specialist_clinic/tests/` |
+| `accounting` | تمام تست‌های `webapp/tests/` |
 
-شکستِ هر job = قرمزشدنِ کل pipeline. PR بدون سبزشدنِ هر ۳ merge نمی‌شود.
+شکست هر job کل pipeline را قرمز می‌کند. CI روی Python 3.13 اجرا می‌شود.
 
-### ایمنی دیتا
-- Postgres سرویسِ throwaway است — فقط درون runner می‌زید و با پایانِ job نابود می‌شود.
-- `clinic_new.db` (دیتای تولیدیِ حسابداری) **هرگز لمس نمی‌شود** — CI از SQLite استفاده نمی‌کند.
-- هیچ SMS واقعی فرستاده نمی‌شود: کلیدِ Kavenegar ست نشده → NullProvider فعال.
+### ایمنی داده
 
-### گیتِ مالک (قبل از اولین اجرای ابری)
-1. **فعال‌کردنِ GitHub Actions:** `github.com/Emad211/clinic_managment` → Settings → Actions → General → "Allow all actions" را تأیید کن.
-2. **دسترسیِ runner از ایران:** runner‌های `ubuntu-latest` در زیرساختِ GitHub (آمریکا) هستند؛ اتصالِ آن‌ها به Postgres سرویسِ داخلیِ همان runner است — مسدودیتِ اینترنتِ ایران اثری ندارد. تنها اگر بخواهی runner لوکال (self-hosted) داشته باشی این بند مطرح می‌شود.
-3. **Self-hosted runner (اختیاری):** اگر Actions در دسترس نیست یا محدودیتِ پهنا وجود دارد، همین `ci.yml` روی Gitea/GitLab runner لوکال هم کار می‌کند — فقط `runs-on: ubuntu-latest` را به `runs-on: self-hosted` تغییر بده و مطمئن شو Docker روی ماشینِ runner دارد.
+- تست‌ها از SQLite موقت یا کپی‌های موقت استفاده می‌کنند.
+- `webapp/clinic_new.db` نباید تغییر کند.
+- scheduler در حالت تست اجرا نمی‌شود و هیچ کلید واقعی پیامکی در CI تنظیم نمی‌شود.
+- هیچ سرویس Postgres یا درخت حذف‌شدهٔ `halqe/` در این workflow وجود ندارد.
 
-### env varهای CI
-همهٔ credentialها dummy هستند (Postgres throwaway، SECRET_KEY تستی، بدون کلیدِ SMS). هیچ secret واقعی نیاز نیست تا زمانی که deploy target اضافه نشده باشد.
+### اجرای محلی
+
+```powershell
+cd specialist_clinic
+.\.venv\Scripts\python.exe -m pytest tests -q --tb=short
+
+cd ..\webapp
+python -m pytest tests -q --tb=short
+```

@@ -1,14 +1,6 @@
-# ---------------------------------------------------------------------------
-# CI — Clinic Management Platform
-# Three suites that must all be green before any merge to main:
-#   1. halqe backend   (pytest, Django+Postgres)
-#   2. schema-guard    (pytest, specialist_clinic/tests/test_pg_schema.py)
-#   3. halqe web       (jest)
-#
-# All three run against a throwaway Postgres 16 service container.
-# clinic_new.db (accounting production data) is never touched.
-# No real SMS is sent — NullProvider is active when no real key is set.
-# ---------------------------------------------------------------------------
+# CI for the two production Flask + SQLite desktop applications.
+# All tests use temporary databases; the committed accounting database is never
+# mutated and no real SMS provider is configured.
 
 name: CI
 
@@ -20,86 +12,13 @@ on:
   workflow_dispatch:
 
 jobs:
-  # ─────────────────────────────────────────────────────────────────────────
-  # Job 1: halqe backend (Django + pytest)
-  # ─────────────────────────────────────────────────────────────────────────
-  backend:
-    name: "halqe backend (pytest)"
+  specialist-clinic:
+    name: "specialist clinic (pytest)"
     runs-on: ubuntu-latest
-
-    services:
-      postgres:
-        image: postgres:16
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: ci_postgres_pw
-          POSTGRES_DB: postgres
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U postgres"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
-
+    defaults:
+      run:
+        working-directory: specialist_clinic
     env:
-      # Superuser creds — used only by conftest DDL and apply_schema
-      PG_HOST: localhost
-      PG_PORT: "5432"
-      PG_USER: postgres
-      PG_PASSWORD: ci_postgres_pw
-      # Least-privilege app role — conftest creates this role itself
-      PG_APP_USER: platform_login_test
-      PG_APP_PASSWORD: test_pw
-      # Django settings
-      DJANGO_SETTINGS_MODULE: config.settings
-      # Dummy secret — NullProvider active, no real SMS key
-      SECRET_KEY: "ci-dummy-secret-not-for-production"
-      PYTHONIOENCODING: utf-8
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Python 3.13
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.13"
-          cache: pip
-          cache-dependency-path: halqe/requirements.txt
-
-      - name: Install Python dependencies
-        run: pip install -r halqe/requirements.txt
-
-      - name: Run halqe backend tests
-        working-directory: halqe
-        run: python -m pytest -q --tb=short
-
-  # ─────────────────────────────────────────────────────────────────────────
-  # Job 2: schema-guard (specialist_clinic/tests/test_pg_schema.py)
-  # Uses the 'halqe' DB (Postgres service from job 2 is separate; this job
-  # spins its own service and applies slices via the test fixture itself).
-  # ─────────────────────────────────────────────────────────────────────────
-  schema-guard:
-    name: "schema-guard (pg slice tests)"
-    runs-on: ubuntu-latest
-
-    services:
-      postgres:
-        image: postgres:16
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: ci_postgres_pw
-          POSTGRES_DB: halqe
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U postgres"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
-
-    env:
-      PG_TEST_DSN: "postgresql://postgres:ci_postgres_pw@localhost:5432/halqe"
       PYTHONIOENCODING: utf-8
 
     steps:
@@ -112,35 +31,33 @@ jobs:
           cache: pip
           cache-dependency-path: specialist_clinic/requirements.txt
 
-      - name: Install Python dependencies
-        run: pip install "psycopg[binary]" pytest
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt pytest
 
-      - name: Run schema-guard tests
-        working-directory: specialist_clinic
-        run: python -m pytest tests/test_pg_schema.py -q --tb=short
+      - name: Run specialist clinic tests
+        run: python -m pytest tests -q --tb=short
 
-  # ─────────────────────────────────────────────────────────────────────────
-  # Job 3: halqe web (jest)
-  # No Postgres needed — pure unit tests (jsdom).
-  # ─────────────────────────────────────────────────────────────────────────
-  web:
-    name: "halqe web (jest)"
+  accounting:
+    name: "accounting (pytest)"
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: webapp
+    env:
+      PYTHONIOENCODING: utf-8
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Node 20 LTS
-        uses: actions/setup-node@v4
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v5
         with:
-          node-version: "20"
-          cache: npm
-          cache-dependency-path: halqe/web/package-lock.json
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: webapp/requirements.txt
 
-      - name: Install npm dependencies
-        working-directory: halqe/web
-        run: npm ci
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt
 
-      - name: Run jest tests
-        working-directory: halqe/web
-        run: npm test
+      - name: Run accounting tests
+        run: python -m pytest tests -q --tb=short
