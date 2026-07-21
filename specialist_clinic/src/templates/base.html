@@ -15,6 +15,7 @@
     {% block head %}{% endblock %}
 </head>
 <body>
+    <a class="skip-link" href="#main-content">پرش به محتوای اصلی</a>
     {# ----------------------------------------------------------------------
        SVG icon sprite (Lucide-style line icons). Use anywhere with:
          <svg class="icon"><use href="#i-NAME"></use></svg>
@@ -22,7 +23,7 @@
        log-out user activity plus line-chart bar-chart wallet pill flask alert
        trash x check save edit search filter phone stethoscope heart syringe
        trending-up gift coins banknote clipboard shield zap building sigma key
-       info chevron-left arrow-left download bolt
+       info chevron-left arrow-left download menu bolt
     ---------------------------------------------------------------------- #}
     <svg class="svg-sprite" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg">
       <symbol id="i-dashboard" viewBox="0 0 24 24"><rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/></symbol>
@@ -67,10 +68,16 @@
       <symbol id="i-chevron-left" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></symbol>
       <symbol id="i-arrow-left" viewBox="0 0 24 24"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></symbol>
       <symbol id="i-download" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></symbol>
+      <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 6h16"/><path d="M4 12h16"/><path d="M4 18h16"/></symbol>
     </svg>
 
     {% if g.user %}
-    <aside class="sidebar">
+    <header class="mobile-shell-header">
+        <div class="mobile-brand"><span class="brand-mark"><svg class="icon"><use href="#i-activity"></use></svg></span><span>کلینیک تخصصی</span></div>
+        <button class="btn btn-icon btn-ghost mobile-nav-toggle" type="button" aria-label="باز کردن منوی اصلی" aria-controls="clinic-sidebar" aria-expanded="false"><svg class="icon"><use href="#i-menu"></use></svg></button>
+    </header>
+    <button class="sidebar-backdrop" type="button" aria-label="بستن منوی اصلی" aria-hidden="true" tabindex="-1"></button>
+    <aside class="sidebar" id="clinic-sidebar" aria-label="منوی برنامه">
         <div class="brand">
             <span class="brand-mark"><svg class="icon"><use href="#i-activity"></use></svg></span>
             <div><b>کلینیک تخصصی</b><small>مدیریت بیماری‌های مزمن</small></div>
@@ -82,8 +89,7 @@
             <a class="nav-item {% if active_page=='doctor_queue' %}active{% endif %}" href="{{ url_for('doctor_queue.index') }}"{% if active_page=='doctor_queue' %} aria-current="page"{% endif %}><svg class="icon"><use href="#i-stethoscope"></use></svg> صفِ پزشک</a>
             <a class="nav-item {% if active_page=='patients' %}active{% endif %}" href="{{ url_for('patients.list_patients') }}"{% if active_page=='patients' %} aria-current="page"{% endif %}><svg class="icon"><use href="#i-users"></use></svg> بیماران</a>
             <a class="nav-item {% if active_page=='appointments' %}active{% endif %}" href="{{ url_for('appointments.list_appointments') }}"{% if active_page=='appointments' %} aria-current="page"{% endif %}><svg class="icon"><use href="#i-calendar"></use></svg> نوبت‌دهی</a>
-            <a class="nav-item {% if active_page=='followups' %}active{% endif %}" href="{{ url_for('followups.worklist') }}"{% if active_page=='followups' %} aria-current="page"{% endif %}><svg class="icon"><use href="#i-list-checks"></use></svg> پیگیری</a>
-            <a class="nav-item {% if active_page=='sms' %}active{% endif %}" href="{{ url_for('sms.campaigns') }}"{% if active_page=='sms' %} aria-current="page"{% endif %}><svg class="icon"><use href="#i-megaphone"></use></svg> کمپین پیامکی</a>
+            <a class="nav-item {% if active_page=='sms' %}active{% endif %}" href="{{ url_for('sms.campaigns') }}"{% if active_page=='sms' %} aria-current="page"{% endif %}><svg class="icon"><use href="#i-megaphone"></use></svg> هاب پیام</a>
             {% if g.user['role']=='manager' %}
             <div class="nav-section">سیستم</div>
             <a class="nav-item {% if active_page=='manager' %}active{% endif %}" href="{{ url_for('manager.index') }}"{% if active_page=='manager' %} aria-current="page"{% endif %}><svg class="icon"><use href="#i-settings"></use></svg> مدیریت</a>
@@ -94,15 +100,16 @@
                 <span class="avatar"><svg class="icon icon-sm"><use href="#i-user"></use></svg></span>
                 <span>{{ g.user['full_name'] or g.user['username'] }}</span>
             </div>
-            <a class="nav-item" style="margin:0;padding:9px 13px;" href="{{ url_for('auth.logout') }}"><svg class="icon"><use href="#i-log-out"></use></svg> خروج</a>
+            <a class="nav-item sidebar-logout" href="{{ url_for('auth.logout') }}"><svg class="icon"><use href="#i-log-out"></use></svg> خروج</a>
         </div>
     </aside>
     {% endif %}
 
-    <main class="main">
+    <main class="main" id="main-content" tabindex="-1">
+        <div class="sr-only" id="form-status" aria-live="polite"></div>
         {% with messages = get_flashed_messages(with_categories=true) %}
             {% for category, msg in messages %}
-                <div class="flash {% if category=='success' %}flash-success{% elif category=='info' %}flash-info{% endif %}" role="alert">
+                <div class="flash {% if category=='success' %}flash-success{% elif category=='info' %}flash-info{% endif %}" role="alert" aria-live="polite">
                     <svg class="icon"><use href="#i-{% if category=='success' %}check{% elif category=='info' %}info{% else %}alert{% endif %}"></use></svg>
                     <span>{{ msg }}</span>
                 </div>
@@ -134,6 +141,9 @@
                     calendarSwitch:{enabled:false}
                 }
             });
+            document.querySelectorAll('.datepicker-plot-area[id="plotId"]').forEach(function(picker,index){
+                picker.id='datepicker-plot-'+index;
+            });
         }
     });
 
@@ -142,15 +152,84 @@
         if(!el.hasAttribute('role')){ el.setAttribute('role','heading'); el.setAttribute('aria-level','2'); }
     });
 
-    // Prevent accidental double-submit: disable the submit button once a form is submitting.
-    // (The buttons carry no form data — no name attribute — so disabling now is safe.)
+    // Associate visually adjacent labels with their field across legacy forms.
+    document.querySelectorAll('.fld,.field').forEach(function(group,index){
+        var label=group.querySelector('label');
+        var control=group.querySelector('input:not([type="hidden"]),select,textarea');
+        if(!label || !control || label.htmlFor || control.closest('label')) return;
+        if(!control.id) control.id='auto-field-'+index;
+        label.htmlFor=control.id;
+    });
+
+    // Keyboard users can focus horizontally scrollable data tables.
+    function markScrollableTables(){
+        document.querySelectorAll('.table-wrap').forEach(function(wrap){
+            var scrollable=wrap.scrollWidth>wrap.clientWidth;
+            if(scrollable){wrap.tabIndex=0;wrap.setAttribute('role','region');wrap.setAttribute('aria-label','جدول قابل پیمایش افقی');}
+            else{wrap.removeAttribute('tabindex');wrap.removeAttribute('role');wrap.removeAttribute('aria-label');}
+        });
+    }
+    markScrollableTables();
+    addEventListener('resize',markScrollableTables,{passive:true});
+
+    // Mobile navigation is an off-canvas drawer so content keeps the full viewport width.
+    (function(){
+        var toggle=document.querySelector('.mobile-nav-toggle');
+        var sidebar=document.getElementById('clinic-sidebar');
+        var backdrop=document.querySelector('.sidebar-backdrop');
+        if(!toggle || !sidebar || !backdrop) return;
+        function setOpen(open){
+            sidebar.classList.toggle('is-open',open);
+            document.body.classList.toggle('nav-open',open);
+            toggle.setAttribute('aria-expanded',open?'true':'false');
+            toggle.setAttribute('aria-label',open?'بستن منوی اصلی':'باز کردن منوی اصلی');
+            backdrop.setAttribute('aria-hidden',open?'false':'true');
+            backdrop.tabIndex=open?0:-1;
+            if(open){var first=sidebar.querySelector('a');if(first)setTimeout(function(){first.focus();},0);}
+        }
+        toggle.addEventListener('click',function(){setOpen(!sidebar.classList.contains('is-open'));});
+        backdrop.addEventListener('click',function(){setOpen(false);toggle.focus();});
+        sidebar.querySelectorAll('a').forEach(function(link){link.addEventListener('click',function(){if(innerWidth<=900)setOpen(false);});});
+        document.addEventListener('keydown',function(event){
+            if(event.key==='Escape'&&sidebar.classList.contains('is-open')){setOpen(false);toggle.focus();return;}
+            if(event.key!=='Tab'||!sidebar.classList.contains('is-open'))return;
+            var focusable=Array.from(sidebar.querySelectorAll('a[href],button:not([disabled])'));
+            if(!focusable.length)return;
+            var first=focusable[0],last=focusable[focusable.length-1];
+            if(event.shiftKey&&document.activeElement===first){event.preventDefault();last.focus();}
+            else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first.focus();}
+        });
+        matchMedia('(min-width:901px)').addEventListener('change',function(event){if(event.matches)setOpen(false);});
+    })();
+
+    // Prevent accidental double-submit and expose a visible/announced pending state.
     document.addEventListener('submit', function(e){
         var f = e.target;
         if (!f || f.tagName !== 'FORM') return;
-        var btn = f.querySelector('button[type="submit"], button:not([type]), input[type="submit"]');
+        var btn = e.submitter || f.querySelector('button[type="submit"], button:not([type]), input[type="submit"]');
         if (btn && !btn.disabled){
+            if(btn.name){
+                var mirror=document.createElement('input');
+                mirror.type='hidden';mirror.name=btn.name;mirror.value=btn.value;
+                f.appendChild(mirror);
+            }
+            f.setAttribute('aria-busy','true');
+            btn.dataset.originalHtml=btn.tagName==='BUTTON'?btn.innerHTML:btn.value;
             btn.disabled = true;
-            setTimeout(function(){ if (document.contains(btn)) btn.disabled = false; }, 6000);
+            btn.classList.add('is-loading');
+            btn.setAttribute('aria-label','در حال انجام');
+            if(btn.tagName==='BUTTON') btn.innerHTML='<span class="spinner" aria-hidden="true"></span><span>در حال انجام…</span>';
+            else btn.value='در حال انجام…';
+            var status=document.getElementById('form-status');
+            if(status) status.textContent='درخواست در حال انجام است.';
+            setTimeout(function(){
+                if (!document.contains(btn)) return;
+                btn.disabled=false;btn.classList.remove('is-loading');btn.removeAttribute('aria-label');
+                if(btn.tagName==='BUTTON') btn.innerHTML=btn.dataset.originalHtml;
+                else btn.value=btn.dataset.originalHtml;
+                f.removeAttribute('aria-busy');
+                if(status) status.textContent='';
+            }, 8000);
         }
     }, true);
     </script>

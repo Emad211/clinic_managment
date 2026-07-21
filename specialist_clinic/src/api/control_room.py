@@ -47,8 +47,8 @@ def recall():
 @bp.route("/sms", methods=["POST"])
 @login_required
 def sms():
-    """Send a one-off invitation SMS to everyone in the cohort (opt-out respected)."""
-    from src.services.sms.campaign_service import send_single
+    """Queue cohort invitations for physician approval; never send directly."""
+    from src.services.engagement_service import EngagementService
     from src.services.sms.compliance import sanitize
     cohort = request.form.get("cohort", "")
     body = sanitize((request.form.get("body", "") or "").strip())
@@ -58,16 +58,19 @@ def sms():
     data = ControlRoomService().panel(show_value=_show_value())
     by_id = {p['id']: p for p in data['patients']}
     ids = next((c['ids'] for c in data['cohorts'] if c['key'] == cohort), [])
-    sent = skipped = 0
+    queued = skipped = 0
+    engagement = EngagementService()
     for pid in ids:
         p = by_id.get(pid)
         if not p or not p['phone'] or p['opt_out']:
             skipped += 1
             continue
-        send_single(pid, p['phone'], body.replace('{name}', p['name'] or 'بیمار'),
-                    message_type='Informational')
-        sent += 1
-    log_activity("control_room_sms", f"ارسال {sent} پیامکِ دعوت از اتاقِ کنترل ({cohort})")
-    flash(f"{sent} پیامک ارسال شد" + (f" · {skipped} رد (انصراف/بدون موبایل)" if skipped else ""),
+        if engagement.enqueue_control_room_invite(pid, body):
+            queued += 1
+        else:
+            skipped += 1
+    log_activity("control_room_sms_queue", f"افزودن {queued} پیام به صف تأیید ({cohort})")
+    flash(f"{queued} پیام به صف تأیید پزشک افزوده شد" +
+          (f" · {skipped} مورد تکراری/انصراف/بدون موبایل" if skipped else ""),
           "success")
     return redirect(url_for("control_room.index"))

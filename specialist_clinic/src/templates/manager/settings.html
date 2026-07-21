@@ -22,7 +22,7 @@
             <button type="button" class="btn btn-sm network-copy" data-copy-target="specialist-network-url">
                 <svg class="icon"><use href="#i-clipboard"></use></svg> کپی نشانی
             </button>
-            <a class="btn btn-secondary btn-sm" href="{{ network_info.primary_url }}" target="_blank" rel="noopener">باز کردن</a>
+            <a class="btn btn-ghost btn-sm" href="{{ network_info.primary_url }}" target="_blank" rel="noopener">باز کردن</a>
         </div>
     </div>
 
@@ -58,7 +58,7 @@
             <b>اپ حسابداری</b>
             <div class="help">در همان سیستم و شبکه، روی پورت ۸۰۸۰ در دسترس است.</div>
         </div>
-        <a href="{{ network_info.accounting_url }}" target="_blank" rel="noopener" class="btn btn-secondary btn-sm nums" dir="ltr">{{ network_info.accounting_url }}</a>
+        <a href="{{ network_info.accounting_url }}" target="_blank" rel="noopener" class="btn btn-ghost btn-sm nums" dir="ltr">{{ network_info.accounting_url }}</a>
     </div>
 
     <div class="alert-banner alert-info network-note">
@@ -81,7 +81,7 @@
                 <option value="kavenegar" {% if data.sms_provider=='kavenegar' %}selected{% endif %}>کاوه‌نگار (Kavenegar)</option>
                 <option value="mediana" {% if data.sms_provider=='mediana' %}selected{% endif %}>مدیانا (Mediana)</option>
             </select>
-            <div class="help">پیام‌ها از این پنل ارسال می‌شوند. اگر کلیدِ پنلِ انتخاب‌شده خالی باشد، از پنلِ دیگر (در صورت داشتن کلید) و در نهایت از حالتِ شبیه‌سازی استفاده می‌شود.</div>
+            <div class="help">پیام‌ها از این پنل ارسال می‌شوند. اگر کلید پنل انتخاب‌شده خالی باشد، پنل دارای کلید معتبر استفاده می‌شود؛ بدون هیچ کلیدی ارسال متوقف می‌ماند.</div>
         </div>
     </div>
 
@@ -96,7 +96,7 @@
         <div class="fld">
             <label><svg class="icon icon-sm"><use href="#i-key"></use></svg> API Key کاوه‌نگار</label>
             <input type="text" name="kavenegar_api_key" value="{{ data.kavenegar_api_key }}" placeholder="کلید API پنل کاوه‌نگار (در مسیرِ URL ارسال می‌شود)">
-            <div class="help">کلیدِ دسترسیِ پنل کاوه‌نگار. در کاوه‌نگار کلید بخشی از مسیرِ آدرس است (نه هدر). در حالتِ شبیه‌سازی خالی بگذارید.</div>
+            <div class="help">کلیدِ دسترسیِ پنل کاوه‌نگار. در کاوه‌نگار کلید بخشی از مسیرِ آدرس است (نه هدر).</div>
         </div>
 
         <div class="fld">
@@ -172,8 +172,8 @@
         <div class="fld" style="margin-top:var(--s2);">
             <label>نشانیِ پایهٔ عمومی (برای لینک و QR)</label>
             <div class="network-input-row">
-                <input id="public-base-url" type="text" name="public_base_url" value="{{ data.public_base_url }}" placeholder="مثلاً http://192.168.1.10:8090" style="direction:ltr;text-align:left;">
-                <button type="button" class="btn btn-secondary btn-sm" id="use-network-url">استفاده از نشانی شبکه</button>
+                <input id="public-base-url" class="input-ltr" type="text" name="public_base_url" value="{{ data.public_base_url }}" placeholder="مثلاً http://192.168.1.10:8090">
+                <button type="button" class="btn btn-ghost btn-sm" id="use-network-url">استفاده از نشانی شبکه</button>
             </div>
             <div class="help">برای تبلتِ پذیرش، IPِ کلینیک در شبکه را بگذارید تا QR روی موبایلِ بیمار باز شود؛ خالی = نشانیِ همین مرورگر. (مسیرِ اینترنتی بعداً: دامنهٔ عمومی.)</div>
         </div>
@@ -220,7 +220,7 @@
         </div>
     </div>
 
-    <button class="btn" type="submit" style="margin-top:var(--s4);">
+    <button class="btn mt-4" type="submit">
         <svg class="icon"><use href="#i-save"></use></svg> ذخیره تنظیمات
     </button>
 </form>
@@ -229,7 +229,7 @@
     <div class="alert-banner alert-warn">
         <svg class="icon"><use href="#i-info"></use></svg>
         <div>
-            تا زمانی که کلیدِ API پنلِ فعال وارد نشود، پیامک‌ها در حالتِ شبیه‌سازی ثبت می‌شوند (ارسالِ واقعی انجام نمی‌شود).
+            تا زمانی که کلید API معتبر وارد نشود، هیچ پیامکی ارسال یا به‌عنوان موفق ثبت نمی‌شود.
             یادآوری‌ها به‌صورتِ خدماتی و کمپین‌ها به‌صورتِ تبلیغاتی در نظر گرفته می‌شوند؛ راهنمای کاملِ کاوه‌نگار در
             <span class="nums">docs/kavenegar_reference.md</span>.
         </div>

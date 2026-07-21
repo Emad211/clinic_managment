@@ -1,13 +1,12 @@
-from datetime import datetime
-
-from flask import Blueprint, render_template, g
+from flask import Blueprint, render_template
 from src.api.auth import login_required
 from src.adapters.sqlite.core import get_db
 from src.adapters import accounting_bridge
 from src.adapters.sqlite.wallet_repo import WalletRepository
 from src.adapters.sqlite.appointments_repo import AppointmentRepository
 from src.services.revenue_service import RevenueService
-from src.common.utils import format_jalali_datetime, format_jalali_date, today_str, iran_now
+from src.services.control_room_service import ControlRoomService
+from src.common.utils import format_jalali_datetime, format_jalali_date, today_str
 
 bp = Blueprint("dashboard", __name__)
 
@@ -22,55 +21,13 @@ REASON_FA = {
 @bp.route("/")
 @login_required
 def index():
-    """Physician-first clinic-at-a-glance: who needs attention today, plus business KPIs."""
+    """Daily clinic launchpad; prioritisation itself belongs to Control Room."""
     db = get_db()
     today = today_str()
 
-    # ---- Clinical: per-patient latest control vitals (one pass) ----
-    rows = db.execute(
-        """
-        SELECT p.id, p.full_name, p.phone_number,
-          (SELECT v.value FROM vital_readings v WHERE v.patient_link_id=p.id AND v.type='hba1c'        ORDER BY v.measured_at DESC LIMIT 1) AS hba1c,
-          (SELECT v.value FROM vital_readings v WHERE v.patient_link_id=p.id AND v.type='fbs'          ORDER BY v.measured_at DESC LIMIT 1) AS fbs,
-          (SELECT v.value FROM vital_readings v WHERE v.patient_link_id=p.id AND v.type='bp_systolic'  ORDER BY v.measured_at DESC LIMIT 1) AS sys,
-          (SELECT MAX(v.measured_at) FROM vital_readings v WHERE v.patient_link_id=p.id) AS last_vital
-        FROM patient_links p WHERE p.is_active=1
-        """
-    ).fetchall()
-
-    now = iran_now()
-    measured = 0
-    lapsed_count = 0
-    attention = []
-    for r in rows:
-        assessable = (r['hba1c'] is not None) or (r['sys'] is not None)
-        if assessable:
-            measured += 1
-        # lapsed: no reading in the last 120 days
-        if r['last_vital']:
-            try:
-                d = datetime.strptime(str(r['last_vital'])[:10], '%Y-%m-%d')
-                if (now - d).days > 120:
-                    lapsed_count += 1
-            except ValueError:
-                pass
-        issues = []
-        if r['hba1c'] is not None and r['hba1c'] > 8:
-            issues.append({'label': 'HbA1c', 'value': r['hba1c'], 'unit': '٪'})
-        if r['sys'] is not None and r['sys'] >= 140:
-            issues.append({'label': 'فشار سیستول', 'value': r['sys'], 'unit': ''})
-        if r['fbs'] is not None and r['fbs'] >= 180:
-            issues.append({'label': 'قند ناشتا', 'value': r['fbs'], 'unit': ''})
-        if issues:
-            attention.append({
-                'id': r['id'], 'name': r['full_name'], 'phone': r['phone_number'],
-                'issues': issues, 'score': len(issues),
-                'last_fa': format_jalali_date(r['last_vital']) if r['last_vital'] else '—',
-            })
-    attention.sort(key=lambda a: -a['score'])
-    uncontrolled_count = len(attention)
-    controlled = max(measured - uncontrolled_count, 0)
-    control_rate = round(controlled / measured * 100) if measured else 0
+    # The Control Room owns prioritisation and editable clinical thresholds.
+    # Dashboard consumes only its population summary, never a second ranking.
+    population = ControlRoomService().panel(show_value=False)['summary']
 
     # ---- Clinical: due/overdue follow-ups (today or earlier) ----
     today_followups = db.execute(
@@ -94,16 +51,17 @@ def index():
         (today,)).fetchone()['c']
 
     stats = {
-        "patients": db.execute("SELECT COUNT(*) c FROM patient_links WHERE is_active=1").fetchone()["c"],
+        "patients": population['total'],
         "appointments_open": db.execute("SELECT COUNT(*) c FROM appointments WHERE status='scheduled'").fetchone()["c"],
         "followups_open": db.execute("SELECT COUNT(*) c FROM followup_tasks WHERE status='open'").fetchone()["c"],
-        "uncontrolled": uncontrolled_count,
+        "action_required": population['action_required'],
+        "uncontrolled": population['uncontrolled'],
         "followups_today": followups_today,
-        "lapsed": lapsed_count,
+        "lapsed": population['lapsed'],
         "refills_due": refills_due,
-        "control_rate": control_rate,
-        "controlled": controlled,
-        "measured": measured,
+        "control_rate": population['control_rate'],
+        "controlled": population['controlled'],
+        "measured": population['measured'],
     }
     wallet_outstanding = WalletRepository().total_outstanding()
 
@@ -122,8 +80,6 @@ def index():
         "dashboard.html",
         active_page='dashboard',
         stats=stats,
-        attention=attention[:10],
-        attention_total=uncontrolled_count,
         today_followups=today_followups,
         wallet_outstanding=wallet_outstanding,
         revenue=revenue,

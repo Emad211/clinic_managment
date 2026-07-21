@@ -43,7 +43,7 @@
       {% if st and st.status=='accepted' %}<span class="badge badge-ok"><svg class="icon icon-sm"><use href="#i-check"></use></svg> اعمال‌شده · {{ st.acted_by }}</span>
       {% elif st and st.status=='dismissed' %}<span class="badge badge-muted"><svg class="icon icon-sm"><use href="#i-x"></use></svg> رد‌شده · {{ st.acted_by }}</span>{% endif %}
       {% if r.action_type in ['suggest_med','safety_alert'] %}
-      <form method="post" action="{{ url_for('patients.suggestion_action', pid=pid) }}" style="margin:0;">
+      <form class="m-0" method="post" action="{{ url_for('patients.suggestion_action', pid=pid) }}">
         <input type="hidden" name="rule_code" value="{{ r.rule_code }}">
         <input type="hidden" name="suggestion_text" value="{{ r.recommendation }}">
         <input type="hidden" name="evidence_level" value="{{ r.evidence_level }}">
@@ -51,7 +51,7 @@
         <input type="hidden" name="status" value="accepted">
         <button class="btn btn-sm btn-ok" type="submit"><svg class="icon icon-sm"><use href="#i-check"></use></svg> اعمال شد</button>
       </form>
-      <form method="post" action="{{ url_for('patients.suggestion_action', pid=pid) }}" style="margin:0;">
+      <form class="m-0" method="post" action="{{ url_for('patients.suggestion_action', pid=pid) }}">
         <input type="hidden" name="rule_code" value="{{ r.rule_code }}">
         <input type="hidden" name="status" value="dismissed">
         <button class="btn btn-sm btn-ghost" type="submit"><svg class="icon icon-sm"><use href="#i-x"></use></svg> رد</button>
@@ -72,46 +72,81 @@
 {% set sched_count = sched_secs|map(attribute='rules')|map('length')|sum %}
 {% set info_count = info_secs|map(attribute='rules')|map('length')|sum %}
 
-<!-- ============ PATIENT HEADER (persistent) ============ -->
+<!-- ============ PATIENT HERO (persistent, single source of summary) ============ -->
 <div class="crumb"><a href="{{ url_for('patients.list_patients') }}">بیماران</a> / پرونده</div>
-<div class="pt-head">
-    <div class="pt-id">
-        <h1>{{ patient.full_name }}
-            {% if control.status=='controlled' %}<span class="badge badge-ok">کنترل‌شده</span>
-            {% elif control.status=='borderline' %}<span class="badge badge-warn">مرزی</span>
-            {% elif control.status=='uncontrolled' %}<span class="badge badge-danger">کنترل‌نشده</span>
-            {% else %}<span class="badge badge-muted">بدون داده</span>{% endif %}
-            {% if risk %}<span class="badge {% if risk.level=='high' %}badge-danger{% elif risk.level=='medium' %}badge-warn{% elif risk.level=='low' %}badge-warn{% else %}badge-ok{% endif %}">ریسک: {{ risk.label }}</span>{% endif %}
-        </h1>
-        <div class="pt-meta">
-            <span>{{ patient.national_id or 'بدون کدملی' }}</span><span class="sep">·</span>
-            <span>{{ patient.phone_number or 'بدون موبایل' }}</span>
-            {% for c in conditions %}<span class="sep">·</span><span>{{ c.condition_name }}</span>{% endfor %}
-            {% if patient.accounting_patient_id %}<span class="badge badge-info"><svg class="icon icon-sm"><use href="#i-building"></use></svg> حسابداری</span>{% endif %}
+<section class="patient-hero" aria-labelledby="patient-name">
+    <div class="patient-hero-main">
+        <div class="patient-avatar" aria-hidden="true"><svg class="icon"><use href="#i-user"></use></svg></div>
+        <div class="pt-id">
+            <h1 id="patient-name">{{ patient.full_name }}</h1>
+            <div class="pt-meta">
+                <span>کد ملی: {{ patient.national_id or 'ثبت نشده' }}</span><span class="sep">·</span>
+                <span>موبایل: {{ patient.phone_number or 'ثبت نشده' }}</span>
+                {% if patient.accounting_patient_id %}<span class="badge badge-info"><svg class="icon icon-sm"><use href="#i-building"></use></svg> متصل به حسابداری</span>{% endif %}
+            </div>
+            <div class="patient-conditions" aria-label="بیماری‌های مزمن">
+                {% for c in conditions %}<span class="chip">{{ c.condition_name }}</span>
+                {% else %}<span class="muted text-xs">بیماری مزمنی ثبت نشده است</span>{% endfor %}
+            </div>
         </div>
     </div>
     <div class="pt-actions">
-        <a class="btn btn-ghost btn-sm" href="{{ url_for('appointments.new_appointment', patient_link_id=patient.id) }}"><svg class="icon icon-sm"><use href="#i-calendar"></use></svg> نوبت</a>
-        <a class="btn btn-ghost btn-sm" href="{{ url_for('patients.card_admin', pid=patient.id) }}"><svg class="icon icon-sm"><use href="#i-bell"></use></svg> کارتِ بیمار</a>
+        <a class="btn btn-ghost btn-sm" href="{{ url_for('appointments.new_appointment', patient_link_id=patient.id) }}"><svg class="icon icon-sm"><use href="#i-calendar"></use></svg> ثبت نوبت</a>
+        <a class="btn btn-ghost btn-sm" href="{{ url_for('patients.card_admin', pid=patient.id) }}"><svg class="icon icon-sm"><use href="#i-bell"></use></svg> تنظیم یادآوری</a>
     </div>
-</div>
+
+    <div class="patient-status-strip" aria-label="خلاصه وضعیت بیمار">
+        <div class="patient-status-item">
+            <span>کنترل کلی</span>
+            <strong class="{% if control.status=='controlled' %}c-ok{% elif control.status=='borderline' %}c-warn{% elif control.status=='uncontrolled' %}c-danger{% endif %}">
+                {% if control.status=='controlled' %}کنترل‌شده{% elif control.status=='borderline' %}مرزی{% elif control.status=='uncontrolled' %}کنترل‌نشده{% else %}بدون داده{% endif %}
+            </strong>
+        </div>
+        <div class="patient-status-item">
+            <span>ریسک بالینی</span>
+            <strong class="{% if risk.level=='high' %}c-danger{% elif risk.level in ['medium','low'] %}c-warn{% else %}c-ok{% endif %}">{{ risk.label or 'نامشخص' }}</strong>
+        </div>
+        <div class="patient-status-item">
+            <span>پیگیری باز</span><strong class="{% if followups %}c-warn{% endif %}">{{ followups|length|fa_num }}</strong>
+        </div>
+        <div class="patient-status-item">
+            <span>نیازمند تجدید نسخه</span><strong class="{% if refill_due %}c-warn{% endif %}">{{ refill_due|fa_num }}</strong>
+        </div>
+    </div>
+
+    <aside class="patient-next-action tone-{{ next_action.tone }}" aria-labelledby="next-action-title">
+        <div class="next-action-icon" aria-hidden="true"><svg class="icon"><use href="#i-{{ next_action.icon }}"></use></svg></div>
+        <div class="next-action-copy">
+            <span>اقدام پیشنهادی بعدی</span>
+            <strong id="next-action-title">{{ next_action.title }}</strong>
+            <small>{{ next_action.detail }}{% if next_action.date %} · {{ next_action.date|jalali_date }}{% endif %}</small>
+        </div>
+        {% if next_action.target == 'worklist' %}
+        <a class="btn btn-sm" href="{{ url_for('followups.worklist') }}">مشاهده پیگیری</a>
+        {% elif next_action.target == 'appointment' %}
+        <a class="btn btn-sm" href="{{ url_for('appointments.new_appointment', patient_link_id=patient.id) }}">ثبت نوبت</a>
+        {% else %}
+        <button class="btn btn-sm" type="button" data-open-tab="{{ next_action.target }}">بررسی در پرونده</button>
+        {% endif %}
+    </aside>
+</section>
 
 {% if allergies %}
 <div class="alert-banner alert-warn"><svg class="icon"><use href="#i-alert"></use></svg> آلرژی‌ها: {% for a in allergies %}{{ a.substance }}{% if a.severity %} ({{ a.severity }}){% endif %}{% if not loop.last %} · {% endif %}{% endfor %}</div>
 {% endif %}
 
 <!-- ============ TAB BAR ============ -->
-<div class="tabbar" role="tablist">
-    <button data-tab="cockpit" class="active"><svg class="icon"><use href="#i-stethoscope"></use></svg> نمای کلی{% if action_count %} <span class="pill pill-danger">{{ action_count|fa_num }}</span>{% endif %}</button>
-    <button data-tab="trends"><svg class="icon"><use href="#i-line-chart"></use></svg> روند و شاخص‌ها</button>
-    <button data-tab="meds"><svg class="icon"><use href="#i-pill"></use></svg> داروها <span class="pill">{{ medications|selectattr('is_active')|list|length|fa_num }}</span></button>
-    <button data-tab="record"><svg class="icon"><use href="#i-clipboard"></use></svg> پرونده و داده‌ها</button>
+<div class="tabbar" role="tablist" aria-label="بخش‌های پرونده بیمار">
+    <button type="button" role="tab" id="tab-cockpit" aria-controls="pane-cockpit" aria-selected="true" tabindex="0" data-tab="cockpit" class="active"><svg class="icon"><use href="#i-stethoscope"></use></svg> نمای کلی{% if action_count %} <span class="pill pill-danger">{{ action_count|fa_num }}</span>{% endif %}</button>
+    <button type="button" role="tab" id="tab-trends" aria-controls="pane-trends" aria-selected="false" tabindex="-1" data-tab="trends"><svg class="icon"><use href="#i-line-chart"></use></svg> روند و شاخص‌ها</button>
+    <button type="button" role="tab" id="tab-meds" aria-controls="pane-meds" aria-selected="false" tabindex="-1" data-tab="meds"><svg class="icon"><use href="#i-pill"></use></svg> داروها <span class="pill">{{ medications|selectattr('is_active')|list|length|fa_num }}</span></button>
+    <button type="button" role="tab" id="tab-record" aria-controls="pane-record" aria-selected="false" tabindex="-1" data-tab="record"><svg class="icon"><use href="#i-clipboard"></use></svg> پرونده و داده‌ها</button>
 </div>
 
 <!-- ============================================================= -->
 <!-- ============ TAB: COCKPIT ============ -->
 <!-- ============================================================= -->
-<section class="tab-pane" data-pane="cockpit" role="tabpanel">
+<section class="tab-pane" id="pane-cockpit" aria-labelledby="tab-cockpit" data-pane="cockpit" role="tabpanel">
 
     {% if clinical_v2 %}
         {% include "patients/_clinical_engine_v2.html" %}
@@ -161,17 +196,6 @@
         <div class="empty-mini">بیماری مزمنی ثبت نشده — در تب «پرونده» تشخیص بیماری را اضافه کنید تا شاخص‌های همان بیماری اینجا بیایند.</div>
         {% endif %}
 
-        {# control / risk / tasks compact strip (overall aggregate — kept as-is) #}
-        <div class="grid grid-4" style="margin-top:var(--s4);">
-            <div class="mini"><div class="m-num">
-                {% if control.status=='controlled' %}<span class="c-ok">کنترل‌شده</span>
-                {% elif control.status=='borderline' %}<span class="c-warn">مرزی</span>
-                {% elif control.status=='uncontrolled' %}<span class="c-danger">کنترل‌نشده</span>
-                {% else %}—{% endif %}</div><div class="m-lbl">وضعیت کنترل</div></div>
-            <div class="mini"><div class="m-num {% if risk.level=='high' %}c-danger{% elif risk.level in ['medium','low'] %}c-warn{% else %}c-ok{% endif %}">{{ risk.label }}</div><div class="m-lbl">ریسک · عامل غالب: {{ risk.dominant or '—' }}</div></div>
-            <div class="mini"><div class="m-num">{{ followups|length|fa_num }}</div><div class="m-lbl">پیگیری باز</div></div>
-            <div class="mini"><div class="m-num {% if refill_due %}c-warn{% endif %}">{{ refill_due|fa_num }}</div><div class="m-lbl">داروی نیازمند تجدید</div></div>
-        </div>
         {% if risk.behavior_notes %}
         <div class="legend" style="margin-top:var(--s3);">
             {% for n in risk.behavior_notes %}<span class="chip"><span class="dot dot-warn"></span> {{ n }}</span>{% endfor %}
@@ -202,7 +226,7 @@
         <div data-collapse="adaInfo" hidden>
             {# --- compact table: monitoring / screening / vaccination --- #}
             {% if sched_secs %}
-            <div class="sugg-group-title">📅 پایش، غربالگری و واکسیناسیون</div>
+            <div class="sugg-group-title"><svg class="icon icon-sm"><use href="#i-calendar"></use></svg> پایش، غربالگری و واکسیناسیون</div>
             <div class="table-wrap">
             <table>
                 <tbody>
@@ -245,7 +269,7 @@
             <span class="muted" style="font-size:11px;">{{ f.due_date|jalali_date if f.due_date else '' }}</span>
         </div>
         {% endfor %}
-        <a class="btn btn-sm btn-ghost" href="{{ url_for('followups.worklist') }}" style="margin-top:var(--s3);"><svg class="icon icon-sm"><use href="#i-list-checks"></use></svg> لیست کامل پیگیری</a>
+        <a class="btn btn-sm btn-ghost mt-3" href="{{ url_for('followups.worklist') }}"><svg class="icon icon-sm"><use href="#i-list-checks"></use></svg> لیست کامل پیگیری</a>
     </div>
     {% endif %}
 
@@ -271,12 +295,33 @@
             </div>
         </form>
     </div>
+
+    {# ---- UNIFIED CARE TIMELINE ---- #}
+    <div class="card care-timeline-card">
+        <div class="section-title"><svg class="icon"><use href="#i-activity"></use></svg> تاریخچه مراقبت <span class="section-sub">ویزیت، آزمایش، نوبت، دارو و پیگیری در یک مسیر زمانی</span></div>
+        {% if care_timeline %}
+        <ol class="care-timeline">
+            {% for event in care_timeline %}
+            <li class="care-event tone-{{ event.tone }}">
+                <div class="care-event-icon" aria-hidden="true"><svg class="icon icon-sm"><use href="#i-{{ event.icon }}"></use></svg></div>
+                <div class="care-event-copy">
+                    <strong>{{ event.title }}</strong>
+                    {% if event.detail %}<span>{{ event.detail }}</span>{% endif %}
+                </div>
+                <time datetime="{{ event.date }}">{{ event.date|jalali }}</time>
+            </li>
+            {% endfor %}
+        </ol>
+        {% else %}
+        <div class="empty-mini">هنوز رویدادی در مسیر مراقبت این بیمار ثبت نشده است.</div>
+        {% endif %}
+    </div>
 </section>
 
 <!-- ============================================================= -->
 <!-- ============ TAB: TRENDS ============ -->
 <!-- ============================================================= -->
-<section class="tab-pane" data-pane="trends" role="tabpanel" hidden>
+<section class="tab-pane" id="pane-trends" aria-labelledby="tab-trends" data-pane="trends" role="tabpanel" hidden>
     {# only groups that have at least one indicator with data; empty tiles are skipped #}
     {% set ns = namespace(any=false) %}
     {% for group in by_category %}
@@ -380,7 +425,7 @@
 <!-- ============================================================= -->
 <!-- ============ TAB: MEDS ============ -->
 <!-- ============================================================= -->
-<section class="tab-pane" data-pane="meds" role="tabpanel" hidden>
+<section class="tab-pane" id="pane-meds" aria-labelledby="tab-meds" data-pane="meds" role="tabpanel" hidden>
     {# embedded drug catalog for the meds-cascade script (filtered by class → drug → doses) #}
     <script type="application/json" id="drugCatalogData">{{ drug_catalog|tojson }}</script>
 
@@ -452,13 +497,13 @@
                         <select id="addMedNameSelect">
                             <option value="">— ابتدا کلاس را انتخاب کنید —</option>
                         </select>
-                        <input type="text" name="drug_name" id="addMedNameText" placeholder="یا نام دارو را تایپ کنید" style="margin-top:var(--s2);" required>
+                        <input type="text" class="mt-2" name="drug_name" id="addMedNameText" placeholder="یا نام دارو را تایپ کنید" required>
                     </div>
                     <div class="fld"><label>دوز</label>
                         <select id="addMedDoseSelect">
                             <option value="">— دوزِ استاندارد —</option>
                         </select>
-                        <input type="text" name="dose" id="addMedDoseText" placeholder="یا دوز را تایپ کنید" style="margin-top:var(--s2);">
+                        <input type="text" class="mt-2" name="dose" id="addMedDoseText" placeholder="یا دوز را تایپ کنید">
                     </div>
                     <div class="fld"><label>برنامه</label><input type="text" name="schedule" placeholder="روزی ۲ بار"></div>
                 </div>
@@ -482,10 +527,10 @@
     <div class="card">
         <div class="section-title"><svg class="icon"><use href="#i-clipboard"></use></svg> نسخه‌ها و دعوت <span class="section-sub">نسخهٔ آزادِ چاپی از داروهای فعال + دعوتِ پیامکی به نوبت</span></div>
         <div class="row" style="flex-wrap:wrap;gap:var(--s2);">
-            <form method="post" action="{{ url_for('patients.prescription_free', pid=patient.id) }}" target="_blank" style="margin:0;">
+            <form class="m-0" method="post" action="{{ url_for('patients.prescription_free', pid=patient.id) }}" target="_blank">
                 <button class="btn" type="submit"><svg class="icon"><use href="#i-clipboard"></use></svg> صدور نسخهٔ آزاد (چاپی)</button>
             </form>
-            <form method="post" action="{{ url_for('patients.invite_patient', pid=patient.id) }}" style="margin:0;">
+            <form class="m-0" method="post" action="{{ url_for('patients.invite_patient', pid=patient.id) }}">
                 <button class="btn btn-ghost" type="submit"><svg class="icon"><use href="#i-bell"></use></svg> دعوت پیامکی به نوبت</button>
             </form>
         </div>
@@ -521,7 +566,7 @@
         <div class="card med-modal-card">
             <div class="section-title"><svg class="icon"><use href="#i-syringe"></use></svg> ماشین‌حساب انسولین
                 <span class="section-sub">مرجع شروع و تیتراسیون — تأیید با پزشک</span>
-                <button type="button" class="btn btn-sm btn-ghost btn-icon med-modal-x" data-modal-close style="margin-inline-start:auto;"><svg class="icon icon-sm"><use href="#i-x"></use></svg></button>
+                <button type="button" class="btn btn-sm btn-ghost btn-icon med-modal-x ms-auto" data-modal-close aria-label="بستن پنجره" title="بستن"><svg class="icon icon-sm"><use href="#i-x"></use></svg></button>
             </div>
             <div class="grid grid-2" style="align-items:flex-end;">
                 <div class="fld"><label>وزن (kg)</label><input type="number" id="insWeight" value=""></div>
@@ -529,7 +574,7 @@
                 <div class="fld"><label>FPG فعلی (mg/dL)</label><input type="number" id="insFpg"></div>
                 <div class="fld"><label>FPG هدف</label><input type="number" id="insTarget" value="120"></div>
             </div>
-            <button class="btn btn-sm" id="insBtn" style="margin-top:var(--s3);"><svg class="icon icon-sm"><use href="#i-sigma"></use></svg> محاسبه</button>
+            <button class="btn btn-sm mt-3" id="insBtn"><svg class="icon icon-sm"><use href="#i-sigma"></use></svg> محاسبه</button>
             <div id="insResult" style="margin-top:var(--s3);"></div>
         </div>
     </div>
@@ -541,7 +586,7 @@
         <div class="card med-modal-card">
             <div class="section-title"><svg class="icon"><use href="#i-pill"></use></svg> پیشنهاد دوزِ {{ dg.condition_name }}
                 <span class="section-sub">مرجع تیتراسیون — تأیید با پزشک</span>
-                <button type="button" class="btn btn-sm btn-ghost btn-icon med-modal-x" data-modal-close style="margin-inline-start:auto;"><svg class="icon icon-sm"><use href="#i-x"></use></svg></button>
+                <button type="button" class="btn btn-sm btn-ghost btn-icon med-modal-x ms-auto" data-modal-close aria-label="بستن پنجره" title="بستن"><svg class="icon icon-sm"><use href="#i-x"></use></svg></button>
             </div>
             <div class="fld" style="max-width:260px;margin-bottom:var(--s3);">
                 <label>دوزِ فعلی (اطلاعاتی)</label>
@@ -561,7 +606,7 @@
 <!-- ============================================================= -->
 <!-- ============ TAB: RECORD ============ -->
 <!-- ============================================================= -->
-<section class="tab-pane" data-pane="record" role="tabpanel" hidden>
+<section class="tab-pane" id="pane-record" aria-labelledby="tab-record" data-pane="record" role="tabpanel" hidden>
 
     {# ============ reusable flag-field renderer (pf = patient_flags, passed in: macros don't see render context) ============ #}
     {% macro flag_field(f, pf) %}
@@ -600,7 +645,7 @@
             <span class="text-sm" style="white-space:pre-wrap;">{{ n.body }}
                 <span class="muted text-xs" style="margin-inline-start:6px;">{{ n.recorded_at|jalali }}</span>
             </span>
-            <form method="post" action="{{ url_for('patients.record_note_delete', pid=pid, nid=n.id) }}" style="margin:0;"><button class="btn btn-sm btn-danger btn-icon" type="submit"><svg class="icon icon-sm"><use href="#i-trash"></use></svg></button></form>
+            <form class="m-0" method="post" action="{{ url_for('patients.record_note_delete', pid=pid, nid=n.id) }}"><button class="btn btn-sm btn-danger btn-icon" type="submit" aria-label="حذف یادداشت" title="حذف یادداشت"><svg class="icon icon-sm"><use href="#i-trash"></use></svg></button></form>
         </div>
         {% else %}<div class="empty-mini">ثبت نشده</div>{% endfor %}
         <form method="post" action="{{ url_for('patients.record_note_add', pid=pid) }}" class="row" style="margin-top:var(--s2);align-items:flex-end;">
@@ -610,32 +655,13 @@
         </form>
     {% endmacro %}
 
-    {# ============ 1) HEALTH SUMMARY (read-only) ============ #}
-    <div class="card">
-        <div class="section-title"><svg class="icon"><use href="#i-clipboard"></use></svg> وضعیت سلامت کلی <span class="section-sub">نمای فشرده — جزئیات در بخش‌های پایین</span></div>
-        <div class="flex items-center wrap gap-2" style="margin-bottom:var(--s3);">
-            {% for c in conditions %}<span class="badge badge-info">{{ c.condition_name }}{% if c.stage %} ({{ c.stage }}){% endif %}</span>
-            {% else %}<span class="empty-mini" style="display:inline-block;">بیماری مزمنی ثبت نشده</span>{% endfor %}
-        </div>
-        <div class="grid grid-4">
-            <div class="mini"><div class="m-num">
-                {% if control.status=='controlled' %}<span class="c-ok">کنترل‌شده</span>
-                {% elif control.status=='borderline' %}<span class="c-warn">مرزی</span>
-                {% elif control.status=='uncontrolled' %}<span class="c-danger">کنترل‌نشده</span>
-                {% else %}—{% endif %}</div><div class="m-lbl">وضعیت کنترل</div></div>
-            <div class="mini"><div class="m-num {% if allergies %}c-warn{% endif %}">{{ allergies|length|fa_num }}</div><div class="m-lbl">حساسیت ثبت‌شده</div></div>
-            <div class="mini"><div class="m-num {% if followups %}c-warn{% endif %}">{{ followups|length|fa_num }}</div><div class="m-lbl">پیگیری باز</div></div>
-            <div class="mini"><div class="m-num" style="font-size:15px;font-weight:600;">{% if visit_history %}{{ visit_history[0].visit_date|jalali_date }}{% else %}—{% endif %}</div><div class="m-lbl">آخرین ویزیت</div></div>
-        </div>
-    </div>
-
-    {# ============ 2) CHRONIC CONDITIONS (the disease gate) ============ #}
+    {# ============ CHRONIC CONDITIONS (the disease gate) ============ #}
     <div class="card">
         <div class="section-title"><svg class="icon"><use href="#i-stethoscope"></use></svg> بیماری‌های مزمن <span class="section-sub">هر بیماری ماژول داده و شاخص‌های خود را به پرونده اضافه می‌کند</span></div>
         {% for c in conditions %}
             <div class="flex items-center justify-between" style="padding:var(--s2) 0;border-bottom:1px solid var(--line);">
                 <span>{{ c.condition_name }}{% if c.stage %} <span class="muted">({{ c.stage }})</span>{% endif %}</span>
-                <form method="post" action="{{ url_for('patients.remove_condition', pid=patient.id, pc_id=c.id) }}" style="margin:0;"><button class="btn btn-sm btn-danger btn-icon" type="submit"><svg class="icon icon-sm"><use href="#i-trash"></use></svg></button></form>
+                <form class="m-0" method="post" action="{{ url_for('patients.remove_condition', pid=patient.id, pc_id=c.id) }}"><button class="btn btn-sm btn-danger btn-icon" type="submit" aria-label="حذف بیماری" title="حذف بیماری"><svg class="icon icon-sm"><use href="#i-trash"></use></svg></button></form>
             </div>
         {% else %}<div class="empty-mini">ثبت نشده — برای فعال‌شدن شاخص‌ها و موتور تصمیمِ این بیماری، تشخیص را اضافه کنید.</div>{% endfor %}
         <form method="post" action="{{ url_for('patients.add_condition', pid=patient.id) }}" class="row" style="margin-top:var(--s3);align-items:flex-end;flex-wrap:wrap;">
@@ -662,7 +688,7 @@
                 {% for h in medical_history %}
                 <div class="flex items-start justify-between gap-2" style="padding:var(--s2) 0;border-bottom:1px solid var(--line);">
                     <span class="text-sm"><b>{{ h.title }}</b>{% if h.since %} <span class="muted text-xs">از {{ h.since|jalali_date }}</span>{% endif %}{% if h.note %}<div class="muted text-xs">{{ h.note }}</div>{% endif %}</span>
-                    <form method="post" action="{{ url_for('patients.record_history_delete', pid=patient.id, hid=h.id) }}" style="margin:0;"><button class="btn btn-sm btn-danger btn-icon" type="submit"><svg class="icon icon-sm"><use href="#i-trash"></use></svg></button></form>
+                    <form class="m-0" method="post" action="{{ url_for('patients.record_history_delete', pid=patient.id, hid=h.id) }}"><button class="btn btn-sm btn-danger btn-icon" type="submit" aria-label="حذف سابقه پزشکی" title="حذف سابقه پزشکی"><svg class="icon icon-sm"><use href="#i-trash"></use></svg></button></form>
                 </div>
                 {% else %}<div class="empty-mini">ثبت نشده</div>{% endfor %}
                 <form method="post" action="{{ url_for('patients.record_history_add', pid=patient.id) }}" style="margin-top:var(--s2);">
@@ -680,7 +706,7 @@
                 {% for s in surgeries %}
                 <div class="flex items-start justify-between gap-2" style="padding:var(--s2) 0;border-bottom:1px solid var(--line);">
                     <span class="text-sm"><b>{{ s.title }}</b>{% if s.performed_on %} <span class="muted text-xs">{{ s.performed_on|jalali_date }}</span>{% endif %}{% if s.note %}<div class="muted text-xs">{{ s.note }}</div>{% endif %}</span>
-                    <form method="post" action="{{ url_for('patients.record_surgery_delete', pid=patient.id, sid=s.id) }}" style="margin:0;"><button class="btn btn-sm btn-danger btn-icon" type="submit"><svg class="icon icon-sm"><use href="#i-trash"></use></svg></button></form>
+                    <form class="m-0" method="post" action="{{ url_for('patients.record_surgery_delete', pid=patient.id, sid=s.id) }}"><button class="btn btn-sm btn-danger btn-icon" type="submit" aria-label="حذف سابقه جراحی" title="حذف سابقه جراحی"><svg class="icon icon-sm"><use href="#i-trash"></use></svg></button></form>
                 </div>
                 {% else %}<div class="empty-mini">ثبت نشده</div>{% endfor %}
                 <form method="post" action="{{ url_for('patients.record_surgery_add', pid=patient.id) }}" style="margin-top:var(--s2);">
@@ -703,7 +729,7 @@
                 <div class="grid grid-3">
                     {% for f in comorb_flags %}{{ flag_field(f, patient_flags) }}{% endfor %}
                 </div>
-                <button class="btn btn-sm" type="submit" style="margin-top:var(--s3);"><svg class="icon icon-sm"><use href="#i-save"></use></svg> ذخیرهٔ شرایط همراه</button>
+                <button class="btn btn-sm mt-3" type="submit"><svg class="icon icon-sm"><use href="#i-save"></use></svg> ذخیرهٔ شرایط همراه</button>
             </form>
         </div>
         {% endif %}
@@ -718,7 +744,7 @@
             <div class="grid grid-3">
                 {% for f in flags_by_section.lifestyle %}{{ flag_field(f, patient_flags) }}{% endfor %}
             </div>
-            <button class="btn btn-sm" type="submit" style="margin-top:var(--s3);"><svg class="icon icon-sm"><use href="#i-save"></use></svg> ذخیرهٔ سبک زندگی</button>
+            <button class="btn btn-sm mt-3" type="submit"><svg class="icon icon-sm"><use href="#i-save"></use></svg> ذخیرهٔ سبک زندگی</button>
         </form>
         {% endif %}
         <div class="divider-dashed" style="padding-top:var(--s4);">
@@ -732,7 +758,7 @@
         {% for a in allergies %}
             <div class="flex items-center justify-between" style="padding:var(--s2) 0;border-bottom:1px solid var(--line);">
                 <span>{{ a.substance }} {% if a.severity %}<span class="badge badge-warn">{{ a.severity }}</span>{% endif %}</span>
-                <form method="post" action="{{ url_for('patients.delete_allergy', pid=patient.id, allergy_id=a.id) }}" style="margin:0;"><button class="btn btn-sm btn-danger btn-icon" type="submit"><svg class="icon icon-sm"><use href="#i-trash"></use></svg></button></form>
+                <form class="m-0" method="post" action="{{ url_for('patients.delete_allergy', pid=patient.id, allergy_id=a.id) }}"><button class="btn btn-sm btn-danger btn-icon" type="submit" aria-label="حذف حساسیت" title="حذف حساسیت"><svg class="icon icon-sm"><use href="#i-trash"></use></svg></button></form>
             </div>
         {% else %}<div class="empty-mini">ثبت نشده</div>{% endfor %}
         <form method="post" action="{{ url_for('patients.add_allergy', pid=patient.id) }}" class="row" style="margin-top:var(--s3);align-items:flex-end;flex-wrap:wrap;">
@@ -751,7 +777,7 @@
             <div class="grid grid-3">
                 {% for f in flags_by_section.exam %}{{ flag_field(f, patient_flags) }}{% endfor %}
             </div>
-            <button class="btn btn-sm" type="submit" style="margin-top:var(--s3);"><svg class="icon icon-sm"><use href="#i-save"></use></svg> ذخیرهٔ یافته‌های معاینه</button>
+            <button class="btn btn-sm mt-3" type="submit"><svg class="icon icon-sm"><use href="#i-save"></use></svg> ذخیرهٔ یافته‌های معاینه</button>
         </form>
         {% endif %}
         <div class="grid grid-2 divider-dashed" style="padding-top:var(--s4);">
@@ -799,11 +825,11 @@
                                     {% for t in lab_catalog %}<option value="{{ t.test_key }}">{{ t.name_fa }}</option>{% endfor %}
                                 </select>
                             </td>
-                            <td><input type="number" step="any" name="value[]" class="lab-value" style="max-width:110px;"></td>
-                            <td><input type="text" name="unit[]" class="lab-unit" style="max-width:90px;"></td>
-                            <td><input type="number" step="any" name="ref_low[]" class="lab-low" style="max-width:90px;"></td>
-                            <td><input type="number" step="any" name="ref_high[]" class="lab-high" style="max-width:90px;"></td>
-                            <td><button type="button" class="btn btn-sm btn-danger btn-icon lab-remove"><svg class="icon icon-sm"><use href="#i-x"></use></svg></button></td>
+                            <td><input type="number" step="any" name="value[]" class="lab-value" aria-label="مقدار آزمایش"></td>
+                            <td><input type="text" name="unit[]" class="lab-unit" aria-label="واحد آزمایش"></td>
+                            <td><input type="number" step="any" name="ref_low[]" class="lab-low" aria-label="حد پایین مرجع"></td>
+                            <td><input type="number" step="any" name="ref_high[]" class="lab-high" aria-label="حد بالای مرجع"></td>
+                            <td><button type="button" class="btn btn-sm btn-danger btn-icon lab-remove" aria-label="حذف ردیف آزمایش" title="حذف ردیف"><svg class="icon icon-sm"><use href="#i-x"></use></svg></button></td>
                         </tr>
                     </tbody>
                 </table>
@@ -827,7 +853,7 @@
                     <td><strong>{{ l.value|fa_num }}</strong> {{ l.unit or '' }}</td>
                     <td class="muted">{{ l.ref_low|fa_num if l.ref_low is not none else '' }} - {{ l.ref_high|fa_num if l.ref_high is not none else '' }}</td>
                     <td class="muted">{{ l.taken_at|jalali_date }}</td>
-                    <td><form method="post" action="{{ url_for('vitals.delete_lab', pid=patient.id, lab_id=l.id) }}" style="margin:0;"><button class="btn btn-sm btn-danger btn-icon" type="submit"><svg class="icon icon-sm"><use href="#i-trash"></use></svg></button></form></td>
+                    <td><form class="m-0" method="post" action="{{ url_for('vitals.delete_lab', pid=patient.id, lab_id=l.id) }}"><button class="btn btn-sm btn-danger btn-icon" type="submit" aria-label="حذف نتیجه آزمایش" title="حذف نتیجه آزمایش"><svg class="icon icon-sm"><use href="#i-trash"></use></svg></button></form></td>
                 </tr>
             {% else %}<tr><td colspan="5" class="muted">آزمایشی ثبت نشده</td></tr>{% endfor %}
             </tbody>
@@ -849,7 +875,7 @@
                     <td><strong>{{ r.value|fa_num }}</strong> {{ r.unit or '' }}</td>
                     <td class="muted">{{ r.measured_at|jalali }}</td>
                     <td>{% if r.level=='danger' %}<span class="badge badge-danger">خطر</span>{% elif r.level=='warn' %}<span class="badge badge-warn">هشدار</span>{% else %}<span class="badge badge-ok">نرمال</span>{% endif %}</td>
-                    <td><form method="post" action="{{ url_for('vitals.delete_reading', pid=patient.id, reading_id=r.id) }}" style="margin:0;"><button class="btn btn-sm btn-danger btn-icon" type="submit"><svg class="icon icon-sm"><use href="#i-trash"></use></svg></button></form></td>
+                    <td><form class="m-0" method="post" action="{{ url_for('vitals.delete_reading', pid=patient.id, reading_id=r.id) }}"><button class="btn btn-sm btn-danger btn-icon" type="submit" aria-label="حذف اندازه‌گیری" title="حذف اندازه‌گیری"><svg class="icon icon-sm"><use href="#i-trash"></use></svg></button></form></td>
                 </tr>
             {% endfor %}
             </tbody>
@@ -896,12 +922,30 @@ const faDigit = s => String(s==null?'':s).replace(/[0-9]/g,d=>'۰۱۲۳۴۵۶۷�
     const names = ['cockpit','trends','meds','record'];
     function activate(name){
         if(!names.includes(name)) name='cockpit';
-        btns.forEach(b=>b.classList.toggle('active', b.dataset.tab===name));
+        btns.forEach(b=>{
+            const selected=b.dataset.tab===name;
+            b.classList.toggle('active', selected);
+            b.setAttribute('aria-selected', selected ? 'true' : 'false');
+            b.tabIndex=selected ? 0 : -1;
+        });
         panes.forEach(p=>{ p.hidden = (p.dataset.pane!==name); });
         if(name==='trends') initTrends();
         try{ history.replaceState(null,'','#'+name); }catch(e){}
     }
     btns.forEach(b=>b.addEventListener('click',()=>activate(b.dataset.tab)));
+    btns.forEach((b,index)=>b.addEventListener('keydown',event=>{
+        if(!['ArrowRight','ArrowLeft','Home','End'].includes(event.key)) return;
+        event.preventDefault();
+        let next=index;
+        if(event.key==='Home') next=0;
+        else if(event.key==='End') next=btns.length-1;
+        else next=(index+(event.key==='ArrowRight' ? -1 : 1)+btns.length)%btns.length;
+        btns[next].focus(); activate(btns[next].dataset.tab);
+    }));
+    document.querySelectorAll('[data-open-tab]').forEach(el=>el.addEventListener('click',()=>{
+        activate(el.dataset.openTab);
+        document.querySelector('.tabbar')?.scrollIntoView({behavior:'smooth',block:'start'});
+    }));
     activate((location.hash||'').replace('#',''));
 })();
 

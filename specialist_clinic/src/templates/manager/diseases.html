@@ -33,11 +33,4 @@
     {% endfor %}
 </div>
 
-<div class="card card-soft" style="margin-top:var(--s4);">
-    <div class="muted text-sm flex items-center gap-2 wrap">
-        <svg class="icon icon-sm"><use href="#i-settings"></use></svg> نمای پیشرفته (همهٔ موارد یک‌جا):
-        <a class="btn btn-sm btn-ghost" href="{{ url_for('manager.rules') }}">همهٔ شاخص‌ها + افزودنِ شاخصِ جدید</a>
-        <a class="btn btn-sm btn-ghost" href="{{ url_for('manager.decision_rules') }}">همهٔ قواعد تصمیم</a>
-    </div>
-</div>
 {% endblock %}

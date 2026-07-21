@@ -22,10 +22,10 @@ LAPSED_DAYS = 120
 CONTROL_VITALS = ['hba1c', 'fbs', 'bp_systolic', 'bp_diastolic', 'ldl', 'egfr', 'uacr']
 
 COHORT_DEFS = [
-    ('uncontrolled_lapsed', '🔴 کنترل‌نشده و بی‌مراجعه'),
-    ('valuable_drifting', '💰 ارزشمندِ در حالِ ریزش'),
-    ('overdue_care', '📋 مراقبتِ سررسیده'),
-    ('uncontrolled', '⚕️ کنترل‌نشده (همه)'),
+    ('uncontrolled_lapsed', 'کنترل‌نشده و بی‌مراجعه'),
+    ('valuable_drifting', 'ارزشمندِ در حالِ ریزش'),
+    ('overdue_care', 'مراقبتِ سررسیده'),
+    ('uncontrolled', 'کنترل‌نشده (همه)'),
 ]
 
 
@@ -81,6 +81,10 @@ class ControlRoomService:
             median_rev = vals[len(vals) // 2] if vals else 0
 
         patients = []
+        population = {
+            'total': len(rows), 'measured': 0, 'controlled': 0,
+            'borderline': 0, 'uncontrolled': 0, 'unknown': 0, 'lapsed': 0,
+        }
         for r in rows:
             pid = r['id']
             flags, warns = [], []
@@ -97,6 +101,9 @@ class ControlRoomService:
             assessable = any(r[k] is not None for k in CONTROL_VITALS)
             control = ('uncontrolled' if flags else 'borderline' if warns
                        else 'controlled' if assessable else 'unknown')
+            population[control] += 1
+            if assessable:
+                population['measured'] += 1
 
             days = None
             if r['last_vital']:
@@ -105,6 +112,8 @@ class ControlRoomService:
                 except ValueError:
                     days = None
             lapsed = (days is None) or (days > LAPSED_DAYS)
+            if lapsed:
+                population['lapsed'] += 1
             open_fu = fu.get(pid, 0)
             value = rev.get(pid, 0)
 
@@ -158,8 +167,13 @@ class ControlRoomService:
             ids = [p['id'] for p in patients if in_cohort(p, key)]
             cohorts.append({'key': key, 'label': label, 'count': len(ids), 'ids': ids})
 
+        population['control_rate'] = (
+            round(population['controlled'] * 100 / population['measured'])
+            if population['measured'] else 0
+        )
+        population['action_required'] = len(patients)
         return {'patients': patients, 'cohorts': cohorts, 'median_rev': median_rev,
-                'total': len(patients), 'show_value': show_value}
+                'total': len(patients), 'summary': population, 'show_value': show_value}
 
     def cohort_ids(self, cohort_key: str, show_value: bool = True) -> list[int]:
         """Recompute a cohort's patient ids server-side (don't trust posted ids)."""

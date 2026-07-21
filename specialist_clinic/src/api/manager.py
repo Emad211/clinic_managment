@@ -4,7 +4,6 @@ from src.adapters.sqlite.core import get_db
 from src.adapters.sqlite.sms_repo import SmsRepository
 from src.services.auth_service import AuthService
 from src.services.protocol_service import ProtocolService
-from src.services.followup_service import FollowupService
 from src.services.activity_logger import log_activity
 from src.adapters import accounting_bridge
 from src.common.network import get_network_info
@@ -16,36 +15,8 @@ bp = Blueprint("manager", __name__, url_prefix="/manager")
 @bp.route("/")
 @manager_required
 def index():
-    """Management analytics dashboard."""
-    db = get_db()
-
-    total = db.execute("SELECT COUNT(*) c FROM patient_links WHERE is_active=1").fetchone()['c']
-
-    # Control rate: patients whose latest hba1c<=7 and latest systolic<140 among those with readings
-    measured = db.execute(
-        """SELECT COUNT(DISTINCT patient_link_id) c FROM vital_readings""").fetchone()['c']
-    uncontrolled = db.execute(
-        """SELECT COUNT(*) c FROM patient_links p WHERE p.is_active=1 AND (
-             (SELECT v.value FROM vital_readings v WHERE v.patient_link_id=p.id AND v.type='hba1c'
-                ORDER BY v.measured_at DESC LIMIT 1) > 8
-             OR (SELECT v.value FROM vital_readings v WHERE v.patient_link_id=p.id AND v.type='bp_systolic'
-                ORDER BY v.measured_at DESC LIMIT 1) >= 140)""").fetchone()['c']
-    controlled = max(measured - uncontrolled, 0)
-    control_rate = round(controlled / measured * 100) if measured else 0
-
-    # Campaign effectiveness
-    campaign_stats = db.execute(
-        """SELECT COUNT(*) total, COALESCE(SUM(sent_count),0) sent, COALESCE(SUM(failed_count),0) failed
-           FROM sms_campaigns""").fetchone()
-
-    followups = FollowupService().repo.counts_by_reason()
-
-    return render_template(
-        "manager/index.html", active_page='manager',
-        total=total,
-        measured=measured, controlled=controlled, uncontrolled=uncontrolled, control_rate=control_rate,
-        campaign_stats=dict(campaign_stats), followups=followups,
-    )
+    """Single home for configuration; operational metrics live on the dashboard."""
+    return render_template("manager/index.html", active_page='manager')
 
 
 @bp.route("/settings", methods=["GET", "POST"])
@@ -154,20 +125,8 @@ def protocols():
 @bp.route("/rules")
 @manager_required
 def rules():
-    """View & edit the clinical decision rules that drive the analytics engine."""
-    from src.adapters.sqlite.clinical_rules_repo import ClinicalRulesRepository, CATEGORY_LABELS
-    repo = ClinicalRulesRepository()
-    indicators = repo.all_indicators(active_only=False)
-    # group by category for display
-    groups = {}
-    for ind in indicators:
-        groups.setdefault(ind['category'], []).append(ind)
-    ordered = [(c, CATEGORY_LABELS.get(c, c), groups[c])
-               for c in ['glycemic', 'bp', 'lipid', 'kidney', 'anthro', 'other'] if c in groups]
-    conditions = get_db().execute("SELECT code, name FROM conditions WHERE is_active=1").fetchall()
-    return render_template("manager/rules.html", active_page='manager',
-                           groups=ordered, category_labels=CATEGORY_LABELS,
-                           conditions=[dict(c) for c in conditions])
+    """Legacy deep-link; indicator editing now has one home per disease."""
+    return redirect(url_for("manager.diseases"))
 
 
 @bp.route("/rules/update", methods=["POST"])
@@ -178,7 +137,7 @@ def rules_update():
     indicator_id = request.form.get("indicator_id", type=int)
     if not indicator_id:
         flash("شناسه نامعتبر")
-        return redirect(url_for("manager.rules"))
+        return redirect(url_for("manager.diseases"))
 
     def num(field):
         v = request.form.get(field, "").strip()
@@ -204,7 +163,7 @@ def rules_update():
     log_activity("rules_update", f"ویرایش قاعده‌ی بالینی #{indicator_id}")
     flash("قاعده به‌روزرسانی شد", "success")
     # Return to wherever the edit came from (per-disease page or the all-indicators page)
-    return redirect(request.referrer or url_for("manager.rules"))
+    return redirect(request.referrer or url_for("manager.diseases"))
 
 
 _RULE_CAT_LABELS = {
@@ -222,21 +181,8 @@ _RULE_CAT_ORDER = ['redflag', 'diagnosis', 'target', 'medication', 'bp_rx', 'lip
 @bp.route("/decision-rules")
 @manager_required
 def decision_rules():
-    """View & edit the full ADA decision-rule catalog (all categories)."""
-    rows = [dict(r) for r in get_db().execute(
-        "SELECT * FROM clinical_rules ORDER BY priority, id").fetchall()]
-    groups = {}
-    for r in rows:
-        groups.setdefault(r['category'], []).append(r)
-    ordered = [(c, _RULE_CAT_LABELS.get(c, c), groups[c])
-               for c in _RULE_CAT_ORDER if c in groups]
-    # any categories not in the predefined order
-    ordered += [(c, _RULE_CAT_LABELS.get(c, c), g) for c, g in groups.items()
-                if c not in _RULE_CAT_ORDER]
-    total = len(rows)
-    active = sum(1 for r in rows if r['is_active'])
-    return render_template("manager/decision_rules.html", active_page='manager',
-                           groups=ordered, total=total, active=active)
+    """Legacy deep-link; decision rules now live on each disease page."""
+    return redirect(url_for("manager.diseases"))
 
 
 @bp.route("/decision-rules/update", methods=["POST"])
@@ -245,7 +191,7 @@ def decision_rules_update():
     rule_id = request.form.get("rule_id", type=int)
     if not rule_id:
         flash("شناسه نامعتبر")
-        return redirect(url_for("manager.decision_rules"))
+        return redirect(url_for("manager.diseases"))
     fields = {
         'recommendation': request.form.get("recommendation", "").strip(),
         'dosage_titration': request.form.get("dosage_titration", "").strip() or None,
@@ -262,7 +208,7 @@ def decision_rules_update():
     get_db().commit()
     log_activity("decision_rule_update", f"ویرایش قاعدهٔ تصمیم #{rule_id}")
     flash("قاعده به‌روزرسانی شد", "success")
-    base = (request.referrer or url_for("manager.decision_rules")).split('#')[0]
+    base = (request.referrer or url_for("manager.diseases")).split('#')[0]
     return redirect(base + f"#rule-{rule_id}")
 
 
@@ -359,7 +305,7 @@ def rules_add():
     label = request.form.get("label", "").strip()
     if not key or not label:
         flash("کلید و عنوان الزامی است")
-        return redirect(url_for("manager.rules"))
+        return redirect(request.referrer or url_for("manager.diseases"))
     ClinicalRulesRepository().create({
         'key': key, 'label': label, 'unit': request.form.get("unit", "").strip(),
         'category': request.form.get("category", "other"),
@@ -371,7 +317,7 @@ def rules_add():
     })
     log_activity("rules_add", f"افزودن شاخص بالینی: {label}")
     flash("شاخص جدید اضافه شد", "success")
-    return redirect(url_for("manager.rules"))
+    return redirect(request.referrer or url_for("manager.diseases"))
 
 
 @bp.route("/protocols/followup", methods=["POST"])
@@ -400,7 +346,8 @@ def protocol_followup():
 @bp.route("/engagement")
 @manager_required
 def engagement():
-    """View & edit the event->channel routing table + automated-SMS guardrails."""
+    """Live operations view for the event-to-channel automation."""
+    import json
     from src.adapters.sqlite.engagement_repo import EngagementRepository, CHANNELS
     repo = EngagementRepository()
     sms = SmsRepository()
@@ -409,13 +356,21 @@ def engagement():
         'quiet_end': sms.get_setting('engagement_quiet_end', '21:00'),
         'daily_cap': sms.get_setting('engagement_daily_cap', '1'),
     }
-    preview = None
-    if request.args.get('preview'):
-        from src.services.engagement_service import EngagementService
-        preview = EngagementService().preview()
-    return render_template("manager/engagement.html", active_page='manager',
+    last_result = {}
+    try:
+        last_result = json.loads(sms.get_setting('engagement_last_result', '{}') or '{}')
+    except (TypeError, ValueError):
+        pass
+    runtime = {
+        'last_run_at': sms.get_setting('engagement_last_run_at'),
+        'last_error': sms.get_setting('engagement_last_error'),
+        'last_result': last_result,
+        'provider_ready': sms.provider_configured(),
+    }
+    return render_template("manager/engagement.html", active_page='sms',
                            events=repo.all_events(), channels=CHANNELS, settings=settings,
-                           preview=preview)
+                           summary=repo.operational_summary(), runtime=runtime,
+                           hub_pending=repo.count_pending())
 
 
 @bp.route("/engagement/update", methods=["POST"])
@@ -448,30 +403,3 @@ def engagement_settings():
     sms.set_setting('engagement_daily_cap', str(request.form.get("daily_cap", type=int) or 1))
     flash("تنظیمات گاردریل ذخیره شد", "success")
     return redirect(url_for("manager.engagement"))
-
-
-@bp.route("/engagement/create", methods=["POST"])
-@manager_required
-def engagement_create():
-    """Create a NEW manager-defined engagement event (constrained custom vocabulary)."""
-    from src.adapters.sqlite.engagement_repo import EngagementRepository, CUSTOM_EVENT_TYPES
-    import re
-    key = (request.form.get('event_key', '').strip().lower())
-    key = re.sub(r'[^a-z0-9_]', '_', key)
-    label = request.form.get('label', '').strip()
-    channel = request.form.get('channel', 'worklist')
-    etype = request.form.get('event_type', 'custom_date_reminder')
-    if etype not in CUSTOM_EVENT_TYPES:
-        etype = 'custom_date_reminder'
-    if not key or not label:
-        flash('کلید و عنوان رویداد الزامی است')
-        return redirect(url_for('manager.engagement'))
-    rid = EngagementRepository().create_event(
-        key, channel, label=label, event_type=etype,
-        sms_template=request.form.get('sms_template', '').strip() or None,
-        lead_days=request.form.get('lead_days', type=int) or 0,
-        cooldown_days=request.form.get('cooldown_days', type=int) or 30)
-    flash('رویداد ساخته شد' if rid else 'رویدادی با این کلید از قبل وجود دارد',
-          'success' if rid else '')
-    log_activity('engagement_create', f'ساخت رویداد سفارشی {key}')
-    return redirect(url_for('manager.engagement'))

@@ -223,6 +223,8 @@ def _run_migrations(db):
     _ensure_column(db, "sms_messages", "send_attempts", "INTEGER NOT NULL DEFAULT 0")
     _ensure_column(db, "sms_messages", "last_attempt_at", "TIMESTAMP")
     _ensure_column(db, "sms_messages", "retryable", "INTEGER NOT NULL DEFAULT 0")
+    _ensure_column(db, "sms_messages", "source_type", "TEXT")
+    _ensure_column(db, "sms_messages", "source_ref", "TEXT")
     try:
         db.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_sms_messages_idempotency "
                    "ON sms_messages(idempotency_key) WHERE idempotency_key IS NOT NULL")
@@ -258,6 +260,9 @@ def _run_migrations(db):
     _ensure_column(db, "followup_tasks", "fulfillment", "TEXT DEFAULT 'in_person'")
     _ensure_column(db, "engagement_events", "event_type", "TEXT")
     _ensure_column(db, "engagement_events", "is_custom", "INTEGER DEFAULT 0")
+    _ensure_column(db, "engagement_approvals", "sms_message_id", "INTEGER")
+    _ensure_column(db, "engagement_approvals", "send_attempts", "INTEGER NOT NULL DEFAULT 0")
+    _ensure_column(db, "engagement_approvals", "last_error", "TEXT")
     _ensure_column(db, "users", "api_token", "TEXT")
     _ensure_column(db, "users", "api_token_expires_at", "TEXT")  # SECU-05: extension token TTL
     _ensure_column(db, "processed_invoices", "outreach_done", "INTEGER NOT NULL DEFAULT 0")

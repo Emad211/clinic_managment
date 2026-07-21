@@ -30,11 +30,11 @@
             <td>
                 <div class="flex items-center gap-2 wrap">
                     {% if p.enrolled %}
-                    <form method="post" action="{{ url_for('doctor_queue.start', invoice_id=p.invoice_id) }}" style="margin:0;">
+                    <form class="m-0" method="post" action="{{ url_for('doctor_queue.start', invoice_id=p.invoice_id) }}">
                         {{ snap(p) }}<button class="btn btn-sm btn-ok" type="submit"><svg class="icon icon-sm"><use href="#i-stethoscope"></use></svg> ویزیت</button>
                     </form>
                     {% else %}<span class="muted text-xs">ثبت‌نشده در پرونده</span>{% endif %}
-                    <form method="post" action="{{ url_for('doctor_queue.done', invoice_id=p.invoice_id) }}" style="margin:0;">
+                    <form class="m-0" method="post" action="{{ url_for('doctor_queue.done', invoice_id=p.invoice_id) }}">
                         {{ snap(p) }}<button class="btn btn-sm btn-ghost" type="submit"><svg class="icon icon-sm"><use href="#i-check"></use></svg> پایانِ ویزیت</button>
                     </form>
                 </div>

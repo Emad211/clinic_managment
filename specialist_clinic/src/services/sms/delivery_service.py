@@ -17,6 +17,32 @@ STATUS_LABELS = {
     'StatusUnknown': 'وضعیت نامشخص',
 }
 
+IN_FLIGHT_STATUSES = {
+    'Queued', 'Submitting', 'PendingApproval', 'WaitingForSend',
+    'Sending', 'SendToOperator', 'Sent',
+}
+FAILED_STATUSES = {
+    'NumberBlackListed', 'OperatorBlackList', 'Undelivered', 'Failed', 'Canceled',
+}
+UNKNOWN_STATUSES = {'RetryableFailure', 'SubmissionUnknown', 'StatusUnknown'}
+
+
+def delivery_summary(rows) -> dict:
+    """Return report KPIs for the exact filtered rows shown to the user."""
+    result = {'total': 0, 'delivered': 0, 'in_flight': 0, 'failed': 0, 'unknown': 0}
+    for row in rows or []:
+        status = row.get('delivery_status') or 'Queued'
+        result['total'] += 1
+        if status == 'Delivered':
+            result['delivered'] += 1
+        elif status in FAILED_STATUSES:
+            result['failed'] += 1
+        elif status in UNKNOWN_STATUSES:
+            result['unknown'] += 1
+        else:
+            result['in_flight'] += 1
+    return result
+
 
 class DeliveryService:
     def __init__(self, provider=None, repo=None):

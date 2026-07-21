@@ -5,8 +5,8 @@
 {% include "sms/_hub_tabs.html" %}
 <div class="topbar">
     <h1><svg class="icon"><use href="#i-list-checks"></use></svg> لیست پیگیری</h1>
-    <form method="post" action="{{ url_for('followups.generate') }}" style="margin:0;">
-        <button class="btn" type="submit"><svg class="icon"><use href="#i-zap"></use></svg> تولید خودکار پیگیری‌ها</button>
+    <form class="m-0" method="post" action="{{ url_for('followups.generate') }}">
+        <button class="btn" type="submit"><svg class="icon"><use href="#i-activity"></use></svg> همگام‌سازی پیگیری‌های سررسیده</button>
     </form>
 </div>
 
@@ -81,10 +81,10 @@
                             <td class="nums">{{ t.due_date|jalali_date if t.due_date else '—' }}</td>
                             <td>
                                 <div class="flex items-center gap-2">
-                                    <form method="post" action="{{ url_for('followups.resolve', task_id=t.id) }}" style="margin:0;">
+                                    <form class="m-0" method="post" action="{{ url_for('followups.resolve', task_id=t.id) }}">
                                         <input type="hidden" name="status" value="done"><button class="btn btn-sm btn-ok" type="submit"><svg class="icon icon-sm"><use href="#i-check"></use></svg> انجام شد</button>
                                     </form>
-                                    <form method="post" action="{{ url_for('followups.resolve', task_id=t.id) }}" style="margin:0;">
+                                    <form class="m-0" method="post" action="{{ url_for('followups.resolve', task_id=t.id) }}">
                                         <input type="hidden" name="status" value="dismissed"><button class="btn btn-sm btn-ghost" type="submit"><svg class="icon icon-sm"><use href="#i-x"></use></svg> رد</button>
                                     </form>
                                 </div>
@@ -94,6 +94,15 @@
                     </tbody>
                 </table>
             </div>
+
+            {% if pg.phone_number %}
+            <div class="flex items-center gap-2 wrap" style="margin-top:var(--s3);">
+                <form class="m-0" method="post" action="{{ url_for('patients.invite_patient', pid=pg.patient_link_id) }}">
+                    <button class="btn btn-sm btn-ghost" type="submit"><svg class="icon icon-sm"><use href="#i-bell"></use></svg> افزودن پیام پیگیری به صف تأیید</button>
+                </form>
+                <span class="muted text-xs">ارسال مستقیم نیست؛ متن ابتدا در صف تأیید پزشک قرار می‌گیرد.</span>
+            </div>
+            {% endif %}
 
             <!-- close to visit: merge checked follow-ups into ONE visit -->
             <form method="post" action="{{ url_for('followups.patient_to_visit', pid=pg.patient_link_id) }}"
@@ -135,7 +144,7 @@
     <div class="empty">
         <svg class="icon"><use href="#i-list-checks"></use></svg>
         <div>
-            {% if q %}نتیجه‌ای برای «{{ q }}» یافت نشد.{% else %}پیگیری بازی وجود ندارد. روی «تولید خودکار» بزنید.{% endif %}
+            {% if q %}نتیجه‌ای برای «{{ q }}» یافت نشد.{% else %}پیگیری بازی وجود ندارد؛ موتور خودکار هر دو دقیقه موارد سررسیده را همگام می‌کند.{% endif %}
         </div>
     </div>
     {% endif %}

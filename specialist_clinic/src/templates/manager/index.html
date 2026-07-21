@@ -2,52 +2,9 @@
 {% block title %}مدیریت{% endblock %}
 {% block content %}
 <div class="topbar">
-    <h1>داشبورد مدیریتی</h1>
-    <div class="row">
-        <a class="btn btn-violet" href="{{ url_for('manager.diseases') }}"><svg class="icon"><use href="#i-stethoscope"></use></svg> پروتکل بیماری‌ها</a>
-        <a class="btn btn-ghost" href="{{ url_for('manager.protocols') }}"><svg class="icon"><use href="#i-clipboard"></use></svg> پروتکل‌های بالینی</a>
-        <a class="btn btn-ghost" href="{{ url_for('manager.users') }}"><svg class="icon"><use href="#i-key"></use></svg> کاربران</a>
-        <a class="btn btn-ghost" href="{{ url_for('manager.settings') }}"><svg class="icon"><use href="#i-settings"></use></svg> تنظیمات</a>
-    </div>
+    <h1><svg class="icon icon-lg"><use href="#i-settings"></use></svg> مدیریت و پیکربندی</h1>
 </div>
-
-<div class="grid grid-4">
-    <div class="card kpi">
-        <div class="ic"><svg class="icon"><use href="#i-users"></use></svg></div>
-        <div class="num">{{ total|fa_num }}</div>
-        <div class="label">کل بیماران مزمن</div>
-    </div>
-    <div class="card kpi kpi-ok">
-        <div class="ic"><svg class="icon"><use href="#i-heart"></use></svg></div>
-        <div class="num">{{ control_rate|fa_num }}٪</div>
-        <div class="label">نرخ کنترل بیماری</div>
-    </div>
-    <div class="card kpi kpi-warn">
-        <div class="ic"><svg class="icon"><use href="#i-alert"></use></svg></div>
-        <div class="num c-danger">{{ uncontrolled|fa_num }}</div>
-        <div class="label">بیماران کنترل‌نشده</div>
-    </div>
-    <div class="card kpi kpi-info">
-        <div class="ic"><svg class="icon"><use href="#i-megaphone"></use></svg></div>
-        <div class="num">{{ campaign_stats.sent|fa_num }}</div>
-        <div class="label">کل پیامک‌های موفق</div>
-    </div>
-</div>
-
-<div class="card">
-    <div class="section-title"><svg class="icon"><use href="#i-list-checks"></use></svg> پیگیری‌های باز</div>
-    <div class="table-wrap">
-        <table>
-            <tbody>
-                <tr><td><span class="chip"><svg class="icon icon-sm"><use href="#i-pill"></use></svg> تجدید دارو</span></td><td style="text-align:left;"><strong class="nums">{{ (followups.get('refill') or 0)|fa_num }}</strong></td></tr>
-                <tr><td><span class="chip"><svg class="icon icon-sm"><use href="#i-alert"></use></svg> کنترل‌نشده</span></td><td style="text-align:left;"><strong class="nums">{{ (followups.get('uncontrolled') or 0)|fa_num }}</strong></td></tr>
-                <tr><td><span class="chip"><svg class="icon icon-sm"><use href="#i-calendar"></use></svg> بدون مراجعه اخیر</span></td><td style="text-align:left;"><strong class="nums">{{ (followups.get('lapsed') or 0)|fa_num }}</strong></td></tr>
-                <tr><td><span class="chip"><svg class="icon icon-sm"><use href="#i-calendar"></use></svg> موعد ویزیت</span></td><td style="text-align:left;"><strong class="nums">{{ (followups.get('visit_due') or 0)|fa_num }}</strong></td></tr>
-            </tbody>
-        </table>
-    </div>
-    <a class="btn btn-sm" href="{{ url_for('followups.worklist') }}" style="margin-top:var(--s4);"><svg class="icon icon-sm"><use href="#i-list-checks"></use></svg> مشاهده لیست پیگیری</a>
-</div>
+<p class="page-intro">تنظیمات ساختاری سامانه از این صفحه در دسترس است. آمار روزانه در «داشبورد» و عملیات پیام و پیگیری در «هاب پیام» قرار دارد.</p>
 
 <div class="card">
     <div class="section-title"><svg class="icon"><use href="#i-settings"></use></svg> مدیریت و پیکربندی</div>
@@ -60,13 +17,9 @@
             <div class="nt-ic t-violet"><svg class="icon"><use href="#i-stethoscope"></use></svg></div>
             <div><b>پروتکل بیماری‌ها</b><small>شاخص‌ها، اهداف و قواعدِ هر بیماری</small></div>
         </a>
-        <a class="card card-soft nav-tile" href="{{ url_for('manager.engagement') }}">
-            <div class="nt-ic t-info"><svg class="icon"><use href="#i-megaphone"></use></svg></div>
-            <div><b>یادآوری و پیگیریِ خودکار</b><small>رویداد ← کانال (پیامک / ورک‌لیست)</small></div>
-        </a>
         <a class="card card-soft nav-tile" href="{{ url_for('manager.protocols') }}">
             <div class="nt-ic t-ok"><svg class="icon"><use href="#i-clipboard"></use></svg></div>
-            <div><b>پروتکل‌های بالینی</b><small>مسیرهای درمانی و پیگیری</small></div>
+            <div><b>پایش‌های سررسیده</b><small>بیماران نیازمند چکاپ دوره‌ای</small></div>
         </a>
         <a class="card card-soft nav-tile" href="{{ url_for('manager.users') }}">
             <div class="nt-ic t-warn"><svg class="icon"><use href="#i-key"></use></svg></div>

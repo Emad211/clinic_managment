@@ -154,6 +154,7 @@ def detail(pid):
     from src.adapters.sqlite.clinical_rules_repo import ClinicalRulesRepository
     from src.adapters.sqlite.flags_repo import ClinicalFlagsRepository
     from src.adapters.sqlite.core import get_db
+    from src.services.patient_cockpit_service import PatientCockpitService
 
     # Clinical analytics powers the cockpit (indicators, per-disease panels, risk, charts, med events)
     adata = AnalyticsService().patient_analytics(pid)
@@ -201,7 +202,8 @@ def detail(pid):
 
     labs = vitals_repo.get_labs(pid)
     appointments = AppointmentRepository().list_for_patient(pid)
-    followups = FollowupRepository().list_for_patient(pid)
+    all_followups = FollowupRepository().list_for_patient(pid)
+    followups = [f for f in all_followups if f.get('status') == 'open']
     condition_catalog = PatientRepository().list_condition_catalog()
 
     # Record-tab data (Phase 2): flags bucketed by record_section + the
@@ -231,6 +233,24 @@ def detail(pid):
     for grp in dose_guidance:
         grp['condition_name'] = condition_name_by_code.get(
             grp['condition_code'], grp['condition_code'])
+
+    medication_events = PatientRepository().get_medication_events(pid)
+    cockpit_service = PatientCockpitService()
+    next_action = cockpit_service.next_action(
+        clinical_support=clinical_support,
+        clinical_v2=clinical_v2,
+        followups=followups,
+        refill_due=adata['refill_due'],
+        appointments=appointments,
+        indicators=adata['indicators'],
+    )
+    care_timeline = cockpit_service.timeline(
+        appointments=appointments,
+        visits=profile['visit_history'],
+        labs=labs,
+        followups=all_followups,
+        medication_events=medication_events,
+    )
 
     wallet_repo = WalletRepository()
     wallet_balance = wallet_repo.get_balance(pid)
@@ -282,7 +302,7 @@ def detail(pid):
         drug_catalog=drug_catalog,
         is_diabetic=is_diabetic,
         dose_guidance=dose_guidance,
-        medication_events=PatientRepository().get_medication_events(pid),
+        medication_events=medication_events,
         wallet_balance=wallet_balance,
         wallet_tx=wallet_tx,
         indicators=adata['indicators'],
@@ -298,6 +318,8 @@ def detail(pid):
         clinical_v2=clinical_v2,
         suggestion_status=suggestion_status,
         prescriptions=prescriptions,
+        next_action=next_action,
+        care_timeline=care_timeline,
     )
 
 
@@ -389,7 +411,7 @@ def invite_patient(pid):
         "success" if qid else "",
     )
     log_activity("patient_invite", "دعوت پیامکی به نوبت", patient_link_id=pid)
-    return redirect(url_for("patients.detail", pid=pid) + "#meds")
+    return redirect(request.referrer or (url_for("patients.detail", pid=pid) + "#meds"))
 
 
 def _card_url(token):
@@ -541,9 +563,9 @@ def medication_effect(pid):
 @bp.route("/<int:pid>/followups/generate", methods=["POST"])
 @login_required
 def generate_followups(pid):
-    """Generate due ADA monitoring/screening/vaccine follow-ups for this patient."""
-    from src.services.followup_engine import generate_for_patient
-    n = generate_for_patient(pid)
+    """Synchronize this patient through the canonical engagement engine."""
+    from src.services.engagement_service import EngagementService
+    n = EngagementService().dispatch_patient(pid, worklist_only=True)['worklist']
     log_activity("followup_generate", f"تولید {n} پیگیری", patient_link_id=pid)
     flash(f"{n} پیگیری ساخته شد" if n else "پیگیری جدیدِ سررسیده‌ای نبود", "success")
     return redirect(url_for("patients.detail", pid=pid) + "#cockpit")

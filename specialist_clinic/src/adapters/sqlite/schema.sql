@@ -231,6 +231,8 @@ CREATE TABLE IF NOT EXISTS sms_messages (
     send_attempts INTEGER NOT NULL DEFAULT 0,
     last_attempt_at TIMESTAMP,
     retryable INTEGER NOT NULL DEFAULT 0,
+    source_type TEXT,                       -- campaign | engagement | manual
+    source_ref TEXT,                        -- stable source identifier for traceability
     error TEXT,
     sent_at TIMESTAMP,
     created_at TIMESTAMP DEFAULT (datetime('now', '+3 hours', '+30 minutes')),
@@ -686,9 +688,13 @@ CREATE TABLE IF NOT EXISTS engagement_approvals (
     decided_by TEXT,
     decided_at TEXT,
     sent_at TEXT,
+    sms_message_id INTEGER,
+    send_attempts INTEGER NOT NULL DEFAULT 0,
+    last_error TEXT,
     created_at TEXT DEFAULT (datetime('now','+3 hours','+30 minutes')),
     UNIQUE(patient_link_id, event_key, period_key)
     , FOREIGN KEY (patient_link_id) REFERENCES patient_links(id)
+    , FOREIGN KEY (sms_message_id) REFERENCES sms_messages(id)
 );
 CREATE INDEX IF NOT EXISTS idx_engagement_approvals_patient ON engagement_approvals(patient_link_id);
 

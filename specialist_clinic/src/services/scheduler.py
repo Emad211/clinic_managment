@@ -87,6 +87,13 @@ class Scheduler:
             EngagementService().run_all()
         except Exception:
             logger.exception("[scheduler] engagement error")
+            try:
+                from src.adapters.sqlite.sms_repo import SmsRepository
+                SmsRepository().set_setting(
+                    'engagement_last_error',
+                    'اجرای خودکار ناموفق بود؛ جزئیات در گزارش برنامه ثبت شده است.')
+            except Exception:
+                pass
 
     def _sync_invoices(self):
         """Read-only invoice-sync consumer (ADR-0003 D3+): record recently-closed

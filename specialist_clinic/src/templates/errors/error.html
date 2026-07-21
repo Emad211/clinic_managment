@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}{{ error_title }}{% endblock %}
+{% block content %}
+<section class="error-state" aria-labelledby="error-title">
+    <div class="error-code">{{ status_code|fa_num }}</div>
+    <div class="error-icon" aria-hidden="true"><svg class="icon"><use href="#i-alert"></use></svg></div>
+    <h1 id="error-title">{{ error_title }}</h1>
+    <p>{{ error_message }}</p>
+    <div class="error-actions">
+        {% if g.user %}
+        <a class="btn" href="{{ url_for('dashboard.index') }}"><svg class="icon"><use href="#i-dashboard"></use></svg> بازگشت به داشبورد</a>
+        {% else %}
+        <a class="btn" href="{{ url_for('auth.login') }}">ورود به سامانه</a>
+        {% endif %}
+    </div>
+</section>
+{% endblock %}

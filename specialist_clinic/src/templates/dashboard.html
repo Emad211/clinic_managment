@@ -2,74 +2,45 @@
 {% set active_page = 'dashboard' %}
 {% block title %}داشبورد{% endblock %}
 {% block content %}
-<div class="topbar">
-    <h1><svg class="icon icon-lg"><use href="#i-dashboard"></use></svg> داشبورد</h1>
-    <div class="row">
-        <a class="btn" href="{{ url_for('patients.enroll') }}"><svg class="icon"><use href="#i-plus"></use></svg> ثبت‌نام بیمار</a>
-        <a class="btn btn-ghost" href="{{ url_for('followups.worklist') }}"><svg class="icon"><use href="#i-list-checks"></use></svg> پیگیری</a>
+<div class="topbar dashboard-header">
+    <div>
+        <h1><svg class="icon icon-lg"><use href="#i-dashboard"></use></svg> داشبورد امروز</h1>
+        <p class="page-intro">خلاصه‌ی کارهای جاری درمانگاه؛ اولویت‌بندی بیماران و اقدام‌های جمعی در اتاق کنترل انجام می‌شود.</p>
+    </div>
+    <div class="dashboard-header-actions">
+        <a class="btn btn-ghost" href="{{ url_for('patients.enroll') }}"><svg class="icon"><use href="#i-plus"></use></svg> ثبت بیمار</a>
+        <a class="btn" href="{{ url_for('control_room.index') }}"><svg class="icon"><use href="#i-activity"></use></svg> ورود به اتاق کنترل</a>
     </div>
 </div>
 
-<!-- ============ CLINICAL: today's priorities (physician-first) ============ -->
-<div class="grid grid-4">
-    <a class="card kpi {% if stats.uncontrolled %}kpi-warn{% else %}kpi-ok{% endif %}" href="#attention">
+<!-- ============ TODAY AT A GLANCE ============ -->
+<section class="dashboard-overview" aria-label="خلاصه امروز">
+    <div class="card kpi {% if stats.action_required %}kpi-warn{% else %}kpi-ok{% endif %}">
         <div class="ic"><svg class="icon"><use href="#i-activity"></use></svg></div>
-        <div class="num">{{ stats.uncontrolled|fa_num }}</div>
-        <div class="label">بیماران کنترل‌نشده</div>
-    </a>
-    <a class="card kpi kpi-info" href="{{ url_for('followups.worklist') }}">
+        <div class="num">{{ stats.action_required|fa_num }}</div>
+        <div class="label">بیمار نیازمند اقدام</div>
+    </div>
+    <div class="card kpi kpi-info">
         <div class="ic"><svg class="icon"><use href="#i-bell"></use></svg></div>
         <div class="num">{{ stats.followups_today|fa_num }}</div>
         <div class="label">پیگیری‌های امروز و سررسیده</div>
-    </a>
-    <div class="card kpi kpi-ok">
+    </div>
+    <div class="card kpi kpi-violet">
+        <div class="ic"><svg class="icon"><use href="#i-calendar"></use></svg></div>
+        <div class="num">{{ stats.appointments_open|fa_num }}</div>
+        <div class="label">نوبت پیش‌رو</div>
+    </div>
+    <div class="card kpi {% if stats.control_rate >= 70 %}kpi-ok{% else %}kpi-warn{% endif %}">
         <div class="ic"><svg class="icon"><use href="#i-trending-up"></use></svg></div>
         <div class="num">{{ stats.control_rate|fa_num }}٪</div>
         <div class="label">نرخ کنترل بیماری <span class="muted">({{ stats.controlled|fa_num }}/{{ stats.measured|fa_num }})</span></div>
     </div>
-    <div class="card kpi kpi-violet">
-        <div class="ic"><svg class="icon"><use href="#i-clipboard"></use></svg></div>
-        <div class="num">{{ stats.lapsed|fa_num }}</div>
-        <div class="label">بدون مراجعهٔ اخیر (۴ ماه)</div>
-    </div>
-</div>
-
-<!-- بیمارانِ نیازمندِ توجه (the physician's first stop) -->
-<div class="card" id="attention">
-    <div class="section-title"><svg class="icon"><use href="#i-stethoscope"></use></svg> بیمارانِ نیازمندِ توجه
-        <span class="section-sub">آخرین شاخص‌های خارج از کنترل — مرتب بر اساس تعداد مورد</span>
-    </div>
-    {% if attention %}
-    <div class="table-wrap">
-    <table>
-        <thead><tr><th>بیمار</th><th>موارد خارج از کنترل</th><th>آخرین ثبت</th><th>موبایل</th><th></th></tr></thead>
-        <tbody>
-        {% for a in attention %}
-            <tr>
-                <td><a class="flex items-center gap-2" href="{{ url_for('patients.detail', pid=a.id) }}"><svg class="icon icon-sm"><use href="#i-user"></use></svg> {{ a.name }}</a></td>
-                <td>
-                    <div class="tag-list">
-                    {% for i in a.issues %}<span class="badge badge-danger">{{ i.label }} {{ i.value|fa_num }}{{ i.unit }}</span>{% endfor %}
-                    </div>
-                </td>
-                <td class="muted nums">{{ a.last_fa }}</td>
-                <td class="muted nums">{{ a.phone or '—' }}</td>
-                <td><a class="btn btn-sm btn-ghost" href="{{ url_for('patients.detail', pid=a.id) }}">پرونده <svg class="icon icon-sm"><use href="#i-chevron-left"></use></svg></a></td>
-            </tr>
-        {% endfor %}
-        </tbody>
-    </table>
-    </div>
-    {% if attention_total > attention|length %}
-    <div class="muted help" style="margin-top:var(--s3);">{{ (attention_total - attention|length)|fa_num }} بیمارِ کنترل‌نشدهٔ دیگر — <a href="{{ url_for('patients.list_patients') }}">فهرست کامل بیماران</a></div>
-    {% endif %}
-    {% else %}
-    <div class="empty"><svg class="icon"><use href="#i-check"></use></svg><div>همهٔ بیمارانِ دارای شاخص، در محدودهٔ کنترل هستند.</div></div>
-    {% endif %}
-</div>
+</section>
 
 <!-- today's follow-ups + upcoming appointments -->
-<div class="grid grid-2">
+<section class="dashboard-section" aria-labelledby="today-work-title">
+<div class="section-title" id="today-work-title"><svg class="icon"><use href="#i-list-checks"></use></svg> برنامه امروز <span class="section-sub">کارهایی که باید در جریان روز دیده شوند</span></div>
+<div class="dashboard-today-grid">
     <div class="card">
         <div class="section-title"><svg class="icon"><use href="#i-bell"></use></svg> پیگیری‌های امروز
             <span class="section-sub">سررسید تا امروز</span>
@@ -87,7 +58,7 @@
         {% endfor %}
         </tbody></table>
         </div>
-        <a class="btn btn-sm btn-ghost" href="{{ url_for('followups.worklist') }}" style="margin-top:var(--s3);"><svg class="icon icon-sm"><use href="#i-list-checks"></use></svg> لیست کامل پیگیری</a>
+        <a class="btn btn-sm btn-ghost mt-3" href="{{ url_for('followups.worklist') }}"><svg class="icon icon-sm"><use href="#i-list-checks"></use></svg> لیست کامل پیگیری</a>
         {% else %}<div class="empty"><svg class="icon"><use href="#i-check"></use></svg><div>پیگیریِ سررسیده‌ای برای امروز نیست.</div></div>{% endif %}
     </div>
     <div class="card">
@@ -107,10 +78,21 @@
         {% else %}<div class="empty"><svg class="icon"><use href="#i-calendar"></use></svg><div>نوبت پیش‌رویی نیست</div></div>{% endif %}
     </div>
 </div>
+</section>
+
+<section class="dashboard-section" aria-labelledby="population-title">
+    <div class="section-title" id="population-title"><svg class="icon"><use href="#i-users"></use></svg> جمعیت تحت مراقبت <span class="section-sub">نمای پایش؛ اقدام روی گروه‌ها در اتاق کنترل انجام می‌شود</span></div>
+    <div class="dashboard-population-card card">
+        <div class="dashboard-insight"><span>بیماران مزمن فعال</span><strong>{{ stats.patients|fa_num }}</strong></div>
+        <div class="dashboard-insight"><span>بدون ثبت شاخص طی ۴ ماه</span><strong class="{% if stats.lapsed %}c-warn{% endif %}">{{ stats.lapsed|fa_num }}</strong></div>
+        <div class="dashboard-insight"><span>داروی نیازمند تجدید</span><strong class="{% if stats.refills_due %}c-warn{% endif %}">{{ stats.refills_due|fa_num }}</strong></div>
+        <div class="dashboard-insight"><span>کنترل‌نشده</span><strong class="{% if stats.uncontrolled %}c-danger{% endif %}">{{ stats.uncontrolled|fa_num }}</strong></div>
+    </div>
+</section>
 
 <!-- ============ BUSINESS ============ -->
-<div class="divider"></div>
-<div class="section-title" style="font-size:14px;color:var(--muted);"><svg class="icon"><use href="#i-banknote"></use></svg> کسب‌وکار و درآمد</div>
+<section class="dashboard-section" aria-labelledby="business-title">
+<div class="section-title" id="business-title"><svg class="icon"><use href="#i-banknote"></use></svg> عملکرد مالی <span class="section-sub">خلاصه مدیریتی از اتصال خواندنی سامانه حسابداری</span></div>
 
 {% if not bridge_ok %}
 <div class="alert-banner alert-warn">
@@ -119,60 +101,37 @@
 </div>
 {% endif %}
 
-<div class="grid grid-4">
-    <div class="card kpi" style="margin-bottom:var(--s5);">
-        <div class="ic"><svg class="icon"><use href="#i-users"></use></svg></div>
-        <div class="num">{{ stats.patients|fa_num }}</div>
-        <div class="label">بیماران مزمن</div>
-    </div>
-    <div class="card kpi kpi-info" style="margin-bottom:var(--s5);">
-        <div class="ic"><svg class="icon"><use href="#i-calendar"></use></svg></div>
-        <div class="num">{{ stats.appointments_open|fa_num }}</div>
-        <div class="label">نوبت‌های پیش‌رو</div>
-    </div>
-    <div class="card kpi kpi-warn" style="margin-bottom:var(--s5);">
-        <div class="ic"><svg class="icon"><use href="#i-pill"></use></svg></div>
-        <div class="num">{{ stats.refills_due|fa_num }}</div>
-        <div class="label">داروی نیازمند تجدید نسخه</div>
-    </div>
-    <div class="card kpi kpi-violet" style="margin-bottom:var(--s5);">
-        <div class="ic"><svg class="icon"><use href="#i-wallet"></use></svg></div>
-        <div class="num">{{ wallet_outstanding|fa_num }}</div>
-        <div class="label">اعتبار کیف پول در گردش (تومان)</div>
-    </div>
-</div>
-
 {% if revenue.available %}
 {% set crate = ((revenue.total.collected / revenue.total.total * 100)|round|int) if revenue.total.total else 0 %}
-<div class="card">
+<div class="card dashboard-finance-card">
     <div class="section-title">
         <svg class="icon"><use href="#i-banknote"></use></svg> درآمد بیماران مطب تخصصی
         <span class="section-sub">— از سامانه حسابداری؛ «وصول‌شده» = آیتم‌های پرداخت‌شده، «صورتحساب» = کل مبلغِ فاکتورهای بسته</span>
     </div>
-    <div class="grid grid-4">
-        <div class="card kpi kpi-ok" style="margin:0;">
+    <div class="dashboard-finance-grid">
+        <div class="kpi kpi-ok">
             <div class="ic"><svg class="icon"><use href="#i-trending-up"></use></svg></div>
             <div class="num c-ok">{{ revenue.month.collected|fa_num }}</div>
             <div class="label">وصول‌شدهٔ این ماه <span class="muted">/ {{ revenue.month.total|fa_num }} صورتحساب</span></div>
         </div>
-        <div class="card kpi" style="margin:0;">
-            <div class="ic"><svg class="icon"><use href="#i-sigma"></use></svg></div>
-            <div class="num">{{ revenue.total.collected|fa_num }}</div>
-            <div class="label">وصول‌شدهٔ کل <span class="muted">/ {{ revenue.total.total|fa_num }} صورتحساب</span></div>
+        <div class="kpi">
+            <div class="ic"><svg class="icon"><use href="#i-wallet"></use></svg></div>
+            <div class="num">{{ wallet_outstanding|fa_num }}</div>
+            <div class="label">اعتبار کیف پول در گردش</div>
         </div>
-        <div class="card kpi {% if crate >= 90 %}kpi-ok{% else %}kpi-warn{% endif %}" style="margin:0;">
+        <div class="kpi {% if crate >= 90 %}kpi-ok{% else %}kpi-warn{% endif %}">
             <div class="ic"><svg class="icon"><use href="#i-sigma"></use></svg></div>
             <div class="num">{{ crate|fa_num }}٪</div>
             <div class="label">نرخ وصول <span class="muted">(وصول‌شده ÷ صورتحساب)</span></div>
         </div>
-        <div class="card kpi kpi-violet" style="margin:0;">
+        <div class="kpi kpi-violet">
             <div class="ic"><svg class="icon"><use href="#i-megaphone"></use></svg></div>
             <div class="num c-violet">{{ revenue.campaigns.attributed_total|fa_num }}</div>
             <div class="label">درآمد منتسب به کمپین‌ها (تومان)</div>
         </div>
     </div>
 
-    <div class="row wrap" style="margin-top:var(--s4);font-size:13px;">
+    <div class="dashboard-billing-mix">
         <span class="muted">ترکیب صورتحساب:</span>
         <span class="badge badge-info">ویزیت: {{ revenue.total.visits|fa_num }}</span>
         <span class="badge badge-info">تزریق: {{ revenue.total.injections|fa_num }}</span>
@@ -181,38 +140,15 @@
         <span class="badge badge-muted">{{ revenue.total.invoices|fa_num }} فاکتور بسته · {{ revenue.enrolled|fa_num }} بیمار متصل</span>
     </div>
 
-    <div style="margin-top:var(--s5);">
-        <div class="muted flex items-center gap-2" style="font-size:13px;margin-bottom:var(--s2);">
+    <div class="dashboard-revenue-chart">
+        <div class="muted flex items-center gap-2 dashboard-chart-label">
             <svg class="icon icon-sm"><use href="#i-bar-chart"></use></svg> روند درآمد ۳۰ روز اخیر (تومان)
         </div>
         <canvas id="revChart" height="80"></canvas>
     </div>
 </div>
-
-<div class="card">
-    <div class="section-title"><svg class="icon"><use href="#i-megaphone"></use></svg> عملکرد کمپین‌ها</div>
-    {% if revenue.campaigns.rows %}
-    <div class="table-wrap">
-    <table>
-        <thead><tr><th>کمپین</th><th>نوع</th><th>گیرنده (متصل)</th><th>اعتبار توزیعی</th><th>درآمد منتسب</th><th>فاکتور</th></tr></thead>
-        <tbody>
-        {% for c in revenue.campaigns.rows %}
-            <tr>
-                <td><a href="{{ url_for('sms.campaign_detail', cid=c.id) }}">{{ c.name }}</a></td>
-                <td>{% if c.type=='wallet_credit' %}<span class="badge badge-violet">اعتبار</span>{% elif c.type=='reminder' %}<span class="badge badge-info">یادآوری</span>{% else %}<span class="badge badge-muted">اطلاع‌رسانی</span>{% endif %}</td>
-                <td class="nums">{{ c.recipients|fa_num }}</td>
-                <td class="nums">{{ c.credit|fa_num }}</td>
-                <td class="nums"><strong class="c-ok">{{ c.revenue|fa_num }}</strong></td>
-                <td class="muted nums">{{ c.invoices|fa_num }}</td>
-            </tr>
-        {% endfor %}
-        </tbody>
-    </table>
-    </div>
-    <div class="muted help" style="margin-top:var(--s3);">«درآمد منتسب» = درآمدِ <b>وصول‌شدهٔ</b> گیرندگانِ متصل به حسابداری، تا <b>{{ revenue.campaigns.window_days|fa_num }} روز</b> پس از ارسال کمپین. این یک تخمینِ هم‌بستگی است (نه علّی)؛ برای سنجشِ واقعیِ اثر، گروهِ کنترل (holdout) لازم است.</div>
-    {% else %}<div class="empty"><svg class="icon"><use href="#i-megaphone"></use></svg><div>هنوز کمپینی ارسال نشده</div></div>{% endif %}
-</div>
 {% endif %}
+</section>
 
 {% if revenue.available %}
 <script>

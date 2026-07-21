@@ -11,10 +11,6 @@ EDITABLE_FIELDS = ('label', 'category', 'channel', 'sms_template', 'lead_days',
 
 CHANNELS = {'sms': 'پیامک', 'worklist': 'ورک‌لیست (تماس)', 'both': 'هردو', 'off': 'خاموش'}
 
-# Allowed event_type vocabulary for manager-created (custom) events.
-CUSTOM_EVENT_TYPES = ('custom_date_reminder', 'worklist_only')
-
-
 class EngagementRepository:
 
     # ---- event config ----
@@ -32,28 +28,6 @@ class EngagementRepository:
         db = get_db()
         r = db.execute("SELECT * FROM engagement_events WHERE event_key=?", (event_key,)).fetchone()
         return dict(r) if r else None
-
-    def create_event(self, event_key: str, channel: str, *, label=None,
-                     event_type='custom_date_reminder', category='clinical',
-                     sms_template=None, lead_days=0, cooldown_days=30,
-                     priority=100, is_active=1) -> int | None:
-        """Insert a NEW (manager-created) engagement event. Tagged is_custom=1 with
-        an event_type from the small custom vocabulary. Idempotent-friendly:
-        INSERT OR IGNORE on the UNIQUE event_key, so re-creating a duplicate is a
-        no-op (returns None when nothing was inserted)."""
-        if event_type not in CUSTOM_EVENT_TYPES:
-            event_type = 'custom_date_reminder'
-        db = get_db()
-        cur = db.execute(
-            """INSERT OR IGNORE INTO engagement_events
-                 (event_key, label, category, channel, sms_template, lead_days,
-                  cooldown_days, priority, is_active, is_custom, event_type)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)""",
-            (event_key, label or event_key, category, channel, sms_template,
-             lead_days, cooldown_days, priority, is_active, event_type),
-        )
-        db.commit()
-        return cur.lastrowid if cur.rowcount else None
 
     def update_event(self, event_id: int, fields: dict):
         sets, params = [], []
@@ -95,12 +69,14 @@ class EngagementRepository:
                  AND date(created_at)=date('now','+3 hours','+30 minutes')""",
             (pid,)).fetchone()['c']
 
-    def record_dispatch(self, pid: int, event_key: str, period_key: str, channel: str, ref_id=None):
+    def record_dispatch(self, pid: int, event_key: str, period_key: str, channel: str,
+                        ref_id=None, status='done'):
         db = get_db()
         db.execute(
             """INSERT OR IGNORE INTO engagement_dispatch
-               (patient_link_id, event_key, period_key, channel, ref_id) VALUES (?, ?, ?, ?, ?)""",
-            (pid, event_key, period_key, channel, ref_id))
+               (patient_link_id, event_key, period_key, channel, ref_id, status)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (pid, event_key, period_key, channel, ref_id, status))
         db.commit()
 
     def recent_dispatches(self, limit: int = 100) -> list[dict]:
@@ -136,6 +112,58 @@ class EngagementRepository:
                LEFT JOIN engagement_events e ON e.event_key=a.event_key
                WHERE a.status='pending'
                ORDER BY a.due_date IS NULL, a.due_date ASC, a.id DESC""").fetchall()]
+
+    def claim_approval(self, approval_id: int) -> bool:
+        """Atomically claim a pending approval so double-clicks cannot double-send."""
+        db = get_db()
+        cur = db.execute(
+            """UPDATE engagement_approvals
+               SET status='submitting', send_attempts=send_attempts+1, last_error=NULL
+               WHERE id=? AND status='pending'""", (approval_id,))
+        db.commit()
+        return cur.rowcount == 1
+
+    def finish_approval(self, approval_id: int, status: str, *, decided_by=None,
+                        sms_message_id=None, error=None, sent=False):
+        now = iran_now().strftime('%Y-%m-%d %H:%M:%S')
+        db = get_db()
+        db.execute(
+            """UPDATE engagement_approvals SET status=?, decided_by=?, decided_at=?,
+                   sms_message_id=COALESCE(?, sms_message_id), last_error=?,
+                   sent_at=CASE WHEN ? THEN ? ELSE sent_at END
+               WHERE id=?""",
+            (status, decided_by, now if status != 'pending' else None,
+             sms_message_id, error, int(bool(sent)), now, approval_id))
+        db.commit()
+
+    def operational_summary(self) -> dict:
+        db = get_db()
+        approval = db.execute("""SELECT
+            SUM(CASE WHEN status='pending' THEN 1 ELSE 0 END) pending,
+            SUM(CASE WHEN status='approved' THEN 1 ELSE 0 END) approved,
+            SUM(CASE WHEN status IN ('failed','unknown') THEN 1 ELSE 0 END) failed
+            FROM engagement_approvals""").fetchone()
+        worklist = db.execute("""SELECT
+            SUM(CASE WHEN status='open' THEN 1 ELSE 0 END) open,
+            SUM(CASE WHEN status='open' AND due_date <= date('now','+3 hours','+30 minutes')
+                     THEN 1 ELSE 0 END) due
+            FROM followup_tasks""").fetchone()
+        delivery = db.execute("""SELECT
+            SUM(CASE WHEN source_type='engagement' THEN 1 ELSE 0 END) total,
+            SUM(CASE WHEN source_type='engagement' AND delivery_status='Delivered' THEN 1 ELSE 0 END) delivered,
+            SUM(CASE WHEN source_type='engagement' AND delivery_status IN
+                ('PendingApproval','WaitingForSend','Sending','SendToOperator','Sent') THEN 1 ELSE 0 END) in_flight
+            FROM sms_messages""").fetchone()
+        return {
+            'pending_approvals': approval['pending'] or 0,
+            'approved': approval['approved'] or 0,
+            'approval_errors': approval['failed'] or 0,
+            'open_worklist': worklist['open'] or 0,
+            'due_worklist': worklist['due'] or 0,
+            'engagement_messages': delivery['total'] or 0,
+            'delivered': delivery['delivered'] or 0,
+            'in_flight': delivery['in_flight'] or 0,
+        }
 
     def set_status(self, approval_id: int, status: str, decided_by=None):
         """Record an approve/reject decision and who made it."""

@@ -19,6 +19,32 @@ CAMPAIGN_TYPES = {
 }
 
 
+def _group_pending_by_patient(pending: list[dict]) -> list[dict]:
+    """Group approval rows for presentation while preserving queue priority."""
+    patient_groups = []
+    groups_by_patient = {}
+    for item in pending:
+        patient_id = item['patient_link_id']
+        group = groups_by_patient.get(patient_id)
+        if group is None:
+            group = {
+                'patient_link_id': patient_id,
+                'patient_name': item['patient_name'],
+                'national_id': item.get('national_id'),
+                'phone_number': item.get('phone_number'),
+                'messages': [],
+            }
+            groups_by_patient[patient_id] = group
+            patient_groups.append(group)
+        group['messages'].append(item)
+    return patient_groups
+
+
+def _pending_count() -> int:
+    from src.adapters.sqlite.engagement_repo import EngagementRepository
+    return EngagementRepository().count_pending()
+
+
 @bp.route("/")
 @login_required
 def campaigns():
@@ -29,6 +55,7 @@ def campaigns():
     return render_template("sms/campaigns.html", campaigns=campaigns, templates=templates,
                            segments=SEGMENTS, seg_sizes=seg_sizes, campaign_types=CAMPAIGN_TYPES,
                            provider_ready=repo.provider_configured(),
+                           hub_pending=_pending_count(),
                            active_page='sms')
 
 
@@ -112,6 +139,7 @@ def campaign_detail(cid):
                            recipients_count=len(recipients), total_credit=total_credit,
                            incrementality=incrementality,
                            provider_ready=repo.provider_configured(),
+                           hub_pending=_pending_count(),
                            status_label=status_label,
                            active_page='sms')
 
@@ -123,10 +151,12 @@ def messages_report():
     rows = repo.list_messages_filtered(
         campaign_id=request.args.get('campaign_id', type=int),
         delivery_status=request.args.get('delivery_status') or None,
-        provider=request.args.get('provider') or None)
-    from src.services.sms.delivery_service import STATUS_LABELS, status_label
+        provider=request.args.get('provider') or None,
+        source_type=request.args.get('source_type') or None)
+    from src.services.sms.delivery_service import STATUS_LABELS, status_label, delivery_summary
     return render_template("sms/messages.html", messages=rows, campaigns=repo.list_campaigns(),
                            statuses=STATUS_LABELS, status_label=status_label,
+                           summary=delivery_summary(rows), hub_pending=_pending_count(),
                            active_page='sms')
 
 
@@ -147,7 +177,8 @@ def reconcile_messages():
 def send_campaign(cid):
     result = run_campaign(cid)
     if 'error' in result:
-        flash("خطا در ارسال کمپین")
+        flash("پنل پیامک فعال تنظیم نشده است" if result.get('reason') == 'provider_unconfigured'
+              else "خطا در ارسال کمپین")
     else:
         msg = f"ارسال شد — موفق: {result['sent']}"
         if result.get('pending'):
@@ -164,7 +195,12 @@ def approvals():
     from src.services.engagement_service import EngagementService
     repo = EngagementRepository()
     pending = repo.list_pending()
-    return render_template("sms/approvals.html", pending=pending, hub_pending=len(pending),
+    for item in pending:
+        if item.get('event_key') == 'control_room_invite':
+            item['event_label'] = 'دعوت از اتاق کنترل'
+    patient_groups = _group_pending_by_patient(pending)
+    return render_template("sms/approvals.html", pending=pending,
+                           patient_groups=patient_groups, hub_pending=len(pending),
                            quiet_now=EngagementService()._quiet_now(),
                            provider_ready=SmsRepository().provider_configured(),
                            active_page='sms')
@@ -187,7 +223,13 @@ def approval_approve(aid):
             'not_pending': 'قبلاً تعیین‌تکلیف شده',
             'opt_out': 'بیمار انصراف داده یا موبایل ندارد',
             'empty': 'متن خالی است',
-        }.get(r.get('reason'), 'خطا'))
+            'daily_cap': 'سقف پیامک روزانه این بیمار تکمیل شده؛ پیام در صف ماند',
+            'provider_unconfigured': 'پنل پیامک فعال تنظیم نشده است',
+            'retryable_failure': r.get('error') or 'خطای موقت پنل؛ پیام در صف ماند',
+            'provider_rejected': r.get('error') or 'پیام توسط پنل رد شد',
+            'submission_unknown': 'نتیجه ارسال نامشخص است؛ برای جلوگیری از تکرار دوباره ارسال نشد',
+            'provider_error': r.get('error') or 'خطا در ارتباط با پنل',
+        }.get(r.get('reason'), r.get('error') or 'خطا'))
     log_activity("approval_approve", f"تأیید پیام #{aid}")
     return redirect(url_for("sms.approvals"))
 

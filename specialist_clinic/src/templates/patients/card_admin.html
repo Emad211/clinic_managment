@@ -25,7 +25,7 @@
     <div class="fld">
       <label>نشانیِ کارت (روی تبلتِ پذیرش باز کنید یا برای بیمار بخوانید)</label>
       <div class="row" style="align-items:center;gap:var(--s2);">
-        <input type="text" id="cardUrl" readonly value="{{ card_url }}" style="flex:1;direction:ltr;text-align:left;">
+        <input type="text" id="cardUrl" class="input-ltr" readonly value="{{ card_url }}">
         <button type="button" class="btn btn-ghost" onclick="navigator.clipboard.writeText(document.getElementById('cardUrl').value)">کپی</button>
         <a class="btn btn-ghost" href="{{ card_url }}" target="_blank">باز کردن</a>
       </div>

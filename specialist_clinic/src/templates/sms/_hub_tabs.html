@@ -1,19 +1,16 @@
 {# Shared "messaging hub" tab bar. Including template sets `hub_tab` to one of
-   'campaigns' | 'engagement' | 'worklist'. The engagement (config) tab is shown
-   to managers only — staff still see campaigns. The "worklist" tab is shown only
-   when the route passes `show_worklist_tab=True` (i.e. on the worklist page
-   itself); it is hidden on the campaigns + auto-engagement pages. #}
-<div class="card card-soft" style="margin-bottom:var(--s3);">
-    <div class="flex items-center gap-2 wrap">
-        <span class="muted text-sm" style="margin-inline-end:var(--s2);"><svg class="icon icon-sm"><use href="#i-megaphone"></use></svg> هابِ پیام</span>
-        <a class="btn btn-sm {% if hub_tab=='campaigns' %}btn{% else %}btn-ghost{% endif %}" href="{{ url_for('sms.campaigns') }}"><svg class="icon icon-sm"><use href="#i-megaphone"></use></svg> کمپین‌ها</a>
-        <a class="btn btn-sm {% if hub_tab=='messages' %}btn{% else %}btn-ghost{% endif %}" href="{{ url_for('sms.messages_report') }}"><svg class="icon icon-sm"><use href="#i-list-checks"></use></svg> گزارش تحویل</a>
-        <a class="btn btn-sm {% if hub_tab=='approvals' %}btn{% else %}btn-ghost{% endif %}" href="{{ url_for('sms.approvals') }}"><svg class="icon icon-sm"><use href="#i-check"></use></svg> صفِ تأیید پیام{% if hub_pending %} <span class="pill pill-danger">{{ hub_pending|fa_num }}</span>{% endif %}</a>
+   'campaigns' | 'messages' | 'approvals' | 'engagement' | 'worklist'. #}
+<div class="card card-soft hub-nav-card">
+    <div class="hub-nav">
+        <span class="hub-nav-label muted text-sm"><svg class="icon icon-sm"><use href="#i-megaphone"></use></svg> هابِ پیام</span>
+        <div class="hub-nav-actions">
+        <a class="btn btn-sm hub-nav-btn {% if hub_tab=='campaigns' %}btn{% else %}btn-ghost{% endif %}"{% if hub_tab=='campaigns' %} aria-current="page"{% endif %} href="{{ url_for('sms.campaigns') }}"><svg class="icon icon-sm"><use href="#i-megaphone"></use></svg> کمپین‌ها</a>
+        <a class="btn btn-sm hub-nav-btn {% if hub_tab=='approvals' %}btn{% else %}btn-ghost{% endif %}"{% if hub_tab=='approvals' %} aria-current="page"{% endif %} href="{{ url_for('sms.approvals') }}"><svg class="icon icon-sm"><use href="#i-check"></use></svg> صفِ تأیید پیام{% if hub_pending %} <span class="pill pill-danger">{{ hub_pending|fa_num }}</span>{% endif %}</a>
+        <a class="btn btn-sm hub-nav-btn {% if hub_tab=='messages' %}btn{% else %}btn-ghost{% endif %}"{% if hub_tab=='messages' %} aria-current="page"{% endif %} href="{{ url_for('sms.messages_report') }}"><svg class="icon icon-sm"><use href="#i-list-checks"></use></svg> گزارش تحویل</a>
         {% if g.user and g.user['role']=='manager' %}
-        <a class="btn btn-sm {% if hub_tab=='engagement' %}btn{% else %}btn-ghost{% endif %}" href="{{ url_for('manager.engagement') }}"><svg class="icon icon-sm"><use href="#i-zap"></use></svg> یادآوری و پیگیریِ خودکار</a>
+        <a class="btn btn-sm hub-nav-btn {% if hub_tab=='engagement' %}btn{% else %}btn-ghost{% endif %}"{% if hub_tab=='engagement' %} aria-current="page"{% endif %} href="{{ url_for('manager.engagement') }}"><svg class="icon icon-sm"><use href="#i-zap"></use></svg> یادآوری و پیگیریِ خودکار</a>
         {% endif %}
-        {% if show_worklist_tab %}
-        <a class="btn btn-sm {% if hub_tab=='worklist' %}btn{% else %}btn-ghost{% endif %}" href="{{ url_for('followups.worklist') }}"><svg class="icon icon-sm"><use href="#i-list-checks"></use></svg> ورک‌لیستِ تماس</a>
-        {% endif %}
+        <a class="btn btn-sm hub-nav-btn {% if hub_tab=='worklist' %}btn{% else %}btn-ghost{% endif %}"{% if hub_tab=='worklist' %} aria-current="page"{% endif %} href="{{ url_for('followups.worklist') }}"><svg class="icon icon-sm"><use href="#i-list-checks"></use></svg> ورک‌لیستِ تماس</a>
+        </div>
     </div>
 </div>

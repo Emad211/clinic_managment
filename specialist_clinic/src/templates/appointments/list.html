@@ -57,11 +57,11 @@
                 <td>
                     {% if a.status=='scheduled' %}
                     <div class="flex items-center gap-2 wrap">
-                    <form method="post" action="{{ url_for('appointments.set_status', appt_id=a.id) }}" style="margin:0;">
+                    <form class="m-0" method="post" action="{{ url_for('appointments.set_status', appt_id=a.id) }}">
                         <input type="hidden" name="status" value="done"><button class="btn btn-sm btn-ok" type="submit"><svg class="icon icon-sm"><use href="#i-check"></use></svg> انجام شد</button></form>
-                    <form method="post" action="{{ url_for('appointments.set_status', appt_id=a.id) }}" style="margin:0;">
+                    <form class="m-0" method="post" action="{{ url_for('appointments.set_status', appt_id=a.id) }}">
                         <input type="hidden" name="status" value="no_show"><button class="btn btn-sm btn-ghost" type="submit"><svg class="icon icon-sm"><use href="#i-user"></use></svg> غیبت</button></form>
-                    <form method="post" action="{{ url_for('appointments.set_status', appt_id=a.id) }}" style="margin:0;">
+                    <form class="m-0" method="post" action="{{ url_for('appointments.set_status', appt_id=a.id) }}">
                         <input type="hidden" name="status" value="cancelled"><button class="btn btn-sm btn-danger" type="submit"><svg class="icon icon-sm"><use href="#i-x"></use></svg> لغو</button></form>
                     </div>
                     {% else %}<span class="muted">—</span>{% endif %}

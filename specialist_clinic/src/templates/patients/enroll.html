@@ -61,7 +61,7 @@
                 <label>آدرس</label>
                 <textarea name="address" rows="2"></textarea>
             </div>
-            <button class="btn" type="submit" style="margin-top:var(--s4);"><svg class="icon"><use href="#i-plus"></use></svg> ثبت بیمار</button>
+            <button class="btn mt-4" type="submit"><svg class="icon"><use href="#i-plus"></use></svg> ثبت بیمار</button>
         </form>
     </div>
 </div>
@@ -91,7 +91,7 @@ async function doSearch() {
                 <td class="muted nums">${p.phone_number ? escapeHtml(p.phone_number) : '—'}</td>
                 <td>${enrolled
                     ? '<span class="badge badge-ok"><svg class="icon icon-sm"><use href="#i-check"></use></svg> ثبت‌نام شده</span>'
-                    : `<form method="post" action="{{ url_for('patients.enroll_accounting') }}" style="margin:0;">
+                    : `<form class="m-0" method="post" action="{{ url_for('patients.enroll_accounting') }}">
                          <input type="hidden" name="accounting_patient_id" value="${p.id}">
                          <button class="btn btn-sm" type="submit"><svg class="icon icon-sm"><use href="#i-plus"></use></svg> ثبت‌نام</button></form>`}
                 </td></tr>`;

@@ -73,3 +73,33 @@ def test_timeout_is_ambiguous_and_not_claimable(app_ctx):
     repo.mark_submission(mid, ok=False, pending=True, error='timeout')
     assert repo.get_message(mid)['delivery_status'] == 'SubmissionUnknown'
     assert repo.claim_message_attempt(mid) is False
+
+
+def test_delivery_summary_matches_the_filtered_rows():
+    from src.services.sms.delivery_service import delivery_summary
+    rows = [
+        {'delivery_status': 'Delivered'}, {'delivery_status': 'SendToOperator'},
+        {'delivery_status': 'NumberBlackListed'}, {'delivery_status': 'StatusUnknown'},
+        {'delivery_status': None},
+    ]
+    assert delivery_summary(rows) == {
+        'total': 5, 'delivered': 1, 'in_flight': 2, 'failed': 1, 'unknown': 1,
+    }
+
+
+def test_control_room_invite_is_approval_gated_and_idempotent_per_day(app_ctx):
+    from src.adapters.sqlite.core import get_db
+    from src.services.engagement_service import EngagementService
+    db = get_db(); pid = _patient(db); db.commit()
+    svc = EngagementService()
+
+    first = svc.enqueue_control_room_invite(pid, 'سلام {name} عزیز')
+    second = svc.enqueue_control_room_invite(pid, 'سلام {name} عزیز')
+
+    assert first is not None
+    assert second is None
+    approval = svc.repo.get_approval(first)
+    assert approval['status'] == 'pending'
+    assert approval['event_key'] == 'control_room_invite'
+    assert approval['message'] == 'سلام تست عزیز'
+    assert db.execute("SELECT COUNT(*) FROM sms_messages").fetchone()[0] == 0

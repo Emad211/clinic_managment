@@ -37,6 +37,8 @@
 | فاصله | `--s1..--s8` (4..32px) |
 | شعاع | `--r-sm`(8) `--radius`(14) `--r-lg`(18) `--r-pill` |
 | سایه/موشن | `--shadow` `--shadow-sm` `--shadow-lg` `--ring` · `--t-fast/--t/--t-slow` `--ease` |
+| کنترل‌ها | `--control-sm`(36) `--control-md`(42) `--control-lg`(48) `--touch-target`(44) |
+| آیکن‌ها | `--icon-sm-size`(14) `--icon-md-size`(16) `--icon-lg-size`(20) |
 
 رنگ متن روی پس‌زمینه‌ی tinted از `-fg` استفاده کن (مثلاً `color:var(--ok-fg)`)، نه رنگ پایه.
 
@@ -55,8 +57,22 @@
 - **تحلیلی:** `.tiles`/`.tile` (با `.t-label/.t-val/.t-meta/.t-delta/.t-bar` و سطح `.lvl-ok/warn/danger/none`)، `.mini`، `.risk-meter > .mk`.
 - **کنترل‌ها:** `.switch`(+`.switch-row`)، `.seg`(دکمه‌ها با `.active`)، `.ind-chip`(+`.off`).
 - **وضعیت:** `.flash`(+`-success/-info`)، `.alert-banner`(+`.alert-warn`)، `.empty`(آیکون+متن)، `.empty-mini`، `.skeleton`، `.spinner`.
+- **پوسته موبایل:** زیر `900px` سایدبار به drawer تبدیل می‌شود؛ فقط از `.mobile-shell-header` و `.mobile-nav-toggle` سراسری استفاده کنید و ناوبری موازی نسازید.
+- **خطا:** خطاهای 404/500 با `errors/error.html` و `.error-state` نمایش داده می‌شوند؛ متن فنی یا stack trace وارد UI نشود.
 - **لیست/قانون:** `.list-row`، `.scroll-y`، `.rule-card`/`.rule-head`/`.fgrid.c2/.c3`/`.rule-foot`.
 - **یوتیلیتی:** `.flex .items-center .justify-between .gap-2/3 .wrap .ms-auto .w-full .text-sm/xs .nums .sr-only .divider(-dashed)` و رنگ متن `.c-ok/.c-warn/.c-danger/.c-info/.c-violet`.
+
+### قرارداد اندازه و رفتار
+
+- دکمه عادی `42px`، دکمه کوچک `36px` و دکمه بزرگ `48px` حداقل ارتفاع دارد.
+- ورودی و `select` عادی `42px` حداقل ارتفاع دارند؛ `textarea` بر اساس محتوای خود رشد می‌کند.
+- دکمه فقط‌آیکن باید مربع، دارای `aria-label` و هم‌اندازه گونه متنی خود باشد.
+- در عرض موبایل، تمام کنترل‌های تعاملی حداقل `44px` سطح لمس دارند.
+- فرم در زمان submit به‌صورت سراسری `aria-busy` می‌گیرد و submitter به حالت «در حال انجام…» می‌رود؛ loading موردی نسازید.
+- `.table-wrap` در صورت نیاز به اسکرول افقی به‌صورت خودکار focusable و دارای برچسب دسترس‌پذیر می‌شود.
+- label مجاور کنترل در `.fld`/`.field` به‌صورت سراسری با همان کنترل مرتبط می‌شود؛ در کد جدید همچنان `for`/`id` صریح ترجیح دارد.
+- اندازه فقط با گونه‌های استاندارد تعیین می‌شود؛ `height` و `padding` موردی در قالب ممنوع است.
+- `.btn-secondary` نام سازگار قدیمی و از نظر بصری معادل `.btn-ghost` است؛ در کد جدید از `.btn-ghost` استفاده شود.
 
 ---
 
@@ -70,7 +86,7 @@
 `alert`(هشدار/آلرژی) `trash` `x` `check` `save` `edit` `search` `filter` `phone`
 `stethoscope`(بیماری) `heart` `syringe`(تزریق) `trending-up` `gift`(اعتبار) `coins`/`banknote`(پول)
 `clipboard`(قواعد/پروتکل) `shield`(ایمنی) `zap`(ثبت سریع/Red Flag) `building`(ویزیت/حسابداری)
-`sigma`(جمع کل) `key`(کاربران) `info` `chevron-left` `arrow-left` `download`
+`sigma`(جمع کل) `key`(کاربران) `info` `chevron-left` `arrow-left` `download` `menu`
 
 **نگاشت پیشنهادی ایموجی→آیکون:** 🩺→stethoscope/activity · 📊/📈→line-chart/bar-chart · 🗓️→calendar ·
 💊→pill · 🧪→flask · 💳→wallet · 🔔→bell/list-checks · 📣→megaphone · ⚡→zap · 🧬→activity ·

@@ -11,9 +11,28 @@
 </div>
 <p class="page-intro">
     برای هر «رویداد» (یادآوری نوبت، تجدید دارو، سررسید غربالگری/واکسن/پایش، بی‌مراجعه، کنترل‌نشده، هشدار فوری)
-    تعیین می‌کنید به کدام کانال برود: <b>پیامکِ خودکار</b>، <b>ورک‌لیستِ تماس</b>، <b>هر دو</b>، یا <b>خاموش</b>.
-    سامانه هر رویدادِ سررسیده را طبق همین جدول و با رعایتِ گاردریل‌ها به بیمار یا تیم می‌رساند. اقلامِ هم‌دسته در یک پیام جمع می‌شوند.
+    تعیین می‌کنید به کدام کانال برود: <b>صف پیام برای تأیید پزشک</b>، <b>ورک‌لیستِ تماس</b>، <b>هر دو</b>، یا <b>خاموش</b>.
+    سامانه هر دو دقیقه رویدادهای سررسیده را بررسی می‌کند؛ پیام‌ها پس از تأیید از پنل واقعی ارسال و تا تحویل رهگیری می‌شوند.
 </p>
+
+<div class="grid grid-4">
+    <a class="card card-soft nav-tile" href="{{ url_for('sms.approvals') }}"><div class="mini"><div class="m-num {% if summary.pending_approvals %}c-warn{% endif %}">{{ summary.pending_approvals|fa_num }}</div><div class="m-lbl">منتظر تأیید</div></div></a>
+    <a class="card card-soft nav-tile" href="{{ url_for('followups.worklist') }}"><div class="mini"><div class="m-num {% if summary.due_worklist %}c-warn{% endif %}">{{ summary.due_worklist|fa_num }}</div><div class="m-lbl">پیگیری سررسیده</div></div></a>
+    <a class="card card-soft nav-tile" href="{{ url_for('sms.messages_report', provider='mediana') }}"><div class="mini"><div class="m-num c-ok">{{ summary.delivered|fa_num }}</div><div class="m-lbl">پیام تحویل‌شده</div></div></a>
+    <div class="card card-soft"><div class="mini"><div class="m-num {% if runtime.last_error %}c-danger{% else %}c-ok{% endif %}">{% if runtime.last_error %}خطا{% else %}فعال{% endif %}</div><div class="m-lbl">موتور خودکار</div></div></div>
+</div>
+
+<div class="card">
+    <div class="section-title"><svg class="icon"><use href="#i-activity"></use></svg> وضعیت اجرای واقعی</div>
+    <div class="flex items-center gap-2 wrap">
+        <span class="chip">آخرین اجرا: <b>{{ runtime.last_run_at|jalali if runtime.last_run_at else 'هنوز ثبت نشده' }}</b></span>
+        <span class="chip">بیماران بررسی‌شده: <b>{{ (runtime.last_result.patients or 0)|fa_num }}</b></span>
+        <span class="chip">پیام‌های افزوده‌شده به صف: <b>{{ (runtime.last_result.queued or 0)|fa_num }}</b></span>
+        <span class="chip">پیگیری‌های ساخته‌شده: <b>{{ (runtime.last_result.worklist or 0)|fa_num }}</b></span>
+        <span class="chip">پنل پیامک: {% if runtime.provider_ready %}<b class="c-ok">متصل</b>{% else %}<b class="c-danger">تنظیم نشده</b>{% endif %}</span>
+    </div>
+    {% if runtime.last_error %}<div class="alert-banner alert-danger" style="margin-top:var(--s3);"><svg class="icon"><use href="#i-alert"></use></svg><span>{{ runtime.last_error }}</span></div>{% endif %}
+</div>
 
 <!-- GUARDRAILS -->
 <div class="card">
@@ -28,86 +47,6 @@
         <div class="help" style="margin-top:var(--s2);">
             <svg class="icon icon-sm"><use href="#i-info"></use></svg>
             خارج از ساعتِ مجاز، پیامک‌ها تا ورود به بازه به تعویق می‌افتند. بیمارانی که انصراف داده‌اند هرگز پیامکِ خودکار نمی‌گیرند.
-        </div>
-    </form>
-</div>
-
-<!-- DRY-RUN PREVIEW -->
-<div class="card">
-    <div class="section-title"><svg class="icon"><use href="#i-zap"></use></svg> اجرای آزمایشی
-        <span class="section-sub">— ببین همین حالا چه کسی چه چیزی می‌گیرد و از چه کانالی، بدون هیچ ارسالِ واقعی</span></div>
-    <a class="btn" href="{{ url_for('manager.engagement', preview=1) }}"><svg class="icon"><use href="#i-zap"></use></svg> اجرای آزمایشی همین حالا</a>
-    {% if preview is not none %}
-    <div class="legend" style="margin-top:var(--s4);">
-        <span class="chip">پیامکِ آمادهٔ ارسال: <b class="c-ok">{{ preview.agg.sms|fa_num }}</b></span>
-        <span class="chip">تسکِ ورک‌لیست: <b class="c-warn">{{ preview.agg.worklist|fa_num }}</b></span>
-        <span class="chip">موکول‌شده (گاردریل): <b>{{ preview.agg.deferred|fa_num }}</b></span>
-        <span class="chip">{{ preview.total_patients|fa_num }} بیمارِ دارای رویداد</span>
-        <span class="chip">ساعت آرام: {% if preview.quiet %}<b class="c-warn">فعال (پیامک‌ها موکول)</b>{% else %}<b class="c-ok">غیرفعال</b>{% endif %} · سقفِ روزانه {{ preview.cap|fa_num }}</span>
-    </div>
-    {% if preview.patients %}
-    <div class="table-wrap" style="margin-top:var(--s3);">
-        <table>
-            <thead><tr><th>بیمار</th><th>رویدادهای سررسیده و مسیر</th></tr></thead>
-            <tbody>
-            {% for p in preview.patients %}
-                <tr>
-                    <td>{{ p.name }}</td>
-                    <td><div class="flex items-center gap-2 wrap">
-                        {% for it in p.events %}
-                        <span class="chip">{{ it.label }}
-                            {% for r in it.routes %}
-                                {% if r.kind=='sms' %}<span class="badge badge-info">پیامک</span>
-                                {% elif r.kind=='worklist' %}<span class="badge badge-warn">ورک‌لیست</span>
-                                {% else %}<span class="badge badge-muted">موکول: {{ r.why }}</span>{% endif %}
-                            {% endfor %}
-                        </span>
-                        {% endfor %}
-                    </div></td>
-                </tr>
-            {% endfor %}
-            </tbody>
-        </table>
-    </div>
-    {% else %}
-    <div class="empty" style="margin-top:var(--s3);"><svg class="icon"><use href="#i-check"></use></svg><div>هیچ رویدادِ سررسیده‌ای نیست — همه‌چیز به‌روز است.</div></div>
-    {% endif %}
-    {% endif %}
-</div>
-
-<!-- ADD CUSTOM EVENT -->
-<div class="card">
-    <div class="section-title"><svg class="icon"><use href="#i-plus"></use></svg> افزودن رویداد سفارشی
-        <span class="section-sub">— رویدادِ تازهٔ خودتان را بسازید (یادآوریِ تاریخ‌محور یا فقط ورک‌لیست)</span></div>
-    <form method="post" action="{{ url_for('manager.engagement_create') }}">
-        <div class="grid grid-4" style="align-items:flex-end;">
-            <div class="fld"><label>کلیدِ رویداد <span class="req">*</span></label>
-                <input type="text" name="event_key" placeholder="مثلاً winter_checkup" required>
-                <div class="help">فقط حروف لاتین کوچک/عدد/زیرخط — سایر کاراکترها به «_» تبدیل می‌شوند.</div>
-            </div>
-            <div class="fld"><label>عنوان <span class="req">*</span></label>
-                <input type="text" name="label" placeholder="عنوانِ نمایشی رویداد" required></div>
-            <div class="fld"><label>کانال</label>
-                <select name="channel">
-                    {% for k, v in channels.items() %}<option value="{{ k }}">{{ v }}</option>{% endfor %}
-                </select></div>
-            <div class="fld"><label>نوعِ رویداد</label>
-                <select name="event_type">
-                    <option value="custom_date_reminder">یادآوریِ تاریخ‌محورِ سفارشی</option>
-                    <option value="worklist_only">فقط ورک‌لیست</option>
-                </select></div>
-        </div>
-        <div class="fld"><label>متنِ پیامک <span class="muted text-xs">— متغیر: {name} · فقط برای کانال‌های شاملِ پیامک</span></label>
-            <textarea name="sms_template" rows="2" placeholder="سلام {name} عزیز، ..."></textarea>
-        </div>
-        <div class="grid grid-4" style="align-items:flex-end;">
-            <div class="fld"><label>چند روز زودتر</label><input type="number" name="lead_days" min="0" value="0"></div>
-            <div class="fld"><label>فاصلهٔ تکرار (روز)</label><input type="number" name="cooldown_days" min="0" value="30"></div>
-            <button class="btn" type="submit"><svg class="icon"><use href="#i-plus"></use></svg> ساخت رویداد</button>
-        </div>
-        <div class="help" style="margin-top:var(--s2);">
-            <svg class="icon icon-sm"><use href="#i-info"></use></svg>
-            رویدادهای سفارشی از یک واژگانِ محدود استفاده می‌کنند و فقط بر پایهٔ زمان/تاریخ یا به‌صورتِ دستی فعال می‌شوند (نه از قواعدِ بالینی).
         </div>
     </form>
 </div>

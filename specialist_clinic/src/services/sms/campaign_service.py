@@ -25,7 +25,8 @@ def resolve_segment(segment: str) -> list[dict]:
     """Return [{id, full_name, phone_number}] for a segment (only with a phone number)."""
     db = get_db()
     base = "SELECT DISTINCT p.id, p.full_name, p.phone_number, p.accounting_patient_id FROM patient_links p"
-    where = "p.is_active=1 AND p.phone_number IS NOT NULL AND p.phone_number != ''"
+    where = ("p.is_active=1 AND p.sms_opt_out=0 AND COALESCE(p.enrolled_by,'') != 'seed' "
+             "AND p.phone_number IS NOT NULL AND p.phone_number != ''")
 
     if segment == 'all':
         sql = f"{base} WHERE {where}"
@@ -37,20 +38,25 @@ def resolve_segment(segment: str) -> list[dict]:
                f"WHERE {where} AND c.code = ?")
         params = (code,)
     elif segment == 'uncontrolled':
-        # latest hba1c > 8 OR latest systolic >= 140
+        from src.adapters.sqlite.clinical_rules_repo import ClinicalRulesRepository
+        rules = ClinicalRulesRepository()
+        hba1c_danger = (rules.get('hba1c') or {}).get('danger') or 8
+        sys_danger = (rules.get('bp_systolic') or {}).get('danger') or 140
         sql = f"""{base} WHERE {where} AND (
-            (SELECT v.value FROM vital_readings v WHERE v.patient_link_id=p.id AND v.type='hba1c'
-                ORDER BY v.measured_at DESC LIMIT 1) > 8
+            (SELECT x.value FROM (
+                SELECT value, measured_at ts FROM vital_readings WHERE patient_link_id=p.id AND type='hba1c'
+                UNION ALL SELECT value, taken_at ts FROM lab_results WHERE patient_link_id=p.id AND test_key='hba1c'
+             ) x ORDER BY x.ts DESC LIMIT 1) >= ?
             OR
             (SELECT v.value FROM vital_readings v WHERE v.patient_link_id=p.id AND v.type='bp_systolic'
-                ORDER BY v.measured_at DESC LIMIT 1) >= 140
+                ORDER BY v.measured_at DESC LIMIT 1) >= ?
         )"""
-        params = ()
+        params = (hba1c_danger, sys_danger)
     elif segment == 'lapsed':
         # no vital reading in the last 90 days
         sql = f"""{base} WHERE {where} AND NOT EXISTS (
             SELECT 1 FROM vital_readings v WHERE v.patient_link_id=p.id
-                AND v.measured_at >= datetime('now','+3 hours','+30 minutes','-90 days')
+                AND v.measured_at >= datetime('now','+3 hours','+30 minutes','-120 days')
         )"""
         params = ()
     elif segment == 'refill_due':
@@ -133,6 +139,10 @@ def run_campaign(campaign_id: int) -> dict:
 
     wallet = WalletRepository()
     provider = get_provider()
+    from src.services.sms.provider import UnconfiguredProvider
+    if isinstance(provider, UnconfiguredProvider):
+        repo.release_campaign(campaign_id, token, campaign.get('status') or 'draft')
+        return {'error': 'provider not configured', 'reason': 'provider_unconfigured'}
     provider_name = provider.__class__.__name__.replace('Provider', '').lower() or 'null'
     claimed = []
     try:
@@ -150,6 +160,7 @@ def run_campaign(campaign_id: int) -> dict:
             msg_id = repo.add_message(
                 campaign_id=campaign_id, patient_link_id=r['id'], recipient=r['phone_number'],
                 body=body, provider=provider_name, idempotency_key=key,
+                source_type='campaign', source_ref=str(campaign_id),
             )
             if repo.claim_message_attempt(msg_id):
                 claimed.append((msg_id, key, r['phone_number'], body))
@@ -181,7 +192,8 @@ def run_campaign(campaign_id: int) -> dict:
 
 
 def send_single(patient_link_id: int, recipient: str, body: str, campaign_id: int = None,
-                message_type: str = 'Informational', idempotency_key: str = None) -> bool:
+                message_type: str = 'Informational', idempotency_key: str = None,
+                source_type: str = 'manual', source_ref: str = None) -> bool:
     """Send a one-off SMS (e.g. an appointment reminder) and log it.
 
     Defaults to 'Informational' since one-off sends are service messages.
@@ -191,7 +203,8 @@ def send_single(patient_link_id: int, recipient: str, body: str, campaign_id: in
     msg_id = repo.add_message(campaign_id=campaign_id, patient_link_id=patient_link_id,
                               recipient=recipient, body=body,
                               provider=provider.__class__.__name__.replace('Provider', '').lower(),
-                              idempotency_key=idempotency_key)
+                              idempotency_key=idempotency_key, source_type=source_type,
+                              source_ref=source_ref)
     if not repo.claim_message_attempt(msg_id):
         return (repo.get_message(msg_id) or {}).get('status') == 'sent'
     result = provider.send(recipient, body, message_type=message_type)

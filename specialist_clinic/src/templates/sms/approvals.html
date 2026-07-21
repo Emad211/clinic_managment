@@ -18,7 +18,7 @@
 {% if not provider_ready %}
 <div class="alert-banner alert-warn">
     <svg class="icon"><use href="#i-alert"></use></svg>
-    <span>پنل پیامک هنوز تنظیم نشده (حسابِ کاوه‌نگار در انتظارِ احراز هویت — کد ۴۳۰)؛ پیام‌ها فعلاً واقعاً ارسال نمی‌شوند و در حالت شبیه‌سازی ثبت می‌شوند.</span>
+    <span>پنل پیامک فعال تنظیم نشده است؛ پیام‌ها در صف می‌مانند و موفق ثبت نمی‌شوند تا اتصال واقعی برقرار شود.</span>
 </div>
 {% endif %}
 
@@ -30,43 +30,61 @@
 {% endif %}
 
 <div class="card">
-    <div class="section-title"><svg class="icon"><use href="#i-list-checks"></use></svg> در انتظارِ تأیید</div>
+    <div class="section-title"><svg class="icon"><use href="#i-list-checks"></use></svg> در انتظارِ تأیید
+        {% if pending %}<span class="section-sub">{{ patient_groups|length|fa_num }} بیمار · {{ pending|length|fa_num }} پیام</span>{% endif %}
+    </div>
     {% if pending %}
-    <div class="table-wrap">
-    <table>
-        <thead><tr><th>بیمار</th><th>رویداد</th><th>متن و اقدام</th></tr></thead>
-        <tbody>
-        {% for p in pending %}
-            <tr>
-                <td>
-                    <strong>{{ p.patient_name }}</strong>
-                    <div class="muted text-xs nums">{{ p.national_id|fa_num }}</div>
-                </td>
-                <td>
-                    <strong>{{ p.event_label }}</strong>
-                    <div class="muted text-xs"><code>{{ p.event_key }}</code></div>
-                    <div class="muted text-xs nums">{% if p.due_date %}سررسید: {{ p.due_date|jalali_date }}{% elif p.created_at %}در صف از: {{ p.created_at|jalali_date }}{% endif %}</div>
-                </td>
-                <td>
+    <div class="approval-patient-list">
+    {% for patient in patient_groups %}
+        <details class="approval-patient">
+            <summary class="approval-patient-summary">
+                <span class="approval-patient-identity">
+                    <span class="approval-patient-icon"><svg class="icon"><use href="#i-user"></use></svg></span>
+                    <span>
+                        <strong>{{ patient.patient_name }}</strong>
+                        <span class="approval-patient-meta nums">
+                            {% if patient.national_id %}کد ملی: {{ patient.national_id|fa_num }}{% endif %}
+                            {% if patient.phone_number %}<span aria-hidden="true">·</span> {{ patient.phone_number|fa_num }}{% endif %}
+                        </span>
+                    </span>
+                </span>
+                <span class="approval-patient-count">
+                    <span class="badge badge-info">{{ patient.messages|length|fa_num }} پیام</span>
+                    <svg class="icon icon-sm approval-chevron" aria-hidden="true"><use href="#i-chevron-left"></use></svg>
+                </span>
+            </summary>
+            <div class="approval-message-list">
+            {% for p in patient.messages %}
+                <article class="approval-message">
+                    <div class="approval-message-head">
+                        <div>
+                            <strong>{{ p.event_label }}</strong>
+                            <div class="muted text-xs"><code>{{ p.event_key }}</code></div>
+                        </div>
+                        <div class="muted text-xs nums">{% if p.due_date %}سررسید: {{ p.due_date|jalali_date }}{% elif p.created_at %}در صف از: {{ p.created_at|jalali_date }}{% endif %}</div>
+                    </div>
+                    {% if p.last_error %}<div class="alert-banner alert-warn"><svg class="icon"><use href="#i-alert"></use></svg><span>{{ p.last_error }} — پیام در صف مانده و پس از رفع مشکل قابل تلاش مجدد است.</span></div>{% endif %}
                     <form method="post" action="{{ url_for('sms.approval_approve', aid=p.id) }}">
-                        <textarea name="message" rows="2" style="width:100%;">{{ p.message }}</textarea>
-                        <button class="btn btn-sm" type="submit" style="margin-top:var(--s2);"><svg class="icon icon-sm"><use href="#i-check"></use></svg> تأیید و ارسال</button>
-                        {% if quiet_now %}
-                        <button class="btn btn-sm btn-warn" type="submit" name="override" value="1"
-                                style="margin-top:var(--s2);"
-                                title="خارج از ساعتِ مجازِ ارسال؛ همین حالا بفرست">
-                            <svg class="icon icon-sm"><use href="#i-alert"></use></svg> ارسالِ فوری
-                        </button>
-                        {% endif %}
+                        <label class="sr-only" for="approval-message-{{ p.id }}">متن پیام {{ p.event_label }} برای {{ patient.patient_name }}</label>
+                        <textarea id="approval-message-{{ p.id }}" name="message" rows="2">{{ p.message }}</textarea>
+                        <div class="approval-actions">
+                            <button class="btn btn-sm" type="submit"><svg class="icon icon-sm"><use href="#i-check"></use></svg> تأیید و ارسال</button>
+                            {% if quiet_now %}
+                            <button class="btn btn-sm btn-warn" type="submit" name="override" value="1"
+                                    title="خارج از ساعتِ مجازِ ارسال؛ همین حالا بفرست">
+                                <svg class="icon icon-sm"><use href="#i-alert"></use></svg> ارسالِ فوری
+                            </button>
+                            {% endif %}
+                        </div>
                     </form>
-                    <form method="post" action="{{ url_for('sms.approval_reject', aid=p.id) }}" style="margin-top:var(--s2);">
-                        <button class="btn btn-sm btn-ghost" type="submit"><svg class="icon icon-sm"><use href="#i-x"></use></svg> رد</button>
+                    <form method="post" action="{{ url_for('sms.approval_reject', aid=p.id) }}" class="approval-reject">
+                        <button class="btn btn-sm btn-ghost" type="submit"><svg class="icon icon-sm"><use href="#i-x"></use></svg> رد پیام</button>
                     </form>
-                </td>
-            </tr>
-        {% endfor %}
-        </tbody>
-    </table>
+                </article>
+            {% endfor %}
+            </div>
+        </details>
+    {% endfor %}
     </div>
     {% else %}
     <div class="empty"><svg class="icon"><use href="#i-check"></use></svg><div>صفی برای تأیید نیست.</div></div>

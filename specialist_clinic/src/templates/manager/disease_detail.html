@@ -23,7 +23,7 @@
         <form method="post" action="{{ url_for('manager.rules_update') }}" class="rule-card"{% if not ind.is_active %} style="opacity:.55;"{% endif %}>
             <input type="hidden" name="indicator_id" value="{{ ind.id }}">
             <div class="rule-head"><div style="flex:1;">
-                <input type="text" name="label" value="{{ ind.label }}" style="font-weight:700;">
+                <input type="text" class="input-strong" name="label" value="{{ ind.label }}">
                 <div class="key">کلید: <span class="chip"><code>{{ ind.key }}</code></span></div>
             </div></div>
             <div class="fgrid c2">
@@ -55,8 +55,30 @@
         {% endfor %}
     </div>
     {% else %}
-    <div class="empty"><svg class="icon"><use href="#i-sigma"></use></svg><div>شاخصی برای این بیماری نیست. از «نمای پیشرفته ← همهٔ شاخص‌ها» می‌توانید اضافه کنید.</div></div>
+    <div class="empty"><svg class="icon"><use href="#i-sigma"></use></svg><div>شاخصی برای این بیماری ثبت نشده است.</div></div>
     {% endfor %}
+    <details class="card card-soft" style="margin-top:var(--s4);">
+        <summary class="flex items-center gap-2" style="cursor:pointer;list-style:none;min-height:44px;">
+            <svg class="icon icon-sm"><use href="#i-plus"></use></svg><strong>افزودن شاخص به {{ cond.name }}</strong>
+        </summary>
+        <form method="post" action="{{ url_for('manager.rules_add') }}" style="margin-top:var(--s3);">
+            <input type="hidden" name="conditions" value="{{ cond.code }}">
+            <div class="grid grid-4">
+                <div class="fld"><label>کلید یکتا <span class="req">*</span></label><input type="text" name="key" placeholder="مثلاً tsh" required></div>
+                <div class="fld"><label>عنوان <span class="req">*</span></label><input type="text" name="label" required></div>
+                <div class="fld"><label>واحد</label><input type="text" name="unit"></div>
+                <div class="fld"><label>دسته</label><select name="category"><option value="glycemic">قند خون</option><option value="bp">فشار خون</option><option value="lipid">چربی خون</option><option value="kidney">کلیه</option><option value="anthro">تن‌سنجی</option><option value="other" selected>سایر</option></select></div>
+            </div>
+            <div class="grid grid-4" style="margin-top:var(--s3);">
+                <div class="fld"><label>جهت خطر</label><select name="direction"><option value="high">بالا = بد</option><option value="low">پایین = بد</option></select></div>
+                <div class="fld"><label>هشدار</label><input type="number" step="any" name="warn"></div>
+                <div class="fld"><label>خطر</label><input type="number" step="any" name="danger"></div>
+                <div class="fld"><label>هدف</label><input type="number" step="any" name="target"></div>
+            </div>
+            <input type="hidden" name="risk_weight" value="1"><input type="hidden" name="display_order" value="100">
+            <button class="btn btn-sm mt-3" type="submit"><svg class="icon icon-sm"><use href="#i-plus"></use></svg> افزودن شاخص</button>
+        </form>
+    </details>
 </div>
 
 <!-- ===== DECISION RULES ===== -->

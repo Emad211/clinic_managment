@@ -1,61 +1,75 @@
 {% extends "base.html" %}
 {% block title %}اتاقِ کنترل{% endblock %}
 {% set ctrl = {'uncontrolled':('badge-danger','کنترل‌نشده'),'borderline':('badge-warn','مرزی'),'controlled':('badge-ok','کنترل‌شده'),'unknown':('badge-muted','نامشخص')} %}
+{% set cohort_icons = {'uncontrolled_lapsed':'i-alert','valuable_drifting':'i-trending-up','overdue_care':'i-clipboard','uncontrolled':'i-stethoscope'} %}
 {% block content %}
-<div class="topbar">
-    <h1><svg class="icon icon-lg"><use href="#i-activity"></use></svg> اتاقِ کنترل</h1>
-    <span class="muted text-sm">{{ total|fa_num }} بیمارِ نیازمندِ اقدام</span>
-</div>
-<p class="page-intro">
-    بیماران بر اساس <b>فوریتِ بالینی</b> (با چاشنیِ ارزش) رتبه‌بندی شده‌اند. روی هر گروه یک‌کلیک
-    تسکِ تماس بسازید یا پیامکِ دعوت بفرستید. امتیازِ هر بیمار با جزئیات نشان داده می‌شود تا دلیلش روشن باشد.
-    {% if not show_value %}<span class="muted">(ستونِ ارزش/درآمد فقط برای مدیر دیده می‌شود.)</span>{% endif %}
-</p>
-
-<!-- CONVERSION METRIC: follow-up → visit -->
-{% if conversion and conversion.resolved %}
-<div class="grid grid-4">
-    <div class="card kpi kpi-info">
-        <div class="ic"><svg class="icon"><use href="#i-stethoscope"></use></svg></div>
-        <div class="num">{{ conversion.rate|fa_num }}٪</div>
-        <div class="label">نرخِ تبدیلِ پیگیری→ویزیت <span class="muted">({{ conversion.to_visit|fa_num }}/{{ conversion.resolved|fa_num }})</span></div>
+<div class="topbar control-room-header">
+    <div>
+        <h1><svg class="icon icon-lg"><use href="#i-activity"></use></svg> اتاقِ کنترل</h1>
+        <p class="page-intro">
+            بیماران بر اساس فوریت بالینی اولویت‌بندی شده‌اند. از گروه‌های اقدام، پیگیری جمعی بسازید یا مستقیماً وارد پرونده شوید.
+            {% if not show_value %}<span class="muted">(ارزش درآمدی فقط برای مدیر نمایش داده می‌شود.)</span>{% endif %}
+        </p>
     </div>
 </div>
-{% endif %}
 
-<!-- COHORTS -->
-<div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(300px,1fr));">
+<section class="control-summary" aria-label="خلاصه وضعیت">
+    <div class="card kpi kpi-warn">
+        <div class="ic"><svg class="icon"><use href="#i-users"></use></svg></div>
+        <div class="num">{{ total|fa_num }}</div>
+        <div class="label">بیمار نیازمند اقدام</div>
+    </div>
+    <div class="card kpi {% if summary.uncontrolled %}kpi-warn{% else %}kpi-ok{% endif %}">
+        <div class="ic"><svg class="icon"><use href="#i-activity"></use></svg></div>
+        <div class="num">{{ summary.uncontrolled|fa_num }}</div>
+        <div class="label">کنترل‌نشده بر اساس آستانه‌های فعال</div>
+    </div>
+    <div class="card kpi kpi-info">
+        <div class="ic"><svg class="icon"><use href="#i-stethoscope"></use></svg></div>
+        <div class="num">{% if conversion and conversion.resolved %}{{ conversion.rate|fa_num }}٪{% else %}—{% endif %}</div>
+        <div class="label">تبدیل پیگیری به ویزیت{% if conversion and conversion.resolved %} <span class="muted">({{ conversion.to_visit|fa_num }} از {{ conversion.resolved|fa_num }})</span>{% endif %}</div>
+    </div>
+</section>
+
+<section class="control-section" aria-labelledby="cohort-title">
+<div class="section-title" id="cohort-title"><svg class="icon"><use href="#i-zap"></use></svg> گروه‌های اقدام
+    <span class="section-sub">برای هر گروه پیگیری تماسی بسازید یا پیام را به صف تأیید پزشک اضافه کنید.</span>
+</div>
+<div class="control-cohorts">
 {% for c in cohorts %}
-    <div class="card">
-        <div style="display:flex;justify-content:space-between;align-items:center;gap:var(--s2);">
+    <article class="card control-cohort-card{% if not c.count %} is-empty{% endif %}">
+        <div class="control-cohort-head">
+            <span class="control-cohort-icon"><svg class="icon"><use href="#{{ cohort_icons[c.key] }}"></use></svg></span>
             <strong>{{ c.label }}</strong>
             <span class="badge {% if c.count %}badge-warn{% else %}badge-muted{% endif %}">{{ c.count|fa_num }} نفر</span>
         </div>
         {% if c.count %}
-        <div class="flex items-center gap-2 wrap" style="margin-top:var(--s3);">
-            <form method="post" action="{{ url_for('control_room.recall') }}" style="margin:0;"
+        <div class="control-cohort-actions">
+            <form method="post" action="{{ url_for('control_room.recall') }}"
                   onsubmit="return confirm('ساختِ {{ c.count }} تسکِ تماس برای این گروه؟');">
                 <input type="hidden" name="cohort" value="{{ c.key }}">
-                <button class="btn btn-sm" type="submit"><svg class="icon icon-sm"><use href="#i-phone"></use></svg> ساختِ تسکِ تماس</button>
+                <button class="btn btn-sm btn-block" type="submit"><svg class="icon icon-sm"><use href="#i-phone"></use></svg> ساخت تسک تماس</button>
             </form>
-            <details>
-                <summary class="btn btn-sm btn-ghost" style="display:inline-flex;list-style:none;cursor:pointer;"><svg class="icon icon-sm"><use href="#i-megaphone"></use></svg> ارسالِ پیامک</summary>
-                <form method="post" action="{{ url_for('control_room.sms') }}" style="margin-top:var(--s2);"
-                      onsubmit="return confirm('ارسالِ پیامک به این گروه؟');">
+            <details class="control-sms-details">
+                <summary class="btn btn-sm btn-ghost"><svg class="icon icon-sm"><use href="#i-megaphone"></use></svg> آماده‌سازی پیام</summary>
+                <form method="post" action="{{ url_for('control_room.sms') }}"
+                      onsubmit="return confirm('افزودن پیام‌های این گروه به صف تأیید پزشک؟');">
                     <input type="hidden" name="cohort" value="{{ c.key }}">
-                    <textarea name="body" rows="2" required placeholder="سلام {name} عزیز، ..." style="width:100%;"></textarea>
-                    <div class="muted text-xs" style="margin:var(--s1) 0 var(--s2);">{name} = نام بیمار · انصراف‌داده‌ها و بدون‌موبایل حذف می‌شوند</div>
-                    <button class="btn btn-sm" type="submit"><svg class="icon icon-sm"><use href="#i-zap"></use></svg> ارسال</button>
+                    <textarea name="body" rows="2" required placeholder="سلام {name} عزیز، ..."></textarea>
+                    <div class="muted text-xs">{name} = نام بیمار · انصراف‌داده‌ها و بدون‌موبایل حذف می‌شوند</div>
+                    <div class="muted text-xs">ارسال مستقیم انجام نمی‌شود؛ هر پیام باید در صف تأیید بازبینی شود.</div>
+                    <button class="btn btn-sm" type="submit"><svg class="icon icon-sm"><use href="#i-check"></use></svg> افزودن به صف تأیید</button>
                 </form>
             </details>
         </div>
-        {% else %}<div class="muted text-sm" style="margin-top:var(--s2);">کسی در این گروه نیست.</div>{% endif %}
-    </div>
+        {% else %}<div class="control-cohort-empty">اکنون بیماری در این گروه نیست.</div>{% endif %}
+    </article>
 {% endfor %}
 </div>
+</section>
 
 <!-- RANKED TABLE -->
-<div class="card">
+<div class="card control-patient-list">
     <div class="section-title"><svg class="icon"><use href="#i-list-checks"></use></svg> فهرستِ اولویت‌بندی‌شده
         <span class="section-sub">— روی امتیاز نگه دارید تا جزئیاتش را ببینید</span></div>
     {% if patients %}

@@ -91,12 +91,23 @@ class NullProvider(SmsProvider):
         return SendResult(ok=True, provider_msgid="SIMULATED")
 
 
+class UnconfiguredProvider(SmsProvider):
+    """Production-safe provider used when no real SMS panel is configured."""
+
+    def send(self, recipient: str, body: str, message_type: Optional[str] = None) -> SendResult:
+        return SendResult(
+            ok=False, retryable=True, delivery_status="RetryableFailure",
+            error="پنل پیامک فعال تنظیم نشده است",
+        )
+
+
 def get_provider() -> SmsProvider:
     """Return the configured SMS provider.
 
     Honors the ``sms_provider`` setting ('kavenegar' | 'mediana'). If the selected
     panel has no API key, falls back to whichever panel *does* have a key, and
-    finally to the Null (simulation) provider. Kavenegar is the project's primary panel.
+    In tests it falls back to NullProvider. A real application never reports a
+    simulated send as successful when no panel is configured.
     """
     try:
         from src.adapters.sqlite.sms_repo import SmsRepository
@@ -140,5 +151,11 @@ def get_provider() -> SmsProvider:
         if med_key:
             return _mediana()
     except Exception as e:
-        print(f"[sms] provider init failed, falling back to Null: {e}")
-    return NullProvider()
+        print(f"[sms] provider init failed: {e}")
+    try:
+        from flask import current_app
+        if current_app.config.get('TESTING'):
+            return NullProvider()
+    except Exception:
+        pass
+    return UnconfiguredProvider()

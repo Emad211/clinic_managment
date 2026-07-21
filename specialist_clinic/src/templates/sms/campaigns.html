@@ -3,18 +3,36 @@
 {% block content %}
 {% set hub_tab = 'campaigns' %}
 {% include "sms/_hub_tabs.html" %}
-<div class="topbar">
-    <h1><svg class="icon icon-lg"><use href="#i-megaphone"></use></svg> کمپین‌های پیامکی</h1>
+<div class="topbar sms-page-header">
+    <div>
+        <h1><svg class="icon icon-lg"><use href="#i-megaphone"></use></svg> کمپین‌های پیامکی</h1>
+        <p class="page-intro">کمپین را به‌صورت پیش‌نویس بسازید، گیرندگان را بررسی کنید و سپس ارسال و تحویل را از جزئیات همان کمپین دنبال کنید.</p>
+    </div>
+</div>
+
+<div class="sms-flow" aria-label="چرخه کمپین پیامکی">
+    <span class="is-current"><b>۱</b> ساخت پیش‌نویس</span>
+    <svg class="icon icon-sm" aria-hidden="true"><use href="#i-chevron-left"></use></svg>
+    <span><b>۲</b> بررسی گیرندگان</span>
+    <svg class="icon icon-sm" aria-hidden="true"><use href="#i-chevron-left"></use></svg>
+    <span><b>۳</b> ارسال</span>
+    <svg class="icon icon-sm" aria-hidden="true"><use href="#i-chevron-left"></use></svg>
+    <span><b>۴</b> رهگیری تحویل</span>
 </div>
 
 {% if not provider_ready %}
 <div class="alert-banner alert-warn">
     <svg class="icon"><use href="#i-alert"></use></svg>
-    <span>پنل پیامک تنظیم نشده — پیام‌ها در حالت شبیه‌سازی ثبت می‌شوند. از «مدیریت ← تنظیمات» کلید API مدیانا را وارد کنید.</span>
+    <span>پنل پیامک تنظیم نشده است؛ تا ثبت کلید API معتبر، هیچ پیامی ارسال یا موفق ثبت نمی‌شود.</span>
 </div>
 {% endif %}
 
-<div class="grid grid-2">
+<details class="card campaign-composer"{% if not campaigns %} open{% endif %}>
+    <summary class="campaign-composer-summary">
+        <span><span class="campaign-composer-icon"><svg class="icon"><use href="#i-plus"></use></svg></span><span><strong>ساخت کمپین جدید</strong><small>فرم ساخت فقط هنگام نیاز باز می‌شود</small></span></span>
+        <svg class="icon campaign-composer-chevron" aria-hidden="true"><use href="#i-chevron-left"></use></svg>
+    </summary>
+<div class="grid grid-2 campaign-composer-grid">
     <div class="card">
         <div class="section-title"><svg class="icon"><use href="#i-plus"></use></svg> ساخت کمپین جدید</div>
         <form method="post" action="{{ url_for('sms.new_campaign') }}" id="campaign-form">
@@ -74,7 +92,7 @@
                 <div class="field"><label>زمان‌بندی - تاریخ (خالی = فوری)</label><input type="text" class="jdate" name="scheduled_date"></div>
                 <div class="field"><label>ساعت</label><input type="time" class="time-input" name="scheduled_time" value="09:00" step="900" lang="fa-IR"></div>
             </div>
-            <button class="btn btn-block" type="submit" style="margin-top:var(--s4);"><svg class="icon"><use href="#i-megaphone"></use></svg> ساخت کمپین</button>
+            <button class="btn btn-block mt-4" type="submit"><svg class="icon"><use href="#i-megaphone"></use></svg> ساخت کمپین</button>
         </form>
     </div>
 
@@ -95,7 +113,7 @@
             <div class="fld">
                 <textarea name="body" rows="2" placeholder="متن با {name}" required></textarea>
             </div>
-            <button class="btn btn-sm" type="submit" style="margin-top:var(--s2);"><svg class="icon icon-sm"><use href="#i-save"></use></svg> ذخیره قالب</button>
+            <button class="btn btn-sm mt-2" type="submit"><svg class="icon icon-sm"><use href="#i-save"></use></svg> ذخیره قالب</button>
         </form>
         <div class="card-soft" style="margin-top:var(--s4);">
             <div class="flex items-center gap-2 c-info text-sm" style="margin-bottom:var(--s2);">
@@ -110,6 +128,7 @@
         </div>
     </div>
 </div>
+</details>
 
 <div class="card">
     <div class="section-title"><svg class="icon"><use href="#i-list-checks"></use></svg> کمپین‌ها</div>

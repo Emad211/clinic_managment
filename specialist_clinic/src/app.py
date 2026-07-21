@@ -3,7 +3,7 @@ import sys
 import threading
 import webbrowser
 
-from flask import Flask, redirect, url_for, session, g
+from flask import Flask, redirect, url_for, session, g, render_template
 
 from src.config.settings import Config
 from src.adapters.sqlite.core import close_connection, get_db
@@ -124,6 +124,24 @@ def create_app(test_config=None):
         if g.user is None:
             return redirect(url_for("auth.login"))
         return redirect(url_for("dashboard.index"))
+
+    @app.errorhandler(404)
+    def not_found(_error):
+        return render_template(
+            "errors/error.html", status_code=404,
+            error_title="صفحه پیدا نشد",
+            error_message="نشانی واردشده وجود ندارد یا جابه‌جا شده است.",
+            active_page=None,
+        ), 404
+
+    @app.errorhandler(500)
+    def internal_error(_error):
+        return render_template(
+            "errors/error.html", status_code=500,
+            error_title="خطای غیرمنتظره",
+            error_message="درخواست کامل نشد. دوباره تلاش کنید و در صورت تکرار، مدیر سیستم را مطلع کنید.",
+            active_page=None,
+        ), 500
 
     # ---- Background scheduler (reminders + campaigns) ----
     if not app.config.get("TESTING", False):

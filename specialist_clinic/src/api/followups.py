@@ -51,23 +51,22 @@ def worklist():
     patient_groups = list(groups.values())
 
     counts = repo.counts_by_reason()
+    from src.adapters.sqlite.engagement_repo import EngagementRepository
     return render_template("followups/worklist.html", tasks=tasks,
                            patient_groups=patient_groups, counts=counts,
                            reason_labels=REASON_LABELS, active_reason=reason, q=q,
-                           show_worklist_tab=True, active_page='followups')
+                           hub_pending=EngagementRepository().count_pending(),
+                           active_page='sms')
 
 
 @bp.route("/generate", methods=["POST"])
 @login_required
 def generate():
-    """Generate due worklist tasks (idempotent — no duplicates while open):
-    medication refills, uncontrolled, lapsed, plus rule-driven monitoring /
-    screening / vaccination. This is the staff's "refresh the worklist" action;
-    it never sends SMS (outbound messaging goes through the approval queue)."""
+    """Synchronize due worklist routes through the canonical engagement engine."""
     created = FollowupService().generate()
     total = sum(created.values())
     flash(f"{total} پیگیریِ جدید ساخته شد" if total else "پیگیریِ جدیدِ سررسیده‌ای نبود", "success")
-    log_activity("followup_generate", f"تولید {total} پیگیری از ورک‌لیست")
+    log_activity("followup_generate", f"همگام‌سازی ورک‌لیست؛ {total} پیگیری جدید")
     return redirect(url_for("followups.worklist"))
 
 

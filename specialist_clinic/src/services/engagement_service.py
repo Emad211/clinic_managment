@@ -23,7 +23,7 @@ from src.adapters.sqlite.sms_repo import SmsRepository
 from src.services.followup_engine import due_clinical_events
 from src.services.sms.campaign_service import send_single, personalize
 from src.services.sms.compliance import sanitize
-from src.common.utils import iran_now, today_str
+from src.common.utils import iran_now, today_str, format_jalali_date
 
 # Guardrail defaults (manager-overridable via the settings table).
 QUIET_START_DEFAULT = '08:00'
@@ -58,6 +58,15 @@ class EngagementService:
         except (TypeError, ValueError):
             return DAILY_CAP_DEFAULT
 
+    def _provider_ready(self) -> bool:
+        if self.sms.provider_configured():
+            return True
+        try:
+            from flask import current_app
+            return bool(current_app.config.get('TESTING'))
+        except Exception:
+            return False
+
     # ------------------------------------------------------------- collection
     def collect_due_events(self, pid: int) -> tuple[list[dict], dict]:
         """Return (events, cfg) where events is a list of due events for the patient
@@ -90,8 +99,13 @@ class EngagementService:
                      AND date(scheduled_at) BETWEEN date('now','+3 hours','+30 minutes')
                          AND date('now','+3 hours','+30 minutes', ?)""",
                 (pid, f"+{lead} days")).fetchall():
+                scheduled = r['scheduled_at'] or ''
+                day = format_jalali_date(scheduled) if scheduled else ''
+                clock = scheduled[11:16] if len(scheduled) >= 16 else ''
                 events.append({'event_key': 'appointment_reminder',
-                               'period_key': f"appt:{r['id']}", 'detail': 'یادآوری نوبت'})
+                               'period_key': f"appt:{r['id']}",
+                               'detail': f"نوبت {day} ساعت {clock}".strip(),
+                               'due_date': scheduled[:10] or None})
 
         # 3) Refill due (active med with refill_due_date within lead_days)
         if 'refill_due' in cfg:
@@ -163,7 +177,10 @@ class EngagementService:
                         tid = self.fu.create(pid, reason=reason, detail=ev['detail'],
                                              due_date=today_str(), source_event=ev['event_key'])
                     self.repo.record_dispatch(pid, ev['event_key'], pk, 'worklist', tid)
-                res['worklist'] += 1
+                    if tid is not None:
+                        res['worklist'] += 1
+                else:
+                    res['worklist'] += 1
 
             # --- sms channel --- (enqueue for physician approval; SMS is sent at approve time)
             if not worklist_only and channel in ('sms', 'both'):
@@ -174,22 +191,40 @@ class EngagementService:
                 elif self.repo.in_cooldown(pid, ev['event_key'], conf.get('cooldown_days') or 0):
                     res['skipped'] += 1
                 else:
-                    body = sanitize(personalize(conf.get('sms_template') or '', name=patient['full_name']))
+                    template = conf.get('sms_template') or ''
+                    body = personalize(template, name=patient['full_name'])
+                    body = body.replace('{detail}', ev.get('detail') or '')
+                    if ev['event_key'] == 'appointment_reminder' and ev.get('detail') \
+                            and '{detail}' not in template:
+                        body = f"{body.rstrip()} {ev['detail']}"
+                    body = sanitize(body)
                     if body.strip():
                         if not dry_run:
-                            self.repo.enqueue_approval(pid, ev['event_key'], 'sms', ev.get('due_date'), body, pk)
-                        res['queued'] += 1
+                            aid = self.repo.enqueue_approval(
+                                pid, ev['event_key'], 'sms', ev.get('due_date'), body, pk)
+                            if aid is not None:
+                                res['queued'] += 1
+                        else:
+                            res['queued'] += 1
         return res
 
     def run_all(self, dry_run: bool = False, worklist_only: bool = False) -> dict:
         db = get_db()
-        rows = db.execute("SELECT id FROM patient_links WHERE is_active=1").fetchall()
+        rows = db.execute(
+            "SELECT id FROM patient_links WHERE is_active=1 "
+            "AND COALESCE(enrolled_by,'') != 'seed'").fetchall()
         agg = {'sms': 0, 'worklist': 0, 'skipped': 0, 'queued': 0, 'patients': 0}
         for r in rows:
             res = self.dispatch_patient(r['id'], dry_run=dry_run, worklist_only=worklist_only)
             for k in ('sms', 'worklist', 'skipped', 'queued'):
                 agg[k] += res[k]
             agg['patients'] += 1
+        if not dry_run:
+            import json
+            self.sms.set_setting('engagement_last_run_at',
+                                 iran_now().strftime('%Y-%m-%d %H:%M:%S'))
+            self.sms.set_setting('engagement_last_result', json.dumps(agg, ensure_ascii=False))
+            self.sms.set_setting('engagement_last_error', '')
         return agg
 
     # ------------------------------------------------------- approval / invite
@@ -212,6 +247,8 @@ class EngagementService:
         # change) so it stays in the queue to be approved later or force-sent now.
         if self._quiet_now() and not override:
             return {'ok': False, 'reason': 'quiet'}
+        if self.repo.sms_count_today(ap['patient_link_id']) >= self._daily_cap():
+            return {'ok': False, 'reason': 'daily_cap'}
         p = db.execute(
             "SELECT id, full_name, phone_number, sms_opt_out FROM patient_links WHERE id=?",
             (ap['patient_link_id'],)).fetchone()
@@ -221,11 +258,48 @@ class EngagementService:
         body = sanitize(message.strip()) if (message and message.strip()) else (ap['message'] or '')
         if not body.strip():
             return {'ok': False, 'reason': 'empty'}
-        send_single(ap['patient_link_id'], p['phone_number'], body, message_type='Informational')
-        self.repo.record_dispatch(ap['patient_link_id'], ap['event_key'], ap['period_key'] or '', 'sms', None)
-        self.repo.set_status(approval_id, 'approved', decided_by)
-        self.repo.mark_sent(approval_id)
-        return {'ok': True}
+        if not self._provider_ready():
+            return {'ok': False, 'reason': 'provider_unconfigured'}
+        if not self.repo.claim_approval(approval_id):
+            return {'ok': False, 'reason': 'not_pending'}
+
+        key = f"engagement:approval:{approval_id}"
+        try:
+            accepted = send_single(
+                ap['patient_link_id'], p['phone_number'], body,
+                message_type='Informational', idempotency_key=key,
+                source_type='engagement', source_ref=str(approval_id))
+        except Exception as exc:
+            self.repo.finish_approval(approval_id, 'pending', error=str(exc))
+            return {'ok': False, 'reason': 'provider_error', 'error': str(exc)}
+
+        msg = self.sms.get_message_by_idempotency(key) or {}
+        msg_id = msg.get('id')
+        if accepted:
+            self.repo.record_dispatch(
+                ap['patient_link_id'], ap['event_key'], ap['period_key'] or '',
+                'sms', msg_id, status='accepted')
+            self.repo.finish_approval(
+                approval_id, 'approved', decided_by=decided_by,
+                sms_message_id=msg_id, sent=True)
+            return {'ok': True, 'message_id': msg_id}
+
+        error = msg.get('error') or 'سرویس‌دهنده پیام را نپذیرفت'
+        delivery = msg.get('delivery_status')
+        if delivery == 'SubmissionUnknown':
+            final_status, reason = 'unknown', 'submission_unknown'
+        elif msg.get('retryable'):
+            final_status, reason = 'pending', 'retryable_failure'
+        else:
+            final_status, reason = 'failed', 'provider_rejected'
+        self.repo.finish_approval(
+            approval_id, final_status, decided_by=decided_by,
+            sms_message_id=msg_id, error=error)
+        if final_status != 'pending':
+            self.repo.record_dispatch(
+                ap['patient_link_id'], ap['event_key'], ap['period_key'] or '',
+                'sms', msg_id, status=final_status)
+        return {'ok': False, 'reason': reason, 'error': error, 'message_id': msg_id}
 
     def reject(self, approval_id: int, decided_by: str) -> None:
         self.repo.set_status(approval_id, 'rejected', decided_by)
@@ -273,64 +347,19 @@ class EngagementService:
         pk = f"invite:{today_str()}"
         return self.repo.enqueue_approval(pid, 'visit_invite', 'sms', today_str(), body, pk)
 
-    # ------------------------------------------------------------- preview
-    SKIP_LABEL = {'opt_out': 'انصراف بیمار', 'no_phone': 'بدون موبایل',
-                  'quiet': 'ساعت آرام', 'cap': 'سقف روزانه',
-                  'already': 'قبلاً ارسال‌شده', 'cooldown': 'فاصلهٔ تکرار'}
-
-    def preview(self, limit: int = 80) -> dict:
-        """Dry-run snapshot: exactly what the engine would do right now, per patient,
-        with NO sending and NO ledger writes. Powers the manager's "اجرای آزمایشی"."""
+    def enqueue_control_room_invite(self, pid: int, message: str) -> int | None:
+        """Queue one cohort message per patient/body/day for physician approval."""
+        import hashlib
         db = get_db()
-        rows = db.execute(
-            "SELECT id, full_name, phone_number, sms_opt_out FROM patient_links "
-            "WHERE is_active=1 ORDER BY full_name").fetchall()
-        quiet = self._quiet_now()
-        cap = self._daily_cap()
-        patients = []
-        agg = {'sms': 0, 'worklist': 0, 'deferred': 0}
-        for p in rows:
-            events, cfg = self.collect_due_events(p['id'])
-            if not events:
-                continue
-            sent_today = self.repo.sms_count_today(p['id'])
-            n_sms = 0
-            items = []
-            for ev in events:
-                conf = cfg[ev['event_key']]
-                ch = conf['channel']
-                if ch == 'off':
-                    continue
-                routes = []
-                if ch in ('worklist', 'both') and not self.repo.already_dispatched(
-                        p['id'], ev['event_key'], ev['period_key'], 'worklist'):
-                    routes.append({'kind': 'worklist'})
-                    agg['worklist'] += 1
-                if ch in ('sms', 'both'):
-                    reason = None
-                    if p['sms_opt_out']:
-                        reason = 'opt_out'
-                    elif not p['phone_number']:
-                        reason = 'no_phone'
-                    elif quiet:
-                        reason = 'quiet'
-                    elif (sent_today + n_sms) >= cap:
-                        reason = 'cap'
-                    elif self.repo.already_dispatched(p['id'], ev['event_key'], ev['period_key'], 'sms'):
-                        reason = 'already'
-                    elif self.repo.in_cooldown(p['id'], ev['event_key'], conf.get('cooldown_days') or 0):
-                        reason = 'cooldown'
-                    if reason:
-                        routes.append({'kind': 'deferred', 'why': self.SKIP_LABEL.get(reason, reason)})
-                        if reason != 'already':
-                            agg['deferred'] += 1
-                    else:
-                        routes.append({'kind': 'sms'})
-                        n_sms += 1
-                        agg['sms'] += 1
-                if routes:
-                    items.append({'label': conf['label'], 'detail': ev['detail'], 'routes': routes})
-            if items:
-                patients.append({'name': p['full_name'], 'events': items})
-        return {'patients': patients[:limit], 'agg': agg, 'quiet': quiet, 'cap': cap,
-                'total_patients': len(patients)}
+        p = db.execute(
+            "SELECT id, full_name, phone_number, sms_opt_out FROM patient_links WHERE id=?",
+            (pid,)).fetchone()
+        if not p or p['sms_opt_out'] or not p['phone_number']:
+            return None
+        body = sanitize(personalize(message, name=p['full_name']))
+        if not body.strip():
+            return None
+        digest = hashlib.sha256(body.encode('utf-8')).hexdigest()[:12]
+        period_key = f"control-room:{today_str()}:{digest}"
+        return self.repo.enqueue_approval(
+            pid, 'control_room_invite', 'sms', today_str(), body, period_key)

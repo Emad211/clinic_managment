@@ -285,3 +285,69 @@ class TestApproveQuietHoursGate:
         assert second.get("ok") is True
         assert svc.repo.get_approval(aid)["status"] == "approved"
         assert _counts(pid) == (1, 1)
+
+
+class TestApprovalProductionLifecycle:
+
+    def test_daily_cap_keeps_second_message_pending(self, specialist_app):
+        from src.adapters.sqlite.sms_repo import SmsRepository
+        from src.services.engagement_service import EngagementService
+        svc = EngagementService()
+        pid = _enroll("2220000010", "سقف روزانه", phone_number="09120000210")
+        SmsRepository().set_setting("engagement_daily_cap", "1")
+        _force_quiet(False)
+        first = _queue_one(svc, pid, "cap:first")
+        second = svc.enqueue_event_for_patient(pid, "bp_glucose_invite", "cap:second")
+        assert svc.approve(first, decided_by="admin")["ok"] is True
+
+        result = svc.approve(second, decided_by="admin")
+
+        assert result == {"ok": False, "reason": "daily_cap"}
+        assert svc.repo.get_approval(second)["status"] == "pending"
+        assert _counts(pid) == (1, 1)
+
+    def test_accepted_message_is_linked_and_second_click_is_idempotent(self, specialist_app):
+        from src.adapters.sqlite.core import get_db
+        from src.services.engagement_service import EngagementService
+        svc = EngagementService()
+        pid = _enroll("2220000011", "ارسال یکتا", phone_number="09120000211")
+        aid = _queue_one(svc, pid, "unique:period")
+        _force_quiet(False)
+
+        first = svc.approve(aid, decided_by="admin")
+        second = svc.approve(aid, decided_by="admin")
+
+        ap = svc.repo.get_approval(aid)
+        msg = dict(get_db().execute(
+            "SELECT * FROM sms_messages WHERE id=?", (ap["sms_message_id"],)).fetchone())
+        assert first["ok"] is True
+        assert second == {"ok": False, "reason": "not_pending"}
+        assert msg["idempotency_key"] == f"engagement:approval:{aid}"
+        assert msg["source_type"] == "engagement" and msg["source_ref"] == str(aid)
+        assert _counts(pid) == (1, 1)
+
+    def test_retryable_provider_failure_stays_actionable(self, specialist_app, monkeypatch):
+        from src.services.sms.provider import SmsProvider, SendResult
+        from src.services.engagement_service import EngagementService
+        import src.services.sms.campaign_service as campaign_service
+
+        class RetryableProvider(SmsProvider):
+            def send(self, recipient, body, message_type=None):
+                return SendResult(ok=False, retryable=True,
+                                  delivery_status="RetryableFailure",
+                                  error="موجودی پنل کافی نیست")
+
+        monkeypatch.setattr(campaign_service, "get_provider", lambda: RetryableProvider())
+        svc = EngagementService()
+        pid = _enroll("2220000012", "خطای قابل ادامه", phone_number="09120000212")
+        aid = _queue_one(svc, pid, "retryable:period")
+        _force_quiet(False)
+
+        result = svc.approve(aid, decided_by="admin")
+
+        ap = svc.repo.get_approval(aid)
+        assert result["reason"] == "retryable_failure"
+        assert ap["status"] == "pending"
+        assert ap["last_error"] == "موجودی پنل کافی نیست"
+        assert ap["sms_message_id"] is not None
+        assert _counts(pid) == (1, 0)

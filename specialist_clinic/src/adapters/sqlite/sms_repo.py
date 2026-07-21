@@ -125,15 +125,15 @@ class SmsRepository:
     # ---- messages (log) ----
     def add_message(self, *, campaign_id, patient_link_id, recipient, body, status='pending',
                     provider=None, idempotency_key=None, delivery_status='Queued',
-                    retryable=True) -> int:
+                    retryable=True, source_type=None, source_ref=None) -> int:
         db = get_db()
         cur = db.execute(
             """INSERT OR IGNORE INTO sms_messages
                (campaign_id, patient_link_id, recipient, body, status, provider,
-                idempotency_key, delivery_status, retryable)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                idempotency_key, delivery_status, retryable, source_type, source_ref)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (campaign_id, patient_link_id, recipient, body, status, provider,
-             idempotency_key, delivery_status, int(bool(retryable))),
+             idempotency_key, delivery_status, int(bool(retryable)), source_type, source_ref),
         )
         db.commit()
         if cur.rowcount:
@@ -144,6 +144,11 @@ class SmsRepository:
 
     def get_message(self, msg_id: int) -> dict | None:
         row = get_db().execute("SELECT * FROM sms_messages WHERE id=?", (msg_id,)).fetchone()
+        return dict(row) if row else None
+
+    def get_message_by_idempotency(self, key: str) -> dict | None:
+        row = get_db().execute(
+            "SELECT * FROM sms_messages WHERE idempotency_key=?", (key,)).fetchone()
         return dict(row) if row else None
 
     def claim_message_attempt(self, msg_id: int) -> bool:
@@ -200,6 +205,7 @@ class SmsRepository:
         return [dict(r) for r in rows]
 
     def list_messages_filtered(self, *, campaign_id=None, delivery_status=None, provider=None,
+                               source_type=None,
                                limit=500) -> list[dict]:
         clauses, params = [], []
         if campaign_id:
@@ -208,6 +214,8 @@ class SmsRepository:
             clauses.append("m.delivery_status=?"); params.append(delivery_status)
         if provider:
             clauses.append("m.provider=?"); params.append(provider)
+        if source_type:
+            clauses.append("m.source_type=?"); params.append(source_type)
         where = " WHERE " + " AND ".join(clauses) if clauses else ""
         params.append(limit)
         rows = get_db().execute(
