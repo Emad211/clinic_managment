@@ -45,6 +45,7 @@ $env:ACCOUNTING_DB_PATH = "C:\path\to\clinic_new.db"
   --add-data "src/templates;src/templates" `
   --add-data "src/static;src/static" `
   --add-data "src/adapters/sqlite/schema.sql;src/adapters/sqlite" `
+  --add-data "src/domain/clinical_engine/schemas;src/domain/clinical_engine/schemas" `
   --name SpecialistClinic start.py
 ```
 دیتابیس `specialist.db` و پوشه `backups` کنار فایل exe ساخته می‌شوند.

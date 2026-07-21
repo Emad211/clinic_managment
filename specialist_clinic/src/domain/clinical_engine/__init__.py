@@ -1,0 +1,59 @@
+"""Framework-independent domain contracts for Clinical Engine v2."""
+
+from .enums import (
+    ActionType,
+    ClinicalPhase,
+    ConflictStatus,
+    DiagnosticSeverity,
+    FactKind,
+    FactStatus,
+    FreshnessStatus,
+    PredicateState,
+    RunStatus,
+    RuleOutcome,
+    RuleSeverity,
+    VerificationStatus,
+)
+from .facts import ClinicalFact, FactSnapshot, FactSource
+from .rules import (
+    AllExpression,
+    AnyExpression,
+    CompiledRule,
+    LeafExpression,
+    NotExpression,
+    RuleDefinition,
+)
+from .results import (
+    CompilationDiagnostic,
+    EvaluationResult,
+    PredicateResult,
+    RuleCompilationError,
+)
+
+__all__ = [
+    "ActionType",
+    "AllExpression",
+    "AnyExpression",
+    "ClinicalPhase",
+    "ClinicalFact",
+    "CompilationDiagnostic",
+    "CompiledRule",
+    "ConflictStatus",
+    "DiagnosticSeverity",
+    "EvaluationResult",
+    "FactKind",
+    "FactSnapshot",
+    "FactSource",
+    "FactStatus",
+    "FreshnessStatus",
+    "LeafExpression",
+    "NotExpression",
+    "PredicateState",
+    "PredicateResult",
+    "RunStatus",
+    "RuleCompilationError",
+    "RuleDefinition",
+    "RuleOutcome",
+    "RuleSeverity",
+    "VerificationStatus",
+]

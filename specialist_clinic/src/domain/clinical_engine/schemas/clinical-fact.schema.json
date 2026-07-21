@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://clinic.local/schemas/clinical-engine-v2/clinical-fact.schema.json",
+  "title": "Clinical Engine v2 Fact",
+  "type": "object",
+  "required": ["schema_version", "fact_id", "patient_link_id", "kind", "key", "status", "effective_at", "recorded_at", "source", "verification", "freshness", "conflict"],
+  "properties": {
+    "schema_version": {"const": "2.0"},
+    "fact_id": {"type": "string", "minLength": 1},
+    "patient_link_id": {"type": "integer", "minimum": 1},
+    "encounter_key": {"type": ["string", "null"]},
+    "kind": {"enum": ["demographic", "condition", "observation", "flag", "medication", "allergy", "procedure", "encounter"]},
+    "key": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._-]*$"},
+    "status": {"enum": ["PRESENT", "ABSENT", "UNKNOWN", "NOT_ASKED", "NOT_APPLICABLE", "ENTERED_IN_ERROR"]},
+    "value": {},
+    "unit": {"type": ["string", "null"]},
+    "reference_range": {"type": ["object", "null"]},
+    "effective_at": {"type": "string", "format": "date-time"},
+    "recorded_at": {"type": "string", "format": "date-time"},
+    "source": {"type": "object", "required": ["system", "record_id"], "properties": {"system": {"type": "string"}, "record_id": {"type": "string"}, "actor": {"type": ["string", "null"]}}, "additionalProperties": false},
+    "verification": {"enum": ["CONFIRMED", "PROVISIONAL", "UNVERIFIED", "REFUTED"]},
+    "freshness": {"enum": ["FRESH", "STALE", "UNKNOWN"]},
+    "conflict": {"enum": ["NONE", "PRESENT", "UNKNOWN"]},
+    "derived_from": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+    "warnings": {"type": "array", "items": {"type": "string"}}
+  },
+  "additionalProperties": false
+}

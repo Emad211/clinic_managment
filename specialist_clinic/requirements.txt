@@ -3,3 +3,4 @@ bcrypt>=4.0
 jdatetime>=4.0
 segno>=1.6   # pure-Python QR (server-side SVG) for the in-clinic patient-card link — offline, no CDN. PyInstaller: bundles automatically (pure-Python); add --collect-submodules segno if a frozen build can't find it.
 requests>=2.32  # Mediana API transport; urllib receives intermittent ArvanCloud 502 responses.
+jsonschema>=4.23,<5  # Clinical Engine v2 rule artefact validation (JSON Schema 2020-12).
