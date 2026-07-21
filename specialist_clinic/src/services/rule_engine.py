@@ -3,6 +3,7 @@ clinical_rules (trigger_json DSL). Powers risk/treatment/follow-up and every
 other ADA rule category. Output is SUGGESTION-ONLY (physician confirms).
 """
 import json
+import logging
 from datetime import datetime
 
 from src.adapters.sqlite.core import get_db
@@ -10,6 +11,9 @@ from src.adapters.sqlite.vitals_repo import VitalsRepository
 from src.adapters.sqlite.patients_repo import PatientRepository
 from src.adapters.sqlite.flags_repo import ClinicalFlagsRepository
 from src.services.vitals_service import evaluate_reading
+
+
+logger = logging.getLogger(__name__)
 
 # action_type -> UI section
 SECTION = {
@@ -181,6 +185,15 @@ class RuleEngine:
             except Exception:
                 continue
         fired.sort(key=lambda x: (_SEVERITY_RANK.get(x.get('severity'), 3), x.get('priority', 100)))
+        # PR-04 dual-run seam: shadow mode records canonical facts only.  It
+        # deliberately cannot affect the legacy suggestions returned to callers.
+        try:
+            from src.common.utils import iran_now
+            from src.services.clinical_engine.fact_builder import ShadowFactCapture
+
+            ShadowFactCapture().capture(pid, as_of_at=iran_now(), created_by="legacy-facade")
+        except Exception:
+            logger.exception("Clinical Engine v2 shadow fact capture failed for patient %s", pid)
         return fired
 
     def grouped(self, pid: int) -> dict:
