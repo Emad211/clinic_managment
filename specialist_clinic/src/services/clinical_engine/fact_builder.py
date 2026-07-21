@@ -24,7 +24,7 @@ from src.services.clinical_engine.safety import SafetyKernel
 from src.services.clinical_engine.legacy_adapter import LegacyFactBundleAdapter
 
 
-ENGINE_VERSION = "2.1.0-conflict-readonly"
+ENGINE_VERSION = "2.2.0-decisions"
 DEFAULT_RULESET_CODE = "general-outpatient"
 
 
@@ -245,7 +245,7 @@ class ShadowFactCapture:
                         recommendation_count += 1
                 outcome_value = outcome.value if hasattr(outcome, "value") else outcome
                 counts[outcome_value] += 1
-                self.audit.append_evaluation(
+                evaluation_id = self.audit.append_evaluation(
                     run_id=run_id,
                     rule_version_id=member_id,
                     predicate_state=predicate_state,
@@ -256,6 +256,15 @@ class ShadowFactCapture:
                     suppression=suppression,
                     error=result_payload["error"],
                 )
+                if recommendation:
+                    self.audit.append_recommendation_event(
+                        run_id=run_id,
+                        evaluation_id=evaluation_id,
+                        recommendation_key=recommendation["recommendation_key"],
+                        action_type=recommendation["action_type"],
+                        event_type="CREATED",
+                        payload=recommendation,
+                    )
             status = safety_run.status
             if compile_failures and status is RunStatus.COMPLETED:
                 status = RunStatus.COMPLETED_WITH_ERRORS

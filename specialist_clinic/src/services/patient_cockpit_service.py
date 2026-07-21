@@ -52,9 +52,14 @@ class PatientCockpitService:
             for group in v2_groups if group.get("action_type") == "redflag"
         )
         v2_actions = sum(
-            len(group.get("items") or [])
+            1
             for group in v2_groups
             if group.get("action_type") in {"safety_alert", "suggest_med"}
+            for item in (group.get("items") or [])
+            # ACCEPTED/DISMISSED are completed reviews.  DEFERRED deliberately
+            # stays actionable, because the clinician asked to revisit it.
+            if not item.get("current_decision")
+            or item["current_decision"].get("decision") == "DEFERRED"
         )
         # v2 is a selected read-only projection alongside the current engine.
         # Use the stronger count, not a sum, so the same clinical concern is not

@@ -597,7 +597,7 @@ def test_silent_ruleset_contains_routine_error_without_losing_independent_result
     assert evaluations[1]["recommendation_json"] is None
     assert db.execute(
         "SELECT COUNT(*) c FROM clinical_recommendation_events WHERE run_id=?", (run_id,)
-    ).fetchone()["c"] == 0
+    ).fetchone()["c"] == 1
     assert engine.build_facts(patient_id) == RuleEngine().build_facts(patient_id)
 
 

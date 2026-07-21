@@ -419,6 +419,7 @@ class _ShadowRules:
 class _ShadowAudit:
     def __init__(self):
         self.evaluations = []
+        self.recommendation_events = []
         self.completions = []
 
     def start_run(self, **kwargs):
@@ -426,6 +427,11 @@ class _ShadowAudit:
 
     def append_evaluation(self, **kwargs):
         self.evaluations.append(kwargs)
+        return len(self.evaluations)
+
+    def append_recommendation_event(self, **kwargs):
+        self.recommendation_events.append(kwargs)
+        return len(self.recommendation_events)
 
     def complete_run(self, run_id, **kwargs):
         self.completions.append((run_id, kwargs))
@@ -439,7 +445,7 @@ def _member(rule_version_id, raw, phase):
     }
 
 
-def test_shadow_capture_persists_suppression_and_inert_recommendation_without_events():
+def test_shadow_capture_persists_suppression_and_created_recommendation_event():
     redflag = _rule(
         "T2-REDFLAG-BP", "PREFLIGHT", "redflag",
         _leaf("rf-sbp", "observation.bp_systolic", ">=", 180, "mm[Hg]"),
@@ -474,6 +480,8 @@ def test_shadow_capture_persists_suppression_and_inert_recommendation_without_ev
     assert completion["summary"]["recommendations"] == 1
     assert completion["summary"]["redflag_active"] is True
     assert completion["summary"]["routine_outputs_blocked"] is True
+    assert len(audit.recommendation_events) == 1
+    assert audit.recommendation_events[0]["event_type"] == "CREATED"
 
 
 def test_corrupt_stored_safety_rule_fails_closed_and_blocks_valid_routine():

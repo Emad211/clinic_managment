@@ -411,7 +411,7 @@ def invite_patient(pid):
         "success" if qid else "",
     )
     log_activity("patient_invite", "دعوت پیامکی به نوبت", patient_link_id=pid)
-    return redirect(request.referrer or (url_for("patients.detail", pid=pid) + "#meds"))
+    return redirect(url_for("patients.detail", pid=pid) + "#meds")
 
 
 def _card_url(token):
@@ -602,6 +602,44 @@ def suggestion_action(pid):
         if status == "accepted" and rx_class:
             return redirect(url_for("patients.detail", pid=pid) + "?rx_class=" + quote(rx_class) + "#meds")
     return redirect(url_for("patients.detail", pid=pid) + "#cockpit")
+
+
+@bp.route("/<int:pid>/clinical-v2/decision", methods=["POST"])
+@login_required
+def clinical_v2_decision(pid):
+    """Append review state only; accepting never performs the clinical action."""
+    from src.services.clinical_engine.decision_service import (
+        ClinicalDecisionConflict,
+        ClinicalDecisionService,
+        ClinicalDecisionValidationError,
+    )
+
+    try:
+        recommendation_event_id = int(request.form.get("recommendation_event_id", ""))
+        expected_raw = request.form.get("expected_current_event_id", "").strip()
+        expected_current_event_id = int(expected_raw) if expected_raw else None
+        recorded = ClinicalDecisionService().record(
+            patient_link_id=pid,
+            recommendation_event_id=recommendation_event_id,
+            decision=request.form.get("decision", ""),
+            reason_code=request.form.get("reason_code"),
+            reason_text=request.form.get("reason_text"),
+            actor_user_id=int(g.user["id"]),
+            actor_username=g.user["username"],
+            expected_current_event_id=expected_current_event_id,
+        )
+    except (ValueError, ClinicalDecisionValidationError) as exc:
+        flash(f"تصمیم ثبت نشد: {exc}", "error")
+    except ClinicalDecisionConflict:
+        flash("این پیشنهاد هم‌زمان تغییر کرده است؛ صفحه را مرور و دوباره ثبت کنید.", "warning")
+    else:
+        log_activity(
+            "clinical_v2_decision",
+            f"{recorded['decision']} recommendation_event={recommendation_event_id}",
+            patient_link_id=pid,
+        )
+        flash("تصمیم پزشک ثبت شد؛ هیچ اقدام درمانی به‌طور خودکار اعمال نشد.", "success")
+    return redirect(url_for("patients.detail", pid=pid) + "#clinical-engine-v2")
 
 
 @bp.route("/<int:pid>/flags", methods=["POST"])

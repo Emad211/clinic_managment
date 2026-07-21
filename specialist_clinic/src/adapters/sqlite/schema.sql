@@ -945,9 +945,17 @@ BEFORE DELETE ON clinical_recommendation_events BEGIN
 END;
 CREATE TRIGGER IF NOT EXISTS trg_recommendation_events_running_insert_only
 BEFORE INSERT ON clinical_recommendation_events
-WHEN (SELECT run_status FROM clinical_engine_runs WHERE run_id=NEW.run_id) <> 'RUNNING'
+WHEN NEW.event_type IN ('CREATED', 'SUPPRESSED')
+ AND (SELECT run_status FROM clinical_engine_runs WHERE run_id=NEW.run_id) <> 'RUNNING'
 BEGIN
-    SELECT RAISE(ABORT, 'recommendation events require a RUNNING clinical_engine_run');
+    SELECT RAISE(ABORT, 'created/suppressed recommendations require a RUNNING clinical_engine_run');
+END;
+CREATE TRIGGER IF NOT EXISTS trg_recommendation_events_terminal_presentation
+BEFORE INSERT ON clinical_recommendation_events
+WHEN NEW.event_type IN ('PRESENTED', 'SUPERSEDED')
+ AND (SELECT run_status FROM clinical_engine_runs WHERE run_id=NEW.run_id) = 'RUNNING'
+BEGIN
+    SELECT RAISE(ABORT, 'presentation/supersession requires a terminal clinical_engine_run');
 END;
 CREATE TRIGGER IF NOT EXISTS trg_recommendation_evaluation_same_run
 BEFORE INSERT ON clinical_recommendation_events

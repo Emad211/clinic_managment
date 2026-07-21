@@ -26,6 +26,7 @@ _CLINICAL_ENGINE_V2_TRIGGERS = frozenset({
     "trg_rule_evaluations_no_update",
     "trg_rule_evaluations_no_delete",
     "trg_recommendation_events_running_insert_only",
+    "trg_recommendation_events_terminal_presentation",
     "trg_recommendation_evaluation_same_run",
     "trg_recommendation_events_no_update",
     "trg_recommendation_events_no_delete",
@@ -173,6 +174,28 @@ def _ensure_clinical_engine_v2_storage(db):
     db.execute(
         "INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)",
         ("clinical_engine_v2_mode", "off"),
+    )
+    # PR-08: CREATED/SUPPRESSED belong to a running evaluation, whereas a
+    # PRESENTED event can only truthfully be appended after the run is terminal.
+    # Recreate these guards because CREATE TRIGGER IF NOT EXISTS cannot update
+    # an older installed database's trigger body.
+    db.executescript(
+        """DROP TRIGGER IF EXISTS trg_recommendation_events_running_insert_only;
+        DROP TRIGGER IF EXISTS trg_recommendation_events_terminal_presentation;
+        CREATE TRIGGER trg_recommendation_events_running_insert_only
+        BEFORE INSERT ON clinical_recommendation_events
+        WHEN NEW.event_type IN ('CREATED', 'SUPPRESSED')
+         AND (SELECT run_status FROM clinical_engine_runs WHERE run_id=NEW.run_id) <> 'RUNNING'
+        BEGIN
+            SELECT RAISE(ABORT, 'created/suppressed recommendations require a RUNNING clinical_engine_run');
+        END;
+        CREATE TRIGGER trg_recommendation_events_terminal_presentation
+        BEFORE INSERT ON clinical_recommendation_events
+        WHEN NEW.event_type IN ('PRESENTED', 'SUPERSEDED')
+         AND (SELECT run_status FROM clinical_engine_runs WHERE run_id=NEW.run_id) = 'RUNNING'
+        BEGIN
+            SELECT RAISE(ABORT, 'presentation/supersession requires a terminal clinical_engine_run');
+        END;"""
     )
     rows = db.execute(
         "SELECT name FROM sqlite_master WHERE type='table' "

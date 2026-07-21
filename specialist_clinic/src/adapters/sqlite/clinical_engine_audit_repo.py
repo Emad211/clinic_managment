@@ -241,6 +241,169 @@ class ClinicalEngineAuditRepository:
             )
         return int(cur.lastrowid)
 
+    def recommendation_context(
+        self, recommendation_event_id: int, *, patient_link_id: int
+    ) -> dict | None:
+        """Return one CREATED recommendation and its latest decision."""
+        db = get_db()
+        row = db.execute(
+            """SELECT e.*, r.patient_link_id, r.run_status
+               FROM clinical_recommendation_events e
+               JOIN clinical_engine_runs r ON r.run_id=e.run_id
+               WHERE e.id=? AND r.patient_link_id=? AND e.event_type='CREATED'""",
+            (recommendation_event_id, patient_link_id),
+        ).fetchone()
+        if not row:
+            return None
+        result = dict(row)
+        result["payload"] = json.loads(result["payload_json"])
+        decision = db.execute(
+            """SELECT * FROM clinical_decision_events
+               WHERE recommendation_event_id=?
+               ORDER BY occurred_at DESC, id DESC LIMIT 1""",
+            (recommendation_event_id,),
+        ).fetchone()
+        result["current_decision"] = dict(decision) if decision else None
+        return result
+
+    def append_presentation_once(
+        self, recommendation_event_id: int, *, patient_link_id: int
+    ) -> int:
+        """Append one PRESENTED event per run/evaluation recommendation."""
+        db = get_db()
+        now = _now_text()
+        payload = _json_text({"source_event_id": recommendation_event_id})
+        with db:
+            cur = db.execute(
+                """INSERT INTO clinical_recommendation_events
+                   (run_id, evaluation_id, recommendation_key, action_type,
+                    event_type, payload_json, created_at)
+                   SELECT source.run_id, source.evaluation_id,
+                          source.recommendation_key, source.action_type,
+                          'PRESENTED', ?, ?
+                   FROM clinical_recommendation_events source
+                   JOIN clinical_engine_runs run ON run.run_id=source.run_id
+                   WHERE source.id=? AND source.event_type='CREATED'
+                     AND run.patient_link_id=? AND run.run_status<>'RUNNING'
+                     AND NOT EXISTS (
+                         SELECT 1 FROM clinical_recommendation_events prior
+                         WHERE prior.run_id=source.run_id
+                           AND prior.evaluation_id=source.evaluation_id
+                           AND prior.recommendation_key=source.recommendation_key
+                           AND prior.event_type='PRESENTED'
+                     )""",
+                (payload, now, recommendation_event_id, patient_link_id),
+            )
+            if cur.rowcount == 1:
+                return int(cur.lastrowid)
+            existing = db.execute(
+                """SELECT presented.id
+                   FROM clinical_recommendation_events source
+                   JOIN clinical_engine_runs run ON run.run_id=source.run_id
+                   JOIN clinical_recommendation_events presented
+                     ON presented.run_id=source.run_id
+                    AND presented.evaluation_id=source.evaluation_id
+                    AND presented.recommendation_key=source.recommendation_key
+                    AND presented.event_type='PRESENTED'
+                   WHERE source.id=? AND source.event_type='CREATED'
+                     AND run.patient_link_id=?""",
+                (recommendation_event_id, patient_link_id),
+            ).fetchone()
+            if not existing:
+                raise ValueError("recommendation is not presentable for this patient")
+            return int(existing["id"])
+
+    def append_current_decision(
+        self,
+        *,
+        recommendation_event_id: int,
+        patient_link_id: int,
+        decision: ClinicalDecision,
+        actor_username: str,
+        actor_user_id: int | None,
+        expected_current_event_id: int | None,
+        reason_code: str | None = None,
+        reason_text: str | None = None,
+        legacy_source_suggestion_log_id: int | None = None,
+    ) -> dict:
+        """Atomically append a decision if the caller's projected state is current."""
+        db = get_db()
+        db.execute("BEGIN IMMEDIATE")
+        try:
+            context = db.execute(
+                """SELECT e.id
+                   FROM clinical_recommendation_events e
+                   JOIN clinical_engine_runs r ON r.run_id=e.run_id
+                   WHERE e.id=? AND e.event_type='CREATED'
+                     AND r.patient_link_id=? AND r.run_status<>'RUNNING'""",
+                (recommendation_event_id, patient_link_id),
+            ).fetchone()
+            if not context:
+                raise ValueError("recommendation event does not belong to this patient")
+            current = db.execute(
+                """SELECT id FROM clinical_decision_events
+                   WHERE recommendation_event_id=?
+                   ORDER BY occurred_at DESC, id DESC LIMIT 1""",
+                (recommendation_event_id,),
+            ).fetchone()
+            current_id = int(current["id"]) if current else None
+            if current_id != expected_current_event_id:
+                raise RuntimeError("STALE_DECISION_STATE")
+            cur = db.execute(
+                """INSERT INTO clinical_decision_events
+                   (recommendation_event_id, patient_link_id, decision,
+                    reason_code, reason_text, actor_user_id, actor_username,
+                    occurred_at, supersedes_event_id,
+                    legacy_source_suggestion_log_id)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    recommendation_event_id,
+                    patient_link_id,
+                    ClinicalDecision(decision).value,
+                    reason_code,
+                    reason_text,
+                    actor_user_id,
+                    actor_username,
+                    _now_text(),
+                    current_id,
+                    legacy_source_suggestion_log_id,
+                ),
+            )
+            row = db.execute(
+                "SELECT * FROM clinical_decision_events WHERE id=?",
+                (cur.lastrowid,),
+            ).fetchone()
+            db.commit()
+            return dict(row)
+        except Exception:
+            db.rollback()
+            raise
+
+    def unimported_legacy_decisions(self) -> list[dict]:
+        return [
+            dict(row)
+            for row in get_db().execute(
+                """SELECT s.* FROM suggestion_log s
+                   WHERE s.status IN ('accepted', 'dismissed')
+                     AND NOT EXISTS (
+                         SELECT 1 FROM clinical_decision_events d
+                         WHERE d.legacy_source_suggestion_log_id=s.id
+                     )
+                   ORDER BY s.id"""
+            ).fetchall()
+        ]
+
+    def recommendation_by_key(self, recommendation_key: str) -> dict | None:
+        row = get_db().execute(
+            """SELECT e.*, r.patient_link_id, r.run_status
+               FROM clinical_recommendation_events e
+               JOIN clinical_engine_runs r ON r.run_id=e.run_id
+               WHERE e.recommendation_key=? AND e.event_type='CREATED'
+               ORDER BY e.id DESC LIMIT 1""",
+            (recommendation_key,),
+        ).fetchone()
+        return dict(row) if row else None
+
     def get_run(self, run_id: str) -> dict | None:
         db = get_db()
         row = db.execute(
@@ -312,4 +475,28 @@ class ClinicalEngineAuditRepository:
                 )
             evaluations.append(evaluation)
         run["evaluations"] = evaluations
+        created_events = [
+            dict(item)
+            for item in db.execute(
+                """SELECT * FROM clinical_recommendation_events
+                   WHERE run_id=? AND event_type='CREATED' ORDER BY id""",
+                (run["run_id"],),
+            ).fetchall()
+        ]
+        event_by_evaluation = {}
+        for event in created_events:
+            event["payload"] = json.loads(event["payload_json"])
+            decision = db.execute(
+                """SELECT * FROM clinical_decision_events
+                   WHERE recommendation_event_id=?
+                   ORDER BY occurred_at DESC, id DESC LIMIT 1""",
+                (event["id"],),
+            ).fetchone()
+            event["current_decision"] = dict(decision) if decision else None
+            if event["evaluation_id"] is not None:
+                event_by_evaluation[int(event["evaluation_id"])] = event
+        for evaluation in evaluations:
+            evaluation["recommendation_event"] = event_by_evaluation.get(
+                int(evaluation["id"])
+            )
         return run

@@ -16,6 +16,12 @@
 .cev2-item h4{font-size:13.5px}
 .cev2-item p{margin:var(--s2) 0;color:var(--text);line-height:1.8;font-size:13px}
 .cev2-state{display:flex;align-items:center;gap:var(--s2);flex-wrap:wrap}
+.cev2-decision-meta{margin-top:var(--s2);color:var(--muted);font-size:11.5px;line-height:1.7}
+.cev2-decision{margin-top:var(--s3);padding:var(--s3);border:1px solid var(--line-soft);border-radius:var(--r-sm);background:var(--bg2)}
+.cev2-decision>summary{cursor:pointer;color:var(--primary);font-size:12px;font-weight:700;border-radius:var(--r-sm)}
+.cev2-decision>summary:focus-visible{outline:2px solid var(--primary);outline-offset:3px}
+.cev2-decision form{margin-top:var(--s3)}
+.cev2-decision form>.muted{margin-inline-start:var(--s2)}
 .cev2-reason{margin-top:var(--s3)}
 .cev2-reason summary,.cev2-notice summary{width:max-content;max-width:100%;cursor:pointer;color:var(--primary);font-size:12px;font-weight:600;border-radius:var(--r-sm)}
 .cev2-reason summary:focus-visible,.cev2-notice summary:focus-visible{outline:2px solid var(--primary);outline-offset:3px}

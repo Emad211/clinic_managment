@@ -3,6 +3,7 @@ import sys
 import threading
 import webbrowser
 
+import click
 from flask import Flask, redirect, url_for, session, g, render_template
 
 from src.config.settings import Config
@@ -124,6 +125,14 @@ def create_app(test_config=None):
         if g.user is None:
             return redirect(url_for("auth.login"))
         return redirect(url_for("dashboard.index"))
+
+    @app.cli.command("import-legacy-clinical-decisions")
+    def import_legacy_clinical_decisions():
+        """Idempotently preserve final legacy suggestion review states."""
+        from src.services.clinical_engine.decision_service import LegacyDecisionImporter
+
+        imported = LegacyDecisionImporter().import_once()
+        click.echo(f"Imported {imported} legacy clinical decision state(s).")
 
     @app.errorhandler(404)
     def not_found(_error):

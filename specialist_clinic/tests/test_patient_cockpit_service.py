@@ -44,6 +44,36 @@ def test_next_action_accepts_v2_projection_without_double_counting_priority():
     assert result["detail"].startswith("1 هشدار")
 
 
+def test_next_action_only_counts_unreviewed_or_deferred_v2_actions():
+    result = PatientCockpitService.next_action(
+        clinical_support={"sections": []},
+        clinical_v2={"groups": [{
+            "action_type": "suggest_med",
+            "items": [
+                {"rule_code": "A", "current_decision": {"decision": "ACCEPTED"}},
+                {"rule_code": "D", "current_decision": {"decision": "DISMISSED"}},
+                {"rule_code": "L", "current_decision": {"decision": "DEFERRED"}},
+            ],
+        }]},
+        followups=[], refill_due=0, appointments=[], indicators=[{"latest": 1}],
+    )
+    assert result["tone"] == "warn"
+    assert result["detail"].startswith("1 پیشنهاد")
+
+
+def test_next_action_does_not_call_completed_v2_review_unreviewed():
+    result = PatientCockpitService.next_action(
+        clinical_support={"sections": []},
+        clinical_v2={"groups": [{
+            "action_type": "safety_alert",
+            "items": [{"current_decision": {"decision": "ACCEPTED"}}],
+        }]},
+        followups=[], refill_due=0, appointments=[], indicators=[{"latest": 1}],
+    )
+    assert result["tone"] == "ok"
+    assert result["title"] == "مورد فوری ثبت نشده"
+
+
 def test_timeline_merges_completed_appointment_with_same_day_visit_and_sorts():
     events = PatientCockpitService.timeline(
         appointments=[

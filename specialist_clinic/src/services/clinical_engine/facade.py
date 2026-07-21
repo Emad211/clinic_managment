@@ -52,6 +52,23 @@ class ClinicalEngineReadOnlyFacade:
             outcome_counts[outcome] += 1
             recommendation = evaluation.get("recommendation")
             if outcome == "FIRED" and recommendation:
+                recommendation_event = evaluation.get("recommendation_event")
+                if not recommendation_event:
+                    notices.append({
+                        "rule_code": evaluation["rule_code"],
+                        "title": evaluation["rule_title"],
+                        "outcome": "ERROR",
+                        "reason_code": "RECOMMENDATION_AUDIT_MISSING",
+                        "message": "پیشنهاد به دلیل نبود رویداد audit قابل نمایش نیست.",
+                        "data_issues": [],
+                    })
+                    continue
+                # Fail closed: a recommendation is not returned to the template
+                # unless its actual presentation can be recorded durably.
+                self.audit.append_presentation_once(
+                    int(recommendation_event["id"]),
+                    patient_link_id=patient_link_id,
+                )
                 action_type = recommendation["action_type"]
                 grouped.setdefault(action_type, []).append(
                     self._recommendation_item(evaluation)
@@ -100,6 +117,7 @@ class ClinicalEngineReadOnlyFacade:
         ]
         return {
             "rule_code": evaluation["rule_code"],
+            "action_type": recommendation["action_type"],
             "title": recommendation.get("title_fa") or evaluation["rule_title"],
             "text": recommendation["text_fa"],
             "presentation": recommendation["presentation"],
@@ -113,6 +131,12 @@ class ClinicalEngineReadOnlyFacade:
                 evaluation.get("trace") or {}, "fact_ids"
             )),
             "data_issues": evaluation.get("data_issues") or [],
+            "recommendation_event_id": int(
+                evaluation["recommendation_event"]["id"]
+            ),
+            "current_decision": evaluation["recommendation_event"].get(
+                "current_decision"
+            ),
         }
 
     @staticmethod

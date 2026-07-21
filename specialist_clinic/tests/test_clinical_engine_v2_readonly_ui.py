@@ -51,11 +51,16 @@ class _Audit:
     def __init__(self, run):
         self.run = run
         self.reads = 0
+        self.presentations = []
 
     def latest_presentable_run(self, patient_link_id):
         assert patient_link_id == 7
         self.reads += 1
         return deepcopy(self.run)
+
+    def append_presentation_once(self, recommendation_event_id, *, patient_link_id):
+        self.presentations.append((recommendation_event_id, patient_link_id))
+        return recommendation_event_id + 1000
 
 
 def _evaluation(code, action_type, semantic_key, *, outcome="FIRED",
@@ -83,6 +88,10 @@ def _evaluation(code, action_type, semantic_key, *, outcome="FIRED",
             "requires_clinician_confirmation": True,
             "presentation": "NON_INTERRUPTIVE",
             "may_create_internal_task": False,
+        } if recommendation else None),
+        "recommendation_event": ({
+            "id": 700 + len(code),
+            "current_decision": None,
         } if recommendation else None),
     }
 
@@ -164,8 +173,9 @@ def test_partial_has_no_state_changing_controls_and_labels_inert_output():
     assert "پیشنهاد برای مرور پزشک" in partial
     assert "اعمال نشده" in partial
     assert "چرا این پیشنهاد نمایش داده شده؟" in partial
-    assert "<form" not in partial
-    assert "method=\"post\"" not in partial.lower()
+    assert "patients.clinical_v2_decision" in partial
+    assert "ثبت فقط به‌عنوان تصمیم" in partial
+    assert "rx_class" not in partial
     assert "suggestion_action" not in partial
     assert "<details" in partial and "<summary" in partial
 
@@ -179,14 +189,16 @@ def test_partial_renders_valid_readonly_html(readonly_app):
     ).patient_detail(7)
     with readonly_app.test_request_context("/"):
         html = render_template(
-            "patients/_clinical_engine_v2.html", clinical_v2=projection
+            "patients/_clinical_engine_v2.html",
+            clinical_v2=projection,
+            patient={"id": 7},
         )
 
     assert '<section class="cev2 card"' in html
     assert '<article class="cev2-group tone-info"' in html
     assert "پیشنهاد DM" in html
-    assert "<form" not in html
-    assert "type=\"submit\"" not in html
+    assert "ثبت فقط به‌عنوان تصمیم" in html
+    assert "تغییر نمی‌دهد" in html
 
 
 def test_real_audit_projection_decodes_latest_run_without_writing(readonly_app):
@@ -226,7 +238,7 @@ def test_real_audit_projection_decodes_latest_run_without_writing(readonly_app):
         engine_version="2.0.0",
         fact_snapshot={"facts": []},
     )
-    audit.append_evaluation(
+    evaluation_id = audit.append_evaluation(
         run_id=run_id,
         rule_version_id=rule_id,
         predicate_state=PredicateState.TRUE,
@@ -242,6 +254,14 @@ def test_real_audit_projection_decodes_latest_run_without_writing(readonly_app):
             "presentation": "NON_INTERRUPTIVE",
             "may_create_internal_task": False,
         },
+    )
+    audit.append_recommendation_event(
+        run_id=run_id,
+        evaluation_id=evaluation_id,
+        recommendation_key="rec:test",
+        action_type="educate",
+        event_type="CREATED",
+        payload={"suggestion_only": True, "text_fa": "آموزش بیمار"},
     )
     audit.complete_run(run_id, status=RunStatus.COMPLETED)
     before = {
