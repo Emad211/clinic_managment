@@ -35,7 +35,18 @@ jobs:
         run: python -m pip install -r requirements.txt pytest
 
       - name: Run specialist clinic tests
-        run: python -m pytest tests -q --tb=short
+        run: >-
+          python -m pytest tests -q --tb=short
+          --junitxml=pytest-specialist.xml
+
+      - name: Upload specialist pytest report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: specialist-pytest-results
+          path: specialist_clinic/pytest-specialist.xml
+          if-no-files-found: warn
+          retention-days: 7
 
   accounting:
     name: "accounting (pytest)"
@@ -60,4 +71,15 @@ jobs:
         run: python -m pip install -r requirements.txt
 
       - name: Run accounting tests
-        run: python -m pytest tests -q --tb=short
+        run: >-
+          python -m pytest tests -q --tb=short
+          --junitxml=pytest-accounting.xml
+
+      - name: Upload accounting pytest report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: accounting-pytest-results
+          path: webapp/pytest-accounting.xml
+          if-no-files-found: warn
+          retention-days: 7
