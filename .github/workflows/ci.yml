@@ -12,6 +12,13 @@ on:
   pull_request:
   workflow_dispatch:
 
+# A push and its PR event represent the same branch state. Keep only the newest
+# evidence for that branch, including stacked PRs, instead of consuming two runners
+# for obsolete commits.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
 jobs:
   specialist-clinic:
     name: "specialist clinic (pytest)"
