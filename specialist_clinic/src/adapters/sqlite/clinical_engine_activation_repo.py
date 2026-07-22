@@ -1,5 +1,4 @@
-"""Durable, settings-backed governance state for Clinical Engine v2 rollout."""
-
+"""Durable, build-bound governance state for Clinical Engine v2 rollout."""
 from __future__ import annotations
 
 import hashlib
@@ -8,6 +7,7 @@ from typing import Any
 
 from src.adapters.sqlite.core import get_db
 from src.domain.clinical_engine.release import (
+    CURRENT_ENGINE_VERSION,
     RULESET_CODE,
     is_current_package_version,
 )
@@ -27,18 +27,25 @@ def canonical_json(value: Any) -> str:
 
 
 def content_hash(value: Any) -> str:
-    return hashlib.sha256(canonical_json(value).encode("utf-8")).hexdigest()
+    return hashlib.sha256(
+        canonical_json(value).encode("utf-8")
+    ).hexdigest()
 
 
 def report_core(report: dict) -> dict:
     """Reconstruct the immutable portion covered by ``report_hash``."""
     return {
         "schema_version": report.get("schema_version"),
+        "engine_version": report.get("engine_version"),
         "as_of_at": report.get("as_of_at"),
         "cohort": report.get("cohort"),
         "ruleset": report.get("ruleset"),
         "patients": [
-            {key: value for key, value in row.items() if key != "v2_run_id"}
+            {
+                key: value
+                for key, value in row.items()
+                if key != "v2_run_id"
+            }
             for row in (report.get("patients") or [])
         ],
         "failures": report.get("failures"),
@@ -59,26 +66,25 @@ def valid_report(report: Any) -> bool:
     return bool(
         isinstance(report, dict)
         and report.get("status") == "PASS"
+        and report.get("engine_version") == CURRENT_ENGINE_VERSION
         and report.get("checks")
         and all(report["checks"].values())
         and _current_report_ruleset(report)
-        and report.get("report_hash") == content_hash(report_core(report))
+        and report.get("report_hash")
+        == content_hash(report_core(report))
     )
 
 
 class ClinicalEngineActivationRepository:
-    """Store activation evidence without adding mutable clinical tables.
-
-    Settings are deliberately namespaced. Reports and approvals remain in the
-    database after rollback, while the activation seal is revoked immediately.
-    """
+    """Store activation evidence without mutating historical clinical audit rows."""
 
     def _key(self, name: str) -> str:
         return _PREFIX + name
 
     def get_json(self, name: str, default=None):
         row = get_db().execute(
-            "SELECT value FROM settings WHERE key=?", (self._key(name),)
+            "SELECT value FROM settings WHERE key=?",
+            (self._key(name),),
         ).fetchone()
         if not row:
             return default
@@ -98,13 +104,19 @@ class ClinicalEngineActivationRepository:
 
     def delete(self, name: str) -> None:
         with get_db() as db:
-            db.execute("DELETE FROM settings WHERE key=?", (self._key(name),))
+            db.execute(
+                "DELETE FROM settings WHERE key=?",
+                (self._key(name),),
+            )
 
     def raw_mode(self) -> str:
         row = get_db().execute(
-            "SELECT value FROM settings WHERE key='clinical_engine_v2_mode'"
+            "SELECT value FROM settings "
+            "WHERE key='clinical_engine_v2_mode'"
         ).fetchone()
-        return str(row["value"] if row else "off").strip().lower()
+        return str(
+            row["value"] if row else "off"
+        ).strip().lower()
 
     def set_raw_mode(self, mode: str) -> None:
         with get_db() as db:
@@ -120,7 +132,8 @@ class ClinicalEngineActivationRepository:
         marks = ",".join("?" for _ in ids)
         rows = get_db().execute(
             f"SELECT id, national_id, full_name FROM patient_links "
-            f"WHERE upper(trim(national_id)) IN ({marks}) ORDER BY national_id",
+            f"WHERE upper(trim(national_id)) IN ({marks}) "
+            f"ORDER BY national_id",
             ids,
         ).fetchall()
         return [dict(row) for row in rows]
@@ -135,24 +148,42 @@ class ClinicalEngineActivationRepository:
 
     def valid_seal(self, mode: str) -> bool:
         seal = self.get_json("seal")
-        if not isinstance(seal, dict) or seal.get("mode") != mode:
+        if (
+            not isinstance(seal, dict)
+            or seal.get("mode") != mode
+            or seal.get("engine_version") != CURRENT_ENGINE_VERSION
+        ):
             return False
         supplied = seal.get("seal_hash")
-        body = {key: value for key, value in seal.items() if key != "seal_hash"}
+        body = {
+            key: value
+            for key, value in seal.items()
+            if key != "seal_hash"
+        }
         if not supplied or supplied != content_hash(body):
             return False
         report = self.get_json("last_report")
-        if not valid_report(report) or report["report_hash"] != seal.get("report_hash"):
+        if (
+            not valid_report(report)
+            or report["report_hash"] != seal.get("report_hash")
+        ):
             return False
         for role in ("clinical", "technical"):
             approval = self.get_json(f"approval_{role}")
             if (
                 not isinstance(approval, dict)
-                or approval.get("report_hash") != report["report_hash"]
+                or approval.get("report_hash")
+                != report["report_hash"]
             ):
                 return False
-        ruleset = self.ruleset_state(int(seal.get("ruleset_id") or 0))
-        allowed = {"SILENT", "ACTIVE"} if mode == "on_selected" else {"ACTIVE"}
+        ruleset = self.ruleset_state(
+            int(seal.get("ruleset_id") or 0)
+        )
+        allowed = (
+            {"SILENT", "ACTIVE"}
+            if mode == "on_selected"
+            else {"ACTIVE"}
+        )
         return bool(
             ruleset
             and ruleset["ruleset_code"] == RULESET_CODE
