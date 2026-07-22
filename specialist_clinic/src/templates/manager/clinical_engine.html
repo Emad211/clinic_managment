@@ -20,6 +20,21 @@
 {% set current_step = 1 if package.state == 'missing' else 2 if package.state == 'review' else 3 if not engine.report_ok else 4 if approval_count < 2 else 5 if not engine.seal_valid else 6 if not engine.verification else 7 if engine.effective_mode != 'on' else 8 %}
 {% set view_step = requested_step if requested_step and requested_step >= 1 and requested_step <= current_step and requested_step <= 7 else (7 if current_step > 7 else current_step) %}
 
+{% macro condition_box(title, mode, conditions) %}
+<div class="engine-trigger-box">
+    <span>{{ title }} · {{ mode }}</span>
+    <ul>
+        {% for condition in conditions %}
+        <li>
+            <b>{{ condition.fact }}</b> {{ condition.operator }}
+            <strong>{{ condition.value|fa_num }}{% if condition.unit %} {{ condition.unit }}{% endif %}</strong>
+            {% if condition.within_days %}؛ داده حداکثر مربوط به {{ condition.within_days|fa_num }} روز گذشته باشد{% endif %}
+        </li>
+        {% endfor %}
+    </ul>
+</div>
+{% endmacro %}
+
 <ol class="engine-steps engine-steps-simple" aria-label="مراحل راه‌اندازی">
     {% for number, title in [(1,'آماده‌سازی قواعد'),(2,'بازبینی پزشک'),(3,'آزمون ایمنی'),(4,'تأیید گزارش'),(5,'انتشار محدود'),(6,'پایش'),(7,'انتشار عمومی')] %}
     <li class="engine-step{% if current_step > number %} is-done{% elif current_step == number %} is-current{% endif %}{% if view_step == number %} is-viewing{% endif %}">
@@ -45,7 +60,14 @@
             <p>مجموعهٔ {{ package.rules|length|fa_num }} قاعده با نسخهٔ {{ package.ruleset.version }} وارد و از نظر ساختار فنی بررسی شده است.</p>
         {% elif view_step == 2 %}
             <h2 id="history-title">قواعدی که تأیید شدند</h2>
-            {% for rule in package.rules %}<article class="engine-rule-review engine-rule-readonly"><div class="engine-rule-head"><code>{{ rule.code }}</code><h3>{{ rule.title }}</h3></div><div class="engine-trigger-box"><span>{{ rule.trigger_mode }}</span><ul>{% for condition in rule.trigger_conditions %}<li><b>{{ condition.fact }}</b> {{ condition.operator }} <strong>{{ condition.value|fa_num }}{% if condition.unit %} {{ condition.unit }}{% endif %}</strong>{% if condition.within_days %}؛ حداکثر {{ condition.within_days|fa_num }} روزه{% endif %}</li>{% endfor %}</ul></div><div class="engine-recommendation"><span>پیشنهاد سیستم</span><p>{{ rule.recommendation }}</p></div></article>{% endfor %}
+            {% for rule in package.rules %}
+            <article class="engine-rule-review engine-rule-readonly">
+                <div class="engine-rule-head"><code>{{ rule.code }}</code><h3>{{ rule.title }}</h3></div>
+                {{ condition_box('شرایط ورود بیمار به دامنهٔ قاعده', rule.eligibility_mode, rule.eligibility_conditions) }}
+                {{ condition_box('شرایط فعال‌شدن پیشنهاد پس از احراز دامنه', rule.trigger_mode, rule.trigger_conditions) }}
+                <div class="engine-recommendation"><span>پیشنهاد سیستم</span><p>{{ rule.recommendation }}</p></div>
+            </article>
+            {% endfor %}
         {% elif view_step == 3 %}
             <h2 id="history-title">آزمون ایمنی ۱۰ پروندهٔ طولی</h2>
             <p>آزمون بر snapshot ثابت {{ engine.cohort.reference_at|jalali }} اجرا شده است.</p>
@@ -68,15 +90,21 @@
     <section class="card engine-task-card" aria-labelledby="task-title">
         <div class="engine-task-number">مرحلهٔ ۱ از ۷</div>
         <div class="engine-task-icon"><svg class="icon icon-lg"><use href="#i-clipboard"></use></svg></div>
+        {% if package.upgrade_from %}
+        <h2 id="task-title">بستهٔ اصلاح‌شدهٔ قواعد را آماده کنید</h2>
+        <p>بستهٔ {{ package.upgrade_from.version }} برای حفظ ممیزی نگه داشته شده، اما نسخهٔ فعلی مورد انتظار {{ package.expected_version }} است. بستهٔ قبلی درجا تغییر نمی‌کند.</p>
+        <div class="alert-banner alert-warn"><svg class="icon"><use href="#i-info"></use></svg><span>پس از آماده‌سازی نسخهٔ اصلاح‌شده، بازبینی پزشک و آزمون ایمنی باید دوباره انجام شود.</span></div>
+        {% else %}
         <h2 id="task-title">بستهٔ اولیهٔ قواعد را آماده کنید</h2>
         <p>برنامه دو قاعدهٔ ایمنی آزمایشی را از فایل‌های همراه خودش وارد و از نظر ساختار فنی بررسی می‌کند. در این مرحله هیچ پیشنهادی به بیمار نمایش داده نمی‌شود.</p>
+        {% endif %}
         <ul class="engine-plain-list">
             <li><svg class="icon icon-sm"><use href="#i-check"></use></svg> هشدار فشار خون بسیار بالا</li>
             <li><svg class="icon icon-sm"><use href="#i-check"></use></svg> هشدار ایمنی متفورمین در eGFR پایین</li>
         </ul>
-        <div class="alert-banner alert-warn"><svg class="icon"><use href="#i-info"></use></svg><span><b>این بسته کامل نیست.</b> فقط برای راه‌اندازی و آزمون مسیر ایمنی است؛ قواعد کامل بیماری‌های عمومی در بسته‌های بعدی اضافه می‌شوند.</span></div>
+        <div class="alert-banner alert-warn"><svg class="icon"><use href="#i-info"></use></svg><span><b>این بسته کامل نیست.</b> فقط برای راه‌اندازی و آزمون مسیر ایمنی است؛ توسعهٔ قواعد بیماری‌ها تا پایان سخت‌سازی runtime به تعویق افتاده است.</span></div>
         <form method="post" action="{{ url_for('manager.clinical_engine_action', action='prepare-rules') }}" data-loading-form>
-            <button class="btn btn-lg engine-primary-action" type="submit"><svg class="icon"><use href="#i-zap"></use></svg> آماده‌سازی بستهٔ اولیه</button>
+            <button class="btn btn-lg engine-primary-action" type="submit"><svg class="icon"><use href="#i-zap"></use></svg> آماده‌سازی بستهٔ {{ package.expected_version or 'اولیه' }}</button>
         </form>
         <small class="engine-safe-note"><svg class="icon icon-sm"><use href="#i-shield"></use></svg> این کار فقط فایل‌ها را آماده می‌کند؛ موتور روشن نمی‌شود.</small>
     </section>
@@ -84,7 +112,7 @@
 {% elif package.state == 'review' %}
     <section class="card engine-review-card" aria-labelledby="task-title">
         <div class="engine-task-number">مرحلهٔ ۲ از ۷</div>
-        <div class="engine-section-head"><div><span class="engine-section-icon"><svg class="icon"><use href="#i-stethoscope"></use></svg></span><div><h2 id="task-title">متن هر قاعده را بررسی و تأیید کنید</h2><p>هر کارت را باز کنید، شرط و پیشنهاد را بخوانید و فقط در صورت تأیید علامت بزنید.</p></div></div></div>
+        <div class="engine-section-head"><div><span class="engine-section-icon"><svg class="icon"><use href="#i-stethoscope"></use></svg></span><div><h2 id="task-title">متن هر قاعده را بررسی و تأیید کنید</h2><p>واجدشرایط‌بودن بیمار، شرط فعال‌شدن و متن پیشنهاد سه بخش جدا هستند؛ هر سه را بخوانید.</p></div></div></div>
         <form method="post" action="{{ url_for('manager.clinical_engine_action', action='approve-rules') }}" class="engine-review-form">
             <input type="hidden" name="ruleset_id" value="{{ package.ruleset.id }}">
             <div class="engine-rule-list">
@@ -92,23 +120,21 @@
                 <article class="engine-rule-review">
                     <div class="engine-rule-head"><div><span class="badge badge-danger">ایمنی حیاتی</span><code>{{ rule.code }}</code></div><h3>{{ rule.title }}</h3></div>
                     <div class="engine-rule-grid">
-                        <div><span>برای چه بیمارانی؟</span><p>{{ rule.population }}</p></div>
+                        <div><span>جمعیت توصیفی</span><p>{{ rule.population }}</p></div>
                         <div><span>چه داده‌ای لازم است؟</span><ul>{% for item in rule.required_inputs %}<li>{{ item }}</li>{% endfor %}</ul></div>
                     </div>
-                    <div class="engine-trigger-box">
-                        <span>قاعده دقیقاً چه زمانی فعال می‌شود؟ · {{ rule.trigger_mode }}</span>
-                        <ul>{% for condition in rule.trigger_conditions %}<li><b>{{ condition.fact }}</b> {{ condition.operator }} <strong>{{ condition.value|fa_num }}{% if condition.unit %} {{ condition.unit }}{% endif %}</strong>{% if condition.within_days %}؛ داده حداکثر مربوط به {{ condition.within_days|fa_num }} روز گذشته باشد{% endif %}</li>{% endfor %}</ul>
-                    </div>
-                    <div class="engine-recommendation"><span>پیشنهاد سیستم</span><p>{{ rule.recommendation }}</p></div>
+                    {{ condition_box('۱. بیمار چه زمانی وارد دامنهٔ قاعده می‌شود؟', rule.eligibility_mode, rule.eligibility_conditions) }}
+                    {{ condition_box('۲. پس از احراز دامنه، قاعده چه زمانی فعال می‌شود؟', rule.trigger_mode, rule.trigger_conditions) }}
+                    <div class="engine-recommendation"><span>۳. پیشنهاد سیستم</span><p>{{ rule.recommendation }}</p></div>
                     <div class="engine-automation-limit"><svg class="icon icon-sm"><use href="#i-shield"></use></svg><span>{{ rule.automation_limit }}</span></div>
                     <details class="engine-evidence"><summary>مشاهدهٔ محدوده‌های خارج از قاعده، منبع و وضعیت شواهد</summary>{% if rule.out_of_scope %}<p><b>خارج از محدوده:</b> {{ rule.out_of_scope|join('، ') }}</p>{% endif %}<p><b>{{ rule.source_title }}</b></p><p>{{ rule.source_locator }}</p>{% if rule.source_url %}<p><a href="{{ rule.source_url }}" target="_blank" rel="noopener noreferrer">بازکردن منبع اصلی</a></p>{% endif %}<span class="badge badge-warn">بازبینی محلی: انجام نشده</span></details>
-                    <label class="engine-rule-attest"><input type="checkbox" name="attested_rule" value="{{ rule.code }}" required><span>این قاعده، محدودهٔ کاربرد و متن پیشنهاد را مطالعه کردم و برای آزمون محدود تأیید می‌کنم.</span></label>
+                    <label class="engine-rule-attest"><input type="checkbox" name="attested_rule" value="{{ rule.code }}" required><span>شرایط ورود بیمار، شرط فعال‌شدن، محدودهٔ کاربرد و متن پیشنهاد را مطالعه کردم و برای آزمون محدود تأیید می‌کنم.</span></label>
                 </article>
             {% endfor %}
             </div>
             <div class="engine-review-signoff">
                 <label><span>نام مسئول بالینی</span><input name="reviewer" required value="{{ g.user.full_name or g.user.username }}"></label>
-                <label><span>یادداشت بازبینی</span><textarea name="note" rows="3" required placeholder="مثلاً: آستانه‌ها و متن هشدار با فرایند درمانگاه تطبیق داده شد."></textarea></label>
+                <label><span>یادداشت بازبینی</span><textarea name="note" rows="3" required placeholder="مثلاً: eligibility، آستانه‌ها و متن هشدار با فرایند درمانگاه تطبیق داده شد."></textarea></label>
                 <button class="btn btn-lg engine-primary-action" type="submit"><svg class="icon"><use href="#i-check"></use></svg> تأیید قواعد و رفتن به آزمون ایمنی</button>
             </div>
         </form>
