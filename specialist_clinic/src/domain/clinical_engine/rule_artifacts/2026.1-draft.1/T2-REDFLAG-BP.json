@@ -1,0 +1,71 @@
+{
+  "schema_version": "2.0",
+  "dsl_version": "2.0",
+  "rule_code": "T2-REDFLAG-BP",
+  "version": "2.0.0-draft.1",
+  "title": "هشدار فوری فشار خون بسیار بالا در بیمار دیابتی",
+  "phase": "PREFLIGHT",
+  "action_type": "redflag",
+  "severity": "CRITICAL",
+  "priority": 1,
+  "semantic_key": "diabetes:redflag:severe-blood-pressure",
+  "scope": {
+    "population": "بزرگسال مبتلا به دیابت در درمانگاه سرپایی",
+    "age_min": 18,
+    "age_max": null,
+    "sex": ["any"],
+    "care_settings": ["outpatient", "primary_care", "specialty_clinic"],
+    "encounter_types": ["office_visit", "followup"],
+    "condition_codes": ["diabetes"],
+    "out_of_scope": ["inpatient care"]
+  },
+  "required_facts": [
+    {
+      "key": "condition.diabetes",
+      "criticality": "CRITICAL",
+      "max_age_days": null,
+      "minimum_verification": "CONFIRMED",
+      "on_unusable": "NEEDS_DATA",
+      "prompt_fa": "تشخیص دیابت باید تأیید شود."
+    },
+    {"key": "observation.bp_systolic", "criticality": "OPTIONAL", "max_age_days": 1, "minimum_verification": "PROVISIONAL", "on_unusable": "CONTINUE_WITH_WARNING", "prompt_fa": "فشار سیستولیک تازه را ثبت کنید."},
+    {"key": "observation.bp_diastolic", "criticality": "OPTIONAL", "max_age_days": 1, "minimum_verification": "PROVISIONAL", "on_unusable": "CONTINUE_WITH_WARNING", "prompt_fa": "فشار دیاستولیک تازه را ثبت کنید."}
+  ],
+  "eligibility": {"node_id": "rf-bp-diabetes", "fact": "condition.diabetes", "selector": {"aggregation": "single"}, "op": "==", "value": true, "unit": null},
+  "condition": {
+    "node_id": "rf-bp-condition",
+    "any": [
+      {"node_id": "rf-bp-sbp", "fact": "observation.bp_systolic", "selector": {"aggregation": "latest", "within_days": 1}, "op": ">=", "value": 180, "unit": "mm[Hg]"},
+      {"node_id": "rf-bp-dbp", "fact": "observation.bp_diastolic", "selector": {"aggregation": "latest", "within_days": 1}, "op": ">=", "value": 110, "unit": "mm[Hg]"}
+    ]
+  },
+  "safety": {"redflag_exclusions": [], "hard_exclusions": [], "on_safety_error": "BLOCK_ROUTINE_OUTPUTS"},
+  "recommendation": {
+    "text_fa": "فشار خون بسیار بالا نیازمند ارزیابی فوری بالینی است؛ اقدام خارجی یا ارجاع باید طبق فرایند درمانگاه و با تصمیم پزشک انجام شود.",
+    "suggestion_only": true,
+    "requires_clinician_confirmation": false,
+    "may_create_internal_task": false,
+    "params": {"do_not_auto_refer": true, "do_not_auto_message": true}
+  },
+  "evidence": {
+    "source_title": "ADA Standards of Care in Diabetes — 2026",
+    "issuing_organization": "American Diabetes Association",
+    "publication_date": "2026-01-01",
+    "source_version": "2026",
+    "source_locator": "Technical golden case GC-01; threshold requires local clinical revalidation",
+    "source_url": "https://diabetesjournals.org/care/issue/49/Supplement_1",
+    "evidence_certainty": "NOT_GRADED",
+    "recommendation_strength": "NOT_GRADED",
+    "local_validation_status": "NOT_REVIEWED",
+    "local_adaptation_note": "پیش‌نویس فنی تاریخی برای regression؛ runtime package جاری نیست و برای استفادهٔ بالینی تصویب نشده است."
+  },
+  "governance": {
+    "status": "DRAFT",
+    "author": "clinical-engine-v2",
+    "clinical_reviewer": null,
+    "technical_reviewer": "pending",
+    "review_due_date": "2026-08-31",
+    "supersedes": null,
+    "change_note": "Historical immutable regression draft; legacy lineage metadata removed."
+  }
+}
