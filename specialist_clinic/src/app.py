@@ -62,6 +62,13 @@ def create_app(test_config=None):
         except Exception as e:
             print(f"[logging] not configured: {e}")
 
+    # Install the monotonic clinical-data revision guards before every request
+    # that may read or mutate a source consumed by the clinical engine.
+    @app.before_request
+    def ensure_clinical_runtime_guards():
+        from src.adapters.sqlite.clinical_engine_runtime_schema import ensure_runtime_schema
+        ensure_runtime_schema(get_db())
+
     # ---- Load logged-in user ----
     @app.before_request
     def load_logged_in_user():
