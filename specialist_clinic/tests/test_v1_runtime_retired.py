@@ -67,6 +67,32 @@ def test_legacy_dosage_guidance_is_inert_without_database_access():
     assert ClinicalRulesRepository().dosage_guidance(["ckd", "hypertension"]) == []
 
 
+def test_fresh_database_does_not_seed_legacy_rules_or_suggestions(tmp_path):
+    from src.adapters.sqlite import core
+    from src.app import create_app
+
+    core._initialized = False
+    app = create_app(
+        {
+            "TESTING": True,
+            "DATABASE_PATH": str(tmp_path / "v1-retired.db"),
+            "BACKUP_FOLDER": str(tmp_path / "backups"),
+            "SECRET_KEY": "v1-retirement-test",
+        }
+    )
+    try:
+        with app.app_context():
+            db = core.get_db()
+            assert db.execute(
+                "SELECT COUNT(*) AS count FROM clinical_rules"
+            ).fetchone()["count"] == 0
+            assert db.execute(
+                "SELECT COUNT(*) AS count FROM suggestion_log"
+            ).fetchone()["count"] == 0
+    finally:
+        core._initialized = False
+
+
 def test_patient_template_has_no_v1_decision_surface():
     template = (
         ROOT / "templates" / "patients" / "detail.html"
