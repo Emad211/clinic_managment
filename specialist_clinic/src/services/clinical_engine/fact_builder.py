@@ -185,8 +185,7 @@ class ShadowFactCapture:
             self.audit.complete_run(
                 run_id, status=RunStatus.COMPLETED,
                 summary={"mode": mode, "evaluated_rules": 0,
-                         "recommendations": 0,
-                         "clinical_data_revision": snapshot.clinical_data_revision},
+                         "recommendations": 0},
             )
             return run_id
 
