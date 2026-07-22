@@ -1,0 +1,203 @@
+{
+  "schema_version": "2.0",
+  "dsl_version": "2.0",
+  "rule_code": "T2-BP-RX-01",
+  "version": "2.0.0-draft.1",
+  "title": "پیشنهاد بررسی درمان فشار خون در بیمار دیابتی",
+  "legacy_rule_id": null,
+  "phase": "ROUTINE",
+  "action_type": "suggest_med",
+  "severity": "WARN",
+  "priority": 60,
+  "semantic_key": "diabetes:hypertension:consider-antihypertensive",
+  "scope": {
+    "population": "بزرگسال مبتلا به دیابت نوع ۲ در درمانگاه سرپایی",
+    "age_min": 18,
+    "age_max": null,
+    "sex": [
+      "any"
+    ],
+    "care_settings": [
+      "outpatient",
+      "primary_care",
+      "specialty_clinic"
+    ],
+    "encounter_types": [
+      "office_visit",
+      "followup"
+    ],
+    "condition_codes": [
+      "diabetes"
+    ],
+    "out_of_scope": [
+      "pregnancy management",
+      "emergency hypertension management",
+      "inpatient care"
+    ]
+  },
+  "required_facts": [
+    {
+      "key": "demographic.age",
+      "criticality": "REQUIRED",
+      "max_age_days": null,
+      "minimum_verification": "PROVISIONAL",
+      "on_unusable": "NEEDS_DATA",
+      "prompt_fa": "تاریخ تولد معتبر لازم است."
+    },
+    {
+      "key": "condition.diabetes",
+      "criticality": "CRITICAL",
+      "max_age_days": null,
+      "minimum_verification": "CONFIRMED",
+      "on_unusable": "NEEDS_DATA",
+      "prompt_fa": "تشخیص دیابت باید تأیید شود."
+    },
+    {
+      "key": "observation.bp_systolic",
+      "criticality": "CRITICAL",
+      "max_age_days": 30,
+      "minimum_verification": "PROVISIONAL",
+      "on_unusable": "NEEDS_DATA",
+      "prompt_fa": "فشار خون تازه لازم است."
+    },
+    {
+      "key": "flag.pregnancy",
+      "criticality": "CRITICAL",
+      "max_age_days": 30,
+      "minimum_verification": "CONFIRMED",
+      "on_unusable": "NEEDS_DATA",
+      "prompt_fa": "وضعیت بارداری باید مشخص شود."
+    },
+    {
+      "key": "allergy.medication_classes",
+      "criticality": "CRITICAL",
+      "max_age_days": null,
+      "minimum_verification": "CONFIRMED",
+      "on_unusable": "NEEDS_DATA",
+      "prompt_fa": "آلرژی دارویی باید مرور شود."
+    }
+  ],
+  "eligibility": {
+    "node_id": "elig-root",
+    "all": [
+      {
+        "node_id": "elig-age",
+        "fact": "demographic.age",
+        "selector": {
+          "aggregation": "single"
+        },
+        "op": ">=",
+        "value": 18,
+        "unit": "a"
+      },
+      {
+        "node_id": "elig-dm",
+        "fact": "condition.diabetes",
+        "selector": {
+          "aggregation": "single"
+        },
+        "op": "==",
+        "value": true,
+        "unit": null
+      }
+    ]
+  },
+  "condition": {
+    "node_id": "cond-sbp",
+    "fact": "observation.bp_systolic",
+    "selector": {
+      "aggregation": "latest",
+      "within_days": 30,
+      "allow_stale": false,
+      "allow_unverified": false,
+      "allow_conflicting": false
+    },
+    "op": ">=",
+    "value": 130,
+    "unit": "mm[Hg]"
+  },
+  "safety": {
+    "redflag_exclusions": [
+      {
+        "node_id": "rf-bp",
+        "any": [
+          {
+            "node_id": "rf-sbp",
+            "fact": "observation.bp_systolic",
+            "selector": {
+              "aggregation": "latest"
+            },
+            "op": ">=",
+            "value": 180,
+            "unit": "mm[Hg]"
+          },
+          {
+            "node_id": "rf-dbp",
+            "fact": "observation.bp_diastolic",
+            "selector": {
+              "aggregation": "latest"
+            },
+            "op": ">=",
+            "value": 110,
+            "unit": "mm[Hg]"
+          }
+        ]
+      }
+    ],
+    "hard_exclusions": [
+      {
+        "exclusion_id": "pregnancy-ras",
+        "condition": {
+          "node_id": "preg-present",
+          "fact": "flag.pregnancy",
+          "selector": {
+            "aggregation": "single"
+          },
+          "op": "==",
+          "value": true,
+          "unit": null
+        },
+        "effect": "SUPPRESS",
+        "message_fa": "پیشنهاد ACEi/ARB به دلیل بارداری متوقف شد."
+      }
+    ],
+    "on_safety_error": "BLOCK_ROUTINE_OUTPUTS"
+  },
+  "recommendation": {
+    "text_fa": "شروع یا تشدید درمان ضدفشار را پس از مرور کامل شرایط بیمار در نظر بگیرید؛ تجویز نهایی با پزشک است.",
+    "suggestion_only": true,
+    "requires_clinician_confirmation": true,
+    "may_create_internal_task": false,
+    "params": {
+      "candidate_classes": [
+        "thiazide",
+        "acei",
+        "arb",
+        "ccb"
+      ],
+      "do_not_autofill_prescription": true
+    },
+    "explanation_template_fa": "پیشنهاد به دلیل فشار {{bp}} فعال شد؛ وضعیت ایمنی: {{safety}}."
+  },
+  "evidence": {
+    "source_title": "ADA Standards of Care in Diabetes — 2026",
+    "issuing_organization": "American Diabetes Association",
+    "publication_date": "2026-01-01",
+    "source_version": "2026",
+    "source_locator": "Legacy repository locator: ADA 10.6/10.7/10.8; exact text requires independent revalidation",
+    "source_url": "https://diabetesjournals.org/care/issue/49/Supplement_1",
+    "evidence_certainty": "LEGACY_ADA_A",
+    "recommendation_strength": "NOT_GRADED",
+    "local_validation_status": "NOT_REVIEWED",
+    "local_adaptation_note": "نمونهٔ فنی؛ برای استفاده بالینی تصویب نشده است."
+  },
+  "governance": {
+    "status": "DRAFT",
+    "author": "clinical-engine-v2-research",
+    "clinical_reviewer": null,
+    "technical_reviewer": "pending",
+    "review_due_date": "2026-08-31",
+    "supersedes": null,
+    "change_note": "نمونهٔ مهاجرت از رکورد legacy."
+  }
+}

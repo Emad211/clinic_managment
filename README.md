@@ -19,6 +19,11 @@ and revenue **live and read-only** through `specialist_clinic/src/adapters/accou
   nearest per-app `CLAUDE.md` ([`specialist_clinic/CLAUDE.md`](specialist_clinic/CLAUDE.md)).
 - **Specialist-clinic plans & references:** [`specialist_clinic/docs/`](specialist_clinic/docs/)
   (record redesign, engagement engine, clinical reference, Kavenegar reference, …).
+- **Clinical Engine v2 research and expert-review package:**
+  [`clinical_engine_v2_research/README.md`](clinical_engine_v2_research/README.md).
+  It contains the repository-specific design review, formal semantics, safety policy,
+  JSON schemas, golden cases, evidence audit, ADRs, physician checklist, and release
+  definition of done. Start there before reviewing the v2 implementation.
 
 ## Running (quick pointers)
 

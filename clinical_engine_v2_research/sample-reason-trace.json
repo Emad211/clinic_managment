@@ -1,0 +1,343 @@
+{
+  "schema_version": "2.0",
+  "run_id": "run-demo-20260721-001",
+  "patient_link_id": 1,
+  "encounter_key": "demo-encounter-1",
+  "as_of_at": "2026-07-21T09:01:00+03:30",
+  "engine_version": "2.0.0-shadow.1",
+  "ruleset": {
+    "ruleset_code": "specialist-default",
+    "version": "2.0.0-shadow.1",
+    "content_hash": "sha256:demo-ruleset-hash"
+  },
+  "fact_snapshot": {
+    "snapshot_hash": "sha256:demo-fact-snapshot-hash",
+    "facts": [
+      {
+        "schema_version": "2.0",
+        "fact_id": "fact-age-1",
+        "patient_link_id": 1,
+        "encounter_key": "demo-encounter-1",
+        "kind": "demographic",
+        "key": "demographic.age",
+        "status": "PRESENT",
+        "value": 58,
+        "unit": "a",
+        "reference_range": null,
+        "effective_at": "2026-07-21T08:45:00+03:30",
+        "recorded_at": "2026-07-21T08:50:00+03:30",
+        "source": {
+          "type": "derived",
+          "table": "patient_links",
+          "record_id": 1,
+          "recorded_by": "doctor-a"
+        },
+        "verification": "CONFIRMED",
+        "freshness": {
+          "state": "FRESH",
+          "max_age_days": 30,
+          "assessed_at": "2026-07-21T09:01:00+03:30"
+        },
+        "conflict": {
+          "state": "NONE",
+          "group_key": null,
+          "related_fact_ids": [],
+          "resolution_note": null
+        },
+        "derived_from": [],
+        "warnings": []
+      },
+      {
+        "schema_version": "2.0",
+        "fact_id": "fact-dm-1",
+        "patient_link_id": 1,
+        "encounter_key": "demo-encounter-1",
+        "kind": "condition",
+        "key": "condition.diabetes",
+        "status": "PRESENT",
+        "value": true,
+        "unit": null,
+        "reference_range": null,
+        "effective_at": "2026-07-21T08:45:00+03:30",
+        "recorded_at": "2026-07-21T08:50:00+03:30",
+        "source": {
+          "type": "clinician",
+          "table": "patient_conditions",
+          "record_id": 11,
+          "recorded_by": "doctor-a"
+        },
+        "verification": "CONFIRMED",
+        "freshness": {
+          "state": "FRESH",
+          "max_age_days": 30,
+          "assessed_at": "2026-07-21T09:01:00+03:30"
+        },
+        "conflict": {
+          "state": "NONE",
+          "group_key": null,
+          "related_fact_ids": [],
+          "resolution_note": null
+        },
+        "derived_from": [],
+        "warnings": []
+      },
+      {
+        "schema_version": "2.0",
+        "fact_id": "fact-sbp-1",
+        "patient_link_id": 1,
+        "encounter_key": "demo-encounter-1",
+        "kind": "observation",
+        "key": "observation.bp_systolic",
+        "status": "PRESENT",
+        "value": 146,
+        "unit": "mm[Hg]",
+        "reference_range": null,
+        "effective_at": "2026-07-21T08:45:00+03:30",
+        "recorded_at": "2026-07-21T08:50:00+03:30",
+        "source": {
+          "type": "clinician",
+          "table": "vital_readings",
+          "record_id": 121,
+          "recorded_by": "doctor-a"
+        },
+        "verification": "PROVISIONAL",
+        "freshness": {
+          "state": "FRESH",
+          "max_age_days": 30,
+          "assessed_at": "2026-07-21T09:01:00+03:30"
+        },
+        "conflict": {
+          "state": "NONE",
+          "group_key": null,
+          "related_fact_ids": [],
+          "resolution_note": null
+        },
+        "derived_from": [],
+        "warnings": [
+          "UNIT_CONVERTED"
+        ]
+      },
+      {
+        "schema_version": "2.0",
+        "fact_id": "fact-dbp-1",
+        "patient_link_id": 1,
+        "encounter_key": "demo-encounter-1",
+        "kind": "observation",
+        "key": "observation.bp_diastolic",
+        "status": "PRESENT",
+        "value": 86,
+        "unit": "mm[Hg]",
+        "reference_range": null,
+        "effective_at": "2026-07-21T08:45:00+03:30",
+        "recorded_at": "2026-07-21T08:50:00+03:30",
+        "source": {
+          "type": "clinician",
+          "table": "vital_readings",
+          "record_id": 122,
+          "recorded_by": "doctor-a"
+        },
+        "verification": "PROVISIONAL",
+        "freshness": {
+          "state": "FRESH",
+          "max_age_days": 30,
+          "assessed_at": "2026-07-21T09:01:00+03:30"
+        },
+        "conflict": {
+          "state": "NONE",
+          "group_key": null,
+          "related_fact_ids": [],
+          "resolution_note": null
+        },
+        "derived_from": [],
+        "warnings": [
+          "UNIT_CONVERTED"
+        ]
+      },
+      {
+        "schema_version": "2.0",
+        "fact_id": "fact-preg-1",
+        "patient_link_id": 1,
+        "encounter_key": "demo-encounter-1",
+        "kind": "flag",
+        "key": "flag.pregnancy",
+        "status": "ABSENT",
+        "value": null,
+        "unit": null,
+        "reference_range": null,
+        "effective_at": "2026-07-21T08:45:00+03:30",
+        "recorded_at": "2026-07-21T08:50:00+03:30",
+        "source": {
+          "type": "clinician",
+          "table": "patient_flags_v2",
+          "record_id": "preg-review-1",
+          "recorded_by": "doctor-a"
+        },
+        "verification": "CONFIRMED",
+        "freshness": {
+          "state": "FRESH",
+          "max_age_days": 30,
+          "assessed_at": "2026-07-21T09:01:00+03:30"
+        },
+        "conflict": {
+          "state": "NONE",
+          "group_key": null,
+          "related_fact_ids": [],
+          "resolution_note": null
+        },
+        "derived_from": [],
+        "warnings": []
+      },
+      {
+        "schema_version": "2.0",
+        "fact_id": "fact-allergy-1",
+        "patient_link_id": 1,
+        "encounter_key": "demo-encounter-1",
+        "kind": "allergy",
+        "key": "allergy.medication_classes",
+        "status": "ABSENT",
+        "value": null,
+        "unit": null,
+        "reference_range": null,
+        "effective_at": "2026-07-21T08:45:00+03:30",
+        "recorded_at": "2026-07-21T08:50:00+03:30",
+        "source": {
+          "type": "clinician",
+          "table": "allergy_review_v2",
+          "record_id": "allergy-review-1",
+          "recorded_by": "doctor-a"
+        },
+        "verification": "CONFIRMED",
+        "freshness": {
+          "state": "FRESH",
+          "max_age_days": 30,
+          "assessed_at": "2026-07-21T09:01:00+03:30"
+        },
+        "conflict": {
+          "state": "NONE",
+          "group_key": null,
+          "related_fact_ids": [],
+          "resolution_note": null
+        },
+        "derived_from": [],
+        "warnings": []
+      }
+    ],
+    "warnings": [
+      "Legacy unit mmHg normalized to UCUM mm[Hg]."
+    ]
+  },
+  "run_status": "COMPLETED",
+  "rule_results": [
+    {
+      "rule_code": "T2-BP-RX-01",
+      "rule_version": "2.0.0-draft.1",
+      "phase": "ROUTINE",
+      "predicate_state": "TRUE",
+      "outcome": "FIRED",
+      "trace": {
+        "node_id": "rule-root",
+        "kind": "ALL",
+        "state": "TRUE",
+        "message_fa": "دامنه، داده‌های ضروری، شرط فشار و گاردریل‌های ایمنی برقرارند.",
+        "fact_ids": [
+          "fact-age-1",
+          "fact-dm-1",
+          "fact-sbp-1",
+          "fact-dbp-1",
+          "fact-preg-1",
+          "fact-allergy-1"
+        ],
+        "actual": null,
+        "expected": null,
+        "reason_code": null,
+        "children": [
+          {
+            "node_id": "elig-root",
+            "kind": "ELIGIBILITY",
+            "state": "TRUE",
+            "message_fa": "سن و تشخیص دیابت با دامنه منطبق است.",
+            "fact_ids": [
+              "fact-age-1",
+              "fact-dm-1"
+            ],
+            "actual": {
+              "age": 58,
+              "diabetes": true
+            },
+            "expected": {
+              "age_min": 18,
+              "diabetes": true
+            },
+            "reason_code": null,
+            "children": []
+          },
+          {
+            "node_id": "cond-sbp",
+            "kind": "PREDICATE",
+            "state": "TRUE",
+            "message_fa": "آخرین فشار سیستولیک تازه ۱۴۶ و حداقل ۱۳۰ است.",
+            "fact_ids": [
+              "fact-sbp-1"
+            ],
+            "actual": 146,
+            "expected": ">=130 mm[Hg]",
+            "reason_code": null,
+            "children": []
+          },
+          {
+            "node_id": "safety-root",
+            "kind": "SAFETY",
+            "state": "TRUE",
+            "message_fa": "بحران فشار فعال نیست و بارداری/آلرژی مرور شده است.",
+            "fact_ids": [
+              "fact-sbp-1",
+              "fact-dbp-1",
+              "fact-preg-1",
+              "fact-allergy-1"
+            ],
+            "actual": {
+              "bp_crisis": false,
+              "pregnancy": false,
+              "allergy_present": false
+            },
+            "expected": {
+              "bp_crisis": false
+            },
+            "reason_code": null,
+            "children": []
+          }
+        ]
+      },
+      "data_issues": [],
+      "suppression": null,
+      "recommendations": [
+        {
+          "recommendation_key": "rec:T2-BP-RX-01:1",
+          "action_type": "suggest_med",
+          "text_fa": "شروع یا تشدید درمان ضدفشار را پس از مرور کامل شرایط بیمار در نظر بگیرید؛ تجویز نهایی با پزشک است.",
+          "suggestion_only": true,
+          "requires_clinician_confirmation": true,
+          "presentation": "NON_INTERRUPTIVE",
+          "may_create_internal_task": false
+        }
+      ],
+      "error": null
+    }
+  ],
+  "summary": {
+    "redflag_active": false,
+    "routine_outputs_blocked": false,
+    "counts": {
+      "FIRED": 1,
+      "NOT_FIRED": 0,
+      "NEEDS_DATA": 0,
+      "NOT_APPLICABLE": 0,
+      "SUPPRESSED": 0,
+      "ERROR": 0
+    },
+    "data_sufficiency": "COMPLETE",
+    "data_quality": "VERIFIED",
+    "applicability": "EXACT",
+    "confidence_warning_fa": "این برچسب‌ها کیفیت و کفایت داده را توصیف می‌کنند و احتمال صحت بالینی نیستند."
+  }
+}
