@@ -50,16 +50,12 @@ def _months_since(date_str):
         d = datetime.strptime(str(date_str)[:10], '%Y-%m-%d')
     except (ValueError, TypeError):
         return None
-    now = iran_now()  # Tehran local (project convention; never naive datetime.now())
+    now = iran_now()
     return (now.year - d.year) * 12 + (now.month - d.month)
 
 
 def due_clinical_events(pid: int) -> list[dict]:
-    """Compatibility seam kept for callers; v1 clinical events are retired.
-
-    Clinical tasks are now projected exclusively by ClinicalV2FollowupService.
-    An inactive v2 engine means no rule-derived task, never a fallback to v1.
-    """
+    """Compatibility seam kept for callers; v1 clinical events are retired."""
     return []
 
 
@@ -102,7 +98,6 @@ class ClinicalV2FollowupService:
 
     def __init__(self, *, facts=None, audit=None, repo=None, runtime=None):
         self.facts = facts or ClinicalEngineFactRepository()
-        # Kept for constructor compatibility and audit inspection by callers.
         self.audit = audit or ClinicalEngineAuditRepository()
         self.repo = repo or FollowupRepository()
         self.runtime = runtime or ClinicalEngineRuntimeService(facts=self.facts)
@@ -218,8 +213,7 @@ class ClinicalV2FollowupService:
                 "source_recommendation_event_id": int(event["id"]),
                 "clinical_semantic_key": semantic_key,
                 "clinical_task_key": task_key,
-                # Ephemeral contract values are rechecked atomically by the
-                # repository immediately before task insertion.
+                "source_mode": contract.mode,
                 "source_engine_version": contract.engine_version,
                 "source_ruleset_id": contract.ruleset_id,
                 "source_clinical_data_revision": contract.clinical_data_revision,
