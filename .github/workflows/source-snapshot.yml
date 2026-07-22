@@ -1,0 +1,31 @@
+name: Source Snapshot
+
+on:
+  push:
+
+concurrency:
+  group: source-snapshot-${{ github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  snapshot:
+    if: startsWith(github.ref_name, 'agent-')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Pack source without databases or local environments
+        run: >-
+          tar
+          --exclude=.git
+          --exclude='*.db'
+          --exclude='.venv'
+          --exclude='__pycache__'
+          --exclude='.pytest_cache'
+          -czf source-snapshot.tar.gz .
+      - name: Upload source snapshot
+        uses: actions/upload-artifact@v4
+        with:
+          name: source-snapshot-${{ github.sha }}
+          path: source-snapshot.tar.gz
+          if-no-files-found: error
+          retention-days: 1
