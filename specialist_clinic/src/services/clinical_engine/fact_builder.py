@@ -24,7 +24,8 @@ from src.services.clinical_engine.safety import SafetyKernel
 from src.services.clinical_engine.legacy_adapter import LegacyFactBundleAdapter
 
 
-ENGINE_VERSION = "2.2.0-decisions"
+# Changing the fact/runtime freshness contract invalidates older presentable runs.
+ENGINE_VERSION = "2.3.0-runtime-freshness"
 DEFAULT_RULESET_CODE = "general-outpatient"
 
 
@@ -97,6 +98,7 @@ def snapshot_payload(snapshot: FactSnapshot, *, include_hash: bool = True) -> di
     payload = {
         "schema_version": snapshot.schema_version,
         "patient_link_id": snapshot.patient_link_id,
+        "clinical_data_revision": int(snapshot.clinical_data_revision),
         "as_of_at": _iso(snapshot.as_of_at),
         "encounter_key": snapshot.encounter_key,
         "facts": [_fact_payload(fact, assessed_at=snapshot.as_of_at) for fact in snapshot.facts],
@@ -116,17 +118,19 @@ class FactBuilder:
         if not isinstance(as_of_at, datetime):
             raise TypeError("as_of_at must be a datetime")
         bundle = self.repository.load_bundle(patient_link_id)
+        revision = int(bundle["patient"].get("clinical_data_revision") or 0)
         facts = self.adapter.adapt(bundle, as_of_at=as_of_at)
         provisional = FactSnapshot(
             schema_version="2.0", patient_link_id=patient_link_id,
             as_of_at=as_of_at, facts=facts, content_hash="", encounter_key=encounter_key,
+            clinical_data_revision=revision,
         )
         body = snapshot_payload(provisional, include_hash=False)
         content_hash = hashlib.sha256(canonical_json(body).encode("utf-8")).hexdigest()
         return FactSnapshot(
             schema_version="2.0", patient_link_id=patient_link_id,
             as_of_at=as_of_at, facts=facts, content_hash=content_hash,
-            encounter_key=encounter_key,
+            encounter_key=encounter_key, clinical_data_revision=revision,
         )
 
 
@@ -149,7 +153,8 @@ class ShadowFactCapture:
         self.ruleset_code = ruleset_code
 
     def capture(self, patient_link_id: int, *, as_of_at: datetime,
-                encounter_key: str | None = None, created_by: str | None = None) -> str | None:
+                encounter_key: str | None = None, created_by: str | None = None,
+                ruleset_id: int | None = None) -> str | None:
         mode = self.repository.get_mode()
         if mode == "off" or (
             mode == "on_selected"
@@ -159,7 +164,16 @@ class ShadowFactCapture:
         snapshot = self.builder.build(patient_link_id, as_of_at=as_of_at,
                                       encounter_key=encounter_key)
         payload = snapshot_payload(snapshot)
-        ruleset = self.rules.active_ruleset(self.ruleset_code)
+        ruleset = (
+            self.rules.get_ruleset(int(ruleset_id))
+            if ruleset_id is not None
+            else self.rules.active_ruleset(self.ruleset_code)
+        )
+        if ruleset_id is not None:
+            if not ruleset or ruleset.get("ruleset_code") != self.ruleset_code:
+                raise LookupError("the requested clinical ruleset does not exist")
+            if ruleset.get("status") not in {"SILENT", "ACTIVE"}:
+                raise ValueError("the requested clinical ruleset is not executable")
         run_id = self.audit.start_run(
             patient_link_id=patient_link_id, encounter_key=encounter_key,
             as_of_at=as_of_at.isoformat(sep=" ", timespec="seconds"),
@@ -171,7 +185,8 @@ class ShadowFactCapture:
             self.audit.complete_run(
                 run_id, status=RunStatus.COMPLETED,
                 summary={"mode": mode, "evaluated_rules": 0,
-                         "recommendations": 0},
+                         "recommendations": 0,
+                         "clinical_data_revision": snapshot.clinical_data_revision},
             )
             return run_id
 
@@ -272,6 +287,7 @@ class ShadowFactCapture:
                 run_id, status=status,
                 summary={
                     "mode": mode,
+                    "clinical_data_revision": snapshot.clinical_data_revision,
                     "evaluated_rules": sum(counts.values()),
                     "recommendations": recommendation_count,
                     "redflag_active": bool(safety_run.redflag_rule_codes),
