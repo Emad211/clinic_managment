@@ -33,7 +33,8 @@ _CLINICAL_SOURCE_TABLES = (
 )
 
 
-def _database_identity(db: sqlite3.Connection) -> str:
+def _database_path(db: sqlite3.Connection) -> str | None:
+    """Return a stable path for file databases; ``None`` for connection-local DBs."""
     rows = db.execute("PRAGMA database_list").fetchall()
     for row in rows:
         try:
@@ -42,12 +43,36 @@ def _database_identity(db: sqlite3.Connection) -> str:
             name, filename = str(row[1]), str(row[2] or "")
         if name != "main":
             continue
-        if filename:
-            return os.path.normcase(os.path.realpath(filename))
-        # Each in-memory connection owns a distinct database and therefore needs
-        # its own one-time installation and verification.
-        return f":memory:{id(db)}"
-    return f":connection:{id(db)}"
+        return os.path.normcase(os.path.realpath(filename)) if filename else None
+    return None
+
+
+def _memory_connection_is_ready(db: sqlite3.Connection) -> bool:
+    """Use a TEMP marker tied to the exact in-memory connection.
+
+    Python may reuse ``id(connection)`` after close, so object ids are not safe
+    process-wide cache keys for ``:memory:`` databases. A TEMP table disappears
+    with the connection and cannot produce a false positive on a later database.
+    """
+    try:
+        row = db.execute(
+            "SELECT version FROM temp.clinical_runtime_schema_marker LIMIT 1"
+        ).fetchone()
+        return bool(row and int(row["version"]) == _SCHEMA_VERSION)
+    except sqlite3.DatabaseError:
+        return False
+
+
+def _mark_memory_connection_ready(db: sqlite3.Connection) -> None:
+    db.execute(
+        "CREATE TEMP TABLE IF NOT EXISTS clinical_runtime_schema_marker "
+        "(version INTEGER NOT NULL)"
+    )
+    db.execute("DELETE FROM temp.clinical_runtime_schema_marker")
+    db.execute(
+        "INSERT INTO temp.clinical_runtime_schema_marker(version) VALUES (?)",
+        (_SCHEMA_VERSION,),
+    )
 
 
 def _column_names(db: sqlite3.Connection, table: str) -> set[str]:
@@ -164,13 +189,19 @@ def _expected_trigger_names() -> set[str]:
 def ensure_runtime_schema(db: sqlite3.Connection | None = None) -> None:
     """Install and verify the monotonic clinical-data revision contract once per DB."""
     db = db or get_db()
-    cache_key = (_database_identity(db), _SCHEMA_VERSION)
-    if cache_key in _VERIFIED_DATABASES:
+    database_path = _database_path(db)
+    cache_key = (database_path, _SCHEMA_VERSION) if database_path else None
+    if cache_key is not None and cache_key in _VERIFIED_DATABASES:
+        return
+    if cache_key is None and _memory_connection_is_ready(db):
         return
 
     with _MIGRATION_LOCK:
-        if cache_key in _VERIFIED_DATABASES:
+        if cache_key is not None and cache_key in _VERIFIED_DATABASES:
             return
+        if cache_key is None and _memory_connection_is_ready(db):
+            return
+
         _ensure_column(
             db,
             "patient_links",
@@ -220,5 +251,9 @@ def ensure_runtime_schema(db: sqlite3.Connection | None = None) -> None:
                 "Clinical data revision guards are incomplete: "
                 + ", ".join(missing)
             )
+
+        if cache_key is None:
+            _mark_memory_connection_ready(db)
         db.commit()
-        _VERIFIED_DATABASES.add(cache_key)
+        if cache_key is not None:
+            _VERIFIED_DATABASES.add(cache_key)
