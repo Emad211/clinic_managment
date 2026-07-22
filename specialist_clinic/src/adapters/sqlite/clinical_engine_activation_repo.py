@@ -7,14 +7,23 @@ import json
 from typing import Any
 
 from src.adapters.sqlite.core import get_db
+from src.domain.clinical_engine.release import (
+    RULESET_CODE,
+    is_current_package_version,
+)
 
 
 _PREFIX = "clinical_engine_v2_activation_"
 
 
 def canonical_json(value: Any) -> str:
-    return json.dumps(value, ensure_ascii=False, sort_keys=True,
-                      separators=(",", ":"), allow_nan=False)
+    return json.dumps(
+        value,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    )
 
 
 def content_hash(value: Any) -> str:
@@ -37,12 +46,22 @@ def report_core(report: dict) -> dict:
     }
 
 
+def _current_report_ruleset(report: Any) -> bool:
+    ruleset = report.get("ruleset") if isinstance(report, dict) else None
+    return bool(
+        isinstance(ruleset, dict)
+        and ruleset.get("ruleset_code") == RULESET_CODE
+        and is_current_package_version(ruleset.get("version"))
+    )
+
+
 def valid_report(report: Any) -> bool:
     return bool(
         isinstance(report, dict)
         and report.get("status") == "PASS"
         and report.get("checks")
         and all(report["checks"].values())
+        and _current_report_ruleset(report)
         and report.get("report_hash") == content_hash(report_core(report))
     )
 
@@ -50,7 +69,7 @@ def valid_report(report: Any) -> bool:
 class ClinicalEngineActivationRepository:
     """Store activation evidence without adding mutable clinical tables.
 
-    Settings are deliberately namespaced.  Reports and approvals remain in the
+    Settings are deliberately namespaced. Reports and approvals remain in the
     database after rollback, while the activation seal is revoked immediately.
     """
 
@@ -58,7 +77,9 @@ class ClinicalEngineActivationRepository:
         return _PREFIX + name
 
     def get_json(self, name: str, default=None):
-        row = get_db().execute("SELECT value FROM settings WHERE key=?", (self._key(name),)).fetchone()
+        row = get_db().execute(
+            "SELECT value FROM settings WHERE key=?", (self._key(name),)
+        ).fetchone()
         if not row:
             return default
         try:
@@ -88,8 +109,10 @@ class ClinicalEngineActivationRepository:
     def set_raw_mode(self, mode: str) -> None:
         with get_db() as db:
             db.execute(
-                "INSERT INTO settings (key, value) VALUES ('clinical_engine_v2_mode', ?) "
-                "ON CONFLICT(key) DO UPDATE SET value=excluded.value", (mode,)
+                "INSERT INTO settings (key, value) VALUES "
+                "('clinical_engine_v2_mode', ?) "
+                "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                (mode,),
             )
 
     def demo_patients(self) -> list[dict]:
@@ -97,13 +120,15 @@ class ClinicalEngineActivationRepository:
         marks = ",".join("?" for _ in ids)
         rows = get_db().execute(
             f"SELECT id, national_id, full_name FROM patient_links "
-            f"WHERE upper(trim(national_id)) IN ({marks}) ORDER BY national_id", ids,
+            f"WHERE upper(trim(national_id)) IN ({marks}) ORDER BY national_id",
+            ids,
         ).fetchall()
         return [dict(row) for row in rows]
 
     def ruleset_state(self, ruleset_id: int) -> dict | None:
         row = get_db().execute(
-            "SELECT id, ruleset_code, version, content_hash, status FROM clinical_rulesets WHERE id=?",
+            "SELECT id, ruleset_code, version, content_hash, status "
+            "FROM clinical_rulesets WHERE id=?",
             (ruleset_id,),
         ).fetchone()
         return dict(row) if row else None
@@ -121,8 +146,16 @@ class ClinicalEngineActivationRepository:
             return False
         for role in ("clinical", "technical"):
             approval = self.get_json(f"approval_{role}")
-            if not isinstance(approval, dict) or approval.get("report_hash") != report["report_hash"]:
+            if (
+                not isinstance(approval, dict)
+                or approval.get("report_hash") != report["report_hash"]
+            ):
                 return False
         ruleset = self.ruleset_state(int(seal.get("ruleset_id") or 0))
         allowed = {"SILENT", "ACTIVE"} if mode == "on_selected" else {"ACTIVE"}
-        return bool(ruleset and ruleset["status"] in allowed)
+        return bool(
+            ruleset
+            and ruleset["ruleset_code"] == RULESET_CODE
+            and is_current_package_version(ruleset["version"])
+            and ruleset["status"] in allowed
+        )
