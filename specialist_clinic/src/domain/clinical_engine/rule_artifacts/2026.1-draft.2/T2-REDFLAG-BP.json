@@ -71,7 +71,7 @@
         "selector": {"aggregation": "single"},
         "op": ">=",
         "value": 18,
-        "unit": "a"
+        "unit": null
       }
     ]
   },
