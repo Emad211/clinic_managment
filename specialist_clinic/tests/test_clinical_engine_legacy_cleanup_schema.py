@@ -230,6 +230,74 @@ def test_cleanup_preserves_v2_rows_and_reinstalls_guards(cleanup_app):
     }
 
 
+def test_cleanup_is_fully_atomic_on_mid_rebuild_failure(
+    cleanup_app,
+    monkeypatch,
+):
+    from src.adapters.sqlite import clinical_engine_legacy_cleanup_schema
+    from src.adapters.sqlite.core import get_db
+
+    db = get_db()
+    patient_id = _patient(db)
+    first_rule, second_rule = _two_rule_versions()
+    first_decision, second_decision = _two_decisions(db, patient_id)
+    db.execute(
+        """INSERT INTO clinical_rules (rule_code, title, category)
+           VALUES ('LEGACY-ROLLBACK', 'Legacy rollback', 'educate')"""
+    )
+    db.execute(
+        """INSERT INTO suggestion_log
+           (patient_link_id, rule_code, status)
+           VALUES (?, 'LEGACY-ROLLBACK', 'pending')""",
+        (patient_id,),
+    )
+    db.commit()
+
+    before_columns = {
+        "rules": _columns(db, "clinical_rule_versions"),
+        "decisions": _columns(db, "clinical_decision_events"),
+    }
+    before_triggers = _objects(db, "trigger")
+    before_tables = _objects(db, "table")
+
+    def fail_after_first_rebuild(_db):
+        raise RuntimeError("simulated second-table rebuild failure")
+
+    monkeypatch.setattr(
+        clinical_engine_legacy_cleanup_schema,
+        "_rebuild_decisions",
+        fail_after_first_rebuild,
+    )
+
+    with pytest.raises(RuntimeError, match="simulated second-table"):
+        clinical_engine_legacy_cleanup_schema.cleanup_legacy_clinical_schema(db)
+
+    assert _columns(db, "clinical_rule_versions") == before_columns["rules"]
+    assert _columns(db, "clinical_decision_events") == before_columns[
+        "decisions"
+    ]
+    assert _objects(db, "trigger") == before_triggers
+    assert _objects(db, "table") == before_tables
+    assert not {
+        "clinical_rule_versions_clean",
+        "clinical_decision_events_clean",
+    } & _objects(db, "table")
+    assert [
+        int(row["id"])
+        for row in db.execute(
+            "SELECT id FROM clinical_rule_versions ORDER BY id"
+        ).fetchall()
+    ] == [first_rule, second_rule]
+    assert [
+        int(row["id"])
+        for row in db.execute(
+            "SELECT id FROM clinical_decision_events ORDER BY id"
+        ).fetchall()
+    ] == [first_decision, second_decision]
+    assert db.execute("PRAGMA foreign_key_check").fetchall() == []
+    assert int(db.execute("PRAGMA foreign_keys").fetchone()[0]) == 1
+
+
 @pytest.mark.parametrize(
     ("table", "column"),
     [
