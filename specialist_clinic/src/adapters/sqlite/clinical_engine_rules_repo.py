@@ -299,6 +299,22 @@ class ClinicalEngineRulesRepository:
         ).fetchone()
         return self.get_ruleset(int(row["id"])) if row else None
 
+    def retire_workflow_rulesets(self, ruleset_code: str, *, retired_by: str) -> int:
+        """Close mutable/live setup attempts while preserving immutable history."""
+        code = (ruleset_code or "").strip()
+        actor = (retired_by or "").strip()
+        if not code or not actor:
+            raise ValueError("ruleset_code and retired_by are required")
+        now = _now_text()
+        with get_db() as db:
+            cursor = db.execute(
+                """UPDATE clinical_rulesets
+                   SET status='RETIRED', retired_at=?, note=COALESCE(note, '') || ?
+                   WHERE ruleset_code=? AND status IN ('DRAFT', 'SILENT', 'ACTIVE')""",
+                (now, f"\nReset by {actor} at {now}", code),
+            )
+        return int(cursor.rowcount)
+
     def activate_ruleset(
         self,
         ruleset_id: int,

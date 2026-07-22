@@ -67,6 +67,15 @@ clinic_new.db (حسابداری)  ──ro──►  Specialist Clinic (Flask, �
 ruleset فریز‌شده و seal سالم قابل فعال‌سازی است. گزارش JSON قرارداد ماشینی و خروجی
 متنی برای اپراتور است:
 
+ده بیمار نمونهٔ استاندارد (`TEST0001` تا `TEST0010`) یک cohort طولی و بازتولیدپذیر
+با ۵٫۵ سال علائم حیاتی، آزمایش، تغییرات درمان، یادداشت بالینی، نوبت، پیگیری و سابقهٔ
+کامل هستند. این داده‌ها با دستور زیر بازسازی می‌شوند و فقط رکوردهای مصنوعی `TESTxxxx`
+را جایگزین می‌کنند؛ اطلاعات بیماران واقعی دست‌نخورده باقی می‌ماند:
+
+```powershell
+.\.venv\Scripts\python.exe seed_demo_data.py
+```
+
 ```powershell
 .\.venv\Scripts\python.exe -m flask --app src.app clinical-v2 compare `
   --as-of 2026-07-22T12:00:00 --actor qa-reviewer --format text

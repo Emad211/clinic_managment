@@ -17,6 +17,10 @@ from src.services.activity_logger import log_activity
 
 
 DEMO_IDS = tuple(f"TEST{i:04d}" for i in range(1, 11))
+EXPECTED_POSITIVE_CONTROLS = {
+    "TEST0008": "T2-REDFLAG-BP",
+    "TEST0010": "T2-SAFE-MET-STOP",
+}
 
 
 class ActivationGateError(RuntimeError):
@@ -41,11 +45,19 @@ class ClinicalEngineActivationService:
     """Build a reproducible ten-patient gate; never self-approve or self-activate."""
 
     def __init__(self, *, state=None, rules=None, audit=None,
-                 capture_factory=None):
+                 capture_factory=None, cohort_summary_factory=None,
+                 enforce_positive_controls: bool = True):
         self.state = state or ClinicalEngineActivationRepository()
         self.rules = rules or ClinicalEngineRulesRepository()
         self.audit = audit or ClinicalEngineAuditRepository()
         self.capture_factory = capture_factory or self._capture
+        self.cohort_summary_factory = cohort_summary_factory or self._cohort_summary
+        self.enforce_positive_controls = enforce_positive_controls
+
+    @staticmethod
+    def _cohort_summary():
+        from src.services.clinical_engine.demo_cohort import DemoCohortService
+        return DemoCohortService().summary()
 
     def _capture(self):
         facts = _ForcedShadowFacts()
@@ -74,6 +86,8 @@ class ClinicalEngineActivationService:
             "zero_run_failures": "همهٔ اجراها بدون شکست پایان یافته‌اند",
             "zero_rule_errors": "هیچ قاعده‌ای خطای اجرا ندارد",
             "burden_at_most_12_cards_per_patient": "بار شناختی پیشنهادها در محدوده است",
+            "longitudinal_cohort_complete": "پرونده‌های نمونه طولی و کامل هستند",
+            "expected_positive_controls": "هر دو هشدار کنترل مثبت فعال شده‌اند",
         }
         blockers = [check_labels.get(key, key) for key, passed in checks.items() if not passed]
         if not report:
@@ -165,6 +179,13 @@ class ClinicalEngineActivationService:
 
         error_count = sum(row["v2_errors"] for row in rows)
         max_cards = max((row["v2_recommendations"] for row in rows), default=0)
+        cohort_summary = self.cohort_summary_factory()
+        totals = cohort_summary.get("totals") or {}
+        row_by_nid = {row["national_id"]: row for row in rows}
+        positive_controls_ok = all(
+            rule_code in (row_by_nid.get(national_id, {}).get("v2_rule_codes") or [])
+            for national_id, rule_code in EXPECTED_POSITIVE_CONTROLS.items()
+        )
         checks = {
             "exact_demo_cohort": len(rows) == 10 and not failures,
             "ruleset_frozen": bool(ruleset and ruleset["status"] in {"SILENT", "ACTIVE"}),
@@ -175,6 +196,17 @@ class ClinicalEngineActivationService:
             # Conservative technical default. Clinical/product owner must approve
             # the report that contains this exact threshold before activation.
             "burden_at_most_12_cards_per_patient": max_cards <= 12,
+            "longitudinal_cohort_complete": bool(
+                cohort_summary.get("ready")
+                and cohort_summary.get("patient_count") == 10
+                and totals.get("vitals", 0) >= 2000
+                and totals.get("labs", 0) >= 1200
+                and totals.get("notes", 0) >= 200
+                and totals.get("medication_events", 0) >= 50
+            ),
+            "expected_positive_controls": (
+                positive_controls_ok if self.enforce_positive_controls else True
+            ),
         }
         report_body = {
             "schema_version": "1.0", "as_of_at": as_of_at.isoformat(sep=" ", timespec="seconds"),

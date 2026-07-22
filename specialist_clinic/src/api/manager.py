@@ -28,10 +28,13 @@ def index():
 def clinical_engine():
     projection = ClinicalEngineActivationService().dashboard()
     from src.services.clinical_engine.package_service import ClinicalRulePackageService
+    from src.services.clinical_engine.demo_cohort import DemoCohortService
     projection["package"] = ClinicalRulePackageService().projection()
+    projection["cohort"] = DemoCohortService().summary()
+    requested_step = request.args.get("step", type=int)
     return render_template(
         "manager/clinical_engine.html", engine=projection,
-        active_page="clinical_engine",
+        requested_step=requested_step, active_page="clinical_engine",
     )
 
 
@@ -67,13 +70,25 @@ def clinical_engine_action(action):
             if not service.rules.active_ruleset("general-outpatient"):
                 raise ActivationGateError("ابتدا بستهٔ قواعد v2 باید وارد، بازبینی و فریز شود")
             from src.services.clinical_engine.demo_cohort import DemoCohortService
-            created = DemoCohortService().ensure(actor=actor)
-            report = service.build_report(as_of_at=iran_now(), created_by=actor)
+            cohort_service = DemoCohortService()
+            cohort = cohort_service.ensure(actor=actor)
+            report = service.build_report(
+                as_of_at=cohort_service.reference_at(), created_by=actor,
+            )
             if report["status"] == "PASS":
-                prefix = f"{created} بیمار نمونه ساخته شد و " if created else ""
+                prefix = "پرونده‌های نمونه بازسازی شدند و " if cohort["rebuilt"] else ""
                 flash(prefix + "آزمون هر ۱۰ بیمار با موفقیت انجام شد.", "success")
             else:
                 flash("گزارش ساخته شد، اما فعال‌سازی همچنان مسدود است. موارد قرمز را بررسی کنید.", "warning")
+        elif action == "prepare-demo-cohort":
+            from src.services.clinical_engine.demo_cohort import DemoCohortService
+            cohort = DemoCohortService().ensure(actor=actor)
+            totals = cohort["totals"]
+            flash(
+                f"۱۰ پروندهٔ طولی آماده شد: {totals['vitals']} مشاهده، "
+                f"{totals['labs']} آزمایش و {totals['medication_events']} رویداد دارویی.",
+                "success",
+            )
         elif action == "approve":
             if request.form.get("attestation") != "yes":
                 raise ActivationGateError("تأیید مسئولیت و بازبینی کامل گزارش الزامی است")
@@ -97,6 +112,15 @@ def clinical_engine_action(action):
         elif action == "rollback":
             service.rollback(rolled_back_by=actor, reason=note)
             flash("موتور فوراً خاموش شد؛ تاریخچهٔ ممیزی حفظ شده است.", "success")
+        elif action == "reset-workflow":
+            if request.form.get("confirm_reset") != "yes":
+                raise ActivationGateError("تأیید آگاهانهٔ ریست الزامی است")
+            from src.services.clinical_engine.package_service import ClinicalRulePackageService
+            ClinicalRulePackageService().reset(actor=actor, reason=note)
+            flash(
+                "پیشرفت راه‌اندازی ریست شد. موتور خاموش است و تاریخچهٔ ممیزی حذف نشده است.",
+                "success",
+            )
         else:
             raise ActivationGateError("عملیات ناشناخته است")
     except (ActivationGateError, ValueError, LookupError) as exc:

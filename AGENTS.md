@@ -46,7 +46,7 @@ python start.py                            # http://127.0.0.1:8080  (or run.bat)
 Both `start.py` scripts open a browser tab after ~1.5s and run with `debug=False`, `use_reloader=False`. Use a system Python or a fresh venv for `webapp`; `specialist_clinic/.venv` is the known-good interpreter for the specialist app.
 
 ### Seeding / CLI
-- `specialist_clinic`: `.\.venv\Scripts\python.exe seed_demo_data.py` — idempotent seed of **10 demo patients** (`TEST0001..TEST0010`) with ~2 years of vitals/meds/flags. **Use these for all dev/testing.**
+- `specialist_clinic`: `.\.venv\Scripts\python.exe seed_demo_data.py` — idempotently rebuilds the canonical **10-patient longitudinal cohort** (`TEST0001..TEST0010`) with 5.5 years of vitals, labs, treatments, notes, appointments, histories, and safety-positive controls. It replaces only `TESTxxxx` clinical records and preserves real patients. **Use this cohort for all clinical-engine development/testing.**
 - `webapp`: `flask --app src.app init-db` and `flask --app src.app create-user <username> <password> [role]`; helper scripts under `webapp/scripts/`.
 
 ### Tests

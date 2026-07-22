@@ -18,18 +18,53 @@
 {% set package = engine.package %}
 {% set approval_count = (1 if engine.approvals.clinical else 0) + (1 if engine.approvals.technical else 0) %}
 {% set current_step = 1 if package.state == 'missing' else 2 if package.state == 'review' else 3 if not engine.report_ok else 4 if approval_count < 2 else 5 if not engine.seal_valid else 6 if not engine.verification else 7 if engine.effective_mode != 'on' else 8 %}
+{% set view_step = requested_step if requested_step and requested_step >= 1 and requested_step <= current_step and requested_step <= 7 else (7 if current_step > 7 else current_step) %}
 
 <ol class="engine-steps engine-steps-simple" aria-label="مراحل راه‌اندازی">
     {% for number, title in [(1,'آماده‌سازی قواعد'),(2,'بازبینی پزشک'),(3,'آزمون ایمنی'),(4,'تأیید گزارش'),(5,'انتشار محدود'),(6,'پایش'),(7,'انتشار عمومی')] %}
-    <li class="engine-step{% if current_step > number %} is-done{% elif current_step == number %} is-current{% endif %}">
+    <li class="engine-step{% if current_step > number %} is-done{% elif current_step == number %} is-current{% endif %}{% if view_step == number %} is-viewing{% endif %}">
+        {% if number <= current_step %}<a href="{{ url_for('manager.clinical_engine', step=number) }}#engine-actions" aria-label="مشاهدهٔ مرحلهٔ {{ number|fa_num }}: {{ title }}">{% else %}<span class="engine-step-unavailable" aria-disabled="true">{% endif %}
         <span class="engine-step-marker">{% if current_step > number %}<svg class="icon icon-sm"><use href="#i-check"></use></svg>{% else %}{{ number|fa_num }}{% endif %}</span>
-        <b>{{ title }}</b>
+        <b>{{ title }}</b>{% if number <= current_step %}</a>{% else %}</span>{% endif %}
     </li>
     {% endfor %}
 </ol>
 
 <div class="engine-wizard" id="engine-actions">
-{% if package.state == 'missing' %}
+<nav class="engine-step-nav" aria-label="جابجایی بین مراحل">
+    {% if view_step > 1 %}<a class="btn btn-ghost" href="{{ url_for('manager.clinical_engine', step=view_step - 1) }}#engine-actions"><svg class="icon"><use href="#i-chevron-left"></use></svg> مرحلهٔ قبل</a>{% endif %}
+    <span>مرحلهٔ {{ view_step|fa_num }} از ۷{% if view_step < current_step %} · فقط مشاهده{% endif %}</span>
+    {% if view_step < current_step and view_step < 7 %}<a class="btn btn-ghost" href="{{ url_for('manager.clinical_engine', step=view_step + 1) }}#engine-actions">مرحلهٔ بعد <svg class="icon"><use href="#i-arrow-left"></use></svg></a>{% endif %}
+</nav>
+
+{% if view_step < current_step %}
+    <section class="card engine-history-card" aria-labelledby="history-title">
+        <div class="engine-readonly-banner"><svg class="icon"><use href="#i-info"></use></svg><span>این مرحله قبلاً تکمیل شده و اکنون فقط برای مرور نمایش داده می‌شود. بازگشت به عقب، شواهد یا تأییدهای ثبت‌شده را تغییر نمی‌دهد.</span></div>
+        {% if view_step == 1 %}
+            <h2 id="history-title">بستهٔ اولیه آماده شده است</h2>
+            <p>مجموعهٔ {{ package.rules|length|fa_num }} قاعده با نسخهٔ {{ package.ruleset.version }} وارد و از نظر ساختار فنی بررسی شده است.</p>
+        {% elif view_step == 2 %}
+            <h2 id="history-title">قواعدی که تأیید شدند</h2>
+            {% for rule in package.rules %}<article class="engine-rule-review engine-rule-readonly"><div class="engine-rule-head"><code>{{ rule.code }}</code><h3>{{ rule.title }}</h3></div><div class="engine-trigger-box"><span>{{ rule.trigger_mode }}</span><ul>{% for condition in rule.trigger_conditions %}<li><b>{{ condition.fact }}</b> {{ condition.operator }} <strong>{{ condition.value|fa_num }}{% if condition.unit %} {{ condition.unit }}{% endif %}</strong>{% if condition.within_days %}؛ حداکثر {{ condition.within_days|fa_num }} روزه{% endif %}</li>{% endfor %}</ul></div><div class="engine-recommendation"><span>پیشنهاد سیستم</span><p>{{ rule.recommendation }}</p></div></article>{% endfor %}
+        {% elif view_step == 3 %}
+            <h2 id="history-title">آزمون ایمنی ۱۰ پروندهٔ طولی</h2>
+            <p>آزمون بر snapshot ثابت {{ engine.cohort.reference_at|jalali }} اجرا شده است.</p>
+            <div class="engine-result-summary"><span><b>{{ engine.cohort.patient_count|fa_num }}</b> پرونده</span><span><b>{{ engine.cohort.totals.vitals|fa_num }}</b> مشاهده</span><span><b>{{ engine.cohort.totals.labs|fa_num }}</b> آزمایش</span></div>
+            {% include "manager/_clinical_engine_report.html" ignore missing %}
+        {% elif view_step == 4 %}
+            <h2 id="history-title">تأییدهای متصل به گزارش</h2>
+            <div class="engine-history-list"><span>مسئول بالینی: <b>{{ engine.approvals.clinical.reviewer if engine.approvals.clinical else 'ثبت نشده' }}</b></span><span>بازبین فنی: <b>{{ engine.approvals.technical.reviewer if engine.approvals.technical else 'ثبت نشده' }}</b></span></div>
+        {% elif view_step == 5 %}
+            <h2 id="history-title">انتشار محدود</h2><p>خروجی فقط برای cohort ده‌بیماری و بر اساس همان hash گزارش فعال شده است.</p><code>{{ engine.seal.report_hash if engine.seal else '-' }}</code>
+        {% elif view_step == 6 %}
+            <h2 id="history-title">پایش انتشار محدود</h2><p>{{ engine.verification.note if engine.verification else 'هنوز نتیجه‌ای ثبت نشده است.' }}</p>{% if engine.verification %}<small>بازبین: {{ engine.verification.reviewer }}</small>{% endif %}
+        {% else %}
+            <h2 id="history-title">انتشار عمومی</h2><p>نسخهٔ {{ engine.ruleset.version if engine.ruleset else '-' }} برای همهٔ بیماران فعال شده است.</p>
+        {% endif %}
+        <a class="btn engine-return-current" href="{{ url_for('manager.clinical_engine', step=(7 if current_step > 7 else current_step)) }}#engine-actions">بازگشت به مرحلهٔ فعلی</a>
+    </section>
+
+{% elif package.state == 'missing' %}
     <section class="card engine-task-card" aria-labelledby="task-title">
         <div class="engine-task-number">مرحلهٔ ۱ از ۷</div>
         <div class="engine-task-icon"><svg class="icon icon-lg"><use href="#i-clipboard"></use></svg></div>
@@ -83,13 +118,23 @@
     <section class="card engine-task-card" aria-labelledby="task-title">
         <div class="engine-task-number">مرحلهٔ ۳ از ۷</div>
         <div class="engine-task-icon"><svg class="icon icon-lg"><use href="#i-activity"></use></svg></div>
-        <h2 id="task-title">آزمون ایمنی را اجرا کنید</h2>
-        <p>موتور روی ۱۰ بیمار نمونه اجرا می‌شود. این آزمون هیچ تغییری در پروندهٔ بیماران واقعی ایجاد نمی‌کند و هیچ پیشنهادی را عمومی نمی‌کند.</p>
+        {% if not engine.cohort.ready %}
+        <h2 id="task-title">ابتدا ۱۰ پروندهٔ نمونهٔ کامل را آماده کنید</h2>
+        <p>برای آزمون دقیق، برنامه ۱۰ بیمار مصنوعی را با بیش از پنج سال تاریخچهٔ علائم حیاتی، پنل‌های آزمایش، تغییرات دارویی، نسخه‌ها، ویزیت‌ها، یادداشت‌ها و پیگیری‌ها می‌سازد.</p>
+        <div class="engine-cohort-contract"><span><b>۲٬۱۰۰</b> مشاهدهٔ طولی</span><span><b>۱٬۳۰۰</b> نتیجهٔ آزمایش</span><span><b>۱۰</b> مسیر درمان متفاوت</span><span><b>۵٫۵ سال</b> تاریخچه برای هر بیمار</span></div>
+        <form method="post" action="{{ url_for('manager.clinical_engine_action', action='prepare-demo-cohort') }}" data-loading-form><button class="btn btn-lg engine-primary-action" type="submit"><svg class="icon"><use href="#i-users"></use></svg> ساخت پرونده‌های کامل نمونه</button></form>
+        <small class="engine-safe-note"><svg class="icon icon-sm"><use href="#i-shield"></use></svg> فقط شناسه‌های مصنوعی TEST0001 تا TEST0010 ساخته یا بازسازی می‌شوند.</small>
+        {% else %}
+        <h2 id="task-title">پرونده‌های نمونه آماده‌اند؛ آزمون ایمنی را اجرا کنید</h2>
+        <p>این cohort شامل مسیرهای کنترل پایدار، تشدید درمان، CKD پیشرونده، ASCVD، نارسایی قلب، عدم تحمل استاتین، سالمند فراژیل، انسولین و افت قند، پیش‌دیابت و دو هشدار مثبت کنترل‌شده است.</p>
+        <div class="engine-cohort-contract"><span><b>{{ engine.cohort.totals.vitals|fa_num }}</b> مشاهده</span><span><b>{{ engine.cohort.totals.labs|fa_num }}</b> آزمایش</span><span><b>{{ engine.cohort.totals.medication_events|fa_num }}</b> رویداد دارویی</span><span><b>{{ engine.cohort.totals.notes|fa_num }}</b> یادداشت بالینی</span></div>
+        <details class="engine-cohort-patients"><summary>مشاهدهٔ ۱۰ پروندهٔ نمونه</summary><div>{% for patient in engine.cohort.patients %}<a href="{{ url_for('patients.detail', pid=patient.id) }}" target="_blank" rel="noopener">{{ patient.national_id }} · {{ patient.full_name }}</a>{% endfor %}</div></details>
         {% if engine.report.status %}
         <div class="engine-inline-problems" role="alert"><b>آزمون قبلی کامل نشد:</b><ul>{% for key, label in engine.check_labels.items() %}{% if key in engine.checks and not engine.checks[key] %}<li>{{ label }}</li>{% endif %}{% endfor %}</ul></div>
         {% endif %}
         <form method="post" action="{{ url_for('manager.clinical_engine_action', action='compare') }}" data-loading-form><button class="btn btn-lg engine-primary-action" type="submit"><svg class="icon"><use href="#i-activity"></use></svg> اجرای آزمون ۱۰ بیمار نمونه</button></form>
-        <small class="engine-safe-note"><svg class="icon icon-sm"><use href="#i-shield"></use></svg> نتیجه پس از اجرا همین‌جا با زبان ساده نمایش داده می‌شود.</small>
+        <small class="engine-safe-note"><svg class="icon icon-sm"><use href="#i-shield"></use></svg> آزمون روی snapshot ثابت و تکرارپذیر اجرا می‌شود؛ بیماران واقعی تغییر نمی‌کنند.</small>
+        {% endif %}
     </section>
 
 {% elif approval_count < 2 %}
@@ -128,6 +173,10 @@
 
 {% if engine.can_rollback %}
 <details class="engine-danger-zone"><summary>خاموش‌کردن اضطراری موتور</summary><form method="post" action="{{ url_for('manager.clinical_engine_action', action='rollback') }}" class="engine-signoff-form" onsubmit="return confirm('موتور فوراً خاموش شود؟')"><label><span>علت خاموش‌کردن</span><textarea name="note" rows="3" required></textarea></label><button class="btn btn-danger" type="submit">خاموش‌کردن فوری</button></form></details>
+{% endif %}
+
+{% if current_step > 1 %}
+<details class="engine-reset-zone"><summary><svg class="icon icon-sm"><use href="#i-activity"></use></svg> شروع دوبارهٔ فرایند</summary><div class="engine-readonly-banner"><svg class="icon"><use href="#i-info"></use></svg><span>ریست، موتور را خاموش و پیشرفت فعلی را پاک می‌کند؛ اما گزارش‌های ممیزی و پرونده‌های نمونه را حذف نمی‌کند.</span></div><form method="post" action="{{ url_for('manager.clinical_engine_action', action='reset-workflow') }}" class="engine-signoff-form" onsubmit="return confirm('پیشرفت راه‌اندازی ریست و موتور خاموش شود؟')"><label><span>علت شروع دوباره</span><textarea name="note" rows="3" required placeholder="مثلاً: اصلاح بستهٔ قواعد و اجرای دوبارهٔ آزمون"></textarea></label><label class="engine-rule-attest"><input type="checkbox" name="confirm_reset" value="yes" required><span>می‌دانم موتور خاموش می‌شود و تأییدهای مرحله‌ای باید دوباره ثبت شوند.</span></label><button class="btn btn-danger" type="submit">ریست پیشرفت و بازگشت به مرحلهٔ اول</button></form></details>
 {% endif %}
 </div>
 {% endblock %}

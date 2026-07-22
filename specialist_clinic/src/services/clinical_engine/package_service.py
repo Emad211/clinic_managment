@@ -10,6 +10,7 @@ from src.adapters.sqlite.clinical_engine_rules_repo import ClinicalEngineRulesRe
 from src.adapters.sqlite.clinical_engine_activation_repo import ClinicalEngineActivationRepository
 from src.services.activity_logger import log_activity
 from src.services.clinical_engine.compiler import RuleCompiler
+from src.common.utils import iran_now
 
 
 PACKAGE_VERSION = "2026.1-draft.1"
@@ -98,6 +99,9 @@ class ClinicalRulePackageService:
         if not manifest_path.exists():
             raise LookupError("فایل بستهٔ قواعد در برنامه پیدا نشد")
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        latest = self.rules.latest_ruleset(RULESET_CODE)
+        if latest and latest["status"] == "DRAFT":
+            return latest
         members = []
         for item in manifest.get("rules") or []:
             raw = json.loads((package_dir / item["file"]).read_text(encoding="utf-8"))
@@ -113,8 +117,13 @@ class ClinicalRulePackageService:
                 "rule_version_id": rule_id,
                 "sort_order": int(item.get("sort_order", 100)),
             })
+        version = manifest["version"]
+        if latest:
+            # A reset preserves prior attempts. A new unique ruleset version
+            # reuses the same immutable rule content and requires fresh attestation.
+            version = f"{manifest['version']}-attempt.{int(latest['id']) + 1}"
         ruleset_id = self.rules.create_ruleset(
-            manifest["ruleset_code"], manifest["version"], members,
+            manifest["ruleset_code"], version, members,
             created_by=actor,
             note="بستهٔ اولیهٔ فنی؛ نیازمند بازبینی و تأیید بالینی",
         )
@@ -144,7 +153,7 @@ class ClinicalRulePackageService:
                 self.rules.approve_rule_version(
                     int(member["rule_version_id"]), approved_by=reviewer,
                 )
-            elif member["lifecycle_status"] != "APPROVED":
+            elif member["lifecycle_status"] not in {"APPROVED", "SILENT", "ACTIVE"}:
                 raise ValueError(f"قاعدهٔ {member['rule_code']} آمادهٔ تأیید نیست")
         self.rules.activate_ruleset(
             int(ruleset["id"]), activated_by=reviewer, silent=True,
@@ -165,9 +174,39 @@ class ClinicalRulePackageService:
         )
         return self.rules.get_ruleset(int(ruleset_id))
 
+    def reset(self, *, actor: str, reason: str) -> dict:
+        actor = (actor or "").strip()
+        reason = (reason or "").strip()
+        if not actor or not reason:
+            raise ValueError("نام کاربر و علت ریست الزامی است")
+        previous_mode = self.activation.raw_mode()
+        retired = self.rules.retire_workflow_rulesets(
+            RULESET_CODE, retired_by=actor,
+        )
+        self.activation.set_raw_mode("off")
+        for key in (
+            "last_report", "approval_clinical", "approval_technical",
+            "selected_rollout_verification", "seal",
+        ):
+            self.activation.delete(key)
+        reset_record = {
+            "previous_mode": previous_mode,
+            "retired_rulesets": retired,
+            "reason": reason,
+            "reset_by": actor,
+            "reset_at": iran_now().isoformat(sep=" ", timespec="seconds"),
+        }
+        self.activation.put_json("last_reset", reset_record)
+        log_activity(
+            "clinical_v2_workflow_reset",
+            f"Reset workflow from {previous_mode}; retired {retired} rulesets: {reason}",
+            user_id=0, username=actor,
+        )
+        return reset_record
+
     def projection(self) -> dict:
         ruleset = self.rules.latest_ruleset(RULESET_CODE)
-        if not ruleset:
+        if not ruleset or ruleset["status"] == "RETIRED":
             return {"state": "missing", "ruleset": None, "rules": []}
         rules = []
         for member in ruleset["members"]:

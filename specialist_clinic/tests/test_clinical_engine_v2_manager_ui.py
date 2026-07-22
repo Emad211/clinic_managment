@@ -88,11 +88,19 @@ def test_guided_package_prepare_then_clinical_review_and_freeze(manager_ui_app):
     )
     html = approved.get_data(as_text=True)
     assert "هر 2 قاعده تأیید" in html
-    assert "آزمون ایمنی را اجرا کنید" in html
+    assert "۱۰ پروندهٔ نمونهٔ کامل" in html
     with manager_ui_app.app_context():
         package = ClinicalEngineRulesRepository().latest_ruleset("general-outpatient")
         assert package["status"] == "SILENT"
         assert ClinicalEngineFactRepository().get_mode() == "off"
+
+    cohort = client.post(
+        "/manager/clinical-engine/prepare-demo-cohort", follow_redirects=True,
+    )
+    html = cohort.get_data(as_text=True)
+    assert "۱۰ پروندهٔ طولی آماده شد" in html
+    assert "۲،۱۰۰" in html and "۱،۳۰۰" in html
+    assert "رویداد دارویی" in html
 
     compared = client.post(
         "/manager/clinical-engine/compare", follow_redirects=True,
@@ -101,7 +109,59 @@ def test_guided_package_prepare_then_clinical_review_and_freeze(manager_ui_app):
     assert "آزمون هر ۱۰ بیمار با موفقیت انجام شد" in html
     assert "آزمون موفق بود" in html
     with manager_ui_app.app_context():
-        assert len(ClinicalEngineActivationRepository().demo_patients()) == 10
+        state = ClinicalEngineActivationRepository()
+        assert len(state.demo_patients()) == 10
+        report = state.get_json("last_report")
+        rows = {row["national_id"]: row for row in report["patients"]}
+        assert "T2-REDFLAG-BP" in rows["TEST0008"]["v2_rule_codes"]
+        assert "T2-SAFE-MET-STOP" in rows["TEST0010"]["v2_rule_codes"]
+        assert report["checks"]["longitudinal_cohort_complete"] is True
+        assert report["checks"]["expected_positive_controls"] is True
+
+    history = client.get("/manager/clinical-engine?step=2#engine-actions")
+    history_html = history.get_data(as_text=True)
+    assert "این مرحله قبلاً تکمیل شده" in history_html
+    assert "قواعدی که تأیید شدند" in history_html
+    assert "بازگشت به مرحلهٔ فعلی" in history_html
+
+
+def test_workflow_reset_requires_confirmation_preserves_audit_and_can_restart(manager_ui_app):
+    from src.adapters.sqlite.clinical_engine_activation_repo import ClinicalEngineActivationRepository
+    from src.adapters.sqlite.clinical_engine_rules_repo import ClinicalEngineRulesRepository
+
+    client = _manager_client(manager_ui_app)
+    client.post("/manager/clinical-engine/prepare-rules")
+    with manager_ui_app.app_context():
+        first = ClinicalEngineRulesRepository().latest_ruleset("general-outpatient")
+
+    rejected = client.post(
+        "/manager/clinical-engine/reset-workflow",
+        data={"note": "شروع دوباره برای تست"}, follow_redirects=True,
+    )
+    assert "تأیید آگاهانهٔ ریست الزامی است" in rejected.get_data(as_text=True)
+
+    reset = client.post(
+        "/manager/clinical-engine/reset-workflow",
+        data={"note": "شروع دوباره برای تست", "confirm_reset": "yes"},
+        follow_redirects=True,
+    )
+    html = reset.get_data(as_text=True)
+    assert "پیشرفت راه‌اندازی ریست شد" in html
+    assert "بستهٔ اولیهٔ قواعد را آماده کنید" in html
+    with manager_ui_app.app_context():
+        state = ClinicalEngineActivationRepository()
+        retired = ClinicalEngineRulesRepository().get_ruleset(first["id"])
+        assert retired["status"] == "RETIRED"
+        assert state.raw_mode() == "off"
+        assert state.get_json("last_report") is None
+        assert state.get_json("last_reset")["reason"] == "شروع دوباره برای تست"
+
+    client.post("/manager/clinical-engine/prepare-rules")
+    with manager_ui_app.app_context():
+        restarted = ClinicalEngineRulesRepository().latest_ruleset("general-outpatient")
+        assert restarted["status"] == "DRAFT"
+        assert restarted["id"] != first["id"]
+        assert restarted["version"] != first["version"]
 
 
 def test_manager_home_and_sidebar_make_v2_the_primary_engine_ui(manager_ui_app):

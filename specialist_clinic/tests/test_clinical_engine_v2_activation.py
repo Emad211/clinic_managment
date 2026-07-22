@@ -81,6 +81,12 @@ def _service(*, audit=None):
     return ClinicalEngineActivationService(
         state=state, rules=_Rules(state), audit=audit or _Audit(),
         capture_factory=lambda: _Capture(),
+        cohort_summary_factory=lambda: {
+            "ready": True, "patient_count": 10,
+            "totals": {"vitals": 2100, "labs": 1300, "notes": 240,
+                       "medication_events": 50},
+        },
+        enforce_positive_controls=False,
     )
 
 

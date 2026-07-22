@@ -239,44 +239,10 @@ def test_off_mode_writes_nothing_and_shadow_persists_snapshot_without_outputs(fa
 
 
 def test_test0001_through_test0010_have_repeatable_fixed_as_of_hashes(facts_app):
-    from seed_demo_data import PATIENTS, trend
-    from src.adapters.sqlite.flags_repo import ClinicalFlagsRepository
-    from src.adapters.sqlite.patients_repo import PatientRepository
-    from src.adapters.sqlite.vitals_repo import VitalsRepository
+    from src.services.clinical_engine.demo_cohort import DemoCohortService
 
-    patients = PatientRepository()
-    vitals = VitalsRepository()
-    flags = ClinicalFlagsRepository()
-    patient_ids = []
-    for spec in PATIENTS:
-        pid = patients.create(
-            national_id=spec["nid"], accounting_patient_id=None,
-            full_name=spec["name"], phone_number=spec["phone"],
-            gender=spec["gender"], birthdate=spec["birth"], address=None,
-            enrolled_by="seed",
-        )
-        for condition_id in spec["conditions"]:
-            patients.add_condition(pid, condition_id)
-        flags.set_flags(pid, spec.get("flags", {}), recorded_by="seed")
-        for vital_type, (start, end, dates) in spec["vitals"].items():
-            for measured_on, value in zip(dates, trend(start, end, len(dates))):
-                vitals.add_reading(
-                    pid, vtype=vital_type, value=round(value, 1),
-                    measured_at=measured_on + " 10:00:00", recorded_by="seed",
-                )
-        for name, drug_class, dose, start, change, stop in spec.get("meds", []):
-            medication_id = patients.add_medication(
-                pid, drug_name=name, dose=dose, schedule=None, start_date=start,
-                refill_due_date="2026-07-01", notes=None, drug_class=drug_class,
-                created_by="seed",
-            )
-            if change:
-                patients.change_dose(
-                    medication_id, change[1], change_date=change[0], created_by="seed"
-                )
-            if stop:
-                patients.stop_medication(medication_id, end_date=stop, created_by="seed")
-        patient_ids.append(pid)
+    summary = DemoCohortService().ensure(actor="pytest")
+    patient_ids = [patient["id"] for patient in summary["patients"]]
 
     builder = FactBuilder()
     first = {pid: builder.build(pid, as_of_at=AS_OF).content_hash for pid in patient_ids}
