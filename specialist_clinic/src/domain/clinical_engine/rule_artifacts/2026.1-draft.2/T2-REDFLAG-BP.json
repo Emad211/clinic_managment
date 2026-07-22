@@ -4,7 +4,6 @@
   "rule_code": "T2-REDFLAG-BP",
   "version": "2.0.0-draft.2",
   "title": "هشدار فوری فشار خون بسیار بالا در بیمار دیابتی",
-  "legacy_rule_id": null,
   "phase": "PREFLIGHT",
   "action_type": "redflag",
   "severity": "CRITICAL",
