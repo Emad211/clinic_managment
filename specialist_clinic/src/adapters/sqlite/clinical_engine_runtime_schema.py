@@ -17,6 +17,7 @@ import sqlite3
 from src.adapters.sqlite.core import get_db
 
 
+_SCHEMA_VERSION = 1
 _CLINICAL_SOURCE_TABLES = (
     "patient_conditions",
     "patient_medications",
@@ -80,9 +81,34 @@ def _expected_trigger_names() -> set[str]:
     return names
 
 
+def _connection_is_ready(db: sqlite3.Connection) -> bool:
+    try:
+        row = db.execute(
+            "SELECT version FROM temp.clinical_runtime_schema_marker LIMIT 1"
+        ).fetchone()
+        return bool(row and int(row["version"]) == _SCHEMA_VERSION)
+    except sqlite3.DatabaseError:
+        return False
+
+
+def _mark_connection_ready(db: sqlite3.Connection) -> None:
+    db.execute(
+        "CREATE TEMP TABLE IF NOT EXISTS clinical_runtime_schema_marker "
+        "(version INTEGER NOT NULL)"
+    )
+    db.execute("DELETE FROM temp.clinical_runtime_schema_marker")
+    db.execute(
+        "INSERT INTO temp.clinical_runtime_schema_marker(version) VALUES (?)",
+        (_SCHEMA_VERSION,),
+    )
+
+
 def ensure_runtime_schema(db: sqlite3.Connection | None = None) -> None:
     """Install and verify the monotonic clinical-data revision contract."""
     db = db or get_db()
+    if _connection_is_ready(db):
+        return
+
     _ensure_column(
         db,
         "patient_links",
@@ -129,4 +155,5 @@ def ensure_runtime_schema(db: sqlite3.Connection | None = None) -> None:
         raise RuntimeError(
             "Clinical data revision guards are incomplete: " + ", ".join(missing)
         )
+    _mark_connection_ready(db)
     db.commit()
