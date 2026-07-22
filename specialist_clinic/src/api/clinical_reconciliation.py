@@ -1,7 +1,16 @@
 """Authenticated UI/API boundary for explicit collection reconciliation."""
 from __future__ import annotations
 
-from flask import Blueprint, flash, g, jsonify, redirect, request, url_for
+from flask import (
+    Blueprint,
+    flash,
+    g,
+    jsonify,
+    redirect,
+    render_template,
+    request,
+    url_for,
+)
 
 from src.adapters.sqlite.patients_repo import PatientRepository
 from src.api.auth import login_required
@@ -9,6 +18,7 @@ from src.services.activity_logger import log_activity
 from src.services.clinical_reconciliation_service import (
     ClinicalReconciliationService,
 )
+from src.services.patient_service import PatientService
 
 
 bp = Blueprint(
@@ -26,6 +36,28 @@ def _anchor(collection_key: str) -> str:
     return "#meds" if collection_key == "medications" else "#record"
 
 
+@bp.get("/<int:pid>/reconciliation")
+@login_required
+def workspace(pid: int):
+    profile = PatientService().get_full_profile(pid)
+    if not profile:
+        flash("بیمار یافت نشد", "error")
+        return redirect(url_for("patients.list_patients"))
+    return render_template(
+        "patients/reconciliation.html",
+        active_page="patients",
+        patient=profile["patient"],
+        conditions=profile["conditions"],
+        medications=[
+            medication
+            for medication in profile["medications"]
+            if medication.get("is_active")
+        ],
+        allergies=profile["allergies"],
+        reconciliation=profile["reconciliation"],
+    )
+
+
 @bp.get("/<int:pid>/reconciliation/status")
 @login_required
 def status(pid: int):
@@ -35,6 +67,9 @@ def status(pid: int):
     return jsonify({
         "patient_link_id": pid,
         "collections": statuses,
+        "workspace_url": url_for(
+            "clinical_reconciliation.workspace", pid=pid
+        ),
         "review_url_template": url_for(
             "clinical_reconciliation.review",
             pid=pid,
@@ -76,5 +111,10 @@ def review(pid: int, collection_key: str):
         flash(
             "مرور فهرست ثبت شد؛ هر تغییر بعدی نیازمند مرور دوباره است.",
             "success",
+        )
+    if request.form.get("return_to") == "workspace":
+        return redirect(
+            url_for("clinical_reconciliation.workspace", pid=pid)
+            + f"#{collection_key}"
         )
     return redirect(url_for("patients.detail", pid=pid) + _anchor(collection_key))
