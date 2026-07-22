@@ -4,7 +4,6 @@
   "rule_code": "T2-SAFE-MET-STOP",
   "version": "2.0.0-draft.2",
   "title": "هشدار ایمنی متفورمین در کاهش شدید عملکرد کلیه",
-  "legacy_rule_id": null,
   "phase": "SAFETY",
   "action_type": "safety_alert",
   "severity": "CRITICAL",
