@@ -13,7 +13,7 @@ from flask import (
 )
 
 from src.adapters.sqlite.clinical_engine_v1_cutover import (
-    ensure_v1_schema_cutover,
+    install_v1_request_projection,
 )
 from src.adapters.sqlite.core import get_db
 from src.adapters.sqlite.patients_repo import PatientRepository
@@ -43,9 +43,9 @@ def install_patient_mutation_guards(state):
 
 
 @bp.before_app_request
-def enforce_retired_v1_schema_cutover():
-    """No request may observe writable Clinical Engine v1 storage."""
-    ensure_v1_schema_cutover(
+def install_request_local_v2_rule_projection():
+    """Install only a TEMP read projection required by one manager endpoint."""
+    install_v1_request_projection(
         get_db(),
         endpoint=request.endpoint,
     )
