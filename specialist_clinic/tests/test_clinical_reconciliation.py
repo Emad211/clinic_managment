@@ -62,6 +62,17 @@ def _patient(db, national_id: str) -> int:
     return int(cursor.lastrowid)
 
 
+def _catalog_medication(db, class_key: str = "metformin") -> dict:
+    row = db.execute(
+        """SELECT id, generic_fa, drug_class_key FROM drug_catalog
+           WHERE is_active=1 AND drug_class_key=?
+           ORDER BY id LIMIT 1""",
+        (class_key,),
+    ).fetchone()
+    assert row is not None
+    return dict(row)
+
+
 def _fact(snapshot, key: str):
     matches = [fact for fact in snapshot.facts if fact.key == key]
     assert len(matches) == 1
@@ -98,7 +109,11 @@ def test_empty_database_is_unknown_until_absence_is_explicitly_reviewed(
     patient_id = _patient(db, "REC0001")
 
     before = FactBuilder().build(patient_id, as_of_at=AS_OF)
-    for key in ("condition.codes", "medication.classes", "allergy.substances"):
+    for key in (
+        "condition.codes",
+        "medication.classes",
+        "allergy.substances",
+    ):
         fact = _fact(before, key)
         assert fact.status is FactStatus.UNKNOWN
         assert fact.verification is VerificationStatus.UNVERIFIED
@@ -127,23 +142,25 @@ def test_empty_database_is_unknown_until_absence_is_explicitly_reviewed(
     assert revision_after == revision_before + 1
 
 
-def test_complete_present_collection_becomes_stale_after_source_change(
+def test_complete_canonical_collection_becomes_stale_after_source_change(
     reconciliation_app,
 ):
     from src.adapters.sqlite.core import get_db
 
     db = get_db()
     patient_id = _patient(db, "REC0002")
+    catalog = _catalog_medication(db)
     repo = PatientRepository()
     repo.add_medication(
         patient_id,
-        drug_name="Metformin",
+        drug_name=catalog["generic_fa"],
         dose="500 mg",
         schedule="روزانه",
         start_date="2025-01-01",
         refill_due_date=None,
         notes=None,
-        drug_class="metformin",
+        drug_class=catalog["drug_class_key"],
+        drug_catalog_id=int(catalog["id"]),
         created_by="doctor",
     )
     _record(patient_id, "medications")
@@ -174,13 +191,56 @@ def test_complete_present_collection_becomes_stale_after_source_change(
     assert "COLLECTION_CHANGED_AFTER_RECONCILIATION" in stale.warnings
 
 
-def test_partial_review_never_claims_confirmed_collection(
+def test_complete_review_does_not_confirm_unmapped_medication_identity(
     reconciliation_app,
 ):
     from src.adapters.sqlite.core import get_db
 
     db = get_db()
     patient_id = _patient(db, "REC0003")
+    PatientRepository().add_medication(
+        patient_id,
+        drug_name="Metformin handwritten legacy row",
+        dose="500 mg",
+        schedule="روزانه",
+        start_date="2025-01-01",
+        refill_due_date=None,
+        notes="عمداً خارج از drug catalog",
+        drug_class="metformin",
+        created_by="doctor",
+    )
+    _record(patient_id, "medications")
+
+    projection = ClinicalReconciliationRepository().projection(
+        patient_id,
+        "medications",
+        as_of_at=AS_OF,
+    )
+    medication_fact = _fact(
+        FactBuilder().build(patient_id, as_of_at=AS_OF),
+        "medication.classes",
+    )
+
+    assert projection.state == "mapping_incomplete"
+    assert projection.mapping_complete is False
+    assert projection.status is FactStatus.PRESENT
+    assert projection.verification is VerificationStatus.PROVISIONAL
+    assert projection.freshness is FreshnessStatus.FRESH
+    assert projection.values == ("metformin",)
+    assert "UNMAPPED_MEDICATION_CONCEPT" in projection.warnings
+    assert "CANONICAL_MAPPING_INCOMPLETE" in projection.warnings
+    assert medication_fact.status is FactStatus.PRESENT
+    assert medication_fact.value == ["metformin"]
+    assert medication_fact.verification is VerificationStatus.PROVISIONAL
+
+
+def test_partial_review_never_claims_confirmed_collection(
+    reconciliation_app,
+):
+    from src.adapters.sqlite.core import get_db
+
+    db = get_db()
+    patient_id = _patient(db, "REC0004")
     db.execute(
         """INSERT INTO patient_conditions
            (patient_link_id, condition_id, onset_date, diagnosed_at)
@@ -211,7 +271,7 @@ def test_known_item_presence_is_independent_of_collection_completeness(
     from src.adapters.sqlite.core import get_db
 
     db = get_db()
-    patient_id = _patient(db, "REC0004")
+    patient_id = _patient(db, "REC0005")
     db.execute(
         """INSERT INTO patient_conditions
            (patient_link_id, condition_id, onset_date, diagnosed_at)
@@ -235,8 +295,8 @@ def test_reconciliation_events_are_append_only_and_scope_bound(
     from src.adapters.sqlite.core import get_db
 
     db = get_db()
-    first = _patient(db, "REC0005")
-    second = _patient(db, "REC0006")
+    first = _patient(db, "REC0006")
+    second = _patient(db, "REC0007")
     event = _record(first, "allergies")
 
     with pytest.raises(sqlite3.IntegrityError, match="append-only"):
@@ -270,17 +330,19 @@ def test_historical_medication_projection_uses_event_dose_and_effective_stop(
     from src.adapters.sqlite.core import get_db
 
     db = get_db()
-    patient_id = _patient(db, "REC0007")
+    patient_id = _patient(db, "REC0008")
+    catalog = _catalog_medication(db)
     repo = PatientRepository()
     med_id = repo.add_medication(
         patient_id,
-        drug_name="Metformin",
+        drug_name=catalog["generic_fa"],
         dose="500 mg",
         schedule="روزانه",
         start_date="2024-01-01",
         refill_due_date=None,
         notes=None,
-        drug_class="metformin",
+        drug_class=catalog["drug_class_key"],
+        drug_catalog_id=int(catalog["id"]),
         created_by="doctor",
     )
     repo.change_dose(
@@ -311,6 +373,7 @@ def test_historical_medication_projection_uses_event_dose_and_effective_stop(
     assert historical.state == "confirmed_present"
     assert historical.items[0]["dose"] == "1000 mg"
     assert historical.items[0]["start_date"] == "2024-01-01"
+    assert historical.items[0]["drug_catalog_id"] == catalog["id"]
     assert historical.reconciliation_event["id"] == historical_event["id"]
 
     after_stop = ClinicalReconciliationRepository().projection(
@@ -335,14 +398,39 @@ def test_historical_medication_projection_uses_event_dose_and_effective_stop(
     assert confirmed_absence.status is FactStatus.ABSENT
 
 
+def test_missing_interval_timestamp_is_disclosed_in_projection(
+    reconciliation_app,
+):
+    from src.adapters.sqlite.core import get_db
+
+    db = get_db()
+    patient_id = _patient(db, "REC0009")
+    db.execute(
+        """INSERT INTO allergies
+           (patient_link_id, substance, reaction, severity, is_active,
+            created_at)
+           VALUES (?, 'Legacy allergen', 'unknown', 'unknown', 1, NULL)""",
+        (patient_id,),
+    )
+    db.commit()
+
+    projection = ClinicalReconciliationRepository().projection(
+        patient_id,
+        "allergies",
+        as_of_at=AS_OF,
+    )
+    assert projection.status is FactStatus.PRESENT
+    assert "HISTORICAL_INTERVAL_APPROXIMATION" in projection.warnings
+
+
 def test_soft_resolution_preserves_history_and_checks_patient_ownership(
     reconciliation_app,
 ):
     from src.adapters.sqlite.core import get_db
 
     db = get_db()
-    first = _patient(db, "REC0008")
-    second = _patient(db, "REC0009")
+    first = _patient(db, "REC0010")
+    second = _patient(db, "REC0011")
     repo = PatientRepository()
     condition_id = repo.add_condition(first, 1, onset_date="2020-01-01")
     allergy_id = repo.add_allergy(
@@ -375,8 +463,14 @@ def test_soft_resolution_preserves_history_and_checks_patient_ownership(
         "SELECT is_active, resolved_at FROM allergies WHERE id=?",
         (allergy_id,),
     ).fetchone()
-    assert dict(condition) == {"is_active": 0, "resolved_at": "2025-01-01"}
-    assert dict(allergy) == {"is_active": 0, "resolved_at": "2025-01-01"}
+    assert dict(condition) == {
+        "is_active": 0,
+        "resolved_at": "2025-01-01",
+    }
+    assert dict(allergy) == {
+        "is_active": 0,
+        "resolved_at": "2025-01-01",
+    }
 
 
 def test_service_requires_attestation_and_reason_for_partial_review(
@@ -384,7 +478,7 @@ def test_service_requires_attestation_and_reason_for_partial_review(
 ):
     from src.adapters.sqlite.core import get_db
 
-    patient_id = _patient(get_db(), "REC0010")
+    patient_id = _patient(get_db(), "REC0012")
     service = ClinicalReconciliationService(clock=lambda: AS_OF)
     with pytest.raises(ValueError, match="تأیید"):
         service.record(
