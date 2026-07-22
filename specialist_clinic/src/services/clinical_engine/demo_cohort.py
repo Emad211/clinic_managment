@@ -1,5 +1,4 @@
 """Versioned preparation and quality checks for the synthetic safety cohort."""
-
 from __future__ import annotations
 
 from src.adapters.sqlite.demo_cohort_repo import DemoCohortRepository
@@ -35,7 +34,10 @@ class DemoCohortService:
         rebuilt = force or not before["ready"]
         if rebuilt:
             self.repository.replace_all(
-                DEMO_PATIENTS, version=DEMO_COHORT_VERSION, actor=actor,
+                DEMO_PATIENTS,
+                version=DEMO_COHORT_VERSION,
+                actor=actor,
+                reference_at=DEMO_REFERENCE_AT,
             )
         after = self.summary()
         self._validate(after)
@@ -45,7 +47,8 @@ class DemoCohortService:
                 "clinical_v2_demo_cohort_rebuild",
                 f"Rebuilt {after['patient_count']} synthetic longitudinal records "
                 f"at cohort version {DEMO_COHORT_VERSION}",
-                user_id=0, username=actor,
+                user_id=0,
+                username=actor,
             )
         return after
 
@@ -64,6 +67,7 @@ class DemoCohortService:
             "prescriptions": actual["prescriptions"] == expected["prescriptions"],
             "history": actual["history"] == expected["history"],
             "conditions": actual["conditions"] == expected["conditions"],
+            "reconciliation": actual.get("reconciled_collections") == 30,
         }
         failed = [key for key, passed in checks.items() if not passed]
         if failed:
