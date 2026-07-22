@@ -1,5 +1,4 @@
-"""Map current specialist-clinic records to canonical Clinical Engine v2 facts."""
-
+"""Map specialist-clinic records to canonical Clinical Engine v2 facts."""
 from __future__ import annotations
 
 from datetime import date, datetime
@@ -17,12 +16,36 @@ from src.domain.clinical_engine import (
     FreshnessStatus,
     VerificationStatus,
 )
+from src.domain.clinical_engine.reconciliation import project_collection
 
 
 _FA_DIGITS = str.maketrans("۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩", "01234567890123456789")
 _TRUE = {"1", "true", "yes", "on"}
 _FALSE = {"0", "false", "no", "off"}
 _KEY_PART = re.compile(r"^[a-z0-9][a-z0-9._-]*$")
+_COLLECTION_DEFINITIONS = (
+    (
+        "conditions",
+        FactKind.CONDITION,
+        "condition.codes",
+        "condition",
+        "condition_code",
+    ),
+    (
+        "medications",
+        FactKind.MEDICATION,
+        "medication.classes",
+        "medication",
+        "drug_class",
+    ),
+    (
+        "allergies",
+        FactKind.ALLERGY,
+        "allergy.substances",
+        "allergy",
+        "substance",
+    ),
+)
 
 
 def normalize_birthdate(value: Any) -> date | None:
@@ -86,9 +109,8 @@ def _observation_provenance(
     """Map stored source without upgrading patient-entered data to confirmed."""
     if row.get("channel") == "lab":
         return "laboratory", VerificationStatus.CONFIRMED, ()
-    # Older tests/adapters predate source_detail. Their vital rows represented
-    # clinic measurements, so preserve that narrow compatibility default. The
-    # production repository always supplies source_detail explicitly.
+    # Older isolated adapter tests predate source_detail. Production repository
+    # rows always include it, so this compatibility default cannot affect live data.
     if "source_detail" not in row:
         return "clinician", VerificationStatus.CONFIRMED, ()
     source = str(row.get("source_detail") or "").strip().lower()
@@ -111,10 +133,8 @@ class LegacyFactBundleAdapter:
         patient = bundle["patient"]
         pid = int(patient["id"])
         # Contact/address edits also update patient_links.updated_at, but they do
-        # not change demographic facts. Using updated_at here made an unrelated
-        # contact edit change the clinical snapshot hash without advancing the
-        # clinical revision. Enrollment is the stable provenance fallback until
-        # dedicated demographic event timestamps are introduced.
+        # not change demographic facts. Enrollment is the stable provenance
+        # fallback until dedicated demographic event timestamps are introduced.
         fallback = _dt(patient.get("enrolled_at"), as_of_at)
         facts: list[ClinicalFact] = []
 
@@ -163,12 +183,11 @@ class LegacyFactBundleAdapter:
 
         birth_raw = patient.get("birthdate")
         birth = normalize_birthdate(birth_raw)
-        birth_status = FactStatus.PRESENT if birth else FactStatus.UNKNOWN
         add(
             fact_id=f"patient:{pid}:birthdate",
             kind=FactKind.DEMOGRAPHIC,
             key="demographic.birthdate",
-            status=birth_status,
+            status=FactStatus.PRESENT if birth else FactStatus.UNKNOWN,
             value=birth.isoformat() if birth else None,
             effective_at=fallback,
             system="patient_links",
@@ -206,9 +225,7 @@ class LegacyFactBundleAdapter:
         self._collections(bundle, pid, as_of_at, add)
         self._flags(bundle, pid, as_of_at, add)
         self._observations(bundle, pid, as_of_at, add)
-        # The order is part of the snapshot contract. At the same effective time
-        # a lab row follows a clinic row, keeping deterministic ordering without
-        # dropping either source (conflict detection needs both).
+        # Fact order is part of the snapshot hash and must be deterministic.
         return tuple(
             sorted(
                 facts,
@@ -222,31 +239,98 @@ class LegacyFactBundleAdapter:
         )
 
     def _collections(self, bundle, pid, as_of_at, add):
-        definitions = (
-            (
-                "conditions",
-                FactKind.CONDITION,
-                "condition.codes",
-                "condition",
-                "condition_code",
-            ),
-            (
-                "medications",
-                FactKind.MEDICATION,
-                "medication.classes",
-                "medication",
-                "drug_class",
-            ),
-            (
-                "allergies",
-                FactKind.ALLERGY,
-                "allergy.substances",
-                "allergy",
-                "substance",
-            ),
-        )
+        # Focused tests written before reconciliation injected hand-built bundles
+        # without the key. Production ClinicalEngineFactRepository always includes
+        # it; preserve the old fixture contract only for those isolated tests.
+        if "reconciliations" not in bundle:
+            self._legacy_test_collections(bundle, pid, as_of_at, add)
+            return
+
         unavailable = bundle.get("unavailable", {})
-        for source, kind, key, prefix, field in definitions:
+        reconciliation_events = bundle.get("reconciliations", [])
+        medication_events = bundle.get("medication_events", [])
+        for source, kind, key, prefix, field in _COLLECTION_DEFINITIONS:
+            blocked_sources = {source, "reconciliations"}
+            if source == "medications":
+                blocked_sources.add("medication_events")
+            if blocked_sources & set(unavailable):
+                add(
+                    fact_id=f"source:{pid}:{source}",
+                    kind=kind,
+                    key=key,
+                    status=FactStatus.UNKNOWN,
+                    value=None,
+                    effective_at=as_of_at,
+                    system="system",
+                    record_id=source,
+                    verification=VerificationStatus.UNVERIFIED,
+                    freshness=FreshnessStatus.UNKNOWN,
+                    warnings=("SOURCE_UNAVAILABLE",),
+                )
+                continue
+
+            projection = project_collection(
+                source,
+                bundle.get(source, []),
+                reconciliation_events,
+                as_of_at=as_of_at,
+                medication_events=(
+                    medication_events if source == "medications" else ()
+                ),
+            )
+            add(
+                fact_id=f"collection:{pid}:{source}",
+                kind=kind,
+                key=key,
+                status=projection.status,
+                value=(
+                    list(projection.values)
+                    if projection.status is FactStatus.PRESENT
+                    else None
+                ),
+                effective_at=projection.effective_at,
+                system=projection.source_system,
+                record_id=projection.source_record_id,
+                actor=projection.actor,
+                verification=projection.verification,
+                freshness=projection.freshness,
+                warnings=projection.warnings,
+            )
+
+            for row in projection.rows:
+                raw = row.get(field)
+                if not raw:
+                    continue
+                if prefix == "allergy":
+                    fact_key = "allergy.substance"
+                    key_warnings: tuple[str, ...] = ()
+                    fact_value = str(raw)
+                else:
+                    fact_key, key_warnings = _key(prefix, raw, row["id"])
+                    fact_value = True
+                add(
+                    fact_id=f"{prefix}:{row['id']}",
+                    kind=kind,
+                    key=fact_key,
+                    status=FactStatus.PRESENT,
+                    value=fact_value,
+                    effective_at=_dt(row.get("_effective_at"), as_of_at),
+                    system=source,
+                    record_id=row["id"],
+                    actor=row.get("recorded_by") or row.get("created_by"),
+                    verification=projection.verification,
+                    freshness=projection.freshness,
+                    warnings=(
+                        *projection.warnings,
+                        *(row.get("_history_warnings") or ()),
+                        *key_warnings,
+                    ),
+                )
+
+    @staticmethod
+    def _legacy_test_collections(bundle, pid, as_of_at, add):
+        unavailable = bundle.get("unavailable", {})
+        for source, kind, key, prefix, field in _COLLECTION_DEFINITIONS:
             if source in unavailable:
                 add(
                     fact_id=f"source:{pid}:{source}",
@@ -261,7 +345,10 @@ class LegacyFactBundleAdapter:
                     warnings=("SOURCE_UNAVAILABLE",),
                 )
                 continue
-            rows = bundle.get(source, [])
+            rows = [
+                row for row in bundle.get(source, [])
+                if int(row.get("is_active", 1) or 0)
+            ]
             values = sorted(
                 {
                     str(row.get(field)).strip()
@@ -276,7 +363,7 @@ class LegacyFactBundleAdapter:
                 fact_id=f"collection:{pid}:{source}",
                 kind=kind,
                 key=key,
-                status=(FactStatus.UNKNOWN if incomplete else FactStatus.PRESENT),
+                status=FactStatus.UNKNOWN if incomplete else FactStatus.PRESENT,
                 value=None if incomplete else values,
                 effective_at=as_of_at,
                 system="legacy_collection",
@@ -286,22 +373,21 @@ class LegacyFactBundleAdapter:
                     if incomplete
                     else VerificationStatus.CONFIRMED
                 ),
-                warnings=("LEGACY_APPROXIMATION",) if incomplete else (),
+                warnings=(
+                    "LEGACY_RECONCILIATION_ASSUMED",
+                    *( ("LEGACY_APPROXIMATION",) if incomplete else () ),
+                ),
             )
             for row in rows:
                 raw = row.get(field)
                 if not raw:
                     continue
-                effective = _dt(
-                    row.get("diagnosed_at")
-                    or row.get("created_at")
-                    or row.get("start_date"),
-                    as_of_at,
-                )
                 if prefix == "allergy":
-                    fact_key = "allergy.substance"
-                    key_warnings = ()
-                    fact_value = str(raw)
+                    fact_key, key_warnings, fact_value = (
+                        "allergy.substance",
+                        (),
+                        str(raw),
+                    )
                 else:
                     fact_key, key_warnings = _key(prefix, raw, row["id"])
                     fact_value = True
@@ -311,11 +397,16 @@ class LegacyFactBundleAdapter:
                     key=fact_key,
                     status=FactStatus.PRESENT,
                     value=fact_value,
-                    effective_at=effective,
+                    effective_at=_dt(
+                        row.get("diagnosed_at")
+                        or row.get("created_at")
+                        or row.get("start_date"),
+                        as_of_at,
+                    ),
                     system=source,
                     record_id=row["id"],
                     actor=row.get("recorded_by"),
-                    warnings=key_warnings,
+                    warnings=("LEGACY_RECONCILIATION_ASSUMED", *key_warnings),
                 )
 
     def _flags(self, bundle, pid, as_of_at, add):
@@ -412,7 +503,6 @@ class LegacyFactBundleAdapter:
             fact_key, key_warnings = _key(
                 "observation", key, row["record_id"]
             )
-            channel = row["channel"]
             source_system, source_verification, source_warnings = (
                 _observation_provenance(row)
             )
@@ -431,7 +521,7 @@ class LegacyFactBundleAdapter:
                     else ()
                 )
                 add(
-                    fact_id=f"{channel}:{row['record_id']}",
+                    fact_id=f"{row['channel']}:{row['record_id']}",
                     kind=FactKind.OBSERVATION,
                     key=fact_key,
                     status=FactStatus.UNKNOWN,
@@ -457,7 +547,7 @@ class LegacyFactBundleAdapter:
                     "source": "lab_results",
                 }
             add(
-                fact_id=f"{channel}:{row['record_id']}",
+                fact_id=f"{row['channel']}:{row['record_id']}",
                 kind=FactKind.OBSERVATION,
                 key=fact_key,
                 status=FactStatus.PRESENT,
