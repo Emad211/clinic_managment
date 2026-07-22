@@ -78,26 +78,44 @@ def test_bundled_rule_packages_contain_no_legacy_identifier():
     assert documents
 
 
-def test_rule_version_persists_after_physical_lineage_cleanup(tmp_path):
+def _clean_app(tmp_path, filename: str):
     from src.adapters.sqlite import core
-    from src.adapters.sqlite.clinical_engine_legacy_cleanup_schema import (
-        cleanup_legacy_clinical_schema,
-    )
     from src.app import create_app
 
     core._initialized = False
-    app = create_app(
+    return create_app(
         {
             "TESTING": True,
-            "DATABASE_PATH": str(tmp_path / "no-legacy-lineage.db"),
+            "DATABASE_PATH": str(tmp_path / filename),
             "BACKUP_FOLDER": str(tmp_path / "backups"),
             "SECRET_KEY": "no-legacy-lineage-test",
         }
     )
+
+
+def _remove_legacy_schema(db):
+    from src.adapters.sqlite.clinical_engine_legacy_cleanup_schema import (
+        cleanup_legacy_clinical_schema,
+    )
+
+    cleanup_legacy_clinical_schema(db)
+
+
+def _columns(db, table: str) -> set[str]:
+    return {
+        str(row["name"])
+        for row in db.execute(f"PRAGMA table_info({table})").fetchall()
+    }
+
+
+def test_rule_version_persists_after_physical_lineage_cleanup(tmp_path):
+    from src.adapters.sqlite import core
+
+    app = _clean_app(tmp_path, "no-legacy-rule-lineage.db")
     try:
         with app.app_context():
             db = core.get_db()
-            cleanup_legacy_clinical_schema(db)
+            _remove_legacy_schema(db)
 
             compiled = RuleCompiler().compile(valid_rule())
             assert not hasattr(compiled.definition, "legacy_rule_id")
@@ -106,13 +124,9 @@ def test_rule_version_persists_after_physical_lineage_cleanup(tmp_path):
                 created_by="pytest",
             )
 
-            columns = {
-                str(row["name"])
-                for row in db.execute(
-                    "PRAGMA table_info(clinical_rule_versions)"
-                ).fetchall()
-            }
-            assert "source_legacy_rule_id" not in columns
+            assert "source_legacy_rule_id" not in _columns(
+                db, "clinical_rule_versions"
+            )
             row = db.execute(
                 "SELECT rule_code, version FROM clinical_rule_versions "
                 "WHERE id=?",
@@ -120,5 +134,82 @@ def test_rule_version_persists_after_physical_lineage_cleanup(tmp_path):
             ).fetchone()
             assert row["rule_code"] == valid_rule()["rule_code"]
             assert row["version"] == valid_rule()["version"]
+    finally:
+        core._initialized = False
+
+
+def test_decision_audit_persists_and_projects_after_lineage_cleanup(tmp_path):
+    from src.adapters.sqlite import core
+    from src.adapters.sqlite.clinical_engine_audit_repo import (
+        ClinicalEngineAuditRepository,
+    )
+    from src.domain.clinical_engine import (
+        ClinicalDecision,
+        RecommendationEventType,
+        RunStatus,
+    )
+
+    app = _clean_app(tmp_path, "no-legacy-decision-lineage.db")
+    try:
+        with app.app_context():
+            db = core.get_db()
+            _remove_legacy_schema(db)
+            patient_id = int(
+                db.execute(
+                    """INSERT INTO patient_links
+                       (national_id, full_name, enrolled_by)
+                       VALUES ('LINEAGE01', 'Lineage Free Patient', 'pytest')"""
+                ).lastrowid
+            )
+            db.commit()
+
+            audit = ClinicalEngineAuditRepository()
+            run_id = audit.start_run(
+                patient_link_id=patient_id,
+                as_of_at="2026-07-23 09:00:00",
+                engine_version="lineage-free-test",
+                fact_snapshot={
+                    "schema_version": "2.0",
+                    "patient_link_id": patient_id,
+                    "clinical_data_revision": 0,
+                    "facts": [],
+                },
+            )
+            recommendation_id = audit.append_recommendation_event(
+                run_id=run_id,
+                recommendation_key="lineage-free:test",
+                action_type="educate",
+                event_type=RecommendationEventType.CREATED,
+                payload={"suggestion_only": True},
+            )
+            audit.complete_run(run_id, status=RunStatus.COMPLETED)
+            decision_id = audit.append_decision(
+                recommendation_event_id=recommendation_id,
+                patient_link_id=patient_id,
+                decision=ClinicalDecision.ACCEPTED,
+                actor_username="physician",
+            )
+
+            assert "legacy_source_suggestion_log_id" not in _columns(
+                db, "clinical_decision_events"
+            )
+            stored = db.execute(
+                "SELECT decision, actor_username "
+                "FROM clinical_decision_events WHERE id=?",
+                (decision_id,),
+            ).fetchone()
+            assert dict(stored) == {
+                "decision": "ACCEPTED",
+                "actor_username": "physician",
+            }
+            projected = audit.recommendation_context(
+                recommendation_id,
+                patient_link_id=patient_id,
+            )
+            assert projected["current_decision"]["id"] == decision_id
+            assert all(
+                "legacy" not in key
+                for key in projected["current_decision"]
+            )
     finally:
         core._initialized = False
