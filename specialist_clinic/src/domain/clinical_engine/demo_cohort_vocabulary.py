@@ -12,8 +12,8 @@ from typing import Any, Iterable
 
 
 _DRUG_ALIASES = {
-    # Historical fixture spelling variants. Values are the exact active
-    # ``drug_catalog.generic_fa`` / ``drug_class_key`` pairs.
+    # Historical fixture spelling and shortened-name variants. Values are the exact
+    # active ``drug_catalog.generic_fa`` / ``drug_class_key`` pairs.
     ("رزوواستاتین", "statin"): ("روزوواستاتین", "statin"),
     ("گلیکلازید", "su"): ("گلی‌کلازید", "su"),
     ("گلی‌بنکلامید", "su"): (
@@ -21,6 +21,10 @@ _DRUG_ALIASES = {
         "su",
     ),
     ("لیسینوپریل", "acei"): ("لیزینوپریل", "acei"),
+    ("گلارژین", "insulin_basal"): (
+        "انسولین گلارژین",
+        "insulin_basal",
+    ),
 }
 
 
