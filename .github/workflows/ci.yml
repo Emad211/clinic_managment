@@ -5,11 +5,10 @@
 name: CI
 
 on:
+  # Every development branch is executable evidence. This also covers stacked PR
+  # branches, whose pull_request workflow definition is read from the base branch
+  # and may not yet contain the newest CI configuration.
   push:
-    branches: [main]
-  # Stacked PRs are part of the normal hardening workflow. Restricting this event
-  # to base=main silently skipped CI for later tranches and allowed integration
-  # regressions to accumulate between dependent branches.
   pull_request:
   workflow_dispatch:
 
