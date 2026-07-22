@@ -1,31 +1,39 @@
-name: Source Snapshot
+name: Apply Verified PR27 Patch
 
 on:
   push:
+    branches:
+      - agent-clinical-schema-cutover
+
+permissions:
+  contents: write
 
 concurrency:
-  group: source-snapshot-${{ github.ref_name }}
-  cancel-in-progress: true
+  group: apply-pr27-verified-patch
+  cancel-in-progress: false
 
 jobs:
-  snapshot:
-    if: startsWith(github.ref_name, 'agent-')
+  apply:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Pack source without databases or local environments
-        run: >-
-          tar
-          --exclude=.git
-          --exclude='*.db'
-          --exclude='.venv'
-          --exclude='__pycache__'
-          --exclude='.pytest_cache'
-          -czf source-snapshot.tar.gz .
-      - name: Upload source snapshot
-        uses: actions/upload-artifact@v4
         with:
-          name: source-snapshot-${{ github.sha }}
-          path: source-snapshot.tar.gz
-          if-no-files-found: error
-          retention-days: 1
+          ref: ${{ github.ref_name }}
+          fetch-depth: 0
+
+      - name: Verify and apply reviewed patch
+        run: |
+          set -euo pipefail
+          git apply --check .github/pr27-final.patch
+          git apply .github/pr27-final.patch
+          rm -f .github/pr27-final.patch
+          git add -A
+          git diff --cached --check
+
+      - name: Commit final cutover corrections
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "finalize startup-bound clinical v1 schema cutover"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
