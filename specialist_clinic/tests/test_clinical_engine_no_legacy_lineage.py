@@ -78,8 +78,11 @@ def test_bundled_rule_packages_contain_no_legacy_identifier():
     assert documents
 
 
-def test_new_rule_version_persists_no_legacy_source_identity(tmp_path):
+def test_rule_version_persists_after_physical_lineage_cleanup(tmp_path):
     from src.adapters.sqlite import core
+    from src.adapters.sqlite.clinical_engine_legacy_cleanup_schema import (
+        cleanup_legacy_clinical_schema,
+    )
     from src.app import create_app
 
     core._initialized = False
@@ -93,17 +96,29 @@ def test_new_rule_version_persists_no_legacy_source_identity(tmp_path):
     )
     try:
         with app.app_context():
+            db = core.get_db()
+            cleanup_legacy_clinical_schema(db)
+
             compiled = RuleCompiler().compile(valid_rule())
-            assert compiled.definition.legacy_rule_id is None
+            assert not hasattr(compiled.definition, "legacy_rule_id")
             rule_id = ClinicalEngineRulesRepository().create_rule_version(
                 compiled,
                 created_by="pytest",
             )
-            row = core.get_db().execute(
-                "SELECT source_legacy_rule_id FROM clinical_rule_versions "
+
+            columns = {
+                str(row["name"])
+                for row in db.execute(
+                    "PRAGMA table_info(clinical_rule_versions)"
+                ).fetchall()
+            }
+            assert "source_legacy_rule_id" not in columns
+            row = db.execute(
+                "SELECT rule_code, version FROM clinical_rule_versions "
                 "WHERE id=?",
                 (rule_id,),
             ).fetchone()
-            assert row["source_legacy_rule_id"] is None
+            assert row["rule_code"] == valid_rule()["rule_code"]
+            assert row["version"] == valid_rule()["version"]
     finally:
         core._initialized = False
