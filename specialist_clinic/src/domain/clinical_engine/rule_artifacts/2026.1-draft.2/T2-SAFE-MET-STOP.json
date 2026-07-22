@@ -1,0 +1,127 @@
+{
+  "schema_version": "2.0",
+  "dsl_version": "2.0",
+  "rule_code": "T2-SAFE-MET-STOP",
+  "version": "2.0.0-draft.2",
+  "title": "هشدار ایمنی متفورمین در کاهش شدید عملکرد کلیه",
+  "legacy_rule_id": null,
+  "phase": "SAFETY",
+  "action_type": "safety_alert",
+  "severity": "CRITICAL",
+  "priority": 5,
+  "semantic_key": "diabetes:safety:metformin-low-egfr",
+  "scope": {
+    "population": "بزرگسال مبتلا به دیابت و مصرف‌کنندهٔ متفورمین",
+    "age_min": 18,
+    "age_max": null,
+    "sex": ["any"],
+    "care_settings": ["outpatient", "primary_care", "specialty_clinic"],
+    "encounter_types": ["office_visit", "followup"],
+    "condition_codes": ["diabetes"],
+    "out_of_scope": ["inpatient care", "dialysis protocol"]
+  },
+  "required_facts": [
+    {
+      "key": "condition.codes",
+      "criticality": "CRITICAL",
+      "max_age_days": null,
+      "minimum_verification": "CONFIRMED",
+      "on_unusable": "NEEDS_DATA",
+      "prompt_fa": "فهرست تشخیص‌های فعال بیمار باید قابل استفاده باشد."
+    },
+    {
+      "key": "demographic.age_years",
+      "criticality": "REQUIRED",
+      "max_age_days": null,
+      "minimum_verification": "CONFIRMED",
+      "on_unusable": "NEEDS_DATA",
+      "prompt_fa": "تاریخ تولد کامل برای احراز بزرگسال‌بودن لازم است."
+    },
+    {
+      "key": "medication.classes",
+      "criticality": "CRITICAL",
+      "max_age_days": 30,
+      "minimum_verification": "CONFIRMED",
+      "on_unusable": "NEEDS_DATA",
+      "prompt_fa": "فهرست داروهای فعال باید مرور و طبقه‌بندی شود."
+    },
+    {
+      "key": "observation.egfr",
+      "criticality": "CRITICAL",
+      "max_age_days": 90,
+      "minimum_verification": "CONFIRMED",
+      "on_unusable": "NEEDS_DATA",
+      "prompt_fa": "eGFR تازه و تأییدشده برای مصرف‌کنندهٔ متفورمین لازم است."
+    }
+  ],
+  "eligibility": {
+    "node_id": "met-stop-eligibility",
+    "all": [
+      {
+        "node_id": "met-stop-diabetes",
+        "fact": "condition.codes",
+        "selector": {"aggregation": "single"},
+        "op": "has",
+        "value": "diabetes",
+        "unit": null
+      },
+      {
+        "node_id": "met-stop-adult",
+        "fact": "demographic.age_years",
+        "selector": {"aggregation": "single"},
+        "op": ">=",
+        "value": 18,
+        "unit": "a"
+      },
+      {
+        "node_id": "met-stop-active",
+        "fact": "medication.classes",
+        "selector": {"aggregation": "single"},
+        "op": "has",
+        "value": "metformin",
+        "unit": null
+      }
+    ]
+  },
+  "condition": {
+    "node_id": "met-stop-egfr",
+    "fact": "observation.egfr",
+    "selector": {"aggregation": "latest", "within_days": 90},
+    "op": "<",
+    "value": 30,
+    "unit": "mL/min/{1.73_m2}"
+  },
+  "safety": {
+    "redflag_exclusions": [],
+    "hard_exclusions": [],
+    "on_safety_error": "BLOCK_ROUTINE_OUTPUTS"
+  },
+  "recommendation": {
+    "text_fa": "ایمنی ادامهٔ متفورمین باید فوراً توسط پزشک مرور شود؛ این هشدار نسخه یا دستور قطع خودکار ایجاد نمی‌کند.",
+    "suggestion_only": true,
+    "requires_clinician_confirmation": false,
+    "may_create_internal_task": false,
+    "params": {"do_not_modify_medication": true, "requires_medication_review": true}
+  },
+  "evidence": {
+    "source_title": "ADA Standards of Care in Diabetes — 2026",
+    "issuing_organization": "American Diabetes Association",
+    "publication_date": "2026-01-01",
+    "source_version": "2026",
+    "source_locator": "Technical golden case GC-04; medication threshold requires local clinical revalidation",
+    "source_url": "https://diabetesjournals.org/care/issue/49/Supplement_1",
+    "evidence_certainty": "NOT_GRADED",
+    "recommendation_strength": "NOT_GRADED",
+    "local_validation_status": "NOT_REVIEWED",
+    "local_adaptation_note": "پیش‌نویس فنی برای shadow؛ مصرف متفورمین اکنون در eligibility اثبات می‌شود تا eGFR فقط برای بیمار واقعاً واجد شرایط مطالبه شود. تصویب بالینی همچنان الزامی است."
+  },
+  "governance": {
+    "status": "DRAFT",
+    "author": "clinical-engine-v2",
+    "clinical_reviewer": null,
+    "technical_reviewer": "pending",
+    "review_due_date": "2026-08-31",
+    "supersedes": "T2-SAFE-MET-STOP@2.0.0-draft.1",
+    "change_note": "Move confirmed metformin exposure and adult applicability into eligibility; preserve prior immutable draft."
+  }
+}
