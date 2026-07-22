@@ -43,6 +43,7 @@ def worklist():
             'id': t['id'], 'reason': t['reason'], 'reason_fa': t['reason_fa'],
             'detail': t.get('detail'), 'due_date': t.get('due_date'),
             'fulfillment': t.get('fulfillment'),
+            'source_engine': t.get('source_engine'),
         })
         # earliest non-null due_date for the group
         due = t.get('due_date')
@@ -63,9 +64,14 @@ def worklist():
 @login_required
 def generate():
     """Synchronize due worklist routes through the canonical engagement engine."""
-    created = FollowupService().generate()
-    total = sum(created.values())
+    result = FollowupService().generate()
+    total = result["worklist"]
     flash(f"{total} پیگیریِ جدید ساخته شد" if total else "پیگیریِ جدیدِ سررسیده‌ای نبود", "success")
+    if result["issues"]:
+        flash(
+            f"{len(result['issues'])} مسیر بالینی به علت خطا یا دادهٔ ناکافی task نساخت.",
+            "warning",
+        )
     log_activity("followup_generate", f"همگام‌سازی ورک‌لیست؛ {total} پیگیری جدید")
     return redirect(url_for("followups.worklist"))
 

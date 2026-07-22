@@ -162,9 +162,20 @@ CREATE TABLE IF NOT EXISTS followup_tasks (
     status TEXT NOT NULL DEFAULT 'open',  -- open, done, dismissed
     assigned_to TEXT,
     call_log TEXT,
+    source_rule TEXT,
+    source_event TEXT,
+    appointment_id INTEGER,
+    fulfillment TEXT DEFAULT 'in_person',
+    source_engine TEXT,
+    source_run_id TEXT,
+    source_recommendation_event_id INTEGER,
+    clinical_semantic_key TEXT,
+    clinical_task_key TEXT,
     created_at TIMESTAMP DEFAULT (datetime('now', '+3 hours', '+30 minutes')),
     resolved_at TIMESTAMP,
-    FOREIGN KEY (patient_link_id) REFERENCES patient_links(id)
+    FOREIGN KEY (patient_link_id) REFERENCES patient_links(id),
+    FOREIGN KEY (source_run_id) REFERENCES clinical_engine_runs(run_id),
+    FOREIGN KEY (source_recommendation_event_id) REFERENCES clinical_recommendation_events(id)
 );
 
 -- Care protocols (clinical decision support: periodic standard checks)

@@ -564,10 +564,16 @@ def medication_effect(pid):
 @login_required
 def generate_followups(pid):
     """Synchronize this patient through the canonical engagement engine."""
-    from src.services.engagement_service import EngagementService
-    n = EngagementService().dispatch_patient(pid, worklist_only=True)['worklist']
+    from src.services.followup_service import FollowupService
+    result = FollowupService().generate_patient(pid)
+    n = result["worklist"]
     log_activity("followup_generate", f"تولید {n} پیگیری", patient_link_id=pid)
     flash(f"{n} پیگیری ساخته شد" if n else "پیگیری جدیدِ سررسیده‌ای نبود", "success")
+    if result["issues"]:
+        flash(
+            f"{len(result['issues'])} ارزیابی بالینی به علت خطا یا دادهٔ ناکافی به task تبدیل نشد.",
+            "warning",
+        )
     return redirect(url_for("patients.detail", pid=pid) + "#cockpit")
 
 

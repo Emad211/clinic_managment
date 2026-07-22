@@ -281,6 +281,25 @@ def _run_migrations(db):
     _ensure_column(db, "flag_catalog", "record_section", "TEXT")
     _ensure_column(db, "followup_tasks", "appointment_id", "INTEGER")
     _ensure_column(db, "followup_tasks", "fulfillment", "TEXT DEFAULT 'in_person'")
+    # PR-09: provenance and two-level idempotency for Clinical Engine v2 tasks.
+    _ensure_column(db, "followup_tasks", "source_engine", "TEXT")
+    _ensure_column(db, "followup_tasks", "source_run_id", "TEXT")
+    _ensure_column(db, "followup_tasks", "source_recommendation_event_id", "INTEGER")
+    _ensure_column(db, "followup_tasks", "clinical_semantic_key", "TEXT")
+    _ensure_column(db, "followup_tasks", "clinical_task_key", "TEXT")
+    # These indexes are safety controls, not optional optimizations.  Failure
+    # must abort startup instead of silently permitting duplicate clinical tasks.
+    db.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_followup_clinical_task_key "
+        "ON followup_tasks(clinical_task_key) WHERE clinical_task_key IS NOT NULL"
+    )
+    db.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_followup_open_clinical_semantic "
+        "ON followup_tasks(patient_link_id, clinical_semantic_key) "
+        "WHERE source_engine='clinical_v2' AND status='open' "
+        "AND clinical_semantic_key IS NOT NULL"
+    )
+    db.commit()
     _ensure_column(db, "engagement_events", "event_type", "TEXT")
     _ensure_column(db, "engagement_events", "is_custom", "INTEGER DEFAULT 0")
     _ensure_column(db, "engagement_approvals", "sms_message_id", "INTEGER")

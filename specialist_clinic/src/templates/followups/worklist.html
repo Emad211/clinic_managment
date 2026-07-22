@@ -69,7 +69,12 @@
                     <tbody>
                     {% for t in pg.tasks %}
                         <tr>
-                            <td><span class="badge badge-warn">{{ t.reason_fa }}</span></td>
+                            <td>
+                                <span class="badge badge-warn">{{ t.reason_fa }}</span>
+                                {% if t.source_engine == 'clinical_v2' %}
+                                    <span class="badge badge-info">بالینی v2</span>
+                                {% endif %}
+                            </td>
                             <td>
                                 {% if t.fulfillment == 'remote' %}
                                     <span class="badge badge-info">از راه دور</span>
@@ -119,6 +124,7 @@
                     <label class="flex items-center gap-2">
                         <input type="checkbox" name="task_ids" value="{{ t.id }}"{% if t.fulfillment != 'remote' %} checked{% endif %}>
                         <span class="badge badge-warn">{{ t.reason_fa }}</span>
+                        {% if t.source_engine == 'clinical_v2' %}<span class="badge badge-info">بالینی v2</span>{% endif %}
                         <span class="muted text-sm">{{ t.detail or '' }}</span>
                     </label>
                 {% endfor %}

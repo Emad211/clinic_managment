@@ -1,9 +1,36 @@
 """Repository for follow-up tasks (worklist)."""
+import sqlite3
+
 from src.adapters.sqlite.core import get_db
 from src.common.utils import iran_now
 
 
 class FollowupRepository:
+
+    def active_patient_ids(self) -> list[int]:
+        return [
+            int(row["id"])
+            for row in get_db().execute(
+                "SELECT id FROM patient_links WHERE is_active=1 ORDER BY id"
+            ).fetchall()
+        ]
+
+    def last_observation_at(self, pid: int, keys: list[str]):
+        """Latest canonical observation timestamp across clinic and lab channels."""
+        if not keys:
+            return None
+        placeholders = ",".join("?" for _ in keys)
+        row = get_db().execute(
+            f"""SELECT MAX(ts) AS measured_at FROM (
+                  SELECT measured_at AS ts FROM vital_readings
+                    WHERE patient_link_id=? AND type IN ({placeholders})
+                  UNION ALL
+                  SELECT taken_at AS ts FROM lab_results
+                    WHERE patient_link_id=? AND test_key IN ({placeholders})
+                )""",
+            (pid, *keys, pid, *keys),
+        ).fetchone()
+        return row["measured_at"] if row else None
 
     def create(self, pid: int, *, reason, detail=None, due_date=None, assigned_to=None,
                source_rule=None, source_event=None, appointment_id=None,
@@ -27,6 +54,62 @@ class FollowupRepository:
         )
         db.commit()
         return cur.lastrowid
+
+    def create_clinical_task_once(self, task: dict) -> tuple[int, bool]:
+        """Atomically create one v2 task per evidence episode and open meaning."""
+        db = get_db()
+        db.execute("BEGIN IMMEDIATE")
+        try:
+            existing = db.execute(
+                """SELECT id FROM followup_tasks
+                   WHERE clinical_task_key=?
+                      OR (patient_link_id=? AND clinical_semantic_key=?
+                          AND source_engine='clinical_v2' AND status='open')
+                   ORDER BY id LIMIT 1""",
+                (
+                    task["clinical_task_key"], task["patient_link_id"],
+                    task["clinical_semantic_key"],
+                ),
+            ).fetchone()
+            if existing:
+                db.commit()
+                return int(existing["id"]), False
+            cur = db.execute(
+                """INSERT INTO followup_tasks
+                   (patient_link_id, reason, detail, due_date, fulfillment,
+                    source_rule, source_event, source_engine, source_run_id,
+                    source_recommendation_event_id, clinical_semantic_key,
+                    clinical_task_key)
+                   VALUES (?, ?, ?, ?, 'in_person', ?, 'clinical_due',
+                           'clinical_v2', ?, ?, ?, ?)""",
+                (
+                    task["patient_link_id"], task["reason"], task["detail"],
+                    task["due_date"], task["source_rule"], task["source_run_id"],
+                    task["source_recommendation_event_id"],
+                    task["clinical_semantic_key"], task["clinical_task_key"],
+                ),
+            )
+            db.commit()
+            return int(cur.lastrowid), True
+        except sqlite3.IntegrityError:
+            db.rollback()
+            existing = db.execute(
+                """SELECT id FROM followup_tasks
+                   WHERE clinical_task_key=?
+                      OR (patient_link_id=? AND clinical_semantic_key=?
+                          AND source_engine='clinical_v2' AND status='open')
+                   ORDER BY id LIMIT 1""",
+                (
+                    task["clinical_task_key"], task["patient_link_id"],
+                    task["clinical_semantic_key"],
+                ),
+            ).fetchone()
+            if existing:
+                return int(existing["id"]), False
+            raise
+        except Exception:
+            db.rollback()
+            raise
 
     def set_appointment(self, task_id: int, appointment_id):
         """Link an open task to the visit that will fulfill it."""
