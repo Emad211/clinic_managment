@@ -80,6 +80,20 @@ def _key(prefix: str, raw: Any, record_id: Any) -> tuple[str, tuple[str, ...]]:
     return f"{prefix}.unmapped-{record_id}", ("LEGACY_APPROXIMATION",)
 
 
+def _observation_provenance(row: dict[str, Any]) -> tuple[str, VerificationStatus, tuple[str, ...]]:
+    """Map the stored source without upgrading patient-entered data to confirmed."""
+    if row.get("channel") == "lab":
+        return "laboratory", VerificationStatus.CONFIRMED, ()
+    source = str(row.get("source_detail") or "").strip().lower()
+    if source in {"clinic", "clinician", "office"}:
+        return "clinician", VerificationStatus.CONFIRMED, ()
+    if source in {"self", "patient", "home"}:
+        return "patient", VerificationStatus.PROVISIONAL, ("PATIENT_REPORTED",)
+    if source in {"device", "remote_device"}:
+        return "device", VerificationStatus.PROVISIONAL, ("DEVICE_REPORTED",)
+    return "system", VerificationStatus.UNVERIFIED, ("UNMAPPED_SOURCE",)
+
+
 class LegacyFactBundleAdapter:
     """Pure, deterministic mapping from repository rows to typed facts."""
 
@@ -232,6 +246,7 @@ class LegacyFactBundleAdapter:
                 continue
             fact_key, key_warnings = _key("observation", key, row["record_id"])
             channel = row["channel"]
+            source_system, source_verification, source_warnings = _observation_provenance(row)
             effective = parse_datetime(row.get("effective_at"))
             if effective is not None:
                 effective = _dt(effective, as_of_at)
@@ -243,10 +258,10 @@ class LegacyFactBundleAdapter:
                 add(fact_id=f"{channel}:{row['record_id']}", kind=FactKind.OBSERVATION,
                     key=fact_key, status=FactStatus.UNKNOWN, value=None,
                     effective_at=effective or as_of_at,
-                    system="laboratory" if channel == "lab" else "clinician",
+                    system=source_system,
                     record_id=row["record_id"], actor=row.get("recorded_by"),
                     verification=VerificationStatus.UNVERIFIED,
-                    warnings=(*quality_warnings, *key_warnings))
+                    warnings=(*quality_warnings, *source_warnings, *key_warnings))
                 continue
             reference = None
             if row.get("ref_low") is not None or row.get("ref_high") is not None:
@@ -255,10 +270,11 @@ class LegacyFactBundleAdapter:
             add(fact_id=f"{channel}:{row['record_id']}", kind=FactKind.OBSERVATION,
                 key=fact_key, status=FactStatus.PRESENT,
                 value=row.get("value"), unit=row.get("unit"), effective_at=effective,
-                system="laboratory" if channel == "lab" else "clinician",
+                system=source_system,
                 record_id=row["record_id"], actor=row.get("recorded_by"),
+                verification=source_verification,
                 # Freshness is selector/rule-specific (max_age_days), therefore
                 # the provider must not declare an observation fresh globally.
                 freshness=FreshnessStatus.UNKNOWN,
                 reference_range=reference,
-                warnings=("LEGACY_APPROXIMATION", *key_warnings))
+                warnings=("LEGACY_APPROXIMATION", *source_warnings, *key_warnings))
