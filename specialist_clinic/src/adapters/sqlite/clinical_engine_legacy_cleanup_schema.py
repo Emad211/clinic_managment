@@ -61,13 +61,11 @@ def _assert_no_lineage(
 def _rebuild_rule_versions(db: sqlite3.Connection) -> None:
     if "source_legacy_rule_id" not in _columns(db, "clinical_rule_versions"):
         return
-    db.executescript(
-        """
-        DROP TRIGGER IF EXISTS trg_rule_version_content_immutable;
-        DROP TRIGGER IF EXISTS trg_rule_versions_no_delete;
-        DROP TABLE IF EXISTS clinical_rule_versions_clean;
-
-        CREATE TABLE clinical_rule_versions_clean (
+    db.execute("DROP TRIGGER IF EXISTS trg_rule_version_content_immutable")
+    db.execute("DROP TRIGGER IF EXISTS trg_rule_versions_no_delete")
+    db.execute("DROP TABLE IF EXISTS clinical_rule_versions_clean")
+    db.execute(
+        """CREATE TABLE clinical_rule_versions_clean (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             rule_code TEXT NOT NULL,
             version TEXT NOT NULL,
@@ -92,9 +90,10 @@ def _rebuild_rule_versions(db: sqlite3.Connection) -> None:
             UNIQUE(content_hash),
             FOREIGN KEY(supersedes_rule_version_id)
                 REFERENCES clinical_rule_versions_clean(id)
-        );
-
-        INSERT INTO clinical_rule_versions_clean (
+        )"""
+    )
+    db.execute(
+        """INSERT INTO clinical_rule_versions_clean (
             id, rule_code, version, schema_version, dsl_version, phase,
             action_type, rule_json, content_hash, lifecycle_status,
             created_by, created_at, approved_by, approved_at,
@@ -105,29 +104,35 @@ def _rebuild_rule_versions(db: sqlite3.Connection) -> None:
             action_type, rule_json, content_hash, lifecycle_status,
             created_by, created_at, approved_by, approved_at,
             supersedes_rule_version_id, retired_at, change_note
-        FROM clinical_rule_versions;
-
-        DROP TABLE clinical_rule_versions;
-        ALTER TABLE clinical_rule_versions_clean RENAME TO clinical_rule_versions;
-
-        CREATE INDEX idx_rule_versions_code
-            ON clinical_rule_versions(rule_code, id DESC);
-        CREATE INDEX idx_rule_versions_status
-            ON clinical_rule_versions(lifecycle_status, phase);
-
-        CREATE TRIGGER trg_rule_version_content_immutable
+        FROM clinical_rule_versions"""
+    )
+    db.execute("DROP TABLE clinical_rule_versions")
+    db.execute(
+        "ALTER TABLE clinical_rule_versions_clean "
+        "RENAME TO clinical_rule_versions"
+    )
+    db.execute(
+        "CREATE INDEX idx_rule_versions_code "
+        "ON clinical_rule_versions(rule_code, id DESC)"
+    )
+    db.execute(
+        "CREATE INDEX idx_rule_versions_status "
+        "ON clinical_rule_versions(lifecycle_status, phase)"
+    )
+    db.execute(
+        """CREATE TRIGGER trg_rule_version_content_immutable
         BEFORE UPDATE OF rule_code, version, schema_version, dsl_version, phase,
                          action_type, rule_json, content_hash, created_by,
                          created_at, supersedes_rule_version_id
         ON clinical_rule_versions BEGIN
             SELECT RAISE(ABORT, 'clinical rule version content is immutable');
-        END;
-
-        CREATE TRIGGER trg_rule_versions_no_delete
+        END"""
+    )
+    db.execute(
+        """CREATE TRIGGER trg_rule_versions_no_delete
         BEFORE DELETE ON clinical_rule_versions BEGIN
             SELECT RAISE(ABORT, 'clinical rule versions cannot be deleted');
-        END;
-        """
+        END"""
     )
 
 
@@ -137,14 +142,12 @@ def _rebuild_decisions(db: sqlite3.Connection) -> None:
         not in _columns(db, "clinical_decision_events")
     ):
         return
-    db.executescript(
-        """
-        DROP TRIGGER IF EXISTS trg_decision_events_no_update;
-        DROP TRIGGER IF EXISTS trg_decision_events_no_delete;
-        DROP TRIGGER IF EXISTS trg_decision_events_terminal_run_only;
-        DROP TABLE IF EXISTS clinical_decision_events_clean;
-
-        CREATE TABLE clinical_decision_events_clean (
+    db.execute("DROP TRIGGER IF EXISTS trg_decision_events_no_update")
+    db.execute("DROP TRIGGER IF EXISTS trg_decision_events_no_delete")
+    db.execute("DROP TRIGGER IF EXISTS trg_decision_events_terminal_run_only")
+    db.execute("DROP TABLE IF EXISTS clinical_decision_events_clean")
+    db.execute(
+        """CREATE TABLE clinical_decision_events_clean (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             recommendation_event_id INTEGER NOT NULL,
             patient_link_id INTEGER NOT NULL,
@@ -163,9 +166,10 @@ def _rebuild_decisions(db: sqlite3.Connection) -> None:
             FOREIGN KEY(actor_user_id) REFERENCES users(id),
             FOREIGN KEY(supersedes_event_id)
                 REFERENCES clinical_decision_events_clean(id)
-        );
-
-        INSERT INTO clinical_decision_events_clean (
+        )"""
+    )
+    db.execute(
+        """INSERT INTO clinical_decision_events_clean (
             id, recommendation_event_id, patient_link_id, decision,
             reason_code, reason_text, actor_user_id, actor_username,
             occurred_at, supersedes_event_id
@@ -174,27 +178,35 @@ def _rebuild_decisions(db: sqlite3.Connection) -> None:
             id, recommendation_event_id, patient_link_id, decision,
             reason_code, reason_text, actor_user_id, actor_username,
             occurred_at, supersedes_event_id
-        FROM clinical_decision_events;
-
-        DROP TABLE clinical_decision_events;
-        ALTER TABLE clinical_decision_events_clean RENAME TO clinical_decision_events;
-
-        CREATE INDEX idx_decision_events_recommendation
-            ON clinical_decision_events(recommendation_event_id, occurred_at, id);
-        CREATE INDEX idx_decision_events_patient
-            ON clinical_decision_events(patient_link_id, occurred_at DESC);
-
-        CREATE TRIGGER trg_decision_events_no_update
+        FROM clinical_decision_events"""
+    )
+    db.execute("DROP TABLE clinical_decision_events")
+    db.execute(
+        "ALTER TABLE clinical_decision_events_clean "
+        "RENAME TO clinical_decision_events"
+    )
+    db.execute(
+        "CREATE INDEX idx_decision_events_recommendation "
+        "ON clinical_decision_events(recommendation_event_id, occurred_at, id)"
+    )
+    db.execute(
+        "CREATE INDEX idx_decision_events_patient "
+        "ON clinical_decision_events(patient_link_id, occurred_at DESC)"
+    )
+    db.execute(
+        """CREATE TRIGGER trg_decision_events_no_update
         BEFORE UPDATE ON clinical_decision_events BEGIN
             SELECT RAISE(ABORT, 'clinical_decision_events are immutable');
-        END;
-
-        CREATE TRIGGER trg_decision_events_no_delete
+        END"""
+    )
+    db.execute(
+        """CREATE TRIGGER trg_decision_events_no_delete
         BEFORE DELETE ON clinical_decision_events BEGIN
             SELECT RAISE(ABORT, 'clinical_decision_events cannot be deleted');
-        END;
-
-        CREATE TRIGGER trg_decision_events_terminal_run_only
+        END"""
+    )
+    db.execute(
+        """CREATE TRIGGER trg_decision_events_terminal_run_only
         BEFORE INSERT ON clinical_decision_events
         WHEN (SELECT r.run_status
               FROM clinical_recommendation_events e
@@ -203,8 +215,7 @@ def _rebuild_decisions(db: sqlite3.Connection) -> None:
         BEGIN
             SELECT RAISE(ABORT,
                          'clinical decisions require a terminal engine run');
-        END;
-        """
+        END"""
     )
 
 
@@ -213,7 +224,9 @@ def cleanup_legacy_clinical_schema(
 ) -> dict[str, Any]:
     """Remove retired v1 lineage while preserving v2 rows and immutability guards.
 
-    Returns a deterministic change report. A second call is a no-op.
+    Returns a deterministic change report. A second call is a no-op. Every rebuild
+    statement executes inside one explicit transaction; no ``executescript`` implicit
+    commit is permitted in this safety boundary.
     """
     _assert_no_lineage(
         db,
