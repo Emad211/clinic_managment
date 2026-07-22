@@ -1,9 +1,9 @@
-"""Request-bound cutover from retired Clinical Engine v1 storage.
+"""Startup cutover from retired Clinical Engine v1 storage.
 
-The canonical cleanup primitive is destructive but preserving. This coordinator runs it
-before any HTTP endpoint can use the database and installs one narrowly-scoped TEMP view
-for the still-unmigrated manager disease counter. No v1 table or writable compatibility
-surface remains in the main database after the first request.
+The canonical cleanup primitive is destructive but preserving. Persistent schema cleanup
+runs during application construction, before the server can accept a request. The only
+request-time compatibility is a narrowly scoped TEMP view used by the manager disease
+counter; it is connection-local, read-only and never changes the database file.
 """
 from __future__ import annotations
 
@@ -38,10 +38,19 @@ def _cleanup_needed(db: sqlite3.Connection) -> bool:
     return row is not None
 
 
+def ensure_v1_schema_cutover(
+    db: sqlite3.Connection,
+) -> dict[str, Any]:
+    """Remove retired storage before the application starts serving requests."""
+    if not _cleanup_needed(db):
+        return {"changed": False, "removed": []}
+    return cleanup_legacy_clinical_schema(db)
+
+
 def _install_manager_rule_count_projection(
     db: sqlite3.Connection,
 ) -> None:
-    """Expose a request-local, read-only count projection over governed v2 rules.
+    """Expose a request-local read-only count projection over governed v2 rules.
 
     The old manager route only selects ``condition_code`` and counts rows. A TEMP view
     is used instead of a permanent compatibility object, so the main schema remains
@@ -75,16 +84,11 @@ def _install_manager_rule_count_projection(
     )
 
 
-def ensure_v1_schema_cutover(
+def install_v1_request_projection(
     db: sqlite3.Connection,
     *,
-    endpoint: str | None = None,
-) -> dict[str, Any]:
-    """Remove retired storage before request handling and return a change report."""
-    result: dict[str, Any] = {"changed": False, "removed": []}
-    if _cleanup_needed(db):
-        result = cleanup_legacy_clinical_schema(db)
-
+    endpoint: str | None,
+) -> None:
+    """Install only connection-local read compatibility needed by one route."""
     if endpoint == _MANAGER_DISEASE_ENDPOINT:
         _install_manager_rule_count_projection(db)
-    return result
