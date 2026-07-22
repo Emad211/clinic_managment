@@ -12,6 +12,10 @@ from flask import (
     url_for,
 )
 
+from src.adapters.sqlite.clinical_engine_v1_cutover import (
+    ensure_v1_schema_cutover,
+)
+from src.adapters.sqlite.core import get_db
 from src.adapters.sqlite.patients_repo import PatientRepository
 from src.api.auth import login_required, manager_required
 from src.services.activity_logger import log_activity
@@ -36,6 +40,15 @@ def install_patient_mutation_guards(state):
     from src.api.patient_mutation_guards import install
 
     install(state.app)
+
+
+@bp.before_app_request
+def enforce_retired_v1_schema_cutover():
+    """No request may observe writable Clinical Engine v1 storage."""
+    ensure_v1_schema_cutover(
+        get_db(),
+        endpoint=request.endpoint,
+    )
 
 
 def _patient_or_none(pid: int):
@@ -74,18 +87,20 @@ def status(pid: int):
     if not _patient_or_none(pid):
         return jsonify({"error": "patient_not_found"}), 404
     statuses = ClinicalReconciliationService().patient_status(pid)
-    return jsonify({
-        "patient_link_id": pid,
-        "collections": statuses,
-        "workspace_url": url_for(
-            "clinical_reconciliation.workspace", pid=pid
-        ),
-        "review_url_template": url_for(
-            "clinical_reconciliation.review",
-            pid=pid,
-            collection_key="__COLLECTION__",
-        ),
-    })
+    return jsonify(
+        {
+            "patient_link_id": pid,
+            "collections": statuses,
+            "workspace_url": url_for(
+                "clinical_reconciliation.workspace", pid=pid
+            ),
+            "review_url_template": url_for(
+                "clinical_reconciliation.review",
+                pid=pid,
+                collection_key="__COLLECTION__",
+            ),
+        }
+    )
 
 
 @bp.post("/<int:pid>/reconciliation/<collection_key>")
@@ -103,7 +118,8 @@ def review(pid: int, collection_key: str):
             actor_user_id=int(g.user["id"]),
             attested=request.form.get("attested") in {"yes", "on", "1"},
             patient_confirmed=(
-                request.form.get("patient_confirmed") in {"yes", "on", "1"}
+                request.form.get("patient_confirmed")
+                in {"yes", "on", "1"}
             ),
             note=request.form.get("note"),
         )
@@ -127,4 +143,6 @@ def review(pid: int, collection_key: str):
             url_for("clinical_reconciliation.workspace", pid=pid)
             + f"#{collection_key}"
         )
-    return redirect(url_for("patients.detail", pid=pid) + _anchor(collection_key))
+    return redirect(
+        url_for("patients.detail", pid=pid) + _anchor(collection_key)
+    )
