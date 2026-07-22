@@ -9,6 +9,10 @@ _REQUIRED_TRIGGERS = {
     "trg_reconciliation_no_update",
     "trg_reconciliation_no_delete",
     "trg_reconciliation_supersedes_same_scope",
+    "trg_medication_catalog_validate_insert",
+    "trg_medication_catalog_validate_update",
+    "trg_medication_catalog_resolve_insert",
+    "trg_medication_catalog_resolve_update",
 }
 
 
@@ -84,6 +88,9 @@ def ensure_clinical_reconciliation_storage(db: sqlite3.Connection) -> None:
             patient_link_id, collection_key, reconciled_at DESC, id DESC
         );
 
+        CREATE INDEX IF NOT EXISTS idx_patient_medications_catalog
+        ON patient_medications(patient_link_id, drug_catalog_id, is_active);
+
         CREATE TRIGGER IF NOT EXISTS trg_reconciliation_no_update
         BEFORE UPDATE ON clinical_reconciliation_events
         BEGIN
@@ -108,7 +115,100 @@ def ensure_clinical_reconciliation_storage(db: sqlite3.Connection) -> None:
         BEGIN
             SELECT RAISE(ABORT, 'reconciliation supersession must stay in patient collection');
         END;
+
+        CREATE TRIGGER IF NOT EXISTS trg_medication_catalog_validate_insert
+        BEFORE INSERT ON patient_medications
+        WHEN NEW.drug_catalog_id IS NOT NULL
+         AND NOT EXISTS (
+             SELECT 1 FROM drug_catalog catalog
+             WHERE catalog.id=NEW.drug_catalog_id AND catalog.is_active=1
+         )
+        BEGIN
+            SELECT RAISE(ABORT, 'medication concept must reference an active drug catalog row');
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS trg_medication_catalog_validate_update
+        BEFORE UPDATE OF drug_catalog_id ON patient_medications
+        WHEN NEW.drug_catalog_id IS NOT NULL
+         AND NOT EXISTS (
+             SELECT 1 FROM drug_catalog catalog
+             WHERE catalog.id=NEW.drug_catalog_id AND catalog.is_active=1
+         )
+        BEGIN
+            SELECT RAISE(ABORT, 'medication concept must reference an active drug catalog row');
+        END;
+
+        -- Existing forms already submit the exact catalog name and class. Resolve
+        -- that pair only when it identifies one active concept unambiguously.
+        CREATE TRIGGER IF NOT EXISTS trg_medication_catalog_resolve_insert
+        AFTER INSERT ON patient_medications
+        WHEN NEW.drug_catalog_id IS NULL
+         AND NEW.drug_class IS NOT NULL
+         AND (
+             SELECT COUNT(*) FROM drug_catalog catalog
+             WHERE catalog.is_active=1
+               AND lower(trim(catalog.generic_fa))=lower(trim(NEW.drug_name))
+               AND COALESCE(catalog.drug_class_key,'')=COALESCE(NEW.drug_class,'')
+         )=1
+        BEGIN
+            UPDATE patient_medications
+               SET drug_catalog_id=(
+                   SELECT catalog.id FROM drug_catalog catalog
+                   WHERE catalog.is_active=1
+                     AND lower(trim(catalog.generic_fa))=lower(trim(NEW.drug_name))
+                     AND COALESCE(catalog.drug_class_key,'')=COALESCE(NEW.drug_class,'')
+                   LIMIT 1
+               )
+             WHERE id=NEW.id;
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS trg_medication_catalog_resolve_update
+        AFTER UPDATE OF drug_name, drug_class ON patient_medications
+        WHEN NEW.drug_catalog_id IS NULL
+         AND NEW.drug_class IS NOT NULL
+         AND (
+             SELECT COUNT(*) FROM drug_catalog catalog
+             WHERE catalog.is_active=1
+               AND lower(trim(catalog.generic_fa))=lower(trim(NEW.drug_name))
+               AND COALESCE(catalog.drug_class_key,'')=COALESCE(NEW.drug_class,'')
+         )=1
+        BEGIN
+            UPDATE patient_medications
+               SET drug_catalog_id=(
+                   SELECT catalog.id FROM drug_catalog catalog
+                   WHERE catalog.is_active=1
+                     AND lower(trim(catalog.generic_fa))=lower(trim(NEW.drug_name))
+                     AND COALESCE(catalog.drug_class_key,'')=COALESCE(NEW.drug_class,'')
+                   LIMIT 1
+               )
+             WHERE id=NEW.id;
+        END;
         """
+    )
+
+    # One-time safe backfill. Free-text or ambiguous rows deliberately remain NULL
+    # and surface UNMAPPED_MEDICATION_CONCEPT until a clinician resolves them.
+    db.execute(
+        """UPDATE patient_medications
+           SET drug_catalog_id=(
+               SELECT catalog.id FROM drug_catalog catalog
+               WHERE catalog.is_active=1
+                 AND lower(trim(catalog.generic_fa))=
+                     lower(trim(patient_medications.drug_name))
+                 AND COALESCE(catalog.drug_class_key,'')=
+                     COALESCE(patient_medications.drug_class,'')
+               LIMIT 1
+           )
+           WHERE drug_catalog_id IS NULL
+             AND drug_class IS NOT NULL
+             AND (
+                 SELECT COUNT(*) FROM drug_catalog catalog
+                 WHERE catalog.is_active=1
+                   AND lower(trim(catalog.generic_fa))=
+                       lower(trim(patient_medications.drug_name))
+                   AND COALESCE(catalog.drug_class_key,'')=
+                       COALESCE(patient_medications.drug_class,'')
+             )=1"""
     )
 
     table = db.execute(
