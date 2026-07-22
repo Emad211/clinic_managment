@@ -28,6 +28,16 @@ bp = Blueprint(
 )
 
 
+@bp.record_once
+def install_patient_mutation_guards(state):
+    # The patients blueprint is registered first. Replace only the four legacy
+    # endpoint callables that need patient-row ownership checks while preserving
+    # every public URL and endpoint name.
+    from src.api.patient_mutation_guards import install
+
+    install(state.app)
+
+
 def _patient_or_none(pid: int):
     return PatientRepository().get_by_id(pid)
 
