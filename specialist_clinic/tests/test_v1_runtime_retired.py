@@ -61,6 +61,12 @@ def test_legacy_rule_seed_is_a_no_write_tombstone():
     assert seed_clinical_rules(ExplodingDatabase()) == 0
 
 
+def test_legacy_dosage_guidance_is_inert_without_database_access():
+    from src.adapters.sqlite.clinical_rules_repo import ClinicalRulesRepository
+
+    assert ClinicalRulesRepository().dosage_guidance(["ckd", "hypertension"]) == []
+
+
 def test_patient_template_has_no_v1_decision_surface():
     template = (
         ROOT / "templates" / "patients" / "detail.html"
