@@ -133,9 +133,9 @@ class ClinicalV2FollowupService:
         self.repo = repo or FollowupRepository()
 
     def enabled_for(self, patient_link_id: int) -> bool:
-        return (
-            self.facts.get_mode() == "on_selected"
-            and self.facts.is_selected_patient(patient_link_id)
+        mode = self.facts.get_mode()
+        return mode == "on" or (
+            mode == "on_selected" and self.facts.is_selected_patient(patient_link_id)
         )
 
     def project_patient(self, patient_link_id: int) -> dict:

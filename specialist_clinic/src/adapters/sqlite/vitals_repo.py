@@ -62,24 +62,32 @@ class VitalsRepository:
         ).fetchall()
         return [dict(r) for r in rows]
 
-    def latest_by_type(self, pid: int) -> dict:
+    def latest_by_type(self, pid: int, as_of_at=None) -> dict:
         """Most recent observation per canonical key across BOTH capture channels:
         vital_readings (by `type`) and catalog-keyed lab_results (by `test_key`). They are
         one canonical concept on a shared vocabulary (hba1c, fbs, ldl, egfr, …), so a
         lab-entered HbA1c counts the same as a clinic-entered one (ADR-0005). Returns
         {key: {type, value, unit, measured_at, source}} — the latest per key wins."""
         db = get_db()
+        cutoff = None
+        if as_of_at is not None:
+            cutoff = (as_of_at.strftime('%Y-%m-%d %H:%M:%S')
+                      if hasattr(as_of_at, 'strftime') else str(as_of_at))
+        time_filter = "" if cutoff is None else " AND measured_at <= ?"
+        lab_time_filter = "" if cutoff is None else " AND taken_at <= ?"
+        params = (pid, pid) if cutoff is None else (pid, cutoff, pid, cutoff)
         rows = db.execute(
-            """SELECT key, value, unit, measured_at, source FROM (
+            f"""SELECT key, value, unit, measured_at, source FROM (
                  SELECT type AS key, value, unit, measured_at, source
-                   FROM vital_readings WHERE patient_link_id=?
+                   FROM vital_readings WHERE patient_link_id=?{time_filter}
                  UNION ALL
                  SELECT test_key AS key, value, unit, taken_at AS measured_at, 'lab' AS source
-                   FROM lab_results WHERE patient_link_id=? AND test_key IS NOT NULL AND test_key <> ''
+                   FROM lab_results WHERE patient_link_id=?{lab_time_filter}
+                     AND test_key IS NOT NULL AND test_key <> ''
                )
                WHERE key IS NOT NULL
                ORDER BY measured_at""",
-            (pid, pid),
+            params,
         ).fetchall()
         latest = {}
         for r in rows:  # ascending measured_at -> last write per key is the most recent

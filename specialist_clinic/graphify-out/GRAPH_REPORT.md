@@ -1,16 +1,16 @@
 # Graph Report - specialist_clinic  (2026-07-22)
 
 ## Corpus Check
-- 153 files · ~160,790 words
+- 156 files · ~164,152 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 3728 nodes · 7828 edges · 331 communities (169 shown, 162 thin omitted)
-- Extraction: 81% EXTRACTED · 19% INFERRED · 0% AMBIGUOUS · INFERRED: 1460 edges (avg confidence: 0.68)
+- 3811 nodes · 8975 edges · 283 communities (142 shown, 141 thin omitted)
+- Extraction: 91% EXTRACTED · 9% INFERRED · 0% AMBIGUOUS · INFERRED: 764 edges (avg confidence: 0.55)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `0615882b`
+- Built from commit: `b21f77ce`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -147,24 +147,12 @@
 - validators.py
 - manifest.json
 - .on_invoice_processed
-- test_patient_card.py
+- fake_acc_db
 - مرجع اتصال پیامک مدیانا
-- Design System — کلینیک تخصصی (Dark · Data-Dense Dashboard)
-- warnings
-- test_datetime_controls.py
-- clinical-fact.schema.json
-- suppression
-- .approve
 - persian-date.min.js
-- specialist_app
 - ۴) متدها
-- specialist_app
-- TestScenario1Bootstrap
-- _issue_expired_token
 - ._createDescriptors
 - Per-disease Suggestion-only Clinical Engine
-- key
-- patient_link_id
 - Patient Enrollment Page
 - refresh
 - Mediana SMS Integration
@@ -300,67 +288,32 @@
 - Specialist Clinic
 - Flask Runtime
 - JSON Schema Clinical Engine Validation
-- __init__.py
-- __init__.py
-- __init__.py
-- __init__.py
-- __init__.py
-- __init__.py
-- __init__.py
-- __init__.py
 - Login Page
 - User and Extension-token Administration
-- specialist_app
-- .test_real_acc_db_unchanged_after_outreach_sync
-- specialist_app
-- TestScenario1Bootstrap
-- specialist_app
-- fact_id
-- key
-- patient_link_id
-- doctor_queue_repo.py
-- Any
-- Any
-- Any
-- Any
-- ValueError
-- datetime
-- ValueError
-- Any
-- Any
-- Any
-- ValueError
-- Any
-- datetime
-- Any
-- Any
-- datetime
-- Any
-- datetime
 
 ## God Nodes (most connected - your core abstractions)
-1. `get_db()` - 344 edges
-2. `SmsRepository` - 83 edges
-3. `va` - 73 edges
-4. `EngagementService` - 66 edges
-5. `RuleCompiler` - 65 edges
-6. `InvoiceSyncService` - 64 edges
-7. `n()` - 61 edges
-8. `an()` - 61 edges
-9. `RuleEvaluator` - 58 edges
-10. `ns()` - 55 edges
+1. `get_db()` - 407 edges
+2. `SmsRepository` - 97 edges
+3. `iran_now()` - 83 edges
+4. `EngagementService` - 75 edges
+5. `RuleCompiler` - 74 edges
+6. `va` - 73 edges
+7. `create_app()` - 72 edges
+8. `InvoiceSyncService` - 69 edges
+9. `log_activity()` - 67 edges
+10. `RuleEvaluator` - 62 edges
 
 ## Surprising Connections (you probably didn't know these)
-- `test_fresh_bootstrap_creates_all_tables_and_safe_off_flag()` --calls--> `get_db()`  [INFERRED]
-  tests/test_clinical_engine_v2_storage.py → src/adapters/sqlite/core.py
-- `readonly_app()` --calls--> `create_app()`  [INFERRED]
-  tests/test_clinical_engine_v2_readonly_ui.py → src/app.py
-- `test_existing_database_bootstrap_is_additive_and_idempotent()` --calls--> `create_app()`  [INFERRED]
-  tests/test_clinical_engine_v2_storage.py → src/app.py
-- `app_ctx()` --calls--> `create_app()`  [INFERRED]
-  tests/test_sms_delivery_lifecycle.py → src/app.py
-- `_clean()` --calls--> `reset()`  [INFERRED]
-  tests/test_rate_limit.py → src/common/rate_limit.py
+- `TestBearerHeaderTokenAccepted` --uses--> `AuthRepository`  [INFERRED]
+  tests/test_ext_token_security.py → src/adapters/sqlite/auth_repo.py
+- `_Audit` --uses--> `ClinicalEngineActivationRepository`  [INFERRED]
+  tests/test_clinical_engine_v2_activation.py → src/adapters/sqlite/clinical_engine_activation_repo.py
+- `_Capture` --uses--> `ClinicalEngineActivationRepository`  [INFERRED]
+  tests/test_clinical_engine_v2_activation.py → src/adapters/sqlite/clinical_engine_activation_repo.py
+- `_Legacy` --uses--> `ClinicalEngineActivationRepository`  [INFERRED]
+  tests/test_clinical_engine_v2_activation.py → src/adapters/sqlite/clinical_engine_activation_repo.py
+- `_Rules` --uses--> `ClinicalEngineActivationRepository`  [INFERRED]
+  tests/test_clinical_engine_v2_activation.py → src/adapters/sqlite/clinical_engine_activation_repo.py
 
 ## Import Cycles
 - None detected.
@@ -370,187 +323,187 @@
 - **Patient Card Lifecycle** — src_templates_patients_detail_disease_oriented_patient_record, src_templates_patients_card_admin_patient_card_lifecycle, src_templates_card_public_card_read_only_health_card [EXTRACTED 1.00]
 - **Appointment Care Flow** — src_templates_appointments_new_recurring_appointment_form, src_templates_appointments_list_appointment_worklist, src_templates_doctor_queue_queue_live_doctor_queue, src_templates_patients_detail_disease_oriented_patient_record [INFERRED 0.85]
 
-## Communities (331 total, 162 thin omitted)
+## Communities (283 total, 141 thin omitted)
 
 ### Community 0 - "chart.umd.min.js"
 Cohesion: 0.03
-Nodes (49): be(), beforeDatasetDraw(), beforeDatasetsDraw(), beforeDraw(), d(), destroy(), Di(), es() (+41 more)
+Nodes (48): Ae(), As(), average(), be(), beforeDatasetDraw(), beforeDatasetsDraw(), buildTicks(), configure() (+40 more)
 
 ### Community 1 - "patients.py"
 Cohesion: 0.04
-Nodes (68): Log an issued prescription.          `items` may be a list/dict (serialized to J, performed_on is a gregorian 'YYYY-MM-DD' string (or None)., since is a gregorian 'YYYY-MM-DD' string (or None)., kind in symptom|exam|lifestyle|general., RecordRepository, new_appointment(), login(), login_required() (+60 more)
+Nodes (77): Repository for the patient-record aggregate: surgery history, medical (comorbidi, Log an issued prescription.          `items` may be a list/dict (serialized to J, performed_on is a gregorian 'YYYY-MM-DD' string (or None)., since is a gregorian 'YYYY-MM-DD' string (or None)., kind in symptom|exam|lifestyle|general., RecordRepository, login(), login_required() (+69 more)
 
 ### Community 2 - "get_db"
-Cohesion: 0.07
-Nodes (15): PatientRepository, done(), index(), invite(), Physician visit-queue panel (phase3_doctor_queue_plan.md).  Live queue of today', Build the doctor_visit_log snapshot from the posted queue row; resolve the local, Doctor-initiated named SMS invite from «مرحله بعد» (#3 test+consult, #7 sugar+BP, Simple visit view for an ENROLLED patient: compact previous info + quick data en (+7 more)
+Cohesion: 0.04
+Nodes (33): get_db(), Return the per-request connection to the specialist DB (created on first use)., InvoiceSyncRepository, Idempotent insert of one processed invoice. Returns True if a NEW row was, True if invoice-triggered outreach (thank-you / invite) already completed for, Mark outreach complete so it is not retried on the next sync pass., LabCatalogRepository, Repository for the lab-test catalog and per-disease test mappings.  All SQL for (+25 more)
 
 ### Community 3 - "DoctorQueueService"
-Cohesion: 0.05
-Nodes (54): DoctorQueueRepository, {accounting_invoice_id: row} for one work_date — merged with the live queue., Mark a queued patient as in_progress (idempotent; never downgrades a done row)., End-of-visit: physician-side state only — does NOT close the accounting invoice., DoctorQueueService, Physician visit-queue service (phase3_doctor_queue_plan.md).  Builds the live qu, Return {'waiting', 'done', 'work_date'} for the physician panel — today's OPEN, _acc_add_invoice() (+46 more)
+Cohesion: 0.06
+Nodes (53): DoctorQueueRepository, {accounting_invoice_id: row} for one work_date — merged with the live queue., Mark a queued patient as in_progress (idempotent; never downgrades a done row)., End-of-visit: physician-side state only — does NOT close the accounting invoice., index(), DoctorQueueService, _acc_add_invoice(), _acc_add_patient() (+45 more)
 
 ### Community 4 - "n"
-Cohesion: 0.07
-Nodes (60): a(), aa(), ai(), ao(), average(), b(), cn(), da() (+52 more)
+Cohesion: 0.06
+Nodes (77): _(), a(), aa(), ai(), ao(), at(), b(), beforeDraw() (+69 more)
 
 ### Community 5 - "ns"
-Cohesion: 0.06
-Nodes (11): As(), at(), beforeUpdate(), go(), initialize(), labelColor(), labelPointStyle(), ns() (+3 more)
+Cohesion: 0.05
+Nodes (13): beforeUpdate(), Bi(), Ci(), Fi(), go(), initialize(), labelColor(), labelPointStyle() (+5 more)
 
 ### Community 6 - "an"
 Cohesion: 0.06
-Nodes (15): addBox(), addElements(), afterDatasetsUpdate(), an(), generateLabels(), ke(), Mn(), onClick() (+7 more)
+Nodes (14): addBox(), addElements(), afterDatasetsUpdate(), an(), generateLabels(), ke(), Mn(), onClick() (+6 more)
 
 ### Community 7 - "iran_now"
-Cohesion: 0.08
-Nodes (22): PatientCardRepository, Issue a fresh card token for a patient, revoking any prior active one (one, Read-only token lookup. The ONLY method the public card route uses., iran_now(), Return current Tehran time as a naive datetime.      The DB stores timestamps as, Today's Gregorian date as 'YYYY-MM-DD' (Iran time)., today_str(), Engagement engine (event -> channel) — the dispatcher that unifies automated rem (+14 more)
+Cohesion: 0.04
+Nodes (64): Repository for follow-up tasks (worklist)., Time series for one canonical indicator key across BOTH capture channels, Most recent observation per canonical key across BOTH capture channels:, VitalsRepository, delete_lab(), delete_reading(), Today's Gregorian date as 'YYYY-MM-DD' (Iran time)., today_str() (+56 more)
 
 ### Community 8 - "va"
-Cohesion: 0.08
-Nodes (16): Ae(), afterDraw(), afterEvent(), afterUpdate(), Bi(), configure(), Ee(), ki() (+8 more)
+Cohesion: 0.06
+Nodes (28): afterDraw(), afterEvent(), afterUpdate(), beforeLayout(), Ee(), es(), f(), gs() (+20 more)
 
 ### Community 9 - "RuleCompiler"
-Cohesion: 0.04
-Nodes (27): EngagementRepository, Atomically claim a pending approval so double-clicks cannot double-send., Record an approve/reject decision and who made it., Stamp the moment the approved message was actually dispatched., True if this event was dispatched to this channel within `cooldown_days`., Queue a candidate message for the physician to approve. Idempotent via         I, InvoiceSyncRepository, Repository for the accounting invoice-sync ledger (`processed_invoices`).  ADR-0 (+19 more)
+Cohesion: 0.05
+Nodes (34): _enabled(), Public patient-card Channel (ADR-0004).  A token-addressed, READ-ONLY view of a, view(), allow(), Tiny in-process rate limiter (SECU-13). Thread-safe, dependency-free.  A sliding, Sliding window: permit at most `limit` events per `per_seconds` for `key`., Clear all counters (used by tests to isolate cases)., reset() (+26 more)
 
 ### Community 10 - "sms.py"
-Cohesion: 0.06
-Nodes (38): add_template(), api_check(), api_recipients(), approval_approve(), approval_reject(), campaign_detail(), campaigns(), messages_report() (+30 more)
+Cohesion: 0.04
+Nodes (34): EngagementRepository, Atomically claim a pending approval so double-clicks cannot double-send., Record an approve/reject decision and who made it., Stamp the moment the approved message was actually dispatched., True if this event was dispatched to this channel within `cooldown_days`., Queue a candidate message for the physician to approve. Idempotent via         I, manager_required(), decision_rules() (+26 more)
 
 ### Community 11 - "eo"
-Cohesion: 0.07
-Nodes (21): buildTicks(), ca(), _calculateBarIndexPixels(), _calculateBarValuePixels(), Fn(), getBasePixel(), getLabelAndValue(), getLabelForValue() (+13 more)
+Cohesion: 0.06
+Nodes (24): AppointmentRepository, Repository for appointments., date_from/date_to are gregorian 'YYYY-MM-DD'. Returns appts with patient name., Scheduled appts within the next N hours that haven't had a reminder sent., Repository for patient wallet (credit balance) and its transactions., Apply a credit (+) or debit (-) and record a transaction. Returns new balance., WalletRepository, list_appointments() (+16 more)
 
 ### Community 12 - "VitalsRepository"
-Cohesion: 0.06
-Nodes (19): AppointmentRepository, date_from/date_to are gregorian 'YYYY-MM-DD'. Returns appts with patient name., Scheduled appts within the next N hours that haven't had a reminder sent., Apply a credit (+) or debit (-) and record a transaction. Returns new balance., WalletRepository, list_appointments(), set_status(), index() (+11 more)
+Cohesion: 0.10
+Nodes (27): KavenegarProvider, Kavenegar SMS provider adapter (https://api.kavenegar.com).  Auth differs from M, Account remaining credit in Rials, or None on failure.          Calls the read-o, Call a Kavenegar method; return (http_status, parsed_json_envelope)., _field(), MedianaProvider, Mediana SMS provider adapter (https://api.mediana.ir).  Auth: header `X-API-KEY:, Return the panel wallet balance, or None on failure. (+19 more)
 
 ### Community 13 - "Scheduler"
-Cohesion: 0.05
-Nodes (32): One-time application logging setup.  In the frozen .exe (PyInstaller, typically, Configure the root logger once (idempotent). WARNING+ to a rotating file     (1, setup_app_logging(), init_scheduler(), Background scheduler: appointment reminders, scheduled campaigns, follow-up gene, Weekly snapshot of THIS app's DB (specialist.db; the accounting DB is never, Run the unified engagement engine: due reminders + follow-ups -> SMS/worklist., Read-only invoice-sync consumer (ADR-0003 D3+): record recently-closed         a (+24 more)
+Cohesion: 0.08
+Nodes (26): Path, One-time application logging setup.  In the frozen .exe (PyInstaller, typically, Configure the root logger once (idempotent). WARNING+ to a rotating file     (1, setup_app_logging(), clean_root_logging(), _flush_src_modules(), _make_scheduler(), A2 (backup) + A3 (logging) test suite — specialist_clinic.  Safety contract:   - (+18 more)
 
 ### Community 14 - "TestLabObservation"
-Cohesion: 0.14
-Nodes (27): Create inert DTOs only; never prescribes, mutates, messages, or creates tasks., RecommendationComposer, Persist audited evaluations for shadow or explicitly selected rollout., ShadowFactCapture, _by_code(), _compiled(), _declare(), _leaf() (+19 more)
+Cohesion: 0.06
+Nodes (33): _add_lab_direct(), _add_vital_direct(), _enroll_patient(), _flush_src_modules(), _get_indicator_danger(), _get_lab_rows(), _make_minimal_acc_db(), ADR-0005 — Lab-Observation Channel test suite (adversarial).  Feature C: vital_r (+25 more)
 
 ### Community 15 - "core.py"
-Cohesion: 0.10
-Nodes (22): KavenegarProvider, Kavenegar SMS provider adapter (https://api.kavenegar.com).  Auth differs from M, Account remaining credit in Rials, or None on failure.          Calls the read-o, Call a Kavenegar method; return (http_status, parsed_json_envelope)., BatchItemResult, BatchSendResult, get_provider(), NullProvider (+14 more)
+Cohesion: 0.07
+Nodes (37): add_template(), api_check(), api_recipients(), approval_approve(), approval_reject(), campaign_detail(), campaigns(), messages_report() (+29 more)
 
 ### Community 16 - "MedianaProvider"
-Cohesion: 0.25
-Nodes (34): Evaluate immutable rules against one frozen snapshot; owns no clock or I/O., RuleEvaluator, compiled(), fact(), leaf(), PR-05 executable semantics for the four-state Clinical Engine v2 evaluator., snapshot(), test_all_branch_keeps_complete_trace_and_error_dominates_false() (+26 more)
+Cohesion: 0.07
+Nodes (34): _acc_add_invoice(), _acc_add_patient(), _add_condition(), _add_lab(), _add_vital(), _enroll(), _flush_src_modules(), _force_quiet_off() (+26 more)
 
 ### Community 17 - "no"
-Cohesion: 0.07
+Cohesion: 0.08
 Nodes (11): buildLookupTable(), En, Fo(), _generate(), getDecimalForValue(), _getTimestampsForTable(), init(), initOffsets() (+3 more)
 
 ### Community 18 - "jquery.min.js"
 Cohesion: 0.08
-Nodes (34): jt(), A(), at(), b(), be(), ce(), e(), Ee() (+26 more)
+Nodes (35): A(), at(), b(), be(), ce(), e(), Ee(), fe() (+27 more)
 
 ### Community 19 - "test_end_to_end_loops.py"
-Cohesion: 0.07
-Nodes (29): decision_rules(), decision_rules_update(), disease_detail(), diseases(), engagement_settings(), engagement_update(), index(), _indicator_applies() (+21 more)
+Cohesion: 0.12
+Nodes (38): Append-only audit persistence for Clinical Engine v2., ClinicalDecision, ConflictStatus, FactKind, FactStatus, FreshnessStatus, PredicateState, Stable enum vocabulary for Clinical Engine v2.  These values are persisted in ru (+30 more)
 
 ### Community 20 - "ClinicalRulesRepository"
-Cohesion: 0.19
-Nodes (9): AnalyticsService, _level_from(), _mean(), _parse_date(), Per-patient clinical analytics — rules-driven, per-disease, risk + med effect., One entry per chronic condition: worst status + risk tier + the top         (≤3), Map weighted risk points + danger count to a (level, fa-label) pair.      Single, medication_effect() (+1 more)
+Cohesion: 0.05
+Nodes (35): ClinicalRulesRepository, Repository for the editable clinical decision rules (clinical_indicators).  This, Per-disease dose-titration guidance for the meds tab.          Reads the `clinic, All indicators ordered for display. Cached per-request on flask.g., {key: indicator} map., Indicators that apply to a patient with the given condition codes.          An i, Update editable fields of one indicator., index() (+27 more)
 
 ### Community 21 - "AppointmentRepository"
-Cohesion: 0.10
-Nodes (17): _age_seconds(), combine_all(), combine_any(), data_issue_payload(), evaluation_payload(), _is_number(), _json_value(), _local_naive() (+9 more)
+Cohesion: 0.09
+Nodes (30): get_provider(), NullProvider, Return the configured SMS provider.      Honors the ``sms_provider`` setting ('k, Test/simulation provider: logs to console, never actually sends., _counts(), _enroll(), _flush_src_modules(), _force_quiet() (+22 more)
 
 ### Community 22 - "EngagementService"
-Cohesion: 0.08
-Nodes (17): Time series for one canonical indicator key across BOTH capture channels, Most recent observation per canonical key across BOTH capture channels:, VitalsRepository, add_lab(), delete_lab(), delete_reading(), Batch + catalog-aware lab entry.      The redesigned record form posts parallel, _to_float() (+9 more)
+Cohesion: 0.09
+Nodes (30): _canonical_json(), ClinicalEngineRulesRepository, ClinicalEngineStorageConflict, _now_text(), Any, ValueError, Persistence for immutable Clinical Engine v2 rule and ruleset versions.  This re, Record successful compilation without trusting caller-provided JSON/hash. (+22 more)
 
 ### Community 23 - "test_clinical_engine_v2_evaluator.py"
-Cohesion: 0.14
-Nodes (26): CompiledRule, A validated, typed plan. It contains no patient data or persistence., Structural and semantic compiler for Clinical Engine v2 rule artefacts.  The com, Compile JSON-compatible rule mappings into immutable typed plans., RuleCompiler, Application services for Clinical Engine v2 (not wired to production yet)., diagnostic_codes(), PR-02 tests: isolated Clinical Engine v2 schemas, DTOs and compiler. (+18 more)
+Cohesion: 0.09
+Nodes (18): canonical_json(), ClinicalEngineActivationRepository, content_hash(), Any, Durable, settings-backed governance state for Clinical Engine v2 rollout., Reconstruct the immutable portion covered by ``report_hash``., Store activation evidence without adding mutable clinical tables.      Settings, report_core() (+10 more)
 
 ### Community 24 - "zt"
+Cohesion: 0.14
+Nodes (29): Create inert DTOs only; never prescribes, mutates, messages, or creates tasks., RecommendationComposer, Persist audited evaluations for shadow or explicitly selected rollout., ShadowFactCapture, Evaluate all phases deterministically and abstain when safety is unclear., SafetyKernel, _by_code(), _compiled() (+21 more)
+
+### Community 25 - "test_clinical_engine_v2_safety.py"
+Cohesion: 0.10
+Nodes (26): ClinicalEngineAuditRepository, Return one CREATED recommendation and its latest decision., Writes reproducible runs and append-only evaluation/decision events., Return one exact run with decoded rule metadata for comparisons., Return the latest terminal, non-failed run as decoded read-only data., ClinicalDecisionConflict, ClinicalDecisionService, ClinicalDecisionValidationError (+18 more)
+
+### Community 26 - "test_patient_card.py"
+Cohesion: 0.08
+Nodes (33): _acc_add_invoice(), _acc_add_patient(), _acc_add_visit(), _add_med(), _add_vital(), _approvals(), _enroll(), _flush_src_modules() (+25 more)
+
+### Community 27 - "test_visit_invites.py"
+Cohesion: 0.12
+Nodes (10): EngagementService, Physician confirms a queued message; only NOW does the SMS actually go out., True if the current Tehran time is OUTSIDE the allowed sending window., Return (events, cfg) where events is a list of due events for the patient, Generate v2 clinical tasks, then legacy/admin worklist events., Generate one patient's v2 clinical and distinct admin/legacy tasks., _force_quiet_off(), approve() is what 'sends'. With the NullProvider it logs an sms_messages (+2 more)
+
+### Community 28 - "allow"
+Cohesion: 0.13
+Nodes (24): ClinicalEngineFactRepository, Any, Fetch a deterministic raw bundle without interpreting clinical meaning., Limit the first visible rollout to the ten seeded demo patients., ActivationGateError, _approve_both(), _Audit, _Capture (+16 more)
+
+### Community 29 - "properties"
+Cohesion: 0.13
+Nodes (22): _flush_src_modules(), Security hardening config — test suite (adversarial).  Verifies the two guarante, PRODUCTION=1 + default/missing SECRET_KEY + TESTING absent         must cause cr, PRODUCTION=1 + SECRET_KEY explicitly set to the DEFAULT_SECRET_KEY         const, When RuntimeError is raised, no DB file is created next to the tmp path, PRODUCTION=1 + strong SECRET_KEY + TESTING=True must start cleanly., In local/test mode (PRODUCTION absent), TESTING=True must always work         re, Config.DEBUG must be False when the DEBUG env var is not set. (+14 more)
+
+### Community 30 - "InvoiceSyncService"
+Cohesion: 0.25
+Nodes (34): Evaluate immutable rules against one frozen snapshot; owns no clock or I/O., RuleEvaluator, compiled(), fact(), leaf(), PR-05 executable semantics for the four-state Clinical Engine v2 evaluator., snapshot(), test_all_branch_keeps_complete_trace_and_error_dominates_false() (+26 more)
+
+### Community 31 - "_connect_ro"
+Cohesion: 0.11
+Nodes (32): Connection, _chunks(), _connect_ro(), daily_revenue_for_accounting_ids(), daily_revenue_for_enrolled(), fetch_closed_invoices(), fetch_invoice_items(), fetch_open_visit_invoices() (+24 more)
+
+### Community 32 - "properties"
+Cohesion: 0.12
+Nodes (9): DataIssue, EvaluationResult, PredicateResult, Suppression, combine_all(), Fail-closed phase ordering and executable safety policy for engine v2., SafetyEvaluation, SafetyRun (+1 more)
+
+### Community 33 - "_flush_src_modules"
+Cohesion: 0.09
+Nodes (13): bn, dn(), ei(), je(), pn(), qe(), qs(), ti() (+5 more)
+
+### Community 34 - "SafetyKernel"
+Cohesion: 0.08
+Nodes (13): main(), trend(), DrugCatalogRepository, Repository for the drug catalog (generic name + pharmacologic class + doses).  A, dict-ify a row and parse its JSON `standard_doses` into a `doses` list., LIKE search on `generic_fa`, optionally filtered to a class., Patch selected columns of an existing catalog drug., _row() (+5 more)
+
+### Community 35 - "__init__.py"
+Cohesion: 0.09
+Nodes (52): Expression, ActionType, ClinicalPhase, DiagnosticSeverity, RuleSeverity, CompilationDiagnostic, ValueError, Immutable compiler/evaluation contracts shared across engine layers. (+44 more)
+
+### Community 36 - "evaluator.py"
 Cohesion: 0.06
 Nodes (32): enum, const, $ref, minimum, type, enum, maximum, minimum (+24 more)
 
-### Community 25 - "test_clinical_engine_v2_safety.py"
-Cohesion: 0.15
+### Community 37 - "test_invoice_outreach.py"
+Cohesion: 0.16
 Nodes (21): InvoiceSyncService, _acc_add_invoice(), _acc_add_patient(), _make_acc_db(), ADR-0003 D3+ — Invoice-sync consumer test suite (adversarial).  Safety contract:, Insert an invoice row. If invoice_id is given it is used as rowid., Hot-swap Config.ACCOUNTING_DB_PATH so the next bridge call uses the new path., Reset the invoice_sync_last_id cursor to 0 in the settings table. (+13 more)
 
-### Community 26 - "test_patient_card.py"
+### Community 38 - "AvalAI Developer Documentation — Structured Reference (English)"
 Cohesion: 0.06
 Nodes (31): additionalProperties, enum, properties, required, type, minLength, type, type (+23 more)
 
-### Community 27 - "test_visit_invites.py"
+### Community 39 - "ne"
+Cohesion: 0.07
+Nodes (11): bo, ce(), de, dt(), fs(), he(), ko, ne() (+3 more)
+
+### Community 40 - "_run_migrations"
 Cohesion: 0.08
-Nodes (37): EngagementService, _acc_add_invoice(), _acc_add_patient(), _acc_add_visit(), _add_med(), _add_vital(), _approvals(), _enroll() (+29 more)
+Nodes (19): _condition_for(), Comprehensive seed of ADA T2D decision rules → clinical_rules table.  Covers EVE, Owning disease module for a rule. Explicit `condition_code` wins; otherwise, Idempotently insert the rule catalog (manager edits are preserved) and tag     e, seed_clinical_rules(), _ensure_clinical_engine_v2_storage(), Backfill `flag_catalog.record_section` from each flag's existing category     (i, Verify the additive v2 schema and install its safe-off feature flag.      Unlike (+11 more)
 
-### Community 28 - "allow"
-Cohesion: 0.10
-Nodes (18): _add_lab_direct(), _add_vital_direct(), _enroll_patient(), ADR-0005 — Lab Observation Channel: canonical union of both capture channels., Add HbA1c only as lab (no vital). latest_by_type must return it with source='lab, _last_done(pid,'a1c',{}) should return the lab's taken_at date., Older vital hba1c + newer lab hba1c → latest_by_type returns lab value., Older lab hba1c + newer vital hba1c → latest_by_type returns vital value. (+10 more)
-
-### Community 29 - "properties"
-Cohesion: 0.11
-Nodes (19): _canonical_json(), ClinicalEngineRulesRepository, ClinicalEngineStorageConflict, _now_text(), Persistence for immutable Clinical Engine v2 rule and ruleset versions.  This re, Record successful compilation without trusting caller-provided JSON/hash., A version identifier was reused with different immutable content., SQLite boundary for versioned rules and immutable ruleset membership. (+11 more)
-
-### Community 30 - "InvoiceSyncService"
-Cohesion: 0.13
-Nodes (16): _field(), MedianaProvider, Mediana SMS provider adapter (https://api.mediana.ir).  Auth: header `X-API-KEY:, Return the panel wallet balance, or None on failure., Read Mediana fields in both documented PascalCase and live camelCase., DeliveryUpdate, OutgoingSms, _Response (+8 more)
-
-### Community 31 - "_connect_ro"
-Cohesion: 0.10
-Nodes (31): _chunks(), _connect_ro(), daily_revenue_for_accounting_ids(), daily_revenue_for_enrolled(), fetch_closed_invoices(), fetch_invoice_items(), fetch_open_visit_invoices(), get_patient_by_id() (+23 more)
-
-### Community 32 - "properties"
+### Community 41 - "test_invoice_outreach_retry.py"
 Cohesion: 0.17
 Nodes (17): _acc_add_invoice(), _acc_add_patient(), _acc_add_procedure(), _enroll_patient(), _get_approvals(), _make_acc_db(), Phase 2 — Invoice-triggered outreach (thank-you + procedure-invite) test suite., Hot-swap Config.ACCOUNTING_DB_PATH so the next bridge call uses the new path. (+9 more)
 
-### Community 33 - "_flush_src_modules"
-Cohesion: 0.10
-Nodes (9): bn, ei(), je(), pn(), qe(), qs(), ti(), un() (+1 more)
-
-### Community 34 - "SafetyKernel"
+### Community 42 - "_enroll_patient"
 Cohesion: 0.07
 Nodes (27): 10. API Reference: Audio (TTS / STT), 11. API Reference: Video Generation, 12. API Reference: OCR, 13. API Reference: Moderation, 14. API Reference: Search, Rerank, Files, Batch & Responses, 15. API Reference: Models, 16. Providers & Model Catalog, 17. Guides (+19 more)
 
-### Community 35 - "__init__.py"
-Cohesion: 0.11
-Nodes (40): ActionType, ClinicalDecision, ClinicalPhase, DiagnosticSeverity, PredicateState, Presentation, Stable enum vocabulary for Clinical Engine v2.  These values are persisted in ru, RecommendationEventType (+32 more)
-
-### Community 36 - "evaluator.py"
-Cohesion: 0.10
-Nodes (13): ClinicalRulesRepository, Per-disease dose-titration guidance for the meds tab.          Reads the `clinic, All indicators ordered for display. Cached per-request on flask.g., {key: indicator} map., Indicators that apply to a patient with the given condition codes.          An i, Update editable fields of one indicator., ClinicalRulesService, evaluate() (+5 more)
-
-### Community 37 - "test_invoice_outreach.py"
-Cohesion: 0.10
-Nodes (21): _add_condition(), _add_lab_direct(), _add_vital_direct(), _enroll_patient(), _flush_src_modules(), _make_minimal_acc_db(), ADR-0005 — Canonical Consistency test suite (تکمیل ADR-0005).  هدف: ثابت کند یک, شرطِ بیماری (مثلاً 'diabetes') مستقیم به patient_conditions اضافه کن. (+13 more)
-
-### Community 38 - "AvalAI Developer Documentation — Structured Reference (English)"
-Cohesion: 0.15
-Nodes (18): _counts(), _enroll(), _flush_src_modules(), _force_quiet(), _queue_one(), Quiet-hours guard for EngagementService.approve() — test suite.  Background (the, Insert a patient_links row via get_db() (schema already bootstrapped).     Retur, Drive EngagementService._quiet_now() to `quiet` for the current Tehran time (+10 more)
-
-### Community 39 - "ne"
-Cohesion: 0.08
-Nodes (25): _(), beforeLayout(), bo, f(), g(), H(), j(), ko (+17 more)
-
-### Community 40 - "_run_migrations"
-Cohesion: 0.20
-Nodes (9): Idempotent seed of the common drug catalog (per disease), keyed to drug classes., Idempotently seed the per-disease drug catalog.      AUTOINCREMENT means re-inse, seed_drug_catalog(), Backfill `flag_catalog.record_section` from each flag's existing category     (i, Additive migrations for existing DBs (new tables come from schema IF NOT EXISTS), Backfill disease-module metadata on existing `conditions` rows (idempotent;, _run_migrations(), _seed_condition_meta() (+1 more)
-
-### Community 41 - "test_invoice_outreach_retry.py"
-Cohesion: 0.08
-Nodes (11): Repository for appointments., Read-only legacy inputs and mode access for Clinical Engine v2 facts.  Every que, Repository for the editable clinical decision rules (clinical_indicators).  This, Repository for the engagement engine: the editable event->channel routing table, Repository for `patient_card_tokens` — per-patient public-card access tokens (AD, Repository for patient_links and their chronic-care records., Repository for the patient-record aggregate: surgery history, medical (comorbidi, Repository for SMS templates, campaigns, messages, and key/value settings. (+3 more)
-
-### Community 42 - "_enroll_patient"
-Cohesion: 0.15
-Nodes (13): ClinicalEngineReadOnlyFacade, Read-only patient-detail projection for selected Clinical Engine v2 runs., Expose audited v2 output without evaluating, accepting, or mutating it., _Audit, _evaluation(), _Facts, PR-07 read-only projection, rollout gate, and template safety tests., readonly_app() (+5 more)
-
 ### Community 43 - "ClinicalEngineRulesRepository"
-Cohesion: 0.17
-Nodes (19): _acc_add_invoice(), _acc_add_patient(), _count_approvals(), _enroll_patient(), _get_pi_row(), _make_acc_db(), ADR-0003 D3+ — Invoice-sync outreach RETRY test suite.  باگی که رفع شد: قبلاً ou, hot-swap آدرس DB حسابداری بدون reload ماژول. (+11 more)
+Cohesion: 0.15
+Nodes (14): ClinicalEngineReadOnlyFacade, Any, Read-only patient-detail projection for selected Clinical Engine v2 runs., Expose audited v2 output without evaluating, accepting, or mutating it., _Audit, _evaluation(), _Facts, PR-07 read-only projection, rollout gate, and template safety tests. (+6 more)
 
 ### Community 44 - "test_card_url_qr.py"
-Cohesion: 0.10
-Nodes (16): _enroll_patient(), _flush_src_modules(), logged_client(), تست‌های افزایشی — _card_url / _qr_svg / card_admin render (ADR-0004, فاز QR)  سن, test_client با session لاگین‌شدهٔ admin., وقتی setting 'public_base_url' == 'http://192.168.1.10:8090/' باشد،         _car, وقتی public_base_url ست نیست، _card_url باید URL‌ای بسازد که:           - شامل ', _qr_svg با یک URL معتبر باید str‌ای برگرداند که:           - با '<svg' شروع شود (+8 more)
+Cohesion: 0.17
+Nodes (19): _acc_add_invoice(), _acc_add_patient(), _count_approvals(), _enroll_patient(), _get_pi_row(), _make_acc_db(), ADR-0003 D3+ — Invoice-sync outreach RETRY test suite.  باگی که رفع شد: قبلاً ou, hot-swap آدرس DB حسابداری بدون reload ماژول. (+11 more)
 
 ### Community 45 - "ada_t2_rules.md"
 Cohesion: 0.08
@@ -561,28 +514,32 @@ Cohesion: 0.09
 Nodes (24): Doctor Queue Visit Flow, Post-visit Next-step Actions, Lightweight Quick Visit View, Disease-oriented Modular Record, Physician-approved Engagement Queue, Tokenized Read-only Patient Card, Read-only Accounting Bridge, Segno Offline Server-side QR (+16 more)
 
 ### Community 47 - "properties"
-Cohesion: 0.11
-Nodes (21): _acc_add_invoice(), _acc_add_patient(), _add_condition(), _add_lab(), _enroll(), _flush_src_modules(), _make_acc_db(), End-to-end integration tests — two complete happy-path loops.  هدف: اثبات کند قط (+13 more)
+Cohesion: 0.10
+Nodes (16): _enroll_patient(), _flush_src_modules(), logged_client(), تست‌های افزایشی — _card_url / _qr_svg / card_admin render (ADR-0004, فاز QR)  سن, test_client با session لاگین‌شدهٔ admin., وقتی setting 'public_base_url' == 'http://192.168.1.10:8090/' باشد،         _car, وقتی public_base_url ست نیست، _card_url باید URL‌ای بسازد که:           - شامل ', _qr_svg با یک URL معتبر باید str‌ای برگرداند که:           - با '<svg' شروع شود (+8 more)
+
+### Community 48 - "test_clinical_engine_v2_facts.py"
+Cohesion: 0.07
+Nodes (39): date, Insert a catalog drug. `standard_doses` may be a list or a JSON string., Gregorian, Persian, parse_datetime(), Parse a 'YYYY-MM-DD HH:MM:SS' / 'YYYY-MM-DD' string (or datetime) to datetime., FactBuilder, age_on() (+31 more)
 
 ### Community 49 - "de"
-Cohesion: 0.08
-Nodes (16): ce(), ct(), de, dt(), fs(), ge(), gs(), ha (+8 more)
-
-### Community 50 - "test_canonical_consistency.py"
-Cohesion: 0.22
-Nodes (20): ClinicalV2FollowupService, Project audited FIRED due rules into inert, idempotent internal tasks., _trace_fact_ids(), _patient(), PR-09 clinical follow-up projection, idempotency and fail-loud contracts., _rule(), _run(), test_concurrent_generation_still_creates_exactly_one_task() (+12 more)
-
-### Community 51 - "properties"
 Cohesion: 0.09
 Nodes (24): minimum, type, minimum, type, items, minItems, type, uniqueItems (+16 more)
 
+### Community 50 - "test_canonical_consistency.py"
+Cohesion: 0.19
+Nodes (22): ClinicalV2FollowupService, Project audited FIRED due rules into inert, idempotent internal tasks., _trace_fact_ids(), followup_app(), _patient(), PR-09 clinical follow-up projection, idempotency and fail-loud contracts., _rule(), _run() (+14 more)
+
+### Community 51 - "properties"
+Cohesion: 0.15
+Nodes (18): _Db, _engine_with_facts(), _facts(), Characterization tests for the legacy (v1) clinical rule engine.  These tests de, Intentional v1 behaviour, pinned separately from malformed JSON., Create an engine without constructing its Flask-bound repositories., Known v1 defect: missing and verified absence are indistinguishable., Known v1 defect: an unknown flag can satisfy a negative predicate. (+10 more)
+
 ### Community 52 - "test_clinical_engine_v2_readonly_ui.py"
-Cohesion: 0.14
-Nodes (10): ClinicalEngineAuditRepository, _json_text(), _now_text(), _optional_json(), Append-only audit persistence for Clinical Engine v2., Return one CREATED recommendation and its latest decision., Append one PRESENTED event per run/evaluation recommendation., Atomically append a decision if the caller's projected state is current. (+2 more)
+Cohesion: 0.09
+Nodes (22): format, type, type, minLength, type, enum, properties, effective_at (+14 more)
 
 ### Community 53 - "NullProvider"
-Cohesion: 0.17
-Nodes (19): FactBuilder, LegacyFactBundleAdapter, Pure, deterministic mapping from repository rows to typed facts., _bundle(), _BundleRepository, _insert_patient(), PR-04: deterministic canonical facts and snapshot-only shadow execution., test_empty_collection_and_unavailable_source_have_distinct_semantics() (+11 more)
+Cohesion: 0.10
+Nodes (21): minLength, type, type, type, additionalProperties, properties, required, type (+13 more)
 
 ### Community 55 - "CLAUDE.md"
 Cohesion: 0.18
@@ -594,31 +551,31 @@ Nodes (12): مرجع API کاوه‌نگار (Kavenegar) — پنل پیامک �
 
 ### Community 57 - "test_rate_limit.py"
 Cohesion: 0.10
-Nodes (21): minLength, type, type, type, additionalProperties, properties, required, type (+13 more)
-
-### Community 58 - "properties"
-Cohesion: 0.10
 Nodes (21): format, type, type, minLength, type, minimum, type, properties (+13 more)
 
-### Community 59 - "properties"
-Cohesion: 0.20
-Nodes (17): ClinicalDecisionConflict, ClinicalDecisionService, ClinicalDecisionValidationError, Clinician decisions as append-only events; never execute clinical actions., Validate and append review state without prescribing or mutating care., _patient(), _presentable_recommendation(), PR-08 append-only presentation and clinician-decision contracts. (+9 more)
-
-### Community 60 - "items"
+### Community 58 - "properties"
 Cohesion: 0.12
 Nodes (20): items, type, uniqueItems, items, minItems, type, uniqueItems, items (+12 more)
 
-### Community 61 - "properties"
+### Community 59 - "properties"
 Cohesion: 0.10
 Nodes (20): $ref, enum, properties, pattern, type, minimum, type, enum (+12 more)
+
+### Community 60 - "items"
+Cohesion: 0.22
+Nodes (13): An evaluation after semantic deduplication/conflict handling.      ``merged_rule, ResolvedEvaluation, ConflictResolver, Deterministic, conservative conflict handling for Clinical Engine v2., Deduplicate only explicit semantic equivalents and expose conflicts.      The re, _compiled(), PR-07 semantic deduplication and conservative conflict tests., _resolve() (+5 more)
+
+### Community 61 - "properties"
+Cohesion: 0.11
+Nodes (18): type, type, type, explanation_template_fa, may_create_internal_task, params, recommendation, requires_clinician_confirmation (+10 more)
 
 ### Community 62 - "6.3 پروفایل دارویی کلاس‌ها — جزئیات دوز و ایمنی (Table 9.2)"
 Cohesion: 0.11
 Nodes (19): 6.1 الگوریتم کلی انتخاب درمان (Stepwise) — Fig. 9.4، توصیه‌های 9.5–9.6، 9.14–9.17, 6.2 قوانین If/Then برای انتخاب دارو بر اساس کوموربیدیتی, 6.3.1 متفورمین (Metformin) — خوراکی, 6.3.2 مهارکننده‌های SGLT2 (SGLT2 inhibitors) — خوراکی, 6.3.3 آگونیست‌های GLP-1 (GLP-1 RA) — تزریقی (سمگلوتاید خوراکی هم موجود), 6.3.4 آگونیست دوگانهٔ GIP/GLP-1 (تیرزپاتاید، dual GIP/GLP-1 RA) — تزریقی, 6.3.5 مهارکننده‌های DPP-4 (DPP-4 inhibitors) — خوراکی, 6.3.6 پیوگلیتازون (TZD) — خوراکی (+11 more)
 
 ### Community 63 - ".adapt"
-Cohesion: 0.14
-Nodes (7): main(), trend(), ClinicalFlagsRepository, _parse_options(), Repository for clinical decision inputs: flag_catalog, patient_flags, drug_class, HFrEF|EF کاهش‌یافته,unknown|نامشخص' -> [{value,label}, ...], Flag catalog bucketed by `flag_catalog.record_section`.          Returns `{secti
+Cohesion: 0.16
+Nodes (12): _add_vital(), _enable_card_feature(), _mtime(), Return (flask_test_client, spec_db_path, tmp_dir) with a logged-in admin session, SHA-256 و mtime فایل specialist.db قبل و بعد از GET /card/<token> تغییر نکند., وقتی flag روشن و توکن معتبر است، 200 و سلام نام کوچک بیمار در HTML باید باشد., توکن ناشناخته باید 404 برگرداند (بدون فاش‌کردن دلیل)., توکن revoke‌شده باید 404 برگرداند. (+4 more)
 
 ### Community 64 - "نقشهٔ بازطراحیِ پروندهٔ بیمار و «حلقهٔ مراقبت»"
 Cohesion: 0.11
@@ -630,63 +587,63 @@ Nodes (19): پلنِ دقیقِ پیاده‌سازی سه موتور بالین
 
 ### Community 66 - "AuthService"
 Cohesion: 0.04
-Nodes (34): AuthRepository, Store the (rotated) extension API token for a user, with an expiry (SECU-05)., Low-level DB operations for users., Look up an active user by their UNEXPIRED extension API token, or None (SECU-05), AuthService, Auth logic with bcrypt + lockout (5 failed attempts -> 15 min lock)., Issue a fresh extension API token for a user (invalidates the old one)         a, auth_client() (+26 more)
+Nodes (40): Row, AuthRepository, Store the (rotated) extension API token for a user, with an expiry (SECU-05)., Low-level DB operations for users., Look up an active user by their UNEXPIRED extension API token, or None (SECU-05), (Re)issue the extension API token for a user — shown once after issuing., user_token(), users() (+32 more)
 
 ### Community 67 - "test_clinical_engine_v2_conflicts.py"
-Cohesion: 0.20
-Nodes (13): Insert a catalog drug. `standard_doses` may be a list or a JSON string., parse_datetime(), Parse a 'YYYY-MM-DD HH:MM:SS' / 'YYYY-MM-DD' string (or datetime) to datetime., age_on(), _dt(), _key(), normalize_birthdate(), Map current specialist-clinic records to canonical Clinical Engine v2 facts. (+5 more)
+Cohesion: 0.23
+Nodes (13): Presentation, Recommendation, Any, Pure suggestion-only recommendation composition for Clinical Engine v2., recommendation_payload(), canonical_json(), _fact_payload(), _iso() (+5 more)
 
 ### Community 68 - "properties"
-Cohesion: 0.11
-Nodes (19): format, type, type, enum, properties, effective_at, encounter_key, kind (+11 more)
+Cohesion: 0.21
+Nodes (15): Guard the one-home-per-capability information architecture., template(), test_control_room_has_a_balanced_three_level_layout(), test_control_room_messages_are_approval_gated_not_sent_directly(), test_dashboard_exposes_only_one_followup_call_to_action(), test_dashboard_is_summary_only_and_control_room_owns_patient_ranking(), test_disease_page_is_the_visible_home_for_indicator_management(), test_followups_live_inside_message_hub_not_as_second_sidebar_destination() (+7 more)
 
 ### Community 69 - "TestCanonicalConsistency"
-Cohesion: 0.12
-Nodes (15): _flush_src_modules(), _get_indicator_danger(), _get_lab_rows(), _make_minimal_acc_db(), ADR-0005 — Lab-Observation Channel test suite (adversarial).  Feature C: vital_r, Flask test app pointing at a fresh specialist DB in tmp_dir.      Strict isolati, Return (flask_test_client, spec_db, tmp_dir, acc_sha_before) with logged-in admi, Read clinical_indicators.danger threshold for *key*; return (danger, warn) float (+7 more)
+Cohesion: 0.15
+Nodes (9): settings(), get_network_info(), _local_ipv4_addresses(), Local-network discovery helpers for the settings page., Return usable LAN addresses first and localhost as a final fallback., Build URLs for this app and its accounting peer on the clinic LAN., _valid_ipv4(), _Probe (+1 more)
 
 ### Community 70 - "مرجع بالینی — موتور تحلیل و پیگیری (دیابت و فشار خون)"
 Cohesion: 0.11
 Nodes (18): آستانه‌های پیشنهادی برای اپ, آستانه‌های پیشنهادی برای اپ, تعریف افت قند (Hypoglycemia), تواتر سنجش HbA1c, ریسک‌فاکتورهای ASCVD که باید پایش/ثبت شوند, مرجع بالینی — موتور تحلیل و پیگیری (دیابت و فشار خون), نگاشت آستانه‌ها به اپ (فعلی در `vitals_service.THRESHOLDS`), پایش پیوسته‌ی قند (CGM) — اهداف Time-in-Range (+10 more)
 
 ### Community 71 - "test_rule_engine_v1_characterization.py"
-Cohesion: 0.11
-Nodes (7): LabCatalogRepository, Repository for the lab-test catalog and per-disease test mappings.  All SQL for, Catalog bucketed by `category` (preserving display order)., Frequent lab tests for the given disease condition codes.          Joins `condit, Ordered lab_test_key list mapped to a single disease., Insert a new catalog test or update an existing one (by test_key)., Patch selected columns of an existing catalog row.
+Cohesion: 0.17
+Nodes (10): _add_condition(), _add_medication(), ادعاهای ADR-0004 §6: داروها، بیماری‌ها، کدملی، تلفن از HTML کارت غایب‌اند., بیمار می‌سازد، داروی فعال و بیماری اضافه می‌کند، توکن صادر می‌کند،         کارت, نام دارو نباید در HTML کارت باشد., نام بیماری نباید در HTML کارت باشد., کد بیماری نباید در HTML کارت باشد., کد ملی نباید در HTML کارت باشد. (+2 more)
 
 ### Community 72 - "test_ui_information_architecture.py"
-Cohesion: 0.11
-Nodes (18): type, type, type, explanation_template_fa, may_create_internal_task, params, recommendation, requires_clinician_confirmation (+10 more)
+Cohesion: 0.23
+Nodes (11): _date(), PatientCockpitService, Presentation-ready care priorities and a unified patient activity timeline.  Thi, Return a sortable ISO-like value without inventing a timestamp., test_next_action_accepts_v2_projection_without_double_counting_priority(), test_next_action_chooses_earliest_open_followup(), test_next_action_does_not_call_completed_v2_review_unreviewed(), test_next_action_only_counts_unreviewed_or_deferred_v2_actions() (+3 more)
 
 ### Community 73 - "AuthRepository"
-Cohesion: 0.18
-Nodes (11): _get_hba1c_thresholds(), آستانه‌های warn و danger برای hba1c از clinical_indicators بخوان., سازگاریِ canonical: یک HbA1c lab-only در همهٔ مصرف‌کننده‌ها یک‌جور دیده می‌شود., بیمار با diabetes + lab hba1c آماده کن؛ pid را برگردان., VitalsService.control_status باید با یک HbA1c فقط‌آزمایش‌محور بالاتر از danger, AnalyticsService.patient_analytics باید:            - کاشیِ hba1c با latest==مقد, followup_engine._last_done(pid,'a1c',{}) باید تاریخِ lab را برگرداند (recall بست, RuleEngine.build_facts باید lab hba1c را در indicator['hba1c'] ببیند         با (+3 more)
+Cohesion: 0.20
+Nodes (5): init_scheduler(), Weekly snapshot of THIS app's DB (specialist.db; the accounting DB is never, Run the unified engagement engine: due reminders + follow-ups -> SMS/worklist., Read-only invoice-sync consumer (ADR-0003 D3+): record recently-closed         a, Scheduler
 
 ### Community 74 - "network.py"
-Cohesion: 0.16
-Nodes (12): _add_vital(), _enable_card_feature(), _mtime(), Return (flask_test_client, spec_db_path, tmp_dir) with a logged-in admin session, SHA-256 و mtime فایل specialist.db قبل و بعد از GET /card/<token> تغییر نکند., وقتی flag روشن و توکن معتبر است، 200 و سلام نام کوچک بیمار در HTML باید باشد., توکن ناشناخته باید 404 برگرداند (بدون فاش‌کردن دلیل)., توکن revoke‌شده باید 404 برگرداند. (+4 more)
+Cohesion: 0.19
+Nodes (9): _enroll_patient(), Insert a patient_links row in the specialist DB; return the inserted id., روت‌های staff در /patients/<pid>/card برای مدیریت توکن., GET /patients/<pid>/card بدون لاگین باید ریدایرکت (302/303) یا 401 برگرداند., POST /patients/<pid>/card/issue بدون لاگین باید ریدایرکت یا 401 برگرداند., POST /patients/<pid>/card/issue توکن می‌سازد و active_for_patient آن را دارد., POST /patients/<pid>/card/revoke/<token_id> باید توکن را revoke کند., GET /patients/<pid>/card برای کاربر لاگین‌شده 200 برمی‌گرداند. (+1 more)
 
 ### Community 75 - "._get_card_body"
-Cohesion: 0.16
-Nodes (11): index(), Patient Control Room — prioritized cohort targeting with one-click recall.  Visi, Open a 'recall' worklist call-task for everyone in the chosen cohort., Queue cohort invitations for physician approval; never send directly., recall(), _show_value(), sms(), ControlRoomService (+3 more)
+Cohesion: 0.18
+Nodes (9): _issue_token(), Issue a token directly via the repo (no HTTP); return the token string., تست‌های کارکردی PatientCardRepository., create_token باید توکنی از token_urlsafe(32) برگرداند (طول ~43 کاراکتر)., صدور توکن دوم باید توکن اول را revoke کند (یک active در هر زمان)., active_for_patient باید بعد از دو صدور، فقط یک توکن active برگرداند., revoke() باید توکن را غیرفعال کند و active_for_patient None برگرداند., get_by_token با رشته خالی باید None برگرداند. (+1 more)
 
 ### Community 76 - "ClinicalEngineAuditRepository"
-Cohesion: 0.24
-Nodes (6): PredicateResult, Fail-closed phase ordering and executable safety policy for engine v2., Evaluate all phases deterministically and abstain when safety is unclear., SafetyEvaluation, SafetyKernel, SafetyRun
+Cohesion: 0.28
+Nodes (6): _json_text(), _now_text(), _optional_json(), Any, Append one PRESENTED event per run/evaluation recommendation., Atomically append a decision if the caller's projected state is current.
 
 ### Community 77 - "control_room.py"
-Cohesion: 0.09
-Nodes (8): FollowupRepository, Link an open task to the visit that will fulfill it., Attach several open tasks to a single visit (merge same-due follow-ups)., True if there's an OPEN task for this rule, or a DONE one within `months`., Open tasks whose patient matches `q` by national_id OR full_name OR         phon, Latest canonical observation timestamp across clinic and lab channels., fulfillment in remote|in_person — how the task is meant to be closed.         ap, Atomically create one v2 task per evidence episode and open meaning.
+Cohesion: 0.07
+Nodes (18): FollowupRepository, Link an open task to the visit that will fulfill it., Attach several open tasks to a single visit (merge same-due follow-ups)., True if there's an OPEN task for this rule, or a DONE one within `months`., Open tasks whose patient matches `q` by national_id OR full_name OR         phon, Latest canonical observation timestamp across clinic and lab channels., fulfillment in remote|in_person — how the task is meant to be closed.         ap, Atomically create one v2 task per evidence episode and open meaning. (+10 more)
 
 ### Community 78 - ".getProps"
-Cohesion: 0.19
-Nodes (11): _add_vital(), _force_quiet_off(), _get_hba1c_danger(), ساعتِ آرام را غیرفعال کن (کلِ روز = مجاز)., vital_readings مستقیم بنویس., آستانهٔ danger برای hba1c از clinical_indicators بخوان., زنجیرهٔ بالینی: vital/lab → rule engine → engagement → approve → no-refire., بیمارِ دیابتی enrolled با hba1c بالاتر از danger آماده کن. (+3 more)
+Cohesion: 0.15
+Nodes (13): format, type, additionalProperties, properties, required, type, minimum, type (+5 more)
 
 ### Community 80 - "DrugCatalogRepository"
-Cohesion: 0.21
-Nodes (16): _engine_with_facts(), _facts(), Characterization tests for the legacy (v1) clinical rule engine.  These tests de, Intentional v1 behaviour, pinned separately from malformed JSON., Create an engine without constructing its Flask-bound repositories., Known v1 defect: missing and verified absence are indistinguishable., Known v1 defect: an unknown flag can satisfy a negative predicate., Known v1 defect: invalid/missing measurements collapse to ``ok``. (+8 more)
+Cohesion: 0.15
+Nodes (13): record_id, recorded_by, source, table, type, type, type, additionalProperties (+5 more)
 
 ### Community 81 - "bn"
-Cohesion: 0.12
-Nodes (5): Ci(), Do(), eo(), ls, Oe()
+Cohesion: 0.07
+Nodes (17): ca(), _calculateBarIndexPixels(), _calculateBarValuePixels(), Do(), eo(), getBasePixel(), getLabelAndValue(), getLabelForValue() (+9 more)
 
 ### Community 82 - "persian-datepicker.min.js"
 Cohesion: 0.27
@@ -697,136 +654,132 @@ Cohesion: 0.15
 Nodes (13): Engagement Engine & Modular Disease Rules — Architecture Plan, UX مدیر, تصمیم‌های قفل‌شده, جدولِ پیش‌فرضِ رویداد→کانال (seed), حذف ADA (UI only) — فاز ۰, فازبندی (هر فاز مستقل و قابلِ‌عرضه), ماژولار شدن (Engine A), مدل داده (همه افزایشی، برگشت‌پذیر) (+5 more)
 
 ### Community 84 - "ClinicalEngineFactRepository"
-Cohesion: 0.21
-Nodes (15): Guard the one-home-per-capability information architecture., template(), test_control_room_has_a_balanced_three_level_layout(), test_control_room_messages_are_approval_gated_not_sent_directly(), test_dashboard_exposes_only_one_followup_call_to_action(), test_dashboard_is_summary_only_and_control_room_owns_patient_ranking(), test_disease_page_is_the_visible_home_for_indicator_management(), test_followups_live_inside_message_hub_not_as_second_sidebar_destination() (+7 more)
+Cohesion: 0.15
+Nodes (13): type, $ref, const, hard_exclusions, on_safety_error, redflag_exclusions, safety, items (+5 more)
 
 ### Community 85 - "freshness"
-Cohesion: 0.23
-Nodes (11): ConflictResolver, Deterministic, conservative conflict handling for Clinical Engine v2., Deduplicate only explicit semantic equivalents and expose conflicts.      The re, _compiled(), PR-07 semantic deduplication and conservative conflict tests., _resolve(), test_gc11_distinct_medication_options_are_not_collapsed_semantically(), test_gc12_same_semantic_medication_is_presented_once_and_trace_is_merged() (+3 more)
+Cohesion: 0.15
+Nodes (13): properties, enum, enum, enum, outcome, phase, predicate_state, rule_code (+5 more)
 
 ### Community 86 - "source"
 Cohesion: 0.17
-Nodes (10): _add_condition(), _add_medication(), ادعاهای ADR-0004 §6: داروها، بیماری‌ها، کدملی، تلفن از HTML کارت غایب‌اند., بیمار می‌سازد، داروی فعال و بیماری اضافه می‌کند، توکن صادر می‌کند،         کارت, نام دارو نباید در HTML کارت باشد., نام بیماری نباید در HTML کارت باشد., کد بیماری نباید در HTML کارت باشد., کد ملی نباید در HTML کارت باشد. (+2 more)
+Nodes (9): _disable_card_feature(), _issue_expired_token(), Insert a token that is already expired into the DB; return its string., رفتار HTTP کامل مسیر عمومی کارت., وقتی patient_card_enabled='0' هر URL ای در /card/ باید 404 برگرداند., توکن منقضی (expires_at در گذشته) باید 404 برگرداند., card_for_token با توکن ناشناخته باید None برگرداند., card_for_token با توکن منقضی باید None برگرداند. (+1 more)
 
 ### Community 87 - "safety"
-Cohesion: 0.14
-Nodes (10): _disable_card_feature(), _issue_expired_token(), Insert a token that is already expired into the DB; return its string., رفتار HTTP کامل مسیر عمومی کارت., وقتی patient_card_enabled='0' هر URL ای در /card/ باید 404 برگرداند., توکن منقضی (expires_at در گذشته) باید 404 برگرداند., card_for_token با توکن ناشناخته باید None برگرداند., card_for_token با توکن منقضی باید None برگرداند. (+2 more)
+Cohesion: 0.22
+Nodes (5): HTTP (non-HTTPS) local logins must not be broken: SECURE must be False., In production mode, SESSION_COOKIE_SECURE must be True (HTTPS enforced)., Cookie SameSite and HttpOnly must be set regardless of PRODUCTION., TestLocalModeSessionCookies, TestProductionModeSecureCookie
 
 ### Community 88 - "properties"
-Cohesion: 0.14
-Nodes (6): ClinicalEngineFactRepository, Fetch a deterministic raw bundle without interpreting clinical meaning., Limit the first visible rollout to the ten seeded demo patients., LegacyDecisionImporter, Idempotently retain the last observable v1 state with an honesty warning., test_invalid_mode_fails_closed_to_off()
+Cohesion: 0.22
+Nodes (11): items, type, additionalProperties, required, data_issues, recommendations, rule_results, items (+3 more)
 
 ### Community 89 - "fact_builder.py"
 Cohesion: 0.20
-Nodes (6): DrugCatalogRepository, Repository for the drug catalog (generic name + pharmacologic class + doses).  A, dict-ify a row and parse its JSON `standard_doses` into a `doses` list., LIKE search on `generic_fa`, optionally filtered to a class., Patch selected columns of an existing catalog drug., _row()
+Nodes (10): type, type, high, low, reference_range, unit, additionalProperties, properties (+2 more)
 
 ### Community 90 - "test_patient_cockpit_service.py"
-Cohesion: 0.21
-Nodes (10): _date(), Presentation-ready care priorities and a unified patient activity timeline.  Thi, Return a sortable ISO-like value without inventing a timestamp., test_next_action_accepts_v2_projection_without_double_counting_priority(), test_next_action_chooses_earliest_open_followup(), test_next_action_does_not_call_completed_v2_review_unreviewed(), test_next_action_only_counts_unreviewed_or_deferred_v2_actions(), test_next_action_uses_clinical_priority_order() (+2 more)
+Cohesion: 0.20
+Nodes (9): additionalProperties, $defs, expression, oneOf, $id, required, $schema, title (+1 more)
 
 ### Community 91 - "TestPendingEndpointSeededData"
-Cohesion: 0.18
-Nodes (8): _jalali_month_start_gregorian(), Revenue analytics for the specialist clinic, sourced from the accounting DB (rea, Gregorian 'YYYY-MM-DD' of the first day of the current Jalali month., Causal lift for a campaign that used a holdout/control group.          Compares, (accounting_patient_id, enrollment_date 'YYYY-MM-DD') for active linked patients, Top-level revenue + 30-day trend for enrolled patients.          Specialist-offi, Revenue attributed to each campaign = COLLECTED revenue from its         account, RevenueService
+Cohesion: 0.20
+Nodes (10): items, type, type, items, type, diagnostics, missing_facts, suppression_reasons (+2 more)
 
 ### Community 92 - "TestLocalModeSessionCookies"
 Cohesion: 0.22
-Nodes (7): _age_from_birthdate(), Rule engine: builds a patient fact-bundle and evaluates the editable clinical_ru, Return the list of fired rules for a patient (suggestion-only)., Fired rules grouped into UI sections, in display order., Robust age: handles gregorian or Jalali year in birthdate string., RuleEngine, _truthy()
+Nodes (8): اتصال به دیتابیس حسابداری, اجرا (حالت توسعه), امکانات, تنظیم پیامک (مدیانا), ساخت فایل اجرایی (.exe), معماری, کلینیک تخصصی (Specialist Clinic), گیت فعال‌سازی موتور بالینی v2
 
 ### Community 93 - "TestFAutomaticEngagementRegression"
-Cohesion: 0.19
-Nodes (9): _enroll_patient(), Insert a patient_links row in the specialist DB; return the inserted id., روت‌های staff در /patients/<pid>/card برای مدیریت توکن., GET /patients/<pid>/card بدون لاگین باید ریدایرکت (302/303) یا 401 برگرداند., POST /patients/<pid>/card/issue بدون لاگین باید ریدایرکت یا 401 برگرداند., POST /patients/<pid>/card/issue توکن می‌سازد و active_for_patient آن را دارد., POST /patients/<pid>/card/revoke/<token_id> باید توکن را revoke کند., GET /patients/<pid>/card برای کاربر لاگین‌شده 200 برمی‌گرداند. (+1 more)
+Cohesion: 0.22
+Nodes (9): additionalProperties, properties, required, type, type, conflict, group_key, resolution_note (+1 more)
 
 ### Community 94 - "RuleEngine"
 Cohesion: 0.33
 Nodes (3): همگام‌سازی اپ حسابداری (webapp), ۱) یادآوریِ «پرداختِ آتی» هنگام ویزیت (Backlog), ۲) (رزرو برای موارد بعدی)
 
 ### Community 95 - "_enroll_patient"
-Cohesion: 0.18
-Nodes (9): _issue_token(), Issue a token directly via the repo (no HTTP); return the token string., تست‌های کارکردی PatientCardRepository., create_token باید توکنی از token_urlsafe(32) برگرداند (طول ~43 کاراکتر)., صدور توکن دوم باید توکن اول را revoke کند (یک active در هر زمان)., active_for_patient باید بعد از دو صدور، فقط یک توکن active برگرداند., revoke() باید توکن را غیرفعال کند و active_for_patient None برگرداند., get_by_token با رشته خالی باید None برگرداند. (+1 more)
+Cohesion: 0.22
+Nodes (9): items, type, uniqueItems, type, derived_from, related_fact_ids, items, type (+1 more)
 
 ### Community 96 - "Disease-oriented Patient Record"
 Cohesion: 0.20
 Nodes (11): Read-only Accounting Bridge, Mediana SMS API Contract, Loading State Snapshot, Appointment Worklist, Recurring Appointment Form, Read-only Patient Health Card, Live Doctor Queue, Patient Card Issue and Revocation (+3 more)
 
 ### Community 97 - "create_app"
-Cohesion: 0.06
-Nodes (42): create_app(), Flask application factory (works in source and PyInstaller frozen modes)., Config, TestConfig, decision_app(), shadow_app(), facts_app(), _app() (+34 more)
+Cohesion: 0.43
+Nodes (4): close_connection(), open_browser(), Config, TestConfig
 
 ### Community 98 - "items"
-Cohesion: 0.21
-Nodes (8): allow(), Sliding window: permit at most `limit` events per `per_seconds` for `key`., Calls 1..limit at the same `now` must all be True., Call limit+1 at the same `now` must return False without recording., limit=1: first call True, second call at same time → False., limit=0 means no calls are permitted at all., After a rejected call, the window count must not increase.          If the rejec, TestWithinAndExceedLimit
+Cohesion: 0.22
+Nodes (9): additionalProperties, properties, required, type, type, type, fact_snapshot, facts (+1 more)
 
 ### Community 99 - "test_ext_token_security.py"
-Cohesion: 0.19
-Nodes (8): Tiny in-process rate limiter (SECU-13). Thread-safe, dependency-free.  A sliding, Clear all counters (used by tests to isolate cases)., reset(), After filling a window, reset() must make allow() return True again., reset() must clear every key, not just one., Calling reset() twice must not raise., reset() on a fresh (or already-reset) state must not raise., TestReset
+Cohesion: 0.22
+Nodes (9): ruleset, ruleset_id, version, additionalProperties, type, properties, required, type (+1 more)
 
 ### Community 100 - "_ensure_column"
-Cohesion: 0.22
-Nodes (8): _flush_src_modules(), Flask test-app با DB تازه در tmp_dir — ایزولاسیون کامل env/module., تمام ماژول‌های src.* را از sys.modules پاک کن تا import بعدی clean باشد., مستقل از Flask app: مستقیماً _ensure_column را با یک SQLite connection آزمایش می, اگر یک DB موجود بدون outreach_done داریم،         create_app باید آن را اضافه کن, specialist_app(), TestScenario4MigrationIdempotency, _ensure_column()
+Cohesion: 0.18
+Nodes (9): _ensure_column(), _flush_src_modules(), Flask test-app با DB تازه در tmp_dir — ایزولاسیون کامل env/module., تمام ماژول‌های src.* را از sys.modules پاک کن تا import بعدی clean باشد., مستقل از Flask app: مستقیماً _ensure_column را با یک SQLite connection آزمایش می, اگر یک DB موجود بدون outreach_done داریم،         create_app باید آن را اضافه کن, specialist_app(), TestScenario4MigrationIdempotency (+1 more)
 
 ### Community 101 - "ext.py"
-Cohesion: 0.15
-Nodes (13): format, type, additionalProperties, properties, required, type, minimum, type (+5 more)
+Cohesion: 0.25
+Nodes (7): _flush_src_modules(), ADR-0004 — Patient Card Channel test suite (adversarial).  Safety contract:   -, Delete all src.* modules from sys.modules so the next import re-reads     env va, Flask test app pointing at a fresh specialist DB in tmp_dir.      Strict isolati, clinic_new.db واقعی بعد از GET کارت بایت‌به‌بایت دست‌نخورده است., specialist_app(), TestScenarioFRealAccDbZeroWrite
 
 ### Community 102 - "properties"
-Cohesion: 0.15
-Nodes (13): record_id, recorded_by, source, table, type, type, type, additionalProperties (+5 more)
+Cohesion: 0.25
+Nodes (7): Design System — کلینیک تخصصی (Dark · Data-Dense Dashboard), آیکون‌ها (اسپرایت SVG در `base.html`), اصول (HARD RULES — رعایت اجباری), توکن‌ها (CSS variables — در `app.css`), قرارداد اندازه و رفتار, نمونه‌الگوها, کامپوننت‌ها (کلاس‌های آماده)
 
 ### Community 103 - "clinical-rule.schema.json"
-Cohesion: 0.15
-Nodes (13): type, $ref, const, hard_exclusions, on_safety_error, redflag_exclusions, safety, items (+5 more)
+Cohesion: 0.25
+Nodes (7): additionalProperties, allOf, $id, required, $schema, title, type
 
 ### Community 104 - "type"
-Cohesion: 0.15
-Nodes (13): properties, enum, enum, enum, outcome, phase, predicate_state, rule_code (+5 more)
+Cohesion: 0.25
+Nodes (8): caused_by_rule_code, message_fa, reason_code, suppression, additionalProperties, properties, required, type
 
 ### Community 105 - "properties"
-Cohesion: 0.23
-Nodes (9): Pure suggestion-only recommendation composition for Clinical Engine v2., recommendation_payload(), canonical_json(), _fact_payload(), _iso(), _json_default(), Canonical Clinical Engine v2 snapshot construction and shadow capture., snapshot_payload() (+1 more)
+Cohesion: 0.25
+Nodes (4): `Authorization: Bearer <token>` باید ۲۰۰ و JSON با کلید `items` برگرداند., Authorization: bearer (lowercase) هم باید ۲۰۰ برگرداند (RFC 7235)., توکن اشتباه در هدر → ۴۰۱., TestBearerHeaderTokenAccepted
 
 ### Community 106 - "derived_from"
-Cohesion: 0.21
-Nodes (7): یک patient_links و یک followup_tasks می‌سازد؛ id‌های هر دو را برمی‌گرداند., یک followup_tasks با status=open و fulfillment=remote باید در items ظاهر شود., followup با fulfillment='in_person' نباید در /pending ظاهر شود., followup با status='done' نباید در /pending ظاهر شود., اگر بیمار داروی فعال داشته باشد، مدیکیشن‌ها در آیتم باید دیده شوند., ثابت می‌کند /pending کران‌دار است — پاسخ JSON با items list برمی‌گردد،         و, TestPendingEndpointSeededData
+Cohesion: 0.25
+Nodes (5): ADR-0004 invariants enforced at test-time, not runtime., هیچ متد غیر از GET در blueprint patient_card نیست.          روی url_map پیمایش م, card_projection_service.py باید فاقد INSERT/UPDATE/DELETE/commit/executemany باش, card_projection_service.py هرگز رشته 'national_id' را در پاسخ نباید داشته باشد., TestScenarioAArchitectureGuard
 
 ### Community 107 - "fact_snapshot"
-Cohesion: 0.38
-Nodes (10): ConflictStatus, FactKind, FactStatus, FreshnessStatus, VerificationStatus, ClinicalFact, FactSnapshot, FactSource (+2 more)
+Cohesion: 0.43
+Nodes (6): approvals(), _group_pending_by_patient(), Group approval rows for presentation while preserving queue priority., _row(), test_empty_approval_queue_has_no_patient_groups(), test_pending_approvals_are_grouped_by_patient_and_keep_queue_order()
 
 ### Community 108 - "ruleset"
-Cohesion: 0.22
-Nodes (11): items, type, additionalProperties, required, data_issues, recommendations, rule_results, items (+3 more)
+Cohesion: 0.29
+Nodes (6): additionalProperties, $id, required, $schema, title, type
 
 ### Community 110 - "Design System — کلینیک تخصصی (Dark · Data-Dense Dashboard)"
-Cohesion: 0.18
-Nodes (6): A hit at t=0 with per=10: at t=10 the cutoff is 0.0.         The hit is at 0.0 w, A hit at t=0 with per=10: at t=10.001 the cutoff is 0.001.         0.0 < 0.001 →, 5 hits spread in time; partial window slide evicts only the oldest., per_seconds=1: three sub-second hits → window full; 1s later → clear., Classic sliding window: 3 hits at t=0,1,2; t=3 full (per=60);         at t=61 th, TestSlidingWindow
+Cohesion: 0.29
+Nodes (7): additionalProperties, properties, required, type, code, error, message
 
 ### Community 111 - "نقشهٔ فاز ۳ — پنلِ پزشک: صفِ زنده + نمای سادهٔ ویزیت + «مرحله بعد»"
 Cohesion: 0.22
 Nodes (8): ایمنی و گاردریل, تصمیم‌های باز (پیشنهادِ تیم؛ نیازِ تأییدِ مالک/پزشک), جدولِ داده (افزایشی، idempotent), زیرتسک‌ها (~۶.۵–۹ روز), معماری (هم‌راستا با ADR-0002/0003), نامعلوم‌های نیازمندِ بررسی, نقشهٔ فاز ۳ — پنلِ پزشک: صفِ زنده + نمای سادهٔ ویزیت + «مرحله بعد», هدف (جریانِ پزشک)
 
 ### Community 112 - "کلینیک تخصصی (Specialist Clinic)"
-Cohesion: 0.22
-Nodes (5): _condition_for(), Comprehensive seed of ADA T2D decision rules → clinical_rules table.  Covers EVE, Owning disease module for a rule. Explicit `condition_code` wins; otherwise, Idempotently insert the rule catalog (manager edits are preserved) and tag     e, seed_clinical_rules()
-
-### Community 113 - "clinical-fact.schema.json"
-Cohesion: 0.27
-Nodes (9): captured(), _cors(), _origin_allowed(), pending(), Token-authenticated bridge blueprint for the prescription browser extension.  Th, Resolve the calling physician from the extension API token, or None.     SECU-05, Open REMOTE follow-ups awaiting a periodic prescription, with the patient's, Record a captured insurance prescription (by patient national_id) and, when a (+1 more)
+Cohesion: 0.33
+Nodes (5): clinical_use, rules, ruleset_code, status, version
 
 ### Community 114 - "suppression"
-Cohesion: 0.20
-Nodes (10): type, type, high, low, reference_range, unit, additionalProperties, properties (+2 more)
+Cohesion: 0.33
+Nodes (4): _procedure_event_key(), Phase 2: invoice-triggered outreach via the physician approval queue.         En, Map a free-text procedure/injection description to a follow-up event_key (or Non, One read-only sync pass. Returns {'fetched','new','pending_link','cursor'}.
 
 ### Community 115 - "._createDescriptors"
-Cohesion: 0.06
-Nodes (10): bt, color(), Cs, Ft(), It(), os(), te(), wt() (+2 more)
+Cohesion: 0.08
+Nodes (13): bt, color(), Ft(), It(), jt(), kt(), qt(), _t() (+5 more)
 
 ### Community 116 - "TestBearerHeaderTokenAccepted"
-Cohesion: 0.33
-Nodes (6): _ensure_default_admin(), init_db_command(), _load_schema_text(), Create a default manager account (admin/admin) if no users exist., CLI helper: (re)apply schema., Load bundled schema.sql in both source and frozen (PyInstaller) modes.
+Cohesion: 0.05
+Nodes (43): _ensure_default_admin(), init_db_command(), _load_schema_text(), Create a default manager account (admin/admin) if no users exist., CLI helper: (re)apply schema., Load bundled schema.sql in both source and frozen (PyInstaller) modes., Repository for the physician visit-queue state (`doctor_visit_log`).  phase3_doc, Repository for the engagement engine: the editable event->channel routing table (+35 more)
 
 ### Community 117 - "TestScenarioAArchitectureGuard"
-Cohesion: 0.20
-Nodes (9): additionalProperties, $defs, expression, oneOf, $id, required, $schema, title (+1 more)
+Cohesion: 0.40
+Nodes (5): enum, warnings, items, type, uniqueItems
 
 ### Community 118 - "5) درمان غیردارویی و آموزش بیمار"
 Cohesion: 0.29
@@ -849,24 +802,20 @@ Cohesion: 0.29
 Nodes (6): ورودی‌های لازم از مالک/پزشک — گِیت‌های آزادسازیِ ارزش, ☑️ چک‌لیستِ «از دکتر بپرس», ۱) ⭐ KYC کاوه‌نگار — بیشترین اهرم, ۲) تصمیم‌های بالینیِ P1 — برای پزشک, ۳) VPS + تونلِ WireGuard, ۴) ساختار/دسترسیِ پنل‌های بیمه
 
 ### Community 123 - "evaluation-result.schema.json"
-Cohesion: 0.20
-Nodes (10): items, type, type, items, type, diagnostics, missing_facts, suppression_reasons (+2 more)
+Cohesion: 0.70
+Nodes (4): _read(), test_all_user_facing_clock_fields_use_native_time_picker(), test_datepicker_hides_the_english_calendar_switch_button(), test_persian_datepicker_dark_theme_covers_base_and_selected_days()
 
 ### Community 124 - "error"
-Cohesion: 0.28
-Nodes (7): _enabled(), Public patient-card Channel (ADR-0004).  A token-addressed, READ-ONLY view of a, view(), card_for_token(), Read-only projection for the public patient card (ADR-0004).  This is the CQRS r, Resolve a card token to a minimal, safe, READ-ONLY DTO — or None if the token is, _token_valid()
+Cohesion: 0.50
+Nodes (4): _flush_src_modules(), Flask test app pointing at a fresh specialist DB in tmp_dir.      Strict isolati, Delete all src.* modules from sys.modules so the next import re-reads     env va, specialist_app()
 
 ### Community 125 - "specialist_app"
-Cohesion: 0.67
-Nodes (3): RuntimeError, _ensure_clinical_engine_v2_storage(), Verify the additive v2 schema and install its safe-off feature flag.      Unlike
+Cohesion: 0.50
+Nodes (3): on_invoice_processed (Phase 2) reads accounting_bridge.fetch_invoice_items, _sha256(), TestScenario7ZeroWrite
 
 ### Community 126 - "TestKeyIndependence"
-Cohesion: 0.22
-Nodes (9): additionalProperties, properties, required, type, type, conflict, group_key, resolution_note (+1 more)
-
-### Community 127 - "test_security_config.py"
-Cohesion: 0.22
-Nodes (9): items, type, uniqueItems, type, derived_from, related_fact_ids, items, type (+1 more)
+Cohesion: 0.50
+Nodes (4): _flush_src_modules(), Flask test app pointing at a fresh specialist DB in tmp_dir.      Strict isolati, Delete all src.* modules from sys.modules so the next import re-reads     env va, specialist_app()
 
 ### Community 128 - "7) مدیریت هیپوگلیسمی، هایپرگلیسمی شدید و Red Flags — فصل ۶"
 Cohesion: 0.33
@@ -877,76 +826,32 @@ Cohesion: 0.33
 Nodes (5): تابع validation برای کدملی ایرانی., اعتبارسنجی شماره موبایل ایرانی.          شماره باید 11 رقم و با 09 شروع شود., اعتبارسنجی کدملی ایرانی با الگوریتم استاندارد.          Examples:         >>> va, validate_iranian_national_id(), validate_iranian_phone()
 
 ### Community 130 - "manifest.json"
-Cohesion: 0.22
-Nodes (9): additionalProperties, properties, required, type, type, type, fact_snapshot, facts (+1 more)
+Cohesion: 0.67
+Nodes (3): pattern, type, key
 
 ### Community 131 - ".on_invoice_processed"
-Cohesion: 0.22
-Nodes (9): ruleset, ruleset_id, version, additionalProperties, type, properties, required, type (+1 more)
-
-### Community 132 - "test_patient_card.py"
-Cohesion: 0.25
-Nodes (7): _flush_src_modules(), ADR-0004 — Patient Card Channel test suite (adversarial).  Safety contract:   -, Delete all src.* modules from sys.modules so the next import re-reads     env va, Flask test app pointing at a fresh specialist DB in tmp_dir.      Strict isolati, clinic_new.db واقعی بعد از GET کارت بایت‌به‌بایت دست‌نخورده است., specialist_app(), TestScenarioFRealAccDbZeroWrite
+Cohesion: 0.67
+Nodes (3): minimum, type, patient_link_id
 
 ### Community 133 - "مرجع اتصال پیامک مدیانا"
 Cohesion: 0.40
 Nodes (4): تفسیر پاسخ, تنظیمات, مرجع اتصال پیامک مدیانا, چک‌لیست تست واقعی
 
-### Community 134 - "Design System — کلینیک تخصصی (Dark · Data-Dense Dashboard)"
-Cohesion: 0.25
-Nodes (7): Design System — کلینیک تخصصی (Dark · Data-Dense Dashboard), آیکون‌ها (اسپرایت SVG در `base.html`), اصول (HARD RULES — رعایت اجباری), توکن‌ها (CSS variables — در `app.css`), قرارداد اندازه و رفتار, نمونه‌الگوها, کامپوننت‌ها (کلاس‌های آماده)
-
-### Community 135 - "warnings"
-Cohesion: 0.25
-Nodes (7): اتصال به دیتابیس حسابداری, اجرا (حالت توسعه), امکانات, تنظیم پیامک (مدیانا), ساخت فایل اجرایی (.exe), معماری, کلینیک تخصصی (Specialist Clinic)
-
-### Community 136 - "test_datetime_controls.py"
-Cohesion: 0.32
-Nodes (7): settings(), get_network_info(), _local_ipv4_addresses(), Local-network discovery helpers for the settings page., Return usable LAN addresses first and localhost as a final fallback., Build URLs for this app and its accounting peer on the clinic LAN., _valid_ipv4()
-
-### Community 137 - "clinical-fact.schema.json"
-Cohesion: 0.25
-Nodes (7): additionalProperties, allOf, $id, required, $schema, title, type
-
-### Community 138 - "suppression"
-Cohesion: 0.25
-Nodes (8): caused_by_rule_code, message_fa, reason_code, suppression, additionalProperties, properties, required, type
-
-### Community 139 - ".approve"
-Cohesion: 0.25
-Nodes (4): Physician confirms a queued message; only NOW does the SMS actually go out., True if the current Tehran time is OUTSIDE the allowed sending window., Send a one-off SMS (e.g. an appointment reminder) and log it.      Defaults to ', send_single()
-
 ### Community 140 - "persian-date.min.js"
 Cohesion: 0.83
 Nodes (3): e(), i(), t()
-
-### Community 141 - "specialist_app"
-Cohesion: 0.25
-Nodes (5): _procedure_event_key(), Invoice-sync consumer — the read-only seam between accounting and the clinical a, Phase 2: invoice-triggered outreach via the physician approval queue.         En, Map a free-text procedure/injection description to a follow-up event_key (or Non, One read-only sync pass. Returns {'fetched','new','pending_link','cursor'}.
 
 ### Community 142 - "۴) متدها"
 Cohesion: 0.22
 Nodes (9): ۴) متدها, ۴.۱ ارسالِ ساده — `sms/send` (پُرکاربردترین), ۴.۲ ارسالِ گروهی نظیربه‌نظیر — `sms/sendarray`, ۴.۳ کدِ تأیید/الگو (OTP) — `verify/lookup`, ۴.۴ وضعیتِ تحویل, ۴.۵ صندوقِ خروجی / دریافتی, ۴.۶ مدیریتِ خط و لیستِ سیاه, ۴.۷ تماسِ صوتی — `call/maketts` (+1 more)
 
-### Community 144 - "TestScenario1Bootstrap"
-Cohesion: 0.25
-Nodes (5): ADR-0004 invariants enforced at test-time, not runtime., هیچ متد غیر از GET در blueprint patient_card نیست.          روی url_map پیمایش م, card_projection_service.py باید فاقد INSERT/UPDATE/DELETE/commit/executemany باش, card_projection_service.py هرگز رشته 'national_id' را در پاسخ نباید داشته باشد., TestScenarioAArchitectureGuard
-
-### Community 145 - "_issue_expired_token"
-Cohesion: 0.25
-Nodes (5): _clean(), Unit tests for src.common.rate_limit (SECU-13).  Deterministic: every call injec, Multiple threads calling allow() concurrently must not raise.         Uses real, With limit=10 and many concurrent threads, the number of admitted         (True), TestThreadSafety
+### Community 146 - "._createDescriptors"
+Cohesion: 0.15
+Nodes (4): Cs, nn(), os(), sn
 
 ### Community 147 - "Per-disease Suggestion-only Clinical Engine"
 Cohesion: 1.00
 Nodes (3): Per-disease Suggestion-only Clinical Engine, Clinical Decision Rule Editor, Clinical Indicator Threshold Editor
-
-### Community 148 - "key"
-Cohesion: 0.38
-Nodes (6): approvals(), _group_pending_by_patient(), Group approval rows for presentation while preserving queue priority., _row(), test_empty_approval_queue_has_no_patient_groups(), test_pending_approvals_are_grouped_by_patient_and_keep_queue_order()
-
-### Community 149 - "patient_link_id"
-Cohesion: 0.29
-Nodes (6): additionalProperties, $id, required, $schema, title, type
 
 ### Community 150 - "Patient Enrollment Page"
 Cohesion: 0.67
@@ -956,85 +861,29 @@ Nodes (3): Patient Enrollment Page, Accounting Patient Search (read-only), Manua
 Cohesion: 0.67
 Nodes (3): doCheck, refresh, toggleCredit
 
-### Community 285 - "__init__.py"
-Cohesion: 0.29
-Nodes (7): additionalProperties, properties, required, type, code, error, message
-
-### Community 286 - "__init__.py"
-Cohesion: 0.43
-Nodes (3): D3+ — جریانِ کامل invoice sync → outreach approval → SMS send.     بیمارِ enroll, بیمار + فاکتور در هر دو DB آماده کن., TestFlow1InvoiceToThankYou
-
-### Community 287 - "__init__.py"
-Cohesion: 0.29
-Nodes (4): Exhausting key 'a' must not affect key 'b'., 100 distinct keys, each with limit=1; exhausting each must not         spill int, The same key called with different limits should respect each call's         lim, TestKeyIndependence
-
-### Community 288 - "__init__.py"
-Cohesion: 0.33
-Nodes (5): clinical_use, rules, ruleset_code, status, version
-
-### Community 290 - "__init__.py"
-Cohesion: 0.40
-Nodes (5): enum, warnings, items, type, uniqueItems
-
-### Community 291 - "__init__.py"
-Cohesion: 0.70
-Nodes (4): _read(), test_all_user_facing_clock_fields_use_native_time_picker(), test_datepicker_hides_the_english_calendar_switch_button(), test_persian_datepicker_dark_theme_covers_base_and_selected_days()
-
-### Community 292 - "__init__.py"
-Cohesion: 0.50
-Nodes (3): Idempotent seed of the common Iranian lab-test catalog + per-disease mappings., Idempotently seed the lab-test catalog and per-disease mappings.      Uses INSER, seed_lab_catalog()
-
-### Community 295 - "specialist_app"
-Cohesion: 0.50
-Nodes (4): _flush_src_modules(), Flask test app pointing at a fresh specialist DB in tmp_dir.      Strict isolati, Delete all src.* modules from sys.modules so the next import re-reads     env va, specialist_app()
-
-### Community 296 - ".test_real_acc_db_unchanged_after_outreach_sync"
-Cohesion: 0.50
-Nodes (3): on_invoice_processed (Phase 2) reads accounting_bridge.fetch_invoice_items, _sha256(), TestScenario7ZeroWrite
-
-### Community 297 - "specialist_app"
-Cohesion: 0.50
-Nodes (4): _flush_src_modules(), Flask test app pointing at a fresh specialist DB in tmp_dir.      Strict isolati, Delete all src.* modules from sys.modules so the next import re-reads     env va, specialist_app()
-
-### Community 299 - "specialist_app"
-Cohesion: 0.50
-Nodes (4): _flush_src_modules(), Flask test app on a fresh specialist DB. Strict env/module isolation so     test, Delete all src.* modules from sys.modules so the next import re-reads     env va, specialist_app()
-
-### Community 300 - "fact_id"
-Cohesion: 0.67
-Nodes (3): minLength, type, fact_id
-
-### Community 301 - "key"
-Cohesion: 0.67
-Nodes (3): pattern, type, key
-
-### Community 302 - "patient_link_id"
-Cohesion: 0.67
-Nodes (3): minimum, type, patient_link_id
-
 ## Ambiguous Edges - Review These
 - `Loading State Snapshot` → `Read-only Patient Health Card`  [AMBIGUOUS]
   .playwright-mcp/page-2026-07-08T05-23-28-730Z.yml · relation: conceptually_related_to
 
 ## Knowledge Gaps
-- **556 isolated node(s):** `ruleset_code`, `version`, `status`, `clinical_use`, `rules` (+551 more)
+- **557 isolated node(s):** `ruleset_code`, `version`, `status`, `clinical_use`, `rules` (+552 more)
   These have ≤1 connection - possible missing edges or undocumented components.
-- **162 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **141 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
 - **What is the exact relationship between `Loading State Snapshot` and `Read-only Patient Health Card`?**
   _Edge tagged AMBIGUOUS (relation: conceptually_related_to) - confidence is low._
-- **Why does `get_db()` connect `RuleCompiler` to `patients.py`, `get_db`, `DoctorQueueService`, `test_patient_card.py`, `iran_now`, `sms.py`, `.approve`, `VitalsRepository`, `Scheduler`, `test_end_to_end_loops.py`, `ClinicalRulesRepository`, `EngagementService`, `test_clinical_engine_v2_evaluator.py`, `test_clinical_engine_v2_safety.py`, `test_visit_invites.py`, `allow`, `properties`, `__init__.py`, `properties`, `evaluator.py`, `test_invoice_outreach.py`, `AvalAI Developer Documentation — Structured Reference (English)`, `_run_migrations`, `test_invoice_outreach_retry.py`, `TestScenario1Bootstrap`, `ClinicalEngineRulesRepository`, `test_card_url_qr.py`, `specialist_app`, `properties`, `test_canonical_consistency.py`, `test_clinical_engine_v2_readonly_ui.py`, `NullProvider`, `properties`, `.adapt`, `AuthService`, `test_clinical_engine_v2_conflicts.py`, `TestCanonicalConsistency`, `test_rule_engine_v1_characterization.py`, `._get_card_body`, `control_room.py`, `.getProps`, `properties`, `fact_builder.py`, `TestPendingEndpointSeededData`, `TestLocalModeSessionCookies`, `create_app`, `_ensure_column`, `derived_from`, `clinical-fact.schema.json`, `TestBearerHeaderTokenAccepted`, `error`?**
-  _High betweenness centrality (0.159) - this node is a cross-community bridge._
-- **Why does `RuleCompiler` connect `test_clinical_engine_v2_evaluator.py` to `__init__.py`, `_enroll_patient`, `Scheduler`, `TestLabObservation`, `test_canonical_consistency.py`, `NullProvider`, `freshness`, `properties`, `properties`?**
-  _High betweenness centrality (0.028) - this node is a cross-community bridge._
-- **Why does `create_app()` connect `create_app` to `DoctorQueueService`, `test_patient_card.py`, `RuleCompiler`, `Scheduler`, `properties`, `test_invoice_outreach.py`, `AvalAI Developer Documentation — Structured Reference (English)`, `specialist_app`, `test_invoice_outreach_retry.py`, `_enroll_patient`, `specialist_app`, `test_card_url_qr.py`, `specialist_app`, `properties`, `test_canonical_consistency.py`, `.adapt`, `AuthService`, `TestCanonicalConsistency`, `_ensure_column`, `specialist_app`?**
-  _High betweenness centrality (0.027) - this node is a cross-community bridge._
-- **Are the 113 inferred relationships involving `get_db()` (e.g. with `_counts()` and `_enroll()`) actually correct?**
-  _`get_db()` has 113 INFERRED edges - model-reasoned connections that need verification._
-- **Are the 51 inferred relationships involving `SmsRepository` (e.g. with `engagement()` and `engagement_settings()`) actually correct?**
-  _`SmsRepository` has 51 INFERRED edges - model-reasoned connections that need verification._
-- **Are the 48 inferred relationships involving `EngagementService` (e.g. with `sms()` and `invite()`) actually correct?**
-  _`EngagementService` has 48 INFERRED edges - model-reasoned connections that need verification._
+- **Why does `get_db()` connect `get_db` to `patients.py`, `DoctorQueueService`, `iran_now`, `sms.py`, `eo`, `Scheduler`, `TestLabObservation`, `core.py`, `MedianaProvider`, `test_end_to_end_loops.py`, `ClinicalRulesRepository`, `AppointmentRepository`, `EngagementService`, `test_clinical_engine_v2_evaluator.py`, `test_clinical_engine_v2_safety.py`, `test_patient_card.py`, `test_visit_invites.py`, `allow`, `InvoiceSyncService`, `SafetyKernel`, `__init__.py`, `test_invoice_outreach.py`, `_run_migrations`, `test_invoice_outreach_retry.py`, `ClinicalEngineRulesRepository`, `test_card_url_qr.py`, `properties`, `test_clinical_engine_v2_facts.py`, `test_canonical_consistency.py`, `AuthService`, `ClinicalEngineAuditRepository`, `control_room.py`, `create_app`, `_ensure_column`, `ext.py`, `TestBearerHeaderTokenAccepted`, `test_security_config.py`?**
+  _High betweenness centrality (0.187) - this node is a cross-community bridge._
+- **Why does `create_app()` connect `EngagementService` to `get_db`, `DoctorQueueService`, `iran_now`, `eo`, `Scheduler`, `TestLabObservation`, `MedianaProvider`, `ClinicalRulesRepository`, `AppointmentRepository`, `test_clinical_engine_v2_evaluator.py`, `test_clinical_engine_v2_safety.py`, `test_patient_card.py`, `allow`, `properties`, `InvoiceSyncService`, `SafetyKernel`, `test_invoice_outreach.py`, `test_invoice_outreach_retry.py`, `ClinicalEngineRulesRepository`, `test_card_url_qr.py`, `properties`, `test_clinical_engine_v2_facts.py`, `test_canonical_consistency.py`, `AuthService`, `AuthRepository`, `safety`, `create_app`, `_ensure_column`, `ext.py`, `error`, `TestKeyIndependence`?**
+  _High betweenness centrality (0.024) - this node is a cross-community bridge._
+- **Why does `SmsRepository` connect `get_db` to `patients.py`, `TestCanonicalConsistency`, `test_invoice_outreach.py`, `iran_now`, `RuleCompiler`, `sms.py`, `fact_snapshot`, `AuthRepository`, `control_room.py`, `VitalsRepository`, `core.py`, `MedianaProvider`, `TestBearerHeaderTokenAccepted`, `AppointmentRepository`, `test_patient_card.py`, `test_visit_invites.py`?**
+  _High betweenness centrality (0.023) - this node is a cross-community bridge._
+- **Are the 24 inferred relationships involving `SmsRepository` (e.g. with `EngagementService` and `InvoiceSyncService`) actually correct?**
+  _`SmsRepository` has 24 INFERRED edges - model-reasoned connections that need verification._
+- **Are the 19 inferred relationships involving `EngagementService` (e.g. with `ClinicalRulesRepository` and `EngagementRepository`) actually correct?**
+  _`EngagementService` has 19 INFERRED edges - model-reasoned connections that need verification._
+- **Are the 22 inferred relationships involving `RuleCompiler` (e.g. with `ActionType` and `ClinicalPhase`) actually correct?**
+  _`RuleCompiler` has 22 INFERRED edges - model-reasoned connections that need verification._

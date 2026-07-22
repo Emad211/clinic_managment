@@ -2,6 +2,8 @@ import os
 import sys
 import threading
 import webbrowser
+import json
+from datetime import datetime
 
 import click
 from flask import Flask, redirect, url_for, session, g, render_template
@@ -133,6 +135,108 @@ def create_app(test_config=None):
 
         imported = LegacyDecisionImporter().import_once()
         click.echo(f"Imported {imported} legacy clinical decision state(s).")
+
+    @app.cli.group("clinical-v2")
+    def clinical_v2():
+        """Auditable comparison and guarded Clinical Engine v2 rollout."""
+
+    @clinical_v2.command("compare")
+    @click.option("--as-of", "as_of_text", required=True,
+                  help="Fixed Tehran-local ISO timestamp, e.g. 2026-07-22T12:00:00")
+    @click.option("--actor", required=True)
+    @click.option("--format", "output_format", type=click.Choice(["text", "json"]),
+                  default="text", show_default=True)
+    def clinical_v2_compare(as_of_text, actor, output_format):
+        from src.services.clinical_engine.activation import ClinicalEngineActivationService
+        try:
+            as_of = datetime.fromisoformat(as_of_text)
+        except ValueError as exc:
+            raise click.ClickException("--as-of must be a valid ISO timestamp") from exc
+        report = ClinicalEngineActivationService().build_report(
+            as_of_at=as_of, created_by=actor,
+        )
+        if output_format == "json":
+            click.echo(json.dumps(report, ensure_ascii=False, indent=2))
+        else:
+            click.echo(ClinicalEngineActivationService.render_text(report))
+
+    @clinical_v2.command("status")
+    @click.option("--format", "output_format", type=click.Choice(["text", "json"]),
+                  default="text", show_default=True)
+    def clinical_v2_status(output_format):
+        from src.adapters.sqlite.clinical_engine_activation_repo import ClinicalEngineActivationRepository
+        from src.adapters.sqlite.clinical_engine_fact_repo import ClinicalEngineFactRepository
+        state = ClinicalEngineActivationRepository()
+        value = {"effective_mode": ClinicalEngineFactRepository().get_mode(),
+                 "raw_mode": state.raw_mode(), "report": state.get_json("last_report"),
+                 "clinical_approval": state.get_json("approval_clinical"),
+                 "technical_approval": state.get_json("approval_technical"),
+                 "seal": state.get_json("seal"), "rollback": state.get_json("last_rollback")}
+        if output_format == "json":
+            click.echo(json.dumps(value, ensure_ascii=False, indent=2))
+        else:
+            click.echo(f"effective_mode: {value['effective_mode']}")
+            click.echo(f"raw_mode: {value['raw_mode']}")
+            click.echo(f"report: {(value['report'] or {}).get('status', 'NONE')}")
+            click.echo(f"clinical_approval: {'YES' if value['clinical_approval'] else 'NO'}")
+            click.echo(f"technical_approval: {'YES' if value['technical_approval'] else 'NO'}")
+            click.echo(f"seal: {'VALID' if value['seal'] else 'NONE'}")
+
+    @clinical_v2.command("adjudicate")
+    @click.option("--difference-id", required=True)
+    @click.option("--reviewer", required=True)
+    @click.option("--classification", required=True,
+                  type=click.Choice(["EXPLAINED_ACCEPTABLE", "V2_DEFECT", "LEGACY_DEFECT"]))
+    @click.option("--note", required=True)
+    def clinical_v2_adjudicate(difference_id, reviewer, classification, note):
+        from src.services.clinical_engine.activation import ClinicalEngineActivationService
+        ClinicalEngineActivationService().adjudicate(
+            difference_id, reviewer=reviewer, classification=classification, note=note,
+        )
+        click.echo("Safety difference adjudication recorded; rerun compare before approval.")
+
+    @clinical_v2.command("approve")
+    @click.option("--role", required=True, type=click.Choice(["clinical", "technical"]))
+    @click.option("--reviewer", required=True)
+    @click.option("--report-hash", required=True)
+    @click.option("--note", required=True)
+    def clinical_v2_approve(role, reviewer, report_hash, note):
+        from src.services.clinical_engine.activation import ClinicalEngineActivationService
+        ClinicalEngineActivationService().approve(
+            role, reviewer=reviewer, report_hash=report_hash, note=note,
+        )
+        click.echo(f"{role} approval recorded for report {report_hash}.")
+
+    @clinical_v2.command("activate")
+    @click.option("--mode", required=True, type=click.Choice(["on_selected", "on"]))
+    @click.option("--actor", required=True)
+    def clinical_v2_activate(mode, actor):
+        from src.services.clinical_engine.activation import ClinicalEngineActivationService
+        seal = ClinicalEngineActivationService().activate(mode, activated_by=actor)
+        click.echo(json.dumps(seal, ensure_ascii=False, indent=2))
+
+    @clinical_v2.command("verify-selected")
+    @click.option("--reviewer", required=True)
+    @click.option("--note", required=True)
+    def clinical_v2_verify_selected(reviewer, note):
+        from src.services.clinical_engine.activation import ClinicalEngineActivationService
+        ClinicalEngineActivationService().verify_selected_rollout(reviewer=reviewer, note=note)
+        click.echo("Selected rollout verification recorded.")
+
+    @clinical_v2.command("promote-ruleset")
+    @click.option("--actor", required=True)
+    def clinical_v2_promote_ruleset(actor):
+        from src.services.clinical_engine.activation import ClinicalEngineActivationService
+        ClinicalEngineActivationService().promote_compared_ruleset(promoted_by=actor)
+        click.echo("The compared SILENT ruleset was promoted to ACTIVE.")
+
+    @clinical_v2.command("rollback")
+    @click.option("--actor", required=True)
+    @click.option("--reason", required=True)
+    def clinical_v2_rollback(actor, reason):
+        from src.services.clinical_engine.activation import ClinicalEngineActivationService
+        ClinicalEngineActivationService().rollback(rolled_back_by=actor, reason=reason)
+        click.echo("Clinical Engine v2 rolled back to off; audit history was retained.")
 
     @app.errorhandler(404)
     def not_found(_error):

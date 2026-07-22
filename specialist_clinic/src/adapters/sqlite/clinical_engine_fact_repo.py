@@ -10,6 +10,7 @@ import sqlite3
 from typing import Any
 
 from src.adapters.sqlite.core import get_db
+from flask import current_app, has_app_context
 
 
 _SOURCE_QUERIES = {
@@ -54,7 +55,23 @@ class ClinicalEngineFactRepository:
             "SELECT value FROM settings WHERE key='clinical_engine_v2_mode'"
         ).fetchone()
         mode = str(row["value"] if row else "off").strip().lower()
-        return mode if mode in {"off", "shadow", "on_selected"} else "off"
+        if mode not in {"off", "shadow", "on_selected", "on"}:
+            return "off"
+        if mode in {"on_selected", "on"}:
+            # Global rollout is never available through a raw setting write,
+            # including in tests.  The test-only compatibility bypass applies
+            # solely to the historical selected-demo mode.
+            require_gate = mode == "on"
+            if mode == "on_selected" and has_app_context():
+                require_gate = current_app.config.get(
+                    "CLINICAL_ENGINE_REQUIRE_ACTIVATION_GATE",
+                    not current_app.config.get("TESTING", False),
+                )
+            if require_gate:
+                from src.adapters.sqlite.clinical_engine_activation_repo import ClinicalEngineActivationRepository
+                if not ClinicalEngineActivationRepository().valid_seal(mode):
+                    return "off"
+        return mode
 
     def is_selected_patient(self, patient_link_id: int) -> bool:
         """Limit the first visible rollout to the ten seeded demo patients."""

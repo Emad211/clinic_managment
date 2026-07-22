@@ -31,9 +31,10 @@ class ClinicalEngineReadOnlyFacade:
         self.audit = audit or ClinicalEngineAuditRepository()
 
     def patient_detail(self, patient_link_id: int) -> dict[str, Any] | None:
-        if self.facts.get_mode() != "on_selected":
+        mode = self.facts.get_mode()
+        if mode not in {"on_selected", "on"}:
             return None
-        if not self.facts.is_selected_patient(patient_link_id):
+        if mode == "on_selected" and not self.facts.is_selected_patient(patient_link_id):
             return None
         run = self.audit.latest_presentable_run(patient_link_id)
         if not run:

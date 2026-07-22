@@ -58,3 +58,29 @@ clinic_new.db (حسابداری)  ──ro──►  Specialist Clinic (Flask, �
 - لایه‌بندی: `api/` → `services/` → `adapters/sqlite/`
 - پل read-only: `src/adapters/accounting_bridge.py`
 - اتصال با `sqlite3 mode=ro` — تضمین عدم تغییر دیتابیس حسابداری.
+
+## گیت فعال‌سازی موتور بالینی v2
+
+نوشتن مستقیم `clinical_engine_v2_mode=on` موتور را فعال نمی‌کند. حالت نمایان فقط با
+گزارش موفق ده بیمار نمونه، داوری همهٔ اختلاف‌های ایمنی، تأیید مستقل بالینی و فنی،
+ruleset فریز‌شده و seal سالم قابل فعال‌سازی است. گزارش JSON قرارداد ماشینی و خروجی
+متنی برای اپراتور است:
+
+```powershell
+.\.venv\Scripts\python.exe -m flask --app src.app clinical-v2 compare `
+  --as-of 2026-07-22T12:00:00 --actor qa-reviewer --format text
+.\.venv\Scripts\python.exe -m flask --app src.app clinical-v2 status --format json
+```
+
+چرخهٔ مجاز `off/shadow → on_selected → on` است. ورود به `on_selected` به دو approval
+هم‌هش با آخرین گزارش موفق نیاز دارد. ورود به `on` علاوه بر آن به ثبت بررسی rollout
+منتخب و سپس فرمان `promote-ruleset` برای همان ruleset نیاز دارد. این فرمان پیش از
+rollout منتخبِ معتبر و بررسی‌شده رد می‌شود. rollback فوری است و audit را حذف نمی‌کند:
+
+```powershell
+.\.venv\Scripts\python.exe -m flask --app src.app clinical-v2 rollback `
+  --actor release-manager --reason "شرح دقیق علت بازگشت"
+```
+
+فرمان‌های تغییردهنده عمداً همهٔ actor/reviewer، یادداشت و hash گزارش را اجباری
+می‌کنند. approval یا activation نباید پیش از امضای واقعی پزشک اجرا شود.

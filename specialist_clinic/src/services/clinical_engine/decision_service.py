@@ -53,8 +53,9 @@ class ClinicalDecisionService:
         reason_code: str | None = None,
         reason_text: str | None = None,
     ) -> dict:
-        if self.facts.get_mode() != "on_selected" or not self.facts.is_selected_patient(
-            patient_link_id
+        mode = self.facts.get_mode()
+        if mode not in {"on_selected", "on"} or (
+            mode == "on_selected" and not self.facts.is_selected_patient(patient_link_id)
         ):
             raise ClinicalDecisionValidationError("v2 decisions are not enabled for this patient")
         try:

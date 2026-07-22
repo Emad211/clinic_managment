@@ -43,7 +43,7 @@ SECTION_ORDER = ['redflags', 'safety', 'risk', 'treatment', 'assessment',
 _SEVERITY_RANK = {'urgent': 0, 'warn': 1, 'info': 2}
 
 
-def _age_from_birthdate(bd) -> int | None:
+def _age_from_birthdate(bd, as_of_at: datetime | None = None) -> int | None:
     """Robust age: handles gregorian or Jalali year in birthdate string."""
     if not bd:
         return None
@@ -51,7 +51,7 @@ def _age_from_birthdate(bd) -> int | None:
     if len(digits) < 4:
         return None
     year = int(digits[:4])
-    now_g = datetime.now().year
+    now_g = (as_of_at or datetime.now()).year
     if year < 1500:           # Jalali year -> approximate gregorian
         year += 621
     age = now_g - year
@@ -63,17 +63,20 @@ def _truthy(v) -> bool:
 
 
 class RuleEngine:
-    def __init__(self):
+    def __init__(self, *, capture_shadow: bool = True):
         self.vitals = VitalsRepository()
         self.patients = PatientRepository()
         self.flags = ClinicalFlagsRepository()
+        self.capture_shadow = capture_shadow
 
     # ---- fact bundle ----
-    def build_facts(self, pid: int) -> dict:
+    def build_facts(self, pid: int, *, as_of_at: datetime | None = None) -> dict:
         patient = self.patients.get_by_id(pid) or {}
         conditions = {c.get('condition_code') for c in self.patients.get_patient_conditions(pid)
                       if c.get('condition_code')}
-        latest = self.vitals.latest_by_type(pid)
+        latest = (self.vitals.latest_by_type(pid)
+                  if as_of_at is None
+                  else self.vitals.latest_by_type(pid, as_of_at=as_of_at))
         indicator = {}
         for vt, reading in latest.items():
             indicator[vt] = {
@@ -83,7 +86,7 @@ class RuleEngine:
         med_classes = {m.get('drug_class') for m in self.patients.get_medications(pid, active_only=True)
                        if m.get('drug_class')}
         return {
-            'age': _age_from_birthdate(patient.get('birthdate')),
+            'age': _age_from_birthdate(patient.get('birthdate'), as_of_at),
             'conditions': conditions,
             'indicator': indicator,
             'flag': self.flags.get_flags(pid),
@@ -156,9 +159,11 @@ class RuleEngine:
         return False
 
     # ---- public API ----
-    def evaluate(self, pid: int) -> list[dict]:
+    def evaluate(self, pid: int, *, as_of_at: datetime | None = None) -> list[dict]:
         """Return the list of fired rules for a patient (suggestion-only)."""
-        facts = self.build_facts(pid)
+        facts = (self.build_facts(pid)
+                 if as_of_at is None
+                 else self.build_facts(pid, as_of_at=as_of_at))
         db = get_db()
         rows = db.execute(
             "SELECT * FROM clinical_rules WHERE is_active=1 ORDER BY priority, id"
@@ -188,10 +193,14 @@ class RuleEngine:
         # PR-04 dual-run seam: shadow mode records canonical facts only.  It
         # deliberately cannot affect the legacy suggestions returned to callers.
         try:
+            if not self.capture_shadow:
+                return fired
             from src.common.utils import iran_now
             from src.services.clinical_engine.fact_builder import ShadowFactCapture
 
-            ShadowFactCapture().capture(pid, as_of_at=iran_now(), created_by="legacy-facade")
+            ShadowFactCapture().capture(
+                pid, as_of_at=as_of_at or iran_now(), created_by="legacy-facade"
+            )
         except Exception:
             logger.exception("Clinical Engine v2 shadow fact capture failed for patient %s", pid)
         return fired

@@ -359,3 +359,27 @@ class ClinicalEngineRulesRepository:
             params = (ruleset_code, RulesetStatus.ACTIVE.value)
         row = get_db().execute(sql + " ORDER BY id DESC LIMIT 1", params).fetchone()
         return self.get_ruleset(int(row["id"])) if row else None
+
+    def promote_silent_ruleset(self, ruleset_id: int, *, promoted_by: str) -> None:
+        """Promote the exact frozen SILENT membership; no rule content changes."""
+        actor = (promoted_by or "").strip()
+        if not actor:
+            raise ValueError("promoted_by is required")
+        ruleset = self.get_ruleset(ruleset_id)
+        if not ruleset:
+            raise LookupError("ruleset not found")
+        if ruleset["status"] == RulesetStatus.ACTIVE.value:
+            return
+        if ruleset["status"] != RulesetStatus.SILENT.value:
+            raise ValueError("only a SILENT ruleset can be promoted")
+        with get_db() as db:
+            db.execute(
+                "UPDATE clinical_rulesets SET status='ACTIVE', activated_by=?, activated_at=? WHERE id=?",
+                (actor, _now_text(), ruleset_id),
+            )
+            db.execute(
+                """UPDATE clinical_rule_versions SET lifecycle_status='ACTIVE'
+                   WHERE id IN (SELECT rule_version_id FROM clinical_ruleset_members WHERE ruleset_id=? )
+                     AND lifecycle_status='SILENT'""",
+                (ruleset_id,),
+            )

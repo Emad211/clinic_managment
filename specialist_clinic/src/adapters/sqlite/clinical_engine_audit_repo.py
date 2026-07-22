@@ -428,6 +428,37 @@ class ClinicalEngineAuditRepository:
         ]
         return result
 
+    def decoded_run(self, run_id: str | None) -> dict | None:
+        """Return one exact run with decoded rule metadata for comparisons."""
+        if not run_id:
+            return None
+        db = get_db()
+        row = db.execute("SELECT * FROM clinical_engine_runs WHERE run_id=?", (run_id,)).fetchone()
+        if not row:
+            return None
+        run = dict(row)
+        for key in ("fact_snapshot_json", "summary_json", "error_json", "legacy_compare_json"):
+            run[key.removesuffix("_json")] = json.loads(run[key]) if run.get(key) else None
+        evaluations = []
+        for item in db.execute(
+            """SELECT e.*, r.rule_code, r.action_type, r.rule_json
+               FROM clinical_rule_evaluations e
+               JOIN clinical_rule_versions r ON r.id=e.rule_version_id
+               WHERE e.run_id=? ORDER BY e.id""", (run_id,),
+        ).fetchall():
+            value = dict(item)
+            rule = json.loads(value.pop("rule_json"))
+            value["legacy_rule_id"] = rule.get("legacy_rule_id")
+            value["rule_title"] = rule.get("title", value["rule_code"])
+            value["severity"] = rule.get("severity")
+            value["semantic_key"] = rule.get("semantic_key")
+            for key in ("trace_json", "data_issues_json", "recommendation_json",
+                        "suppression_json", "error_json"):
+                value[key.removesuffix("_json")] = json.loads(value[key]) if value.get(key) else None
+            evaluations.append(value)
+        run["evaluations"] = evaluations
+        return run
+
     def latest_presentable_run(self, patient_link_id: int) -> dict | None:
         """Return the latest terminal, non-failed run as decoded read-only data."""
         db = get_db()
