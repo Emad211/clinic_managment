@@ -82,7 +82,7 @@ class ClinicalDecisionService:
             ) from exc
         if contract is None or contract.mode not in {"on_selected", "on"}:
             raise ClinicalDecisionValidationError(
-                "v2 decisions are not enabled for this patient"
+                "clinical runtime decisions are not enabled for this patient"
             )
 
         try:
