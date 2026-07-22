@@ -56,7 +56,9 @@ def test_legacy_rule_seed_is_a_no_write_tombstone():
 
     class ExplodingDatabase:
         def __getattr__(self, name):
-            raise AssertionError(f"legacy seed attempted database access: {name}")
+            raise AssertionError(
+                f"legacy seed attempted database access: {name}"
+            )
 
     assert seed_clinical_rules(ExplodingDatabase()) == 0
 
@@ -64,10 +66,12 @@ def test_legacy_rule_seed_is_a_no_write_tombstone():
 def test_legacy_dosage_guidance_is_inert_without_database_access():
     from src.adapters.sqlite.clinical_rules_repo import ClinicalRulesRepository
 
-    assert ClinicalRulesRepository().dosage_guidance(["ckd", "hypertension"]) == []
+    assert ClinicalRulesRepository().dosage_guidance(
+        ["ckd", "hypertension"]
+    ) == []
 
 
-def test_fresh_database_does_not_seed_legacy_rules_or_suggestions(tmp_path):
+def test_fresh_application_has_no_v1_tables_or_lineage_columns(tmp_path):
     from src.adapters.sqlite import core
     from src.app import create_app
 
@@ -83,12 +87,31 @@ def test_fresh_database_does_not_seed_legacy_rules_or_suggestions(tmp_path):
     try:
         with app.app_context():
             db = core.get_db()
-            assert db.execute(
-                "SELECT COUNT(*) AS count FROM clinical_rules"
-            ).fetchone()["count"] == 0
-            assert db.execute(
-                "SELECT COUNT(*) AS count FROM suggestion_log"
-            ).fetchone()["count"] == 0
+            tables = {
+                str(row["name"])
+                for row in db.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table'"
+                ).fetchall()
+            }
+            assert "clinical_rules" not in tables
+            assert "suggestion_log" not in tables
+            rule_columns = {
+                str(row["name"])
+                for row in db.execute(
+                    "PRAGMA table_info(clinical_rule_versions)"
+                ).fetchall()
+            }
+            decision_columns = {
+                str(row["name"])
+                for row in db.execute(
+                    "PRAGMA table_info(clinical_decision_events)"
+                ).fetchall()
+            }
+            assert "source_legacy_rule_id" not in rule_columns
+            assert (
+                "legacy_source_suggestion_log_id"
+                not in decision_columns
+            )
     finally:
         core._initialized = False
 
