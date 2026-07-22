@@ -11,6 +11,12 @@ from src.domain.clinical_engine.demo_cohort import (
 from src.services.activity_logger import log_activity
 
 
+# Reconciliation changes the clinical meaning of an otherwise identical fixture.
+# Keep the source trajectory version and add a semantic suffix so installed v2
+# cohorts rebuild once and receive explicit collection-review events.
+RECONCILED_DEMO_COHORT_VERSION = f"{DEMO_COHORT_VERSION}-reconciled-v1"
+
+
 class DemoCohortService:
     def __init__(self, repository=None):
         self.repository = repository or DemoCohortRepository()
@@ -20,9 +26,12 @@ class DemoCohortService:
         return DEMO_REFERENCE_AT
 
     def summary(self) -> dict:
-        summary = self.repository.summary(expected_version=DEMO_COHORT_VERSION)
+        summary = self.repository.summary(
+            expected_version=RECONCILED_DEMO_COHORT_VERSION
+        )
         summary.update({
-            "expected_version": DEMO_COHORT_VERSION,
+            "expected_version": RECONCILED_DEMO_COHORT_VERSION,
+            "source_version": DEMO_COHORT_VERSION,
             "reference_at": DEMO_REFERENCE_AT,
             "years": 5.5,
         })
@@ -35,7 +44,7 @@ class DemoCohortService:
         if rebuilt:
             self.repository.replace_all(
                 DEMO_PATIENTS,
-                version=DEMO_COHORT_VERSION,
+                version=RECONCILED_DEMO_COHORT_VERSION,
                 actor=actor,
                 reference_at=DEMO_REFERENCE_AT,
             )
@@ -46,7 +55,7 @@ class DemoCohortService:
             log_activity(
                 "clinical_v2_demo_cohort_rebuild",
                 f"Rebuilt {after['patient_count']} synthetic longitudinal records "
-                f"at cohort version {DEMO_COHORT_VERSION}",
+                f"at cohort version {RECONCILED_DEMO_COHORT_VERSION}",
                 user_id=0,
                 username=actor,
             )
