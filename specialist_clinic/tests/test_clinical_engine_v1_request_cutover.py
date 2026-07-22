@@ -1,7 +1,10 @@
-"""HTTP-bound cutover tests for the physically retired Clinical Engine v1 schema."""
+"""Startup and HTTP read-boundary tests for retired Clinical Engine v1 storage."""
 from __future__ import annotations
 
+import hashlib
+import json
 from pathlib import Path
+import sqlite3
 import sys
 
 import pytest
@@ -77,21 +80,52 @@ def _insert_v2_rule() -> int:
     )
 
 
-def test_first_request_removes_v1_storage_and_preserves_v2_rows(
+def _seed_pre_cutover_v2_rule(db_path: Path) -> int:
+    """Create the exact old schema with one clean v2 row before app startup."""
+    from src.adapters.sqlite import core
+
+    raw = valid_rule()
+    canonical = json.dumps(
+        raw,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    connection = sqlite3.connect(db_path)
+    try:
+        connection.executescript(core._load_schema_text())
+        cursor = connection.execute(
+            """INSERT INTO clinical_rule_versions
+               (rule_code, version, schema_version, dsl_version, phase,
+                action_type, rule_json, content_hash, lifecycle_status,
+                created_by, created_at)
+               VALUES (?, ?, '2.0', '2.0', 'ROUTINE', 'educate', ?, ?,
+                       'DRAFT', 'pre-cutover-test', '2026-07-23 09:00:00')""",
+            (
+                raw["rule_code"],
+                raw["version"],
+                canonical,
+                hashlib.sha256(canonical.encode("utf-8")).hexdigest(),
+            ),
+        )
+        connection.commit()
+        return int(cursor.lastrowid)
+    finally:
+        connection.close()
+
+
+def _file_hash(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def test_application_construction_removes_v1_storage_and_preserves_v2_rows(
     cutover_db_path,
 ):
     from src.adapters.sqlite import core
 
+    rule_id = _seed_pre_cutover_v2_rule(cutover_db_path)
     app = _create_app(cutover_db_path)
     try:
-        with app.app_context():
-            db = core.get_db()
-            assert {"clinical_rules", "suggestion_log"} <= _tables(db)
-            rule_id = _insert_v2_rule()
-
-        response = app.test_client().get("/auth/login")
-        assert response.status_code == 200
-
         with app.app_context():
             db = core.get_db()
             _assert_clean_main_schema(db)
@@ -100,11 +134,17 @@ def test_first_request_removes_v1_storage_and_preserves_v2_rows(
                 (rule_id,),
             ).fetchone()
             assert row["rule_code"] == valid_rule()["rule_code"]
+
+        before = _file_hash(cutover_db_path)
+        response = app.test_client().get("/auth/login")
+        after = _file_hash(cutover_db_path)
+        assert response.status_code == 200
+        assert after == before
     finally:
         core._initialized = False
 
 
-def test_restart_recreates_then_retires_only_v1_storage_idempotently(
+def test_restart_cutover_is_idempotent_and_preserves_clean_v2_rows(
     cutover_db_path,
 ):
     from src.adapters.sqlite import core
@@ -112,22 +152,13 @@ def test_restart_recreates_then_retires_only_v1_storage_idempotently(
     first_app = _create_app(cutover_db_path)
     with first_app.app_context():
         rule_id = _insert_v2_rule()
-    assert first_app.test_client().get("/auth/login").status_code == 200
-    with first_app.app_context():
         _assert_clean_main_schema(core.get_db())
 
     core._initialized = False
     second_app = _create_app(cutover_db_path)
     try:
-        # The old idempotent schema file temporarily recreates only the two inert
-        # v1 tables during process bootstrap. The first request removes them again;
-        # existing clean v2 tables are never rebuilt or rewritten.
-        with second_app.app_context():
-            assert {"clinical_rules", "suggestion_log"} <= _tables(
-                core.get_db()
-            )
-
-        assert second_app.test_client().get("/auth/login").status_code == 200
+        # schema.sql may transiently recreate the two inert tables during process
+        # bootstrap, but application construction removes them before returning.
         with second_app.app_context():
             db = core.get_db()
             _assert_clean_main_schema(db)
@@ -136,6 +167,10 @@ def test_restart_recreates_then_retires_only_v1_storage_idempotently(
                 "WHERE id=?",
                 (rule_id,),
             ).fetchone()["count"] == 1
+
+        before = _file_hash(cutover_db_path)
+        assert second_app.test_client().get("/auth/login").status_code == 200
+        assert _file_hash(cutover_db_path) == before
     finally:
         core._initialized = False
 
@@ -158,9 +193,12 @@ def test_manager_disease_page_uses_request_local_read_only_projection(
         )
         assert login.status_code == 302
 
+        before = _file_hash(cutover_db_path)
         response = client.get("/manager/diseases")
+        after = _file_hash(cutover_db_path)
         assert response.status_code == 200
         assert "پروتکل بیماری‌ها" in response.get_data(as_text=True)
+        assert after == before
 
         with app.app_context():
             db = core.get_db()
