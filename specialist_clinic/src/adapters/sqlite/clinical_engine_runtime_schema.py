@@ -13,6 +13,7 @@ without them could make a stale recommendation look current.
 """
 from __future__ import annotations
 
+import os
 import sqlite3
 import threading
 
@@ -21,6 +22,7 @@ from src.adapters.sqlite.core import get_db
 
 _SCHEMA_VERSION = 2
 _MIGRATION_LOCK = threading.Lock()
+_VERIFIED_DATABASES: set[tuple[str, int]] = set()
 _CLINICAL_SOURCE_TABLES = (
     "patient_conditions",
     "patient_medications",
@@ -29,6 +31,23 @@ _CLINICAL_SOURCE_TABLES = (
     "vital_readings",
     "lab_results",
 )
+
+
+def _database_identity(db: sqlite3.Connection) -> str:
+    rows = db.execute("PRAGMA database_list").fetchall()
+    for row in rows:
+        try:
+            name, filename = str(row["name"]), str(row["file"] or "")
+        except (TypeError, IndexError):
+            name, filename = str(row[1]), str(row[2] or "")
+        if name != "main":
+            continue
+        if filename:
+            return os.path.normcase(os.path.realpath(filename))
+        # Each in-memory connection owns a distinct database and therefore needs
+        # its own one-time installation and verification.
+        return f":memory:{id(db)}"
+    return f":connection:{id(db)}"
 
 
 def _column_names(db: sqlite3.Connection, table: str) -> set[str]:
@@ -142,36 +161,15 @@ def _expected_trigger_names() -> set[str]:
     return names
 
 
-def _connection_is_ready(db: sqlite3.Connection) -> bool:
-    try:
-        row = db.execute(
-            "SELECT version FROM temp.clinical_runtime_schema_marker LIMIT 1"
-        ).fetchone()
-        return bool(row and int(row["version"]) == _SCHEMA_VERSION)
-    except sqlite3.DatabaseError:
-        return False
-
-
-def _mark_connection_ready(db: sqlite3.Connection) -> None:
-    db.execute(
-        "CREATE TEMP TABLE IF NOT EXISTS clinical_runtime_schema_marker "
-        "(version INTEGER NOT NULL)"
-    )
-    db.execute("DELETE FROM temp.clinical_runtime_schema_marker")
-    db.execute(
-        "INSERT INTO temp.clinical_runtime_schema_marker(version) VALUES (?)",
-        (_SCHEMA_VERSION,),
-    )
-
-
 def ensure_runtime_schema(db: sqlite3.Connection | None = None) -> None:
-    """Install and verify the monotonic clinical-data revision contract."""
+    """Install and verify the monotonic clinical-data revision contract once per DB."""
     db = db or get_db()
-    if _connection_is_ready(db):
+    cache_key = (_database_identity(db), _SCHEMA_VERSION)
+    if cache_key in _VERIFIED_DATABASES:
         return
 
     with _MIGRATION_LOCK:
-        if _connection_is_ready(db):
+        if cache_key in _VERIFIED_DATABASES:
             return
         _ensure_column(
             db,
@@ -222,5 +220,5 @@ def ensure_runtime_schema(db: sqlite3.Connection | None = None) -> None:
                 "Clinical data revision guards are incomplete: "
                 + ", ".join(missing)
             )
-        _mark_connection_ready(db)
         db.commit()
+        _VERIFIED_DATABASES.add(cache_key)
