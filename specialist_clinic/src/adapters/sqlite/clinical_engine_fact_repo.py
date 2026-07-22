@@ -9,8 +9,10 @@ from __future__ import annotations
 import sqlite3
 from typing import Any
 
-from src.adapters.sqlite.core import get_db
 from flask import current_app, has_app_context
+
+from src.adapters.sqlite.core import get_db
+from src.adapters.sqlite.clinical_engine_runtime_schema import ensure_runtime_schema
 
 
 _SOURCE_QUERIES = {
@@ -29,16 +31,18 @@ _SOURCE_QUERIES = {
     "flag_catalog": """SELECT * FROM flag_catalog WHERE is_active=1
                          ORDER BY display_order, id""",
     "observations": """SELECT channel, record_id, key, value, unit, effective_at,
-                                recorded_by, ref_low, ref_high
+                                recorded_by, ref_low, ref_high, source_detail
                          FROM (
                            SELECT 'vital' AS channel, id AS record_id, type AS key,
                                   value, unit, measured_at AS effective_at,
-                                  recorded_by, NULL AS ref_low, NULL AS ref_high
+                                  recorded_by, NULL AS ref_low, NULL AS ref_high,
+                                  COALESCE(source, 'clinic') AS source_detail
                            FROM vital_readings WHERE patient_link_id=?
                            UNION ALL
                            SELECT 'lab' AS channel, id AS record_id, test_key AS key,
                                   value, unit, taken_at AS effective_at,
-                                  recorded_by, ref_low, ref_high
+                                  recorded_by, ref_low, ref_high,
+                                  'laboratory' AS source_detail
                            FROM lab_results
                            WHERE patient_link_id=? AND test_key IS NOT NULL
                              AND trim(test_key)<>''
@@ -50,8 +54,14 @@ _SOURCE_QUERIES = {
 class ClinicalEngineFactRepository:
     """Fetch a deterministic raw bundle without interpreting clinical meaning."""
 
+    @staticmethod
+    def _db():
+        db = get_db()
+        ensure_runtime_schema(db)
+        return db
+
     def get_mode(self) -> str:
-        row = get_db().execute(
+        row = self._db().execute(
             "SELECT value FROM settings WHERE key='clinical_engine_v2_mode'"
         ).fetchone()
         mode = str(row["value"] if row else "off").strip().lower()
@@ -68,14 +78,25 @@ class ClinicalEngineFactRepository:
                     not current_app.config.get("TESTING", False),
                 )
             if require_gate:
-                from src.adapters.sqlite.clinical_engine_activation_repo import ClinicalEngineActivationRepository
+                from src.adapters.sqlite.clinical_engine_activation_repo import (
+                    ClinicalEngineActivationRepository,
+                )
                 if not ClinicalEngineActivationRepository().valid_seal(mode):
                     return "off"
         return mode
 
+    def clinical_data_revision(self, patient_link_id: int) -> int:
+        row = self._db().execute(
+            "SELECT clinical_data_revision FROM patient_links WHERE id=?",
+            (patient_link_id,),
+        ).fetchone()
+        if not row:
+            raise LookupError(f"patient_link_id {patient_link_id} was not found")
+        return int(row["clinical_data_revision"] or 0)
+
     def is_selected_patient(self, patient_link_id: int) -> bool:
         """Limit the first visible rollout to the ten seeded demo patients."""
-        row = get_db().execute(
+        row = self._db().execute(
             "SELECT national_id FROM patient_links WHERE id=?", (patient_link_id,)
         ).fetchone()
         if not row:
@@ -84,23 +105,39 @@ class ClinicalEngineFactRepository:
         return national_id in {f"TEST{index:04d}" for index in range(1, 11)}
 
     def load_bundle(self, patient_link_id: int) -> dict[str, Any]:
-        db = get_db()
-        patient = db.execute(
-            "SELECT * FROM patient_links WHERE id=?", (patient_link_id,)
-        ).fetchone()
-        if patient is None:
-            raise LookupError(f"patient_link_id {patient_link_id} was not found")
+        """Read every fact source from one SQLite snapshot.
 
-        bundle: dict[str, Any] = {"patient": dict(patient), "unavailable": {}}
-        for source, sql in _SOURCE_QUERIES.items():
-            params = () if source == "flag_catalog" else (
-                (patient_link_id, patient_link_id)
-                if source == "observations"
-                else (patient_link_id,)
-            )
-            try:
-                bundle[source] = [dict(row) for row in db.execute(sql, params).fetchall()]
-            except sqlite3.DatabaseError as exc:
-                bundle[source] = []
-                bundle["unavailable"][source] = type(exc).__name__
-        return bundle
+        A SAVEPOINT keeps the patient revision and all source rows consistent even
+        if another request records a vital or changes a medication concurrently.
+        If that mutation happens after this snapshot, its trigger increments the
+        revision and the resulting run is rejected as stale by the runtime facade.
+        """
+        db = self._db()
+        db.execute("SAVEPOINT clinical_fact_bundle")
+        try:
+            patient = db.execute(
+                "SELECT * FROM patient_links WHERE id=?", (patient_link_id,)
+            ).fetchone()
+            if patient is None:
+                raise LookupError(f"patient_link_id {patient_link_id} was not found")
+
+            bundle: dict[str, Any] = {"patient": dict(patient), "unavailable": {}}
+            for source, sql in _SOURCE_QUERIES.items():
+                params = () if source == "flag_catalog" else (
+                    (patient_link_id, patient_link_id)
+                    if source == "observations"
+                    else (patient_link_id,)
+                )
+                try:
+                    bundle[source] = [
+                        dict(row) for row in db.execute(sql, params).fetchall()
+                    ]
+                except sqlite3.DatabaseError as exc:
+                    bundle[source] = []
+                    bundle["unavailable"][source] = type(exc).__name__
+            db.execute("RELEASE SAVEPOINT clinical_fact_bundle")
+            return bundle
+        except Exception:
+            db.execute("ROLLBACK TO SAVEPOINT clinical_fact_bundle")
+            db.execute("RELEASE SAVEPOINT clinical_fact_bundle")
+            raise
