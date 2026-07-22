@@ -1,6 +1,6 @@
 """Ownership-aware replacements for legacy patient mutation endpoints.
 
-The public URLs and Flask endpoint names stay stable.  This module is installed after
+The public URLs and Flask endpoint names stay stable. This module is installed after
 the historical patients blueprint and replaces only handlers whose old implementation
 mutated a row by its global id without rechecking the patient id in the URL.
 """
@@ -10,7 +10,7 @@ from flask import flash, g, redirect, request, url_for
 
 from src.adapters.sqlite.patients_repo import PatientRepository
 from src.api.auth import login_required
-from src.common.jalali import jalali_to_gregorian_str
+from src.common.utils import jalali_to_gregorian_str
 from src.services.activity_logger import log_activity
 
 
@@ -119,9 +119,14 @@ def install(app) -> None:
         "patients.change_dose": change_dose,
         "patients.delete_allergy": delete_allergy,
     }
-    missing = sorted(endpoint for endpoint in replacements if endpoint not in app.view_functions)
+    missing = sorted(
+        endpoint
+        for endpoint in replacements
+        if endpoint not in app.view_functions
+    )
     if missing:
         raise RuntimeError(
-            "patient mutation guard installation is incomplete: " + ", ".join(missing)
+            "patient mutation guard installation is incomplete: "
+            + ", ".join(missing)
         )
     app.view_functions.update(replacements)
