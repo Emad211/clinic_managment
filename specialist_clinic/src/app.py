@@ -62,12 +62,24 @@ def create_app(test_config=None):
         except Exception as e:
             print(f"[logging] not configured: {e}")
 
-    # Install the monotonic clinical-data revision guards before every request
-    # that may read or mutate a source consumed by the clinical engine.
-    @app.before_request
-    def ensure_clinical_runtime_guards():
-        from src.adapters.sqlite.clinical_engine_runtime_schema import ensure_runtime_schema
-        ensure_runtime_schema(get_db())
+    # Install persistent runtime guards during bootstrap, before the server starts
+    # serving requests. This keeps read-only surfaces such as GET /card/<token>
+    # genuinely zero-write. In-memory test databases cannot survive a temporary
+    # startup app-context, so they install the same guards on their first request;
+    # clinical repositories also verify the guards before direct off-request use.
+    if (app.config.get("DATABASE_PATH") or "") != ":memory:":
+        with app.app_context():
+            from src.adapters.sqlite.clinical_engine_runtime_schema import (
+                ensure_runtime_schema,
+            )
+            ensure_runtime_schema(get_db())
+    else:
+        @app.before_request
+        def ensure_in_memory_clinical_runtime_guards():
+            from src.adapters.sqlite.clinical_engine_runtime_schema import (
+                ensure_runtime_schema,
+            )
+            ensure_runtime_schema(get_db())
 
     # ---- Load logged-in user ----
     @app.before_request
