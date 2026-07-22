@@ -30,6 +30,40 @@ from src.domain.clinical_engine import RunStatus
 from src.services.clinical_engine.compiler import RuleCompiler
 
 
+def _restore_retired_schema(db) -> None:
+    """Recreate the exact compatibility surface consumed by this migration test.
+
+    Application startup correctly removes these objects. The migration primitive is
+    tested against an explicitly reconstructed pre-cutover database so runtime never
+    needs a skip flag or test-only bypass.
+    """
+    db.executescript(
+        """
+        CREATE TABLE clinical_rules (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            rule_code TEXT UNIQUE NOT NULL,
+            title TEXT NOT NULL,
+            category TEXT NOT NULL
+        );
+        CREATE TABLE suggestion_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            patient_link_id INTEGER NOT NULL,
+            rule_code TEXT NOT NULL,
+            suggestion_text TEXT,
+            status TEXT NOT NULL DEFAULT 'pending',
+            FOREIGN KEY(patient_link_id) REFERENCES patient_links(id)
+        );
+        ALTER TABLE clinical_rule_versions
+          ADD COLUMN source_legacy_rule_id INTEGER
+          REFERENCES clinical_rules(id);
+        ALTER TABLE clinical_decision_events
+          ADD COLUMN legacy_source_suggestion_log_id INTEGER
+          REFERENCES suggestion_log(id);
+        """
+    )
+    db.commit()
+
+
 @pytest.fixture()
 def cleanup_app(tmp_path):
     from src.adapters.sqlite import core
@@ -46,6 +80,9 @@ def cleanup_app(tmp_path):
     )
     context = app.app_context()
     context.push()
+    from src.adapters.sqlite.core import get_db
+
+    _restore_retired_schema(get_db())
     yield app
     context.pop()
     core._initialized = False

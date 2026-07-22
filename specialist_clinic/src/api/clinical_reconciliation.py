@@ -35,7 +35,7 @@ bp = Blueprint(
 
 
 @bp.record_once
-def install_clinical_boundaries(state):
+def install_patient_mutation_guards(state):
     # The patients blueprint is registered first. Replace only the four legacy
     # endpoint callables that need patient-row ownership checks while preserving
     # every public URL and endpoint name.
@@ -43,9 +43,12 @@ def install_clinical_boundaries(state):
 
     install(state.app)
 
-    # File-backed databases are cut over while the application is being built,
-    # before a socket can accept traffic. This preserves the zero-write contract
-    # of public/read-only GET routes.
+
+@bp.record
+def enforce_file_backed_v1_cutover(state):
+    # ``record`` (not ``record_once``) is deliberate: test processes and desktop
+    # relaunches may construct more than one Flask application from the same
+    # imported Blueprint object. Every application must be clean before serving.
     if (state.app.config.get("DATABASE_PATH") or "") != ":memory:":
         with state.app.app_context():
             ensure_v1_schema_cutover(get_db())
