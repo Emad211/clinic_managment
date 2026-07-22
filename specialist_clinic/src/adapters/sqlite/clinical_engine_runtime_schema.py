@@ -1,13 +1,14 @@
 """Additive runtime-freshness guards for Clinical Engine v2.
 
 The main schema is intentionally idempotent and existing clinic databases are upgraded
-in place.  This module owns the small set of safety-critical additions needed to know
-whether an audited engine run still represents the current patient record:
+in place.  This module owns the safety-critical additions needed to know whether an
+audited engine run still represents the current patient record:
 
 * ``patient_links.clinical_data_revision`` is a monotonic per-patient counter.
-* database triggers increment it for every source table consumed by the v2 fact layer.
+* database triggers increment it for every patient-owned source consumed by v2.
+* shared catalog changes invalidate every affected patient snapshot.
 
-The migration is safe to call repeatedly.  Missing guards fail loudly; silently running
+The migration is safe to call repeatedly. Missing guards fail loudly; silently running
 without them could make a stale recommendation look current.
 """
 from __future__ import annotations
@@ -17,7 +18,7 @@ import sqlite3
 from src.adapters.sqlite.core import get_db
 
 
-_SCHEMA_VERSION = 1
+_SCHEMA_VERSION = 2
 _CLINICAL_SOURCE_TABLES = (
     "patient_conditions",
     "patient_medications",
@@ -29,7 +30,10 @@ _CLINICAL_SOURCE_TABLES = (
 
 
 def _column_names(db: sqlite3.Connection, table: str) -> set[str]:
-    return {str(row["name"]) for row in db.execute(f"PRAGMA table_info({table})").fetchall()}
+    return {
+        str(row["name"])
+        for row in db.execute(f"PRAGMA table_info({table})").fetchall()
+    }
 
 
 def _ensure_column(
@@ -73,8 +77,57 @@ def _revision_trigger_sql(table: str) -> str:
     """
 
 
+def _catalog_trigger_sql() -> str:
+    return """
+    -- The active flag catalog determines which NOT_ASKED facts exist and how a
+    -- stored patient flag is typed. Any catalog change therefore invalidates all
+    -- patient snapshots, even though no patient-owned row changed.
+    CREATE TRIGGER IF NOT EXISTS trg_clinical_revision_flag_catalog_insert
+    AFTER INSERT ON flag_catalog
+    BEGIN
+        UPDATE patient_links
+           SET clinical_data_revision = clinical_data_revision + 1;
+    END;
+
+    CREATE TRIGGER IF NOT EXISTS trg_clinical_revision_flag_catalog_update
+    AFTER UPDATE ON flag_catalog
+    BEGIN
+        UPDATE patient_links
+           SET clinical_data_revision = clinical_data_revision + 1;
+    END;
+
+    CREATE TRIGGER IF NOT EXISTS trg_clinical_revision_flag_catalog_delete
+    AFTER DELETE ON flag_catalog
+    BEGIN
+        UPDATE patient_links
+           SET clinical_data_revision = clinical_data_revision + 1;
+    END;
+
+    -- Condition display metadata is not a fact, but the canonical condition code
+    -- is. Changing a code invalidates only patients linked to that condition.
+    CREATE TRIGGER IF NOT EXISTS trg_clinical_revision_condition_code_update
+    AFTER UPDATE OF code ON conditions
+    WHEN COALESCE(OLD.code, '') <> COALESCE(NEW.code, '')
+    BEGIN
+        UPDATE patient_links
+           SET clinical_data_revision = clinical_data_revision + 1
+         WHERE id IN (
+             SELECT patient_link_id
+               FROM patient_conditions
+              WHERE condition_id = NEW.id AND is_active = 1
+         );
+    END;
+    """
+
+
 def _expected_trigger_names() -> set[str]:
-    names = {"trg_clinical_revision_patient_identity"}
+    names = {
+        "trg_clinical_revision_patient_identity",
+        "trg_clinical_revision_flag_catalog_insert",
+        "trg_clinical_revision_flag_catalog_update",
+        "trg_clinical_revision_flag_catalog_delete",
+        "trg_clinical_revision_condition_code_update",
+    }
     for table in _CLINICAL_SOURCE_TABLES:
         prefix = f"trg_clinical_revision_{table}"
         names.update({f"{prefix}_insert", f"{prefix}_update", f"{prefix}_delete"})
@@ -116,8 +169,8 @@ def ensure_runtime_schema(db: sqlite3.Connection | None = None) -> None:
         "INTEGER NOT NULL DEFAULT 0",
     )
 
-    # Demographic fields are part of the canonical fact snapshot.  Updating the
-    # revision column itself does not recurse because it is not listed after UPDATE OF.
+    # Demographic fields are part of the canonical fact snapshot. Updating the
+    # revision column itself does not recurse because it is not in UPDATE OF.
     db.executescript(
         """
         CREATE TRIGGER IF NOT EXISTS trg_clinical_revision_patient_identity
@@ -133,6 +186,7 @@ def ensure_runtime_schema(db: sqlite3.Connection | None = None) -> None:
     )
     for table in _CLINICAL_SOURCE_TABLES:
         db.executescript(_revision_trigger_sql(table))
+    db.executescript(_catalog_trigger_sql())
 
     db.execute(
         "CREATE INDEX IF NOT EXISTS idx_patient_links_clinical_revision "
