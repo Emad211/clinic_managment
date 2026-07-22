@@ -64,7 +64,7 @@
             <article class="engine-rule-review engine-rule-readonly">
                 <div class="engine-rule-head"><code>{{ rule.code }}</code><h3>{{ rule.title }}</h3></div>
                 {{ condition_box('شرایط ورود بیمار به دامنهٔ قاعده', rule.eligibility_mode, rule.eligibility_conditions) }}
-                {{ condition_box('شرایط فعال‌شدن پیشنهاد پس از احراز دامنه', rule.trigger_mode, rule.trigger_conditions) }}
+                {{ condition_box('قاعده دقیقاً چه زمانی فعال می‌شود؟', rule.trigger_mode, rule.trigger_conditions) }}
                 <div class="engine-recommendation"><span>پیشنهاد سیستم</span><p>{{ rule.recommendation }}</p></div>
             </article>
             {% endfor %}
@@ -104,7 +104,7 @@
         </ul>
         <div class="alert-banner alert-warn"><svg class="icon"><use href="#i-info"></use></svg><span><b>این بسته کامل نیست.</b> فقط برای راه‌اندازی و آزمون مسیر ایمنی است؛ توسعهٔ قواعد بیماری‌ها تا پایان سخت‌سازی runtime به تعویق افتاده است.</span></div>
         <form method="post" action="{{ url_for('manager.clinical_engine_action', action='prepare-rules') }}" data-loading-form>
-            <button class="btn btn-lg engine-primary-action" type="submit"><svg class="icon"><use href="#i-zap"></use></svg> آماده‌سازی بستهٔ {{ package.expected_version or 'اولیه' }}</button>
+            <button class="btn btn-lg engine-primary-action" type="submit"><svg class="icon"><use href="#i-zap"></use></svg> آماده‌سازی بستهٔ اولیه · {{ package.expected_version }}</button>
         </form>
         <small class="engine-safe-note"><svg class="icon icon-sm"><use href="#i-shield"></use></svg> این کار فقط فایل‌ها را آماده می‌کند؛ موتور روشن نمی‌شود.</small>
     </section>
@@ -124,7 +124,7 @@
                         <div><span>چه داده‌ای لازم است؟</span><ul>{% for item in rule.required_inputs %}<li>{{ item }}</li>{% endfor %}</ul></div>
                     </div>
                     {{ condition_box('۱. بیمار چه زمانی وارد دامنهٔ قاعده می‌شود؟', rule.eligibility_mode, rule.eligibility_conditions) }}
-                    {{ condition_box('۲. پس از احراز دامنه، قاعده چه زمانی فعال می‌شود؟', rule.trigger_mode, rule.trigger_conditions) }}
+                    {{ condition_box('۲. قاعده دقیقاً چه زمانی فعال می‌شود؟', rule.trigger_mode, rule.trigger_conditions) }}
                     <div class="engine-recommendation"><span>۳. پیشنهاد سیستم</span><p>{{ rule.recommendation }}</p></div>
                     <div class="engine-automation-limit"><svg class="icon icon-sm"><use href="#i-shield"></use></svg><span>{{ rule.automation_limit }}</span></div>
                     <details class="engine-evidence"><summary>مشاهدهٔ محدوده‌های خارج از قاعده، منبع و وضعیت شواهد</summary>{% if rule.out_of_scope %}<p><b>خارج از محدوده:</b> {{ rule.out_of_scope|join('، ') }}</p>{% endif %}<p><b>{{ rule.source_title }}</b></p><p>{{ rule.source_locator }}</p>{% if rule.source_url %}<p><a href="{{ rule.source_url }}" target="_blank" rel="noopener noreferrer">بازکردن منبع اصلی</a></p>{% endif %}<span class="badge badge-warn">بازبینی محلی: انجام نشده</span></details>
