@@ -13,7 +13,7 @@ from flask import (
 )
 
 from src.adapters.sqlite.patients_repo import PatientRepository
-from src.api.auth import login_required
+from src.api.auth import login_required, manager_required
 from src.services.activity_logger import log_activity
 from src.services.clinical_reconciliation_service import (
     ClinicalReconciliationService,
@@ -79,7 +79,7 @@ def status(pid: int):
 
 
 @bp.post("/<int:pid>/reconciliation/<collection_key>")
-@login_required
+@manager_required
 def review(pid: int, collection_key: str):
     if not _patient_or_none(pid):
         flash("بیمار یافت نشد", "error")
