@@ -11,10 +11,12 @@ from src.domain.clinical_engine.demo_cohort import (
 from src.services.activity_logger import log_activity
 
 
-# Reconciliation changes the clinical meaning of an otherwise identical fixture.
-# Keep the source trajectory version and add a semantic suffix so installed v2
-# cohorts rebuild once and receive explicit collection-review events.
-RECONCILED_DEMO_COHORT_VERSION = f"{DEMO_COHORT_VERSION}-reconciled-v1"
+# v2 adds explicit reconciliation; v3 additionally binds every synthetic active
+# medication to one exact catalog concept. Installed seed cohorts rebuild once when
+# either semantic contract changes.
+CURRENT_DEMO_COHORT_VERSION = (
+    f"{DEMO_COHORT_VERSION}-reconciled-concepts-v3"
+)
 
 
 class DemoCohortService:
@@ -27,14 +29,16 @@ class DemoCohortService:
 
     def summary(self) -> dict:
         summary = self.repository.summary(
-            expected_version=RECONCILED_DEMO_COHORT_VERSION
+            expected_version=CURRENT_DEMO_COHORT_VERSION
         )
-        summary.update({
-            "expected_version": RECONCILED_DEMO_COHORT_VERSION,
-            "source_version": DEMO_COHORT_VERSION,
-            "reference_at": DEMO_REFERENCE_AT,
-            "years": 5.5,
-        })
+        summary.update(
+            {
+                "expected_version": CURRENT_DEMO_COHORT_VERSION,
+                "source_version": DEMO_COHORT_VERSION,
+                "reference_at": DEMO_REFERENCE_AT,
+                "years": 5.5,
+            }
+        )
         return summary
 
     def ensure(self, *, actor: str, force: bool = False) -> dict:
@@ -44,7 +48,7 @@ class DemoCohortService:
         if rebuilt:
             self.repository.replace_all(
                 DEMO_PATIENTS,
-                version=RECONCILED_DEMO_COHORT_VERSION,
+                version=CURRENT_DEMO_COHORT_VERSION,
                 actor=actor,
                 reference_at=DEMO_REFERENCE_AT,
             )
@@ -54,8 +58,10 @@ class DemoCohortService:
         if rebuilt:
             log_activity(
                 "clinical_v2_demo_cohort_rebuild",
-                f"Rebuilt {after['patient_count']} synthetic longitudinal records "
-                f"at cohort version {RECONCILED_DEMO_COHORT_VERSION}",
+                (
+                    f"Rebuilt {after['patient_count']} synthetic longitudinal "
+                    f"records at cohort version {CURRENT_DEMO_COHORT_VERSION}"
+                ),
                 user_id=0,
                 username=actor,
             )
@@ -70,16 +76,26 @@ class DemoCohortService:
             "vitals": actual["vitals"] == expected["vitals"],
             "labs": actual["labs"] == expected["labs"],
             "medications": actual["medications"] == expected["meds"],
+            "medication_concepts": (
+                actual.get("unmapped_active_medications") == 0
+            ),
             "notes": actual["notes"] == expected["notes"],
-            "appointments": actual["appointments"] == expected["appointments"],
+            "appointments": (
+                actual["appointments"] == expected["appointments"]
+            ),
             "followups": actual["followups"] == expected["followups"],
-            "prescriptions": actual["prescriptions"] == expected["prescriptions"],
+            "prescriptions": (
+                actual["prescriptions"] == expected["prescriptions"]
+            ),
             "history": actual["history"] == expected["history"],
             "conditions": actual["conditions"] == expected["conditions"],
-            "reconciliation": actual.get("reconciled_collections") == 30,
+            "reconciliation": (
+                actual.get("reconciled_collections") == 30
+            ),
         }
         failed = [key for key, passed in checks.items() if not passed]
         if failed:
             raise RuntimeError(
-                "synthetic cohort failed completeness checks: " + ", ".join(failed)
+                "synthetic cohort failed completeness checks: "
+                + ", ".join(failed)
             )
