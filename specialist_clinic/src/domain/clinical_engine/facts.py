@@ -52,3 +52,7 @@ class FactSnapshot:
     facts: tuple[ClinicalFact, ...]
     content_hash: str
     encounter_key: str | None = None
+    # Monotonic revision captured from the same SQLite read snapshot as the facts.
+    # It is the runtime contract that prevents an older audited run from being
+    # presented after the patient record has changed.
+    clinical_data_revision: int = 0
