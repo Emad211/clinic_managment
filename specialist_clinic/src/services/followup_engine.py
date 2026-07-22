@@ -1,6 +1,7 @@
-"""Rule-driven follow-up generation: turns fired monitoring/screening/vaccine
-rules into worklist tasks — but only when actually DUE (interval elapsed or
-never done). Keeps the worklist practical, not spammy.
+"""Rule-driven follow-up generation from current Clinical Engine v2 runs.
+
+Only audited, current monitoring/screening/vaccine recommendations may become inert
+internal worklist tasks.  Administrative reminders remain a separate workflow.
 """
 from datetime import datetime
 import hashlib
@@ -10,6 +11,11 @@ from src.adapters.sqlite.clinical_engine_audit_repo import ClinicalEngineAuditRe
 from src.adapters.sqlite.clinical_engine_fact_repo import ClinicalEngineFactRepository
 from src.adapters.sqlite.followups_repo import FollowupRepository
 from src.common.utils import today_str, iran_now
+from src.services.clinical_engine.runtime import (
+    ClinicalEngineRuntimeError,
+    ClinicalEngineRuntimeService,
+    ClinicalEngineRuntimeStale,
+)
 
 REASON_BY_ACTION = {
     'create_followup': 'monitoring',
@@ -58,12 +64,12 @@ def due_clinical_events(pid: int) -> list[dict]:
 
 
 def generate_for_patient(pid: int) -> int:
-    """Create due monitoring/screening/vaccine follow-ups for one patient (worklist)."""
+    """Legacy compatibility wrapper; v1 emits no clinical events."""
     repo = FollowupRepository()
     created = 0
     for ev in due_clinical_events(pid):
         if ev['action'] == 'redflag':
-            continue  # red-flags surface in the patient panel, not the worklist
+            continue
         if repo.recently_handled_source(pid, ev['rule_code'], ev['months']):
             continue
         repo.create(pid, reason=REASON_BY_ACTION[ev['action']], detail=ev['title'],
@@ -73,7 +79,7 @@ def generate_for_patient(pid: int) -> int:
 
 
 def generate_all() -> int:
-    """Run rule-driven follow-up generation across all active patients."""
+    """Legacy compatibility wrapper; v1 emits no clinical events."""
     return sum(generate_for_patient(pid) for pid in FollowupRepository().active_patient_ids())
 
 
@@ -92,12 +98,14 @@ def _trace_fact_ids(node: dict) -> set[str]:
 
 
 class ClinicalV2FollowupService:
-    """Project audited FIRED due rules into inert, idempotent internal tasks."""
+    """Project current audited FIRED due rules into idempotent internal tasks."""
 
-    def __init__(self, *, facts=None, audit=None, repo=None):
+    def __init__(self, *, facts=None, audit=None, repo=None, runtime=None):
         self.facts = facts or ClinicalEngineFactRepository()
+        # Kept for constructor compatibility and audit inspection by callers.
         self.audit = audit or ClinicalEngineAuditRepository()
         self.repo = repo or FollowupRepository()
+        self.runtime = runtime or ClinicalEngineRuntimeService(facts=self.facts)
 
     def enabled_for(self, patient_link_id: int) -> bool:
         mode = self.facts.get_mode()
@@ -108,12 +116,27 @@ class ClinicalV2FollowupService:
     def project_patient(self, patient_link_id: int) -> dict:
         if not self.enabled_for(patient_link_id):
             return {"enabled": False, "tasks": [], "issues": []}
-        run = self.audit.latest_presentable_run(patient_link_id)
-        if not run:
+        try:
+            ensured = self.runtime.ensure_current_run(
+                patient_link_id,
+                trigger="clinical-followup",
+                actor="clinical-followup",
+            )
+        except ClinicalEngineRuntimeStale:
             return {
-                "enabled": True, "tasks": [],
-                "issues": [{"code": "NO_PRESENTABLE_V2_RUN", "rule_code": None}],
+                "enabled": True,
+                "tasks": [],
+                "issues": [{"code": "CURRENT_RUN_STALE", "rule_code": None}],
             }
+        except ClinicalEngineRuntimeError:
+            return {
+                "enabled": True,
+                "tasks": [],
+                "issues": [{"code": "CURRENT_RUN_UNAVAILABLE", "rule_code": None}],
+            }
+        if not ensured:
+            return {"enabled": False, "tasks": [], "issues": []}
+        contract, run = ensured
         if run.get("run_status") == "SAFETY_FAILED":
             return {
                 "enabled": True, "tasks": [],
@@ -195,6 +218,12 @@ class ClinicalV2FollowupService:
                 "source_recommendation_event_id": int(event["id"]),
                 "clinical_semantic_key": semantic_key,
                 "clinical_task_key": task_key,
+                # Ephemeral contract values are rechecked atomically by the
+                # repository immediately before task insertion.
+                "source_engine_version": contract.engine_version,
+                "source_ruleset_id": contract.ruleset_id,
+                "source_clinical_data_revision": contract.clinical_data_revision,
+                "allow_legacy_test_run": contract.allow_legacy_test_run,
             })
         return {"enabled": True, "tasks": tasks, "issues": issues}
 
@@ -202,13 +231,23 @@ class ClinicalV2FollowupService:
         projection = self.project_patient(patient_link_id)
         created = 0
         task_ids = []
+        issues = list(projection["issues"])
         for task in projection["tasks"]:
-            task_id, was_created = self.repo.create_clinical_task_once(task)
+            try:
+                task_id, was_created = self.repo.create_clinical_task_once(task)
+            except RuntimeError as exc:
+                if str(exc) == "STALE_CLINICAL_TASK_SOURCE":
+                    issues.append({
+                        "code": "CURRENT_RUN_STALE",
+                        "rule_code": task.get("source_rule"),
+                    })
+                    continue
+                raise
             task_ids.append(task_id)
             created += int(was_created)
         return {
             "enabled": projection["enabled"], "created": created,
-            "task_ids": task_ids, "issues": projection["issues"],
+            "task_ids": task_ids, "issues": issues,
         }
 
     def generate_all(self) -> dict:
