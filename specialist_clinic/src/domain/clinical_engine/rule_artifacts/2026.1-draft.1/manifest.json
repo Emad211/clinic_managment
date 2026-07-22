@@ -1,0 +1,10 @@
+{
+  "ruleset_code": "general-outpatient",
+  "version": "2026.1-draft.1",
+  "status": "DRAFT",
+  "clinical_use": "NOT_APPROVED_HISTORICAL_REGRESSION_ONLY",
+  "rules": [
+    {"file": "T2-REDFLAG-BP.json", "phase": "PREFLIGHT", "sort_order": 10},
+    {"file": "T2-SAFE-MET-STOP.json", "phase": "SAFETY", "sort_order": 20}
+  ]
+}
