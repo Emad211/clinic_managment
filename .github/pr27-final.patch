@@ -1,0 +1,186 @@
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+index b0eddc3..c522072 100644
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -32,24 +32,6 @@ jobs:
+     steps:
+       - uses: actions/checkout@v4
+ 
+-      - name: Pack temporary source snapshot
+-        run: >-
+-          tar
+-          --exclude=.git
+-          --exclude='*.db'
+-          --exclude='.venv'
+-          --exclude='__pycache__'
+-          --exclude='.pytest_cache'
+-          -czf ../source-snapshot.tar.gz ..
+-
+-      - name: Upload temporary source snapshot
+-        uses: actions/upload-artifact@v4
+-        with:
+-          name: source-snapshot
+-          path: source-snapshot.tar.gz
+-          if-no-files-found: error
+-          retention-days: 1
+-
+       - name: Set up Python 3.13
+         uses: actions/setup-python@v5
+         with:
+diff --git a/.github/workflows/source-snapshot.yml b/.github/workflows/source-snapshot.yml
+deleted file mode 100644
+index c4cd527..0000000
+--- a/.github/workflows/source-snapshot.yml
++++ /dev/null
+@@ -1,31 +0,0 @@
+-name: Source Snapshot
+-
+-on:
+-  push:
+-
+-concurrency:
+-  group: source-snapshot-${{ github.ref_name }}
+-  cancel-in-progress: true
+-
+-jobs:
+-  snapshot:
+-    if: startsWith(github.ref_name, 'agent-')
+-    runs-on: ubuntu-latest
+-    steps:
+-      - uses: actions/checkout@v4
+-      - name: Pack source without databases or local environments
+-        run: >-
+-          tar
+-          --exclude=.git
+-          --exclude='*.db'
+-          --exclude='.venv'
+-          --exclude='__pycache__'
+-          --exclude='.pytest_cache'
+-          -czf source-snapshot.tar.gz .
+-      - name: Upload source snapshot
+-        uses: actions/upload-artifact@v4
+-        with:
+-          name: source-snapshot-${{ github.sha }}
+-          path: source-snapshot.tar.gz
+-          if-no-files-found: error
+-          retention-days: 1
+diff --git a/specialist_clinic/src/api/clinical_reconciliation.py b/specialist_clinic/src/api/clinical_reconciliation.py
+index 4de688d..723c70b 100644
+--- a/specialist_clinic/src/api/clinical_reconciliation.py
++++ b/specialist_clinic/src/api/clinical_reconciliation.py
+@@ -35,7 +35,7 @@ bp = Blueprint(
+ 
+ 
+ @bp.record_once
+-def install_clinical_boundaries(state):
++def install_patient_mutation_guards(state):
+     # The patients blueprint is registered first. Replace only the four legacy
+     # endpoint callables that need patient-row ownership checks while preserving
+     # every public URL and endpoint name.
+@@ -43,9 +43,12 @@ def install_clinical_boundaries(state):
+ 
+     install(state.app)
+ 
+-    # File-backed databases are cut over while the application is being built,
+-    # before a socket can accept traffic. This preserves the zero-write contract
+-    # of public/read-only GET routes.
++
++@bp.record
++def enforce_file_backed_v1_cutover(state):
++    # ``record`` (not ``record_once``) is deliberate: test processes and desktop
++    # relaunches may construct more than one Flask application from the same
++    # imported Blueprint object. Every application must be clean before serving.
+     if (state.app.config.get("DATABASE_PATH") or "") != ":memory:":
+         with state.app.app_context():
+             ensure_v1_schema_cutover(get_db())
+diff --git a/specialist_clinic/tests/test_clinical_engine_legacy_cleanup_schema.py b/specialist_clinic/tests/test_clinical_engine_legacy_cleanup_schema.py
+index 996d785..7eef805 100644
+--- a/specialist_clinic/tests/test_clinical_engine_legacy_cleanup_schema.py
++++ b/specialist_clinic/tests/test_clinical_engine_legacy_cleanup_schema.py
+@@ -30,6 +30,40 @@ from src.domain.clinical_engine import RunStatus
+ from src.services.clinical_engine.compiler import RuleCompiler
+ 
+ 
++def _restore_retired_schema(db) -> None:
++    """Recreate the exact compatibility surface consumed by this migration test.
++
++    Application startup correctly removes these objects. The migration primitive is
++    tested against an explicitly reconstructed pre-cutover database so runtime never
++    needs a skip flag or test-only bypass.
++    """
++    db.executescript(
++        """
++        CREATE TABLE clinical_rules (
++            id INTEGER PRIMARY KEY AUTOINCREMENT,
++            rule_code TEXT UNIQUE NOT NULL,
++            title TEXT NOT NULL,
++            category TEXT NOT NULL
++        );
++        CREATE TABLE suggestion_log (
++            id INTEGER PRIMARY KEY AUTOINCREMENT,
++            patient_link_id INTEGER NOT NULL,
++            rule_code TEXT NOT NULL,
++            suggestion_text TEXT,
++            status TEXT NOT NULL DEFAULT 'pending',
++            FOREIGN KEY(patient_link_id) REFERENCES patient_links(id)
++        );
++        ALTER TABLE clinical_rule_versions
++          ADD COLUMN source_legacy_rule_id INTEGER
++          REFERENCES clinical_rules(id);
++        ALTER TABLE clinical_decision_events
++          ADD COLUMN legacy_source_suggestion_log_id INTEGER
++          REFERENCES suggestion_log(id);
++        """
++    )
++    db.commit()
++
++
+ @pytest.fixture()
+ def cleanup_app(tmp_path):
+     from src.adapters.sqlite import core
+@@ -46,6 +80,9 @@ def cleanup_app(tmp_path):
+     )
+     context = app.app_context()
+     context.push()
++    from src.adapters.sqlite.core import get_db
++
++    _restore_retired_schema(get_db())
+     yield app
+     context.pop()
+     core._initialized = False
+diff --git a/specialist_clinic/tests/test_clinical_engine_v2_storage.py b/specialist_clinic/tests/test_clinical_engine_v2_storage.py
+index 45594af..8124ef7 100644
+--- a/specialist_clinic/tests/test_clinical_engine_v2_storage.py
++++ b/specialist_clinic/tests/test_clinical_engine_v2_storage.py
+@@ -129,14 +129,17 @@ def _valid_rule():
+     }
+ 
+ 
+-def test_pr06_safety_artefacts_compile_and_store_as_draft_without_touching_legacy_catalog(
++def test_pr06_safety_artefacts_compile_and_store_without_v1_storage(
+     storage_app,
+ ):
+     _, _, _, _ = storage_app
+     from src.adapters.sqlite.core import get_db
+ 
+     db = get_db()
+-    legacy_before = db.execute("SELECT COUNT(*) c FROM clinical_rules").fetchone()["c"]
++    assert db.execute(
++        "SELECT 1 FROM sqlite_master "
++        "WHERE type='table' AND name='clinical_rules'"
++    ).fetchone() is None
+     manifest = json.loads(
+         (SAFETY_ARTIFACT_DIR / "manifest.json").read_text(encoding="utf-8")
+     )
+@@ -165,7 +168,10 @@ def test_pr06_safety_artefacts_compile_and_store_as_draft_without_touching_legac
+     stored = repository.get_ruleset(ruleset_id)
+     assert stored["status"] == "DRAFT"
+     assert [item["phase"] for item in stored["members"]] == ["PREFLIGHT", "SAFETY"]
+-    assert db.execute("SELECT COUNT(*) c FROM clinical_rules").fetchone()["c"] == legacy_before
++    assert db.execute(
++        "SELECT 1 FROM sqlite_master "
++        "WHERE type='table' AND name='clinical_rules'"
++    ).fetchone() is None
+ 
+ 
+ @pytest.fixture()
