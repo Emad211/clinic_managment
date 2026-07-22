@@ -14,14 +14,42 @@ from src.common.utils import iran_now
 _VERSION_KEY = "clinical_engine_v2_demo_cohort_version"
 
 
+def _clean(value) -> str:
+    return " ".join(str(value or "").strip().split())
+
+
 class DemoCohortRepository:
     """Atomically replace only TEST0001..TEST0010 clinical source records."""
 
     def version(self) -> str | None:
         row = get_db().execute(
-            "SELECT value FROM settings WHERE key=?", (_VERSION_KEY,)
+            "SELECT value FROM settings WHERE key=?",
+            (_VERSION_KEY,),
         ).fetchone()
         return str(row["value"]) if row else None
+
+    @staticmethod
+    def _canonical_drug_catalog(db) -> dict[tuple[str, str], dict]:
+        catalog: dict[tuple[str, str], dict] = {}
+        rows = db.execute(
+            """SELECT id, generic_fa, drug_class_key
+               FROM drug_catalog
+               WHERE is_active=1 AND drug_class_key IS NOT NULL
+               ORDER BY id"""
+        ).fetchall()
+        for raw in rows:
+            row = dict(raw)
+            key = (
+                _clean(row["generic_fa"]),
+                _clean(row["drug_class_key"]),
+            )
+            if key in catalog:
+                raise RuntimeError(
+                    "active drug catalog contains duplicate synthetic identity: "
+                    f"{key[0]} / {key[1]}"
+                )
+            catalog[key] = row
+        return catalog
 
     def replace_all(
         self,
@@ -40,11 +68,16 @@ class DemoCohortRepository:
                 "SELECT id, code FROM conditions WHERE code IS NOT NULL"
             ).fetchall()
             condition_ids = {
-                row["code"]: int(row["id"]) for row in condition_rows
+                row["code"]: int(row["id"])
+                for row in condition_rows
             }
+            drug_catalog = self._canonical_drug_catalog(db)
             for patient in cohort:
-                nid = patient["nid"]
-                if not (nid.startswith("TEST") and len(nid) == 8):
+                national_id = patient["nid"]
+                if not (
+                    national_id.startswith("TEST")
+                    and len(national_id) == 8
+                ):
                     raise ValueError(
                         "demo cohort may only contain TESTxxxx identifiers"
                     )
@@ -64,7 +97,7 @@ class DemoCohortRepository:
                          is_active=1,
                          updated_at=excluded.updated_at""",
                     (
-                        nid,
+                        national_id,
                         patient["name"],
                         patient["phone"],
                         patient["gender"],
@@ -77,7 +110,8 @@ class DemoCohortRepository:
                 )
                 patient_id = int(
                     db.execute(
-                        "SELECT id FROM patient_links WHERE national_id=?", (nid,)
+                        "SELECT id FROM patient_links WHERE national_id=?",
+                        (national_id,),
                     ).fetchone()["id"]
                 )
                 patient_ids.append(patient_id)
@@ -87,6 +121,7 @@ class DemoCohortRepository:
                     patient_id,
                     patient,
                     condition_ids=condition_ids,
+                    drug_catalog=drug_catalog,
                     actor=actor,
                     now=now,
                     reference_at=reference_at,
@@ -124,7 +159,8 @@ class DemoCohortRepository:
         )
         for table in tables:
             db.execute(
-                f"DELETE FROM {table} WHERE patient_link_id=?", (patient_id,)
+                f"DELETE FROM {table} WHERE patient_link_id=?",
+                (patient_id,),
             )
 
     @staticmethod
@@ -134,6 +170,7 @@ class DemoCohortRepository:
         patient: dict,
         *,
         condition_ids: dict[str, int],
+        drug_catalog: dict[tuple[str, str], dict],
         actor: str,
         now: str,
         reference_at: datetime,
@@ -142,7 +179,8 @@ class DemoCohortRepository:
             condition_id = condition_ids.get(condition["code"])
             if not condition_id:
                 raise LookupError(
-                    f"condition catalog entry missing: {condition['code']}"
+                    "condition catalog entry missing: "
+                    f"{condition['code']}"
                 )
             db.execute(
                 """INSERT INTO patient_conditions
@@ -209,6 +247,16 @@ class DemoCohortRepository:
         )
 
         for medication in patient["meds"]:
+            key = (
+                _clean(medication["name"]),
+                _clean(medication["drug_class"]),
+            )
+            catalog = drug_catalog.get(key)
+            if not catalog:
+                raise LookupError(
+                    "synthetic medication lacks one exact active catalog concept: "
+                    f"{key[0]} / {key[1]}"
+                )
             final_dose = (
                 medication["changes"][-1][1]
                 if medication["changes"]
@@ -219,10 +267,10 @@ class DemoCohortRepository:
                    (patient_link_id, drug_name, dose, schedule, start_date,
                     refill_due_date, is_active, end_date, notes, drug_class,
                     drug_catalog_id)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)""",
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     patient_id,
-                    medication["name"],
+                    catalog["generic_fa"],
                     final_dose,
                     medication["schedule"],
                     medication["start"],
@@ -230,12 +278,18 @@ class DemoCohortRepository:
                     0 if medication["stop"] else 1,
                     medication["stop"],
                     medication.get("notes"),
-                    medication["drug_class"],
+                    catalog["drug_class_key"],
+                    int(catalog["id"]),
                 ),
             )
             medication_id = int(cursor.lastrowid)
             events = [
-                ("start", medication["dose"], medication["start"], "شروع درمان")
+                (
+                    "start",
+                    medication["dose"],
+                    medication["start"],
+                    "شروع درمان",
+                )
             ]
             events.extend(
                 ("dose_change", dose, when, note)
@@ -259,7 +313,7 @@ class DemoCohortRepository:
                     (
                         patient_id,
                         medication_id,
-                        medication["name"],
+                        catalog["generic_fa"],
                         event_type,
                         dose,
                         event_date,
@@ -284,7 +338,11 @@ class DemoCohortRepository:
         # The activation cohort represents fully reviewed synthetic records.
         # Record that fact explicitly; a bare empty list is never interpreted as
         # confirmed absence by the runtime.
-        for collection_key in ("conditions", "medications", "allergies"):
+        for collection_key in (
+            "conditions",
+            "medications",
+            "allergies",
+        ):
             ClinicalReconciliationRepository.record_in_transaction(
                 db,
                 patient_link_id=patient_id,
@@ -303,7 +361,8 @@ class DemoCohortRepository:
 
         db.executemany(
             """INSERT INTO medical_history
-               (patient_link_id, title, note, since) VALUES (?, ?, ?, ?)""",
+               (patient_link_id, title, note, since)
+               VALUES (?, ?, ?, ?)""",
             [
                 (patient_id, title, note, since)
                 for title, note, since in patient["history"]
@@ -311,7 +370,8 @@ class DemoCohortRepository:
         )
         db.executemany(
             """INSERT INTO surgery_history
-               (patient_link_id, title, performed_on, note) VALUES (?, ?, ?, ?)""",
+               (patient_link_id, title, performed_on, note)
+               VALUES (?, ?, ?, ?)""",
             [
                 (patient_id, title, performed_on, note)
                 for title, performed_on, note in patient["surgeries"]
@@ -362,7 +422,11 @@ class DemoCohortRepository:
                     row["detail"],
                     row["status"],
                     "تیم درمان",
-                    "remote" if row["reason"] == "refill" else "in_person",
+                    (
+                        "remote"
+                        if row["reason"] == "refill"
+                        else "in_person"
+                    ),
                     row.get("resolved_at"),
                 )
                 for row in patient["followups"]
@@ -385,7 +449,7 @@ class DemoCohortRepository:
         )
 
     def summary(self, *, expected_version: str) -> dict:
-        ids = [f"TEST{i:04d}" for i in range(1, 11)]
+        ids = [f"TEST{index:04d}" for index in range(1, 11)]
         marks = ",".join("?" for _ in ids)
         db = get_db()
         patients = [
@@ -413,6 +477,7 @@ class DemoCohortRepository:
                 "surgeries",
                 "conditions",
                 "reconciled_collections",
+                "unmapped_active_medications",
             )
         }
         table_map = {
@@ -450,9 +515,23 @@ class DemoCohortRepository:
                     patient_ids,
                 ).fetchone()["count"]
             )
+            totals["unmapped_active_medications"] = int(
+                db.execute(
+                    f"""SELECT COUNT(*) AS count
+                        FROM patient_medications
+                        WHERE patient_link_id IN ({patient_marks})
+                          AND is_active=1
+                          AND drug_catalog_id IS NULL""",
+                    patient_ids,
+                ).fetchone()["count"]
+            )
         version = self.version()
         return {
-            "ready": len(patients) == 10 and version == expected_version,
+            "ready": (
+                len(patients) == 10
+                and version == expected_version
+                and totals["unmapped_active_medications"] == 0
+            ),
             "version": version,
             "patient_count": len(patients),
             "patients": patients,
