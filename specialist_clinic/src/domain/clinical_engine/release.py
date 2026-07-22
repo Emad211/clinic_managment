@@ -1,13 +1,15 @@
 """Release identity shared by package, activation and runtime boundaries.
 
-Changing the bundled package version is a safety event: an activation seal tied to an
-older ruleset must fail closed until the new immutable package is reviewed and tested.
+Changing either the bundled package or executable fact contract is a safety event.
+Reports and seals from a previous identity remain audit evidence but cannot activate the
+new runtime.
 """
 from __future__ import annotations
 
 
 RULESET_CODE = "general-outpatient"
 CURRENT_BUNDLED_PACKAGE_VERSION = "2026.1-draft.2"
+CURRENT_ENGINE_VERSION = "2.4.0-reconciliation-history"
 
 
 def base_ruleset_version(version: str | None) -> str:
