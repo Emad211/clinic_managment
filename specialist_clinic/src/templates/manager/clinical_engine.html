@@ -6,14 +6,27 @@
 <section class="engine-hero engine-tone-{{ engine.mode_tone }}" aria-labelledby="engine-title">
     <div class="engine-hero-main">
         <div class="engine-kicker"><svg class="icon icon-sm"><use href="#i-shield"></use></svg> موتور تصمیم‌یار بالینی v2</div>
-        <h1 id="engine-title">مرکز کنترل انتشار و ایمنی</h1>
-        <p>تنها مرجع عملیاتی موتور جدید؛ از مقایسهٔ ده بیمار تا تأیید، انتشار محدود و بازگشت فوری.</p>
+        <h1 id="engine-title">راه‌اندازی موتور بالینی جدید</h1>
+        <p>این صفحه قدم‌به‌قدم می‌گوید برای فعال‌سازی ایمن چه کاری باید انجام دهید.</p>
     </div>
     <div class="engine-mode" aria-label="وضعیت فعلی موتور">
         <span class="engine-mode-dot" aria-hidden="true"></span>
         <div><small>وضعیت مؤثر</small><strong>{{ engine.mode_fa }}</strong></div>
         {% if engine.raw_mode != engine.effective_mode %}<span class="badge badge-danger">تنظیم خام نامعتبر</span>{% endif %}
     </div>
+</section>
+
+<section class="card engine-panel" aria-labelledby="next-step-title">
+    <div class="engine-section-head"><div><span class="engine-section-icon"><svg class="icon"><use href="#i-zap"></use></svg></span><div>
+        <h2 id="next-step-title">الان چه کار کنم؟</h2>
+        {% if not engine.ruleset %}<p>هنوز هیچ بستهٔ قواعدِ بازبینی‌شده‌ای وارد نشده است. ابتدا قواعد v2 باید از بخش فنی وارد و توسط مسئول بالینی بررسی و فریز شوند؛ بدون این مرحله آزمون معنی‌داری اجرا نمی‌شود.</p>
+        {% elif engine.patient_count < 10 %}<p>روی دکمهٔ «اجرای آزمون ایمنی» بزنید. سیستم وجود ۱۰ بیمار نمونه و اجرای صحیح همهٔ قواعد را بررسی می‌کند.</p>
+        {% elif not engine.report_ok %}<p>نتیجهٔ آزمون کامل نیست. جدول خطاها را ببینید، علت را رفع کنید و آزمون را دوباره اجرا کنید.</p>
+        {% elif not engine.approvals.clinical or not engine.approvals.technical %}<p>گزارش آزمون آماده است؛ مسئول بالینی و بازبین فنی باید آن را جداگانه بررسی و تأیید کنند.</p>
+        {% elif not engine.seal_valid %}<p>همهٔ کنترل‌ها کامل است؛ اکنون انتشار محدود را برای بیماران نمونه فعال کنید.</p>
+        {% else %}<p>موتور در حال کار است. وضعیت بیماران منتخب را پایش کنید و فقط پس از ثبت نتیجه، انتشار عمومی را انجام دهید.</p>{% endif %}
+    </div></div></div>
+    {% if engine.ruleset %}<form method="post" action="{{ url_for('manager.clinical_engine_action', action='compare') }}" data-loading-form><button class="btn" type="submit"><svg class="icon"><use href="#i-activity"></use></svg> اجرای آزمون ایمنی ۱۰ بیمار نمونه</button></form>{% endif %}
 </section>
 
 <ol class="engine-steps" aria-label="مراحل انتشار موتور">
@@ -26,7 +39,7 @@
 </ol>
 
 <div class="engine-metrics" aria-label="خلاصهٔ وضعیت">
-    <article class="engine-metric"><span>گزارش آخر</span><strong class="c-{% if engine.report_ok %}ok{% else %}danger{% endif %}">{{ engine.report.status or 'ساخته نشده' }}</strong><small>{% if engine.report.report_hash %}{{ engine.report.report_hash[:12] }}…{% else %}نیازمند اجرای مقایسه{% endif %}</small></article>
+    <article class="engine-metric"><span>نتیجهٔ آزمون</span><strong class="c-{% if engine.report_ok %}ok{% else %}danger{% endif %}">{% if engine.report_ok %}آمادهٔ تأیید{% elif engine.report.status %}نیازمند رفع مشکل{% else %}هنوز اجرا نشده{% endif %}</strong><small>{% if engine.report.report_hash %}شناسهٔ گزارش: {{ engine.report.report_hash[:12] }}…{% else %}ابتدا آزمون ایمنی را اجرا کنید{% endif %}</small></article>
     <article class="engine-metric"><span>بیماران بررسی‌شده</span><strong>{{ engine.patient_count|fa_num }} / ۱۰</strong><small>مجموعهٔ تست استاندارد</small></article>
     <article class="engine-metric"><span>خطاهای v2</span><strong class="c-{% if engine.v2_error_count %}danger{% else %}ok{% endif %}">{{ engine.v2_error_count|fa_num }}</strong><small>باید صفر باشد</small></article>
     <article class="engine-metric"><span>مجموعه‌قواعد</span><strong>{{ engine.ruleset.version if engine.ruleset else 'نداریم' }}</strong><small>{{ engine.ruleset.status if engine.ruleset else 'نیازمند ورود و تأیید' }}</small></article>
@@ -34,7 +47,7 @@
 
 {% if engine.blockers %}
 <section class="engine-blockers" role="status" aria-labelledby="blockers-title">
-    <div class="engine-section-head"><div><span class="engine-section-icon is-danger"><svg class="icon"><use href="#i-alert"></use></svg></span><div><h2 id="blockers-title">فعال‌سازی مسدود است</h2><p>تا رفع همهٔ موارد زیر هیچ پیشنهاد v2 به‌صورت عمومی نمایش داده نمی‌شود.</p></div></div></div>
+    <div class="engine-section-head"><div><span class="engine-section-icon is-danger"><svg class="icon"><use href="#i-alert"></use></svg></span><div><h2 id="blockers-title">مواردی که باید تکمیل شوند</h2><p>تا تکمیل موارد زیر، هیچ پیشنهاد بالینی نمایش داده نمی‌شود و موتور قدیمی نیز جایگزین آن نخواهد شد.</p></div></div></div>
     <ul>{% for blocker in engine.blockers %}<li><svg class="icon icon-sm"><use href="#i-x"></use></svg><span>{{ blocker }}</span></li>{% endfor %}</ul>
 </section>
 {% endif %}
@@ -43,7 +56,7 @@
     <div class="engine-main-column">
         <section class="card engine-panel" aria-labelledby="checks-title">
             <div class="engine-section-head"><div><span class="engine-section-icon"><svg class="icon"><use href="#i-list-checks"></use></svg></span><div><h2 id="checks-title">گیت‌های ایمنی گزارش</h2><p>هر گیت علاوه بر رنگ، با متن صریح مشخص شده است.</p></div></div>
-                <form method="post" action="{{ url_for('manager.clinical_engine_action', action='compare') }}" data-loading-form><button class="btn" type="submit"><svg class="icon"><use href="#i-activity"></use></svg> اجرای مقایسهٔ ده بیمار</button></form>
+                <form method="post" action="{{ url_for('manager.clinical_engine_action', action='compare') }}" data-loading-form><button class="btn" type="submit" {% if not engine.ruleset %}disabled{% endif %}><svg class="icon"><use href="#i-activity"></use></svg> اجرای آزمون ایمنی</button></form>
             </div>
             {% if engine.checks %}<div class="engine-check-list">
                 {% for key, label in engine.check_labels.items() %}{% if key in engine.checks %}

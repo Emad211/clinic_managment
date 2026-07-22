@@ -39,9 +39,10 @@ def test_control_center_renders_fail_closed_empty_state(manager_ui_app):
     response = _manager_client(manager_ui_app).get("/manager/clinical-engine")
     assert response.status_code == 200
     html = response.get_data(as_text=True)
-    assert "مرکز کنترل انتشار و ایمنی" in html
+    assert "راه‌اندازی موتور بالینی جدید" in html
+    assert "الان چه کار کنم؟" in html
     assert "وضعیت مؤثر" in html and "خاموش" in html
-    assert "فعال‌سازی مسدود است" in html
+    assert "مواردی که باید تکمیل شوند" in html
     assert "هنوز گزارشی وجود ندارد" in html
     assert 'disabled' in html
 
@@ -73,17 +74,17 @@ def test_control_center_has_no_v1_comparison_or_adjudication_surface(manager_ui_
     assert "/adjudicate" not in html
 
 
-def test_compare_action_builds_blocked_report_without_activating(manager_ui_app):
+def test_compare_action_requires_a_frozen_ruleset_without_activating(manager_ui_app):
     from src.adapters.sqlite.clinical_engine_activation_repo import ClinicalEngineActivationRepository
     from src.adapters.sqlite.clinical_engine_fact_repo import ClinicalEngineFactRepository
 
     client = _manager_client(manager_ui_app)
     response = client.post("/manager/clinical-engine/compare", follow_redirects=True)
     assert response.status_code == 200
-    assert "فعال‌سازی همچنان مسدود است" in response.get_data(as_text=True)
+    assert "ابتدا بستهٔ قواعد v2 باید وارد" in response.get_data(as_text=True)
     with manager_ui_app.app_context():
         state = ClinicalEngineActivationRepository()
-        assert state.get_json("last_report")["status"] == "BLOCKED"
+        assert state.get_json("last_report") is None
         assert state.raw_mode() == "off"
         assert ClinicalEngineFactRepository().get_mode() == "off"
 

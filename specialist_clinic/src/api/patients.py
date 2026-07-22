@@ -149,7 +149,6 @@ def detail(pid):
         return redirect(url_for("patients.list_patients"))
 
     from src.services.analytics_service import AnalyticsService
-    from src.services.rule_engine import RuleEngine
     from src.services.clinical_engine.facade import ClinicalEngineReadOnlyFacade
     from src.adapters.sqlite.clinical_rules_repo import ClinicalRulesRepository
     from src.adapters.sqlite.flags_repo import ClinicalFlagsRepository
@@ -160,12 +159,10 @@ def detail(pid):
     adata = AnalyticsService().patient_analytics(pid)
     control = adata['control']
 
-    # ADA decision support (suggestion-only) + physician action log
-    clinical_support = RuleEngine().grouped(pid)
+    # The patient surface has one clinical decision source: audited v2 output.
+    # When v2 is unavailable we show an explicit unavailable state; v1 must
+    # never silently take over.
     clinical_v2 = ClinicalEngineReadOnlyFacade().patient_detail(pid)
-    _rows = get_db().execute(
-        "SELECT rule_code, status, acted_by FROM suggestion_log WHERE patient_link_id=?", (pid,)).fetchall()
-    suggestion_status = {r['rule_code']: dict(r) for r in _rows}
 
     vitals_repo = VitalsRepository()
     rules_repo = ClinicalRulesRepository()
@@ -237,7 +234,6 @@ def detail(pid):
     medication_events = PatientRepository().get_medication_events(pid)
     cockpit_service = PatientCockpitService()
     next_action = cockpit_service.next_action(
-        clinical_support=clinical_support,
         clinical_v2=clinical_v2,
         followups=followups,
         refill_due=adata['refill_due'],
@@ -314,9 +310,7 @@ def detail(pid):
         appt_summary=adata['appointments'],
         visits_count=adata['visits_count'],
         last_visit=adata['last_visit'],
-        clinical_support=clinical_support,
         clinical_v2=clinical_v2,
-        suggestion_status=suggestion_status,
         prescriptions=prescriptions,
         next_action=next_action,
         care_timeline=care_timeline,
@@ -574,39 +568,6 @@ def generate_followups(pid):
             f"{len(result['issues'])} ارزیابی بالینی به علت خطا یا دادهٔ ناکافی به task تبدیل نشد.",
             "warning",
         )
-    return redirect(url_for("patients.detail", pid=pid) + "#cockpit")
-
-
-@bp.route("/<int:pid>/suggestion/action", methods=["POST"])
-@login_required
-def suggestion_action(pid):
-    """Record the physician's decision on an engine suggestion (accept/dismiss).
-
-    On accept, if the suggestion carries a drug class (`rx_class`), bounce to
-    the meds tab with the class as a query param so the add-med form can
-    pre-fill the prescription (Phase 4 dose tool).
-    """
-    from src.adapters.sqlite.core import get_db
-    from src.common.utils import iran_now
-    from urllib.parse import quote
-    rule_code = request.form.get("rule_code", "").strip()
-    status = request.form.get("status", "").strip()
-    if rule_code and status in ("accepted", "dismissed"):
-        db = get_db()
-        now = iran_now().strftime('%Y-%m-%d %H:%M:%S')
-        db.execute(
-            """INSERT INTO suggestion_log (patient_link_id, rule_code, suggestion_text, evidence_level, status, acted_by, acted_at, note)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-               ON CONFLICT(patient_link_id, rule_code) DO UPDATE SET
-                 status=excluded.status, acted_by=excluded.acted_by, acted_at=excluded.acted_at, note=excluded.note""",
-            (pid, rule_code, request.form.get("suggestion_text"), request.form.get("evidence_level"),
-             status, g.user["username"], now, request.form.get("note") or None),
-        )
-        db.commit()
-        log_activity("suggestion_action", f"{status} پیشنهاد {rule_code}", patient_link_id=pid)
-        rx_class = request.form.get("rx_class", "").strip()
-        if status == "accepted" and rx_class:
-            return redirect(url_for("patients.detail", pid=pid) + "?rx_class=" + quote(rx_class) + "#meds")
     return redirect(url_for("patients.detail", pid=pid) + "#cockpit")
 
 

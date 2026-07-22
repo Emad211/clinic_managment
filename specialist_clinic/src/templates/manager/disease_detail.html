@@ -9,7 +9,7 @@
     <a class="btn btn-ghost" href="{{ url_for('manager.diseases') }}"><svg class="icon"><use href="#i-arrow-left"></use></svg> همهٔ بیماری‌ها</a>
 </div>
 <p class="page-intro">
-    {% if cond.description %}{{ cond.description }} {% endif %}همه‌چیزِ این بیماری در یک‌جا: شاخص‌ها و اهداف، قواعد تصمیم، و برنامهٔ پایش.
+    {% if cond.description %}{{ cond.description }} {% endif %}شاخص‌ها، اهداف نمایشی و برنامهٔ پایش این بیماری. قواعد تصمیم فقط در موتور بالینی v2 مدیریت می‌شوند.
     هر تغییری اینجا بدهید بلافاصله روی پروندهٔ بیمارانِ مبتلا به {{ cond.name }} اعمال می‌شود. خروجی پیشنهادی است؛ تجویز با پزشک.
 </p>
 
@@ -82,6 +82,7 @@
 </div>
 
 <!-- ===== DECISION RULES ===== -->
+{% if false %}{# Retired v1 editor retained only as inert template history. #}
 <div class="card">
     <div class="section-title"><svg class="icon"><use href="#i-clipboard"></use></svg> قواعد تصمیم
         <span class="section-sub">{{ rules_active|fa_num }} از {{ rules_total|fa_num }} فعال — شاملِ قواعدِ مشترکِ بین‌بیماری</span></div>
@@ -121,6 +122,7 @@
     <div class="empty"><svg class="icon"><use href="#i-clipboard"></use></svg><div>قاعده‌ای برای این بیماری نیست.</div></div>
     {% endfor %}
 </div>
+{% endif %}
 
 <!-- ===== MONITORING SCHEDULE ===== -->
 {% if protocols %}

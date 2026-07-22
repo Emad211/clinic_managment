@@ -2,12 +2,8 @@ from src.services.patient_cockpit_service import PatientCockpitService
 
 
 def test_next_action_uses_clinical_priority_order():
-    clinical = {"sections": [
-        {"key": "treatment", "rules": [{"id": 1}]},
-        {"key": "redflags", "rules": [{"id": 2}]},
-    ]}
     result = PatientCockpitService.next_action(
-        clinical_support=clinical,
+        clinical_v2={"groups": [{"action_type": "redflag", "items": [{"rule_code": "R1"}]}]},
         followups=[{"status": "open", "reason": "refill"}],
         refill_due=2,
         appointments=[{"status": "scheduled", "scheduled_at": "2026-07-23"}],
@@ -42,6 +38,14 @@ def test_next_action_accepts_v2_projection_without_double_counting_priority():
     )
     assert result["tone"] == "danger"
     assert result["detail"].startswith("1 هشدار")
+
+
+def test_retired_v1_projection_cannot_influence_priority():
+    result = PatientCockpitService.next_action(
+        clinical_support={"sections": [{"key": "redflags", "rules": [{"id": 1}]}]},
+        followups=[], refill_due=0, appointments=[], indicators=[{"latest": 1}],
+    )
+    assert result["tone"] == "ok"
 
 
 def test_next_action_only_counts_unreviewed_or_deferred_v2_actions():

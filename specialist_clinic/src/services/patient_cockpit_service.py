@@ -35,17 +35,8 @@ def _date(value) -> str:
 
 class PatientCockpitService:
     @staticmethod
-    def next_action(*, clinical_support, followups, refill_due, appointments,
-                    indicators, clinical_v2=None) -> dict:
-        sections = (clinical_support or {}).get("sections") or []
-        legacy_redflags = sum(
-            len(section.get("rules") or [])
-            for section in sections if section.get("key") == "redflags"
-        )
-        legacy_actions = sum(
-            len(section.get("rules") or [])
-            for section in sections if section.get("key") in {"safety", "treatment"}
-        )
+    def next_action(*, followups, refill_due, appointments, indicators,
+                    clinical_v2=None, **_retired_inputs) -> dict:
         v2_groups = (clinical_v2 or {}).get("groups") or []
         v2_redflags = sum(
             len(group.get("items") or [])
@@ -61,11 +52,8 @@ class PatientCockpitService:
             if not item.get("current_decision")
             or item["current_decision"].get("decision") == "DEFERRED"
         )
-        # v2 is a selected read-only projection alongside the current engine.
-        # Use the stronger count, not a sum, so the same clinical concern is not
-        # inflated merely because both engines surfaced it.
-        redflags = max(legacy_redflags, v2_redflags)
-        clinical_actions = max(legacy_actions, v2_actions)
+        redflags = v2_redflags
+        clinical_actions = v2_actions
         open_followups = [f for f in (followups or []) if f.get("status") == "open"]
         scheduled = [a for a in (appointments or []) if a.get("status") == "scheduled"]
         scheduled.sort(key=lambda a: _date(a.get("scheduled_at")))

@@ -9,7 +9,6 @@ import json
 from src.adapters.sqlite.clinical_engine_audit_repo import ClinicalEngineAuditRepository
 from src.adapters.sqlite.clinical_engine_fact_repo import ClinicalEngineFactRepository
 from src.adapters.sqlite.followups_repo import FollowupRepository
-from src.services.rule_engine import RuleEngine
 from src.common.utils import today_str, iran_now
 
 REASON_BY_ACTION = {
@@ -50,44 +49,12 @@ def _months_since(date_str):
 
 
 def due_clinical_events(pid: int) -> list[dict]:
-    """Clinically-DUE monitoring/screening/vaccine/red-flag items for a patient,
-    as plain data with NO side effects. Shared by the worklist generator and the
-    engagement dispatcher (services/engagement_service.py).
+    """Compatibility seam kept for callers; v1 clinical events are retired.
 
-    'Due' = the recall interval has elapsed or the item was never done. It does
-    NOT dedupe against prior tasks/sends — each caller applies its own dedup (the
-    worklist via recently_handled_source, the dispatcher via the engagement ledger).
-    Each item: {action, rule_code, title, item, months}.
+    Clinical tasks are now projected exclusively by ClinicalV2FollowupService.
+    An inactive v2 engine means no rule-derived task, never a fallback to v1.
     """
-    # During selected v2 rollout, legacy clinical due events are disabled for
-    # that patient. Administrative appointment/refill flows remain elsewhere.
-    if ClinicalV2FollowupService().enabled_for(pid):
-        return []
-    eng = RuleEngine()
-    fired = eng.evaluate(pid)
-    flags = eng.flags.get_flags(pid)
-    out = []
-    for r in fired:
-        act = r.get('action_type')
-        if act == 'redflag':
-            out.append({'action': 'redflag', 'rule_code': r['rule_code'],
-                        'title': r['title'], 'item': r['rule_code'], 'months': None})
-            continue
-        if act not in REASON_BY_ACTION:
-            continue
-        params = r.get('params') or {}
-        item = params.get('item') or params.get('vaccine') or r['rule_code']
-        months = params.get('interval_months')
-        if months is None:
-            months = ITEM_DEFAULT_MONTHS.get(item)
-        if months == 0:  # "every visit" → handled by the panel, not the worklist
-            continue
-        last = _last_done(pid, item, flags)
-        if last and months and (_months_since(last) or 0) < months:
-            continue  # done recently → not due
-        out.append({'action': act, 'rule_code': r['rule_code'], 'title': r['title'],
-                    'item': item, 'months': months})
-    return out
+    return []
 
 
 def generate_for_patient(pid: int) -> int:

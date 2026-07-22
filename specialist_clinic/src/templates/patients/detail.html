@@ -8,69 +8,9 @@
 {% set lvlcolor = {'danger':'var(--danger-fg)','warn':'var(--warn-fg)','ok':'var(--ok-fg)','none':'var(--muted)'} %}
 {% set riskpos = {'ok':12,'low':38,'medium':66,'high':90} %}
 
-{# ---------- reusable ADA suggestion card (params passed: macros don't see render context) ---------- #}
-{% macro sugg_card(r, statuses, dcmap, pid) %}
-  {% set st = (statuses or {}).get(r.rule_code) %}
-  {% set sev = 'sev-urgent' if r.severity=='urgent' else 'sev-warn' if r.severity=='warn' else 'sev-info' %}
-  <div class="suggestion {{ sev }}{% if st and st.status in ('accepted','dismissed') %} is-acted{% endif %}">
-    <div class="s-top">
-      <span class="s-title">{{ r.title }}</span>
-      <span class="s-codes">
-        {% if r.evidence_level %}<span class="badge badge-violet" style="font-size:10px;">شواهد {{ r.evidence_level }}</span>{% endif %}
-        <span class="badge badge-muted" style="font-size:10px;">{{ r.rule_code }}</span>
-      </span>
-    </div>
-    {% set rx_class = (r.params.classes[0] if r.params and r.params.classes else '') %}
-    <div class="s-body">{{ r.recommendation }}
-      {% if r.params and r.params.classes %}
-      <div class="legend" style="margin-top:var(--s2);">
-        {% for c in r.params.classes %}<span class="chip"><span class="dot dot-ok"></span> {{ dcmap.get(c, c) }}</span>{% endfor %}
-      </div>
-      {% endif %}
-      {% if r.dosage_titration %}<div class="s-note"><svg class="icon icon-sm"><use href="#i-syringe"></use></svg> {{ r.dosage_titration }}</div>{% endif %}
-      {% if r.action_type=='suggest_med' and (r.contraindications or r.monitoring) %}
-      <div class="sugg-safety">
-        {% if r.contraindications %}<div class="s-note danger"><svg class="icon icon-sm"><use href="#i-alert"></use></svg> <b>منع/احتیاط:</b> {{ r.contraindications }}</div>{% endif %}
-        {% if r.monitoring %}<div class="s-note"><svg class="icon icon-sm"><use href="#i-line-chart"></use></svg> <b>پایش:</b> {{ r.monitoring }}</div>{% endif %}
-      </div>
-      {% else %}
-      {% if r.monitoring %}<div class="s-note"><svg class="icon icon-sm"><use href="#i-line-chart"></use></svg> پایش: {{ r.monitoring }}</div>{% endif %}
-      {% if r.contraindications %}<div class="s-note danger"><svg class="icon icon-sm"><use href="#i-alert"></use></svg> {{ r.contraindications }}</div>{% endif %}
-      {% endif %}
-    </div>
-    {% if r.action_type in ['suggest_med','safety_alert'] or st %}
-    <div class="s-actions">
-      {% if st and st.status=='accepted' %}<span class="badge badge-ok"><svg class="icon icon-sm"><use href="#i-check"></use></svg> اعمال‌شده · {{ st.acted_by }}</span>
-      {% elif st and st.status=='dismissed' %}<span class="badge badge-muted"><svg class="icon icon-sm"><use href="#i-x"></use></svg> رد‌شده · {{ st.acted_by }}</span>{% endif %}
-      {% if r.action_type in ['suggest_med','safety_alert'] %}
-      <form class="m-0" method="post" action="{{ url_for('patients.suggestion_action', pid=pid) }}">
-        <input type="hidden" name="rule_code" value="{{ r.rule_code }}">
-        <input type="hidden" name="suggestion_text" value="{{ r.recommendation }}">
-        <input type="hidden" name="evidence_level" value="{{ r.evidence_level }}">
-        {% if r.action_type=='suggest_med' and rx_class %}<input type="hidden" name="rx_class" value="{{ rx_class }}">{% endif %}
-        <input type="hidden" name="status" value="accepted">
-        <button class="btn btn-sm btn-ok" type="submit"><svg class="icon icon-sm"><use href="#i-check"></use></svg> اعمال شد</button>
-      </form>
-      <form class="m-0" method="post" action="{{ url_for('patients.suggestion_action', pid=pid) }}">
-        <input type="hidden" name="rule_code" value="{{ r.rule_code }}">
-        <input type="hidden" name="status" value="dismissed">
-        <button class="btn btn-sm btn-ghost" type="submit"><svg class="icon icon-sm"><use href="#i-x"></use></svg> رد</button>
-      </form>
-      {% endif %}
-    </div>
-    {% endif %}
-  </div>
-{% endmacro %}
-
 {% block content %}
-{% set redflag_secs = clinical_support.sections|selectattr('key','equalto','redflags')|list if clinical_support else [] %}
-{% set action_secs = clinical_support.sections|selectattr('key','in',['safety','treatment'])|list if clinical_support else [] %}
-{# monitoring + screening + vaccination collapse into one compact table; the rest (risk/assessment/lifestyle) stay as cards #}
-{% set sched_secs = clinical_support.sections|selectattr('key','in',['monitoring','vaccination'])|list if clinical_support else [] %}
-{% set info_secs = clinical_support.sections|rejectattr('key','in',['redflags','safety','treatment','monitoring','vaccination'])|list if clinical_support else [] %}
-{% set action_count = action_secs|map(attribute='rules')|map('length')|sum %}
-{% set sched_count = sched_secs|map(attribute='rules')|map('length')|sum %}
-{% set info_count = info_secs|map(attribute='rules')|map('length')|sum %}
+{% set v2_action_count = namespace(value=0) %}
+{% if clinical_v2 %}{% for group in clinical_v2.groups or [] %}{% if group.action_type in ['redflag','safety_alert','suggest_med'] %}{% set v2_action_count.value = v2_action_count.value + (group.items|length) %}{% endif %}{% endfor %}{% endif %}
 
 <!-- ============ PATIENT HERO (persistent, single source of summary) ============ -->
 <div class="crumb"><a href="{{ url_for('patients.list_patients') }}">بیماران</a> / پرونده</div>
@@ -137,7 +77,7 @@
 
 <!-- ============ TAB BAR ============ -->
 <div class="tabbar" role="tablist" aria-label="بخش‌های پرونده بیمار">
-    <button type="button" role="tab" id="tab-cockpit" aria-controls="pane-cockpit" aria-selected="true" tabindex="0" data-tab="cockpit" class="active"><svg class="icon"><use href="#i-stethoscope"></use></svg> نمای کلی{% if action_count %} <span class="pill pill-danger">{{ action_count|fa_num }}</span>{% endif %}</button>
+    <button type="button" role="tab" id="tab-cockpit" aria-controls="pane-cockpit" aria-selected="true" tabindex="0" data-tab="cockpit" class="active"><svg class="icon"><use href="#i-stethoscope"></use></svg> نمای کلی{% if v2_action_count.value %} <span class="pill pill-danger">{{ v2_action_count.value|fa_num }}</span>{% endif %}</button>
     <button type="button" role="tab" id="tab-trends" aria-controls="pane-trends" aria-selected="false" tabindex="-1" data-tab="trends"><svg class="icon"><use href="#i-line-chart"></use></svg> روند و شاخص‌ها</button>
     <button type="button" role="tab" id="tab-meds" aria-controls="pane-meds" aria-selected="false" tabindex="-1" data-tab="meds"><svg class="icon"><use href="#i-pill"></use></svg> داروها <span class="pill">{{ medications|selectattr('is_active')|list|length|fa_num }}</span></button>
     <button type="button" role="tab" id="tab-record" aria-controls="pane-record" aria-selected="false" tabindex="-1" data-tab="record"><svg class="icon"><use href="#i-clipboard"></use></svg> پرونده و داده‌ها</button>
@@ -148,17 +88,12 @@
 <!-- ============================================================= -->
 <section class="tab-pane" id="pane-cockpit" aria-labelledby="tab-cockpit" data-pane="cockpit" role="tabpanel">
 
-    {% if clinical_v2 %}
-        {% include "patients/_clinical_engine_v2.html" %}
-    {% endif %}
-
-    {# ---- RED FLAGS (dominant) ---- #}
-    {% for sec in redflag_secs %}
-    <div class="redflag-card">
-        <div class="rf-head"><svg class="icon"><use href="#i-zap"></use></svg> هشدار فوری — نیازمند اقدام</div>
-        {% for r in sec.rules %}<div class="rf-item"><b>{{ r.title }}:</b> {{ r.recommendation }}</div>{% endfor %}
+    {% if clinical_v2 %}{% include "patients/_clinical_engine_v2.html" %}{% else %}
+    <div class="card" id="clinical-engine-v2">
+        <div class="section-title"><svg class="icon"><use href="#i-shield"></use></svg> تصمیم‌یار بالینی</div>
+        <div class="empty-mini">موتور جدید هنوز برای این بیمار فعال نیست؛ هیچ پیشنهاد بالینی از موتور قدیمی نمایش داده نمی‌شود.</div>
     </div>
-    {% endfor %}
+    {% endif %}
 
     {# ---- KEY VITALS — grouped per disease (one block per condition) ---- #}
     <div class="card">
@@ -202,62 +137,6 @@
         </div>
         {% endif %}
     </div>
-
-    {# ---- PRIORITIZED ADA SUPPORT ---- #}
-    {% if clinical_support and clinical_support.count %}
-    <div class="card">
-        <div class="section-title"><svg class="icon"><use href="#i-activity"></use></svg> پشتیبان بالینی</div>
-        <div class="sugg-summary">
-            <span class="badge badge-violet">{{ clinical_support.count|fa_num }} توصیه</span>
-            {% if action_count %}<span class="chip"><span class="dot dot-danger"></span> {{ action_count|fa_num }} اقدام لازم</span>{% endif %}
-            {% if (sched_count + info_count) %}<span class="chip"><span class="dot dot-ok"></span> {{ (sched_count + info_count)|fa_num }} اطلاعاتی</span>{% endif %}
-            <span class="muted text-xs ms-auto"><svg class="icon icon-sm"><use href="#i-info"></use></svg> پیشنهادِ سیستم — تأیید و تجویز با پزشک</span>
-        </div>
-
-        {# actionable first (safety + treatment) #}
-        {% for sec in action_secs %}
-        <div class="sugg-group-title">{{ sec.label }}</div>
-        {% for r in sec.rules %}{{ sugg_card(r, suggestion_status, drug_class_map, patient.id) }}{% endfor %}
-        {% endfor %}
-
-        {# informational, collapsed: compact monitoring/screening/vaccination table + the rest as cards #}
-        {% if sched_secs or info_secs %}
-        <div class="collapse-toggle" data-collapse-toggle="adaInfo"><svg class="icon"><use href="#i-chevron-left"></use></svg> نمایش {{ (sched_count + info_count)|fa_num }} توصیهٔ اطلاعاتی (پایش، غربالگری، واکسن، ریسک، اهداف، سبک زندگی)</div>
-        <div data-collapse="adaInfo" hidden>
-            {# --- compact table: monitoring / screening / vaccination --- #}
-            {% if sched_secs %}
-            <div class="sugg-group-title"><svg class="icon icon-sm"><use href="#i-calendar"></use></svg> پایش، غربالگری و واکسیناسیون</div>
-            <div class="table-wrap">
-            <table>
-                <tbody>
-                {% for sec in sched_secs %}{% for r in sec.rules %}
-                    {% set st = (suggestion_status or {}).get(r.rule_code) %}
-                    <tr>
-                        <td style="width:1%;"><svg class="icon icon-sm"><use href="#i-{{ 'syringe' if sec.key=='vaccination' else 'calendar' }}"></use></svg></td>
-                        <td><b>{{ r.title }}</b><div class="muted text-xs">{{ r.recommendation }}</div></td>
-                        <td class="muted text-xs" style="white-space:nowrap;">{{ r.monitoring or r.dosage_titration or '' }}</td>
-                        <td style="width:1%;white-space:nowrap;">
-                            {% if st and st.status=='accepted' %}<span class="badge badge-ok">انجام شد</span>
-                            {% elif st and st.status=='dismissed' %}<span class="badge badge-muted">رد‌شده</span>
-                            {% elif r.severity=='urgent' %}<span class="badge badge-danger">سررسید</span>
-                            {% elif r.severity=='warn' %}<span class="badge badge-warn">نزدیک</span>
-                            {% else %}<span class="badge badge-info">برنامه‌ریزی</span>{% endif %}
-                        </td>
-                    </tr>
-                {% endfor %}{% endfor %}
-                </tbody>
-            </table>
-            </div>
-            {% endif %}
-            {# --- remaining info sections (risk / assessment / lifestyle) as cards --- #}
-            {% for sec in info_secs %}
-            <div class="sugg-group-title">{{ sec.label }}</div>
-            {% for r in sec.rules %}{{ sugg_card(r, suggestion_status, drug_class_map, patient.id) }}{% endfor %}
-            {% endfor %}
-        </div>
-        {% endif %}
-    </div>
-    {% endif %}
 
     {# ---- OPEN FOLLOWUPS ---- #}
     {% if followups %}

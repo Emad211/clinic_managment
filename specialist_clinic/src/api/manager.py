@@ -43,6 +43,8 @@ def clinical_engine_action(action):
     note = request.form.get("note", "").strip()
     try:
         if action == "compare":
+            if not service.rules.active_ruleset("general-outpatient"):
+                raise ActivationGateError("ابتدا بستهٔ قواعد v2 باید وارد، بازبینی و فریز شود")
             report = service.build_report(as_of_at=iran_now(), created_by=actor)
             if report["status"] == "PASS":
                 flash("گزارش ده بیمار با موفقیت ساخته شد و همهٔ گیت‌ها عبور کردند.", "success")
@@ -247,28 +249,8 @@ def decision_rules():
 @bp.route("/decision-rules/update", methods=["POST"])
 @manager_required
 def decision_rules_update():
-    rule_id = request.form.get("rule_id", type=int)
-    if not rule_id:
-        flash("شناسه نامعتبر")
-        return redirect(url_for("manager.diseases"))
-    fields = {
-        'recommendation': request.form.get("recommendation", "").strip(),
-        'dosage_titration': request.form.get("dosage_titration", "").strip() or None,
-        'monitoring': request.form.get("monitoring", "").strip() or None,
-        'contraindications': request.form.get("contraindications", "").strip() or None,
-        'evidence_level': request.form.get("evidence_level", "").strip() or None,
-        'severity': request.form.get("severity", "info"),
-        'priority': request.form.get("priority", type=int) or 100,
-        'is_active': 1 if request.form.get("is_active") == "on" else 0,
-    }
-    sets = ', '.join(f"{k}=?" for k in fields)
-    get_db().execute(f"UPDATE clinical_rules SET {sets} WHERE id=?",
-                     (*fields.values(), rule_id))
-    get_db().commit()
-    log_activity("decision_rule_update", f"ویرایش قاعدهٔ تصمیم #{rule_id}")
-    flash("قاعده به‌روزرسانی شد", "success")
-    base = (request.referrer or url_for("manager.diseases")).split('#')[0]
-    return redirect(base + f"#rule-{rule_id}")
+    flash("ویرایش قواعد موتور قدیمی متوقف شده است؛ قواعد تصمیم فقط از مسیر v2 منتشر می‌شوند.", "warning")
+    return redirect(url_for("manager.clinical_engine"))
 
 
 @bp.route("/diseases")
@@ -309,7 +291,7 @@ def _indicator_applies(ind: dict, code: str) -> bool:
 @bp.route("/diseases/<code>")
 @manager_required
 def disease_detail(code):
-    """One disease in one page: its indicators/targets + decision rules + monitoring."""
+    """One disease in one page: display indicators/targets + monitoring."""
     from src.adapters.sqlite.clinical_rules_repo import ClinicalRulesRepository, CATEGORY_LABELS
     db = get_db()
     cond = db.execute("SELECT * FROM conditions WHERE code=?", (code,)).fetchone()
@@ -326,16 +308,6 @@ def disease_detail(code):
     ind_groups = [(cc, CATEGORY_LABELS.get(cc, cc), ig[cc])
                   for cc in ['glycemic', 'bp', 'lipid', 'kidney', 'anthro', 'other'] if cc in ig]
 
-    # Decision rules for this module (+ cross-disease 'all'), grouped by category
-    rules = [dict(r) for r in db.execute(
-        "SELECT * FROM clinical_rules WHERE condition_code IN (?, 'all') ORDER BY priority, id",
-        (code,)).fetchall()]
-    rg = {}
-    for r in rules:
-        rg.setdefault(r['category'], []).append(r)
-    rule_groups = [(cc, _RULE_CAT_LABELS.get(cc, cc), rg[cc]) for cc in _RULE_CAT_ORDER if cc in rg]
-    rule_groups += [(cc, _RULE_CAT_LABELS.get(cc, cc), g) for cc, g in rg.items() if cc not in _RULE_CAT_ORDER]
-
     # Monitoring schedule (care protocols) for this condition
     protocols = [dict(p) for p in db.execute(
         "SELECT * FROM care_protocols WHERE condition_id=? AND is_active=1 ORDER BY interval_months",
@@ -343,8 +315,7 @@ def disease_detail(code):
 
     return render_template(
         "manager/disease_detail.html", active_page='manager', cond=dict(cond),
-        ind_groups=ind_groups, rule_groups=rule_groups, protocols=protocols,
-        rules_active=sum(1 for r in rules if r['is_active']), rules_total=len(rules))
+        ind_groups=ind_groups, protocols=protocols)
 
 
 @bp.route("/rules/add", methods=["POST"])
