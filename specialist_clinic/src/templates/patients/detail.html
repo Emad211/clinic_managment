@@ -721,15 +721,35 @@
         </div>
         {# --- comorbidity flags (disease + general) in one save_flags form --- #}
         {% set comorb_flags = (flags_by_section.disease or []) + (flags_by_section.general or []) %}
+        {% set comorb_detail_flags = comorb_flags|rejectattr('flag_type', 'equalto', 'bool')|list %}
+        {% set comorb_bool_flags = comorb_flags|selectattr('flag_type', 'equalto', 'bool')|list %}
         {% if comorb_flags %}
-        <div class="divider-dashed" style="margin-top:var(--s4);padding-top:var(--s4);">
-            <div class="muted text-xs" style="font-weight:700;margin-bottom:var(--s3);">شرایط همراه (ورودی‌های موتور تصمیم)</div>
+        <div class="divider-dashed comorbidity-section">
+            <div class="comorbidity-heading">
+                <div>
+                    <div class="text-sm" style="font-weight:700;">شرایط همراه</div>
+                    <div class="muted text-xs">اطلاعات تکمیلی برای تصمیم‌یار بالینی</div>
+                </div>
+            </div>
             <form method="post" action="{{ url_for('patients.save_flags', pid=patient.id) }}">
                 <input type="hidden" name="flag_keys" value="{{ comorb_flags|map(attribute='flag_key')|join(',') }}">
-                <div class="grid grid-3">
-                    {% for f in comorb_flags %}{{ flag_field(f, patient_flags) }}{% endfor %}
-                </div>
-                <button class="btn btn-sm mt-3" type="submit"><svg class="icon icon-sm"><use href="#i-save"></use></svg> ذخیرهٔ شرایط همراه</button>
+                {% if comorb_detail_flags %}
+                <fieldset class="condition-group">
+                    <legend>نیازمند انتخاب جزئیات</legend>
+                    <div class="condition-fields">
+                        {% for f in comorb_detail_flags %}{{ flag_field(f, patient_flags) }}{% endfor %}
+                    </div>
+                </fieldset>
+                {% endif %}
+                {% if comorb_bool_flags %}
+                <fieldset class="condition-group">
+                    <legend>گزینه‌های بله / خیر</legend>
+                    <div class="condition-toggles">
+                        {% for f in comorb_bool_flags %}<div class="condition-toggle-card">{{ flag_field(f, patient_flags) }}</div>{% endfor %}
+                    </div>
+                </fieldset>
+                {% endif %}
+                <div class="condition-actions"><button class="btn btn-sm" type="submit"><svg class="icon icon-sm"><use href="#i-save"></use></svg> ذخیرهٔ شرایط همراه</button></div>
             </form>
         </div>
         {% endif %}

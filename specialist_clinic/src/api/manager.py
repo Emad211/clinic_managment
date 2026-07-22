@@ -8,6 +8,10 @@ from src.services.activity_logger import log_activity
 from src.adapters import accounting_bridge
 from src.common.network import get_network_info
 from src.config.settings import Config
+from src.common.utils import iran_now
+from src.services.clinical_engine.activation import (
+    ActivationGateError, ClinicalEngineActivationService,
+)
 
 bp = Blueprint("manager", __name__, url_prefix="/manager")
 
@@ -17,6 +21,61 @@ bp = Blueprint("manager", __name__, url_prefix="/manager")
 def index():
     """Single home for configuration; operational metrics live on the dashboard."""
     return render_template("manager/index.html", active_page='manager')
+
+
+@bp.route("/clinical-engine")
+@manager_required
+def clinical_engine():
+    projection = ClinicalEngineActivationService().dashboard()
+    return render_template(
+        "manager/clinical_engine.html", engine=projection,
+        active_page="clinical_engine",
+    )
+
+
+@bp.route("/clinical-engine/<action>", methods=["POST"])
+@manager_required
+def clinical_engine_action(action):
+    """One guarded manager seam; the service remains the sole policy owner."""
+    service = ClinicalEngineActivationService()
+    actor = str(g.user["username"] or "manager")
+    reviewer = (request.form.get("reviewer") or g.user["full_name"] or actor).strip()
+    note = request.form.get("note", "").strip()
+    try:
+        if action == "compare":
+            report = service.build_report(as_of_at=iran_now(), created_by=actor)
+            if report["status"] == "PASS":
+                flash("گزارش ده بیمار با موفقیت ساخته شد و همهٔ گیت‌ها عبور کردند.", "success")
+            else:
+                flash("گزارش ساخته شد، اما فعال‌سازی همچنان مسدود است. موارد قرمز را بررسی کنید.", "warning")
+        elif action == "approve":
+            if request.form.get("attestation") != "yes":
+                raise ActivationGateError("تأیید مسئولیت و بازبینی کامل گزارش الزامی است")
+            service.approve(
+                request.form.get("role", ""), reviewer=reviewer,
+                report_hash=request.form.get("report_hash", ""), note=note,
+            )
+            flash("تأیید به گزارش فعلی متصل و ثبت شد.", "success")
+        elif action == "activate-selected":
+            service.activate("on_selected", activated_by=actor)
+            flash("انتشار محدود موتور v2 فعال شد.", "success")
+        elif action == "verify-selected":
+            service.verify_selected_rollout(reviewer=reviewer, note=note)
+            flash("نتیجهٔ پایش انتشار محدود ثبت شد.", "success")
+        elif action == "promote-ruleset":
+            service.promote_compared_ruleset(promoted_by=actor)
+            flash("مجموعه‌قواعد بررسی‌شده به ACTIVE ارتقا یافت.", "success")
+        elif action == "activate-global":
+            service.activate("on", activated_by=actor)
+            flash("موتور v2 برای همهٔ بیماران فعال شد.", "success")
+        elif action == "rollback":
+            service.rollback(rolled_back_by=actor, reason=note)
+            flash("موتور فوراً خاموش شد؛ تاریخچهٔ ممیزی حفظ شده است.", "success")
+        else:
+            raise ActivationGateError("عملیات ناشناخته است")
+    except (ActivationGateError, ValueError, LookupError) as exc:
+        flash(f"عملیات انجام نشد: {exc}", "error")
+    return redirect(url_for("manager.clinical_engine") + "#engine-actions")
 
 
 @bp.route("/settings", methods=["GET", "POST"])
@@ -126,7 +185,7 @@ def protocols():
 @manager_required
 def rules():
     """Legacy deep-link; indicator editing now has one home per disease."""
-    return redirect(url_for("manager.diseases"))
+    return redirect(url_for("manager.clinical_engine"))
 
 
 @bp.route("/rules/update", methods=["POST"])
@@ -182,7 +241,7 @@ _RULE_CAT_ORDER = ['redflag', 'diagnosis', 'target', 'medication', 'bp_rx', 'lip
 @manager_required
 def decision_rules():
     """Legacy deep-link; decision rules now live on each disease page."""
-    return redirect(url_for("manager.diseases"))
+    return redirect(url_for("manager.clinical_engine"))
 
 
 @bp.route("/decision-rules/update", methods=["POST"])

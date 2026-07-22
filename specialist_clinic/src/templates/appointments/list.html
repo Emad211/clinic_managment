@@ -22,12 +22,14 @@
         <input type="hidden" name="status" value="{{ active_status }}">
         <button class="btn" type="submit"><svg class="icon"><use href="#i-filter"></use></svg> اعمال بازه</button>
     </form>
-    <div class="flex items-center gap-2 wrap" style="margin-top:var(--s3);">
+    <div class="filter-strip appointment-filter-strip" aria-label="فیلتر وضعیت نوبت‌ها">
         <span class="muted text-xs">وضعیت:</span>
-        <a class="btn btn-sm {% if not active_status %}btn{% else %}btn-ghost{% endif %}" href="{{ url_for('appointments.list_appointments', **{'from':request.args.get('from',''),'to':request.args.get('to','')}) }}">همه</a>
+        <div class="filter-options">
+        <a class="btn btn-sm filter-option {% if not active_status %}btn{% else %}btn-ghost{% endif %}" href="{{ url_for('appointments.list_appointments', **{'from':request.args.get('from',''),'to':request.args.get('to','')}) }}">همه</a>
         {% for k, v in status_fa.items() %}
-        <a class="btn btn-sm {% if active_status==k %}btn{% else %}btn-ghost{% endif %}" href="{{ url_for('appointments.list_appointments', status=k, **{'from':request.args.get('from',''),'to':request.args.get('to','')}) }}">{{ v }}</a>
+        <a class="btn btn-sm filter-option {% if active_status==k %}btn{% else %}btn-ghost{% endif %}" href="{{ url_for('appointments.list_appointments', status=k, **{'from':request.args.get('from',''),'to':request.args.get('to','')}) }}">{{ v }}</a>
         {% endfor %}
+        </div>
     </div>
 </div>
 

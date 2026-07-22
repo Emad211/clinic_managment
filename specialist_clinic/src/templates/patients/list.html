@@ -17,13 +17,15 @@
         <button class="btn" type="submit"><svg class="icon"><use href="#i-search"></use></svg> جستجو</button>
         {% if q or active_filter %}<a class="btn btn-ghost" href="{{ url_for('patients.list_patients') }}">پاک‌کردن</a>{% endif %}
     </form>
-    <div class="flex items-center gap-2 wrap" style="margin-top:var(--s3);">
+    <div class="filter-strip patient-filter-strip" aria-label="فیلتر بیماران">
         <span class="muted text-xs">فیلتر:</span>
-        <a class="btn btn-sm {% if not active_filter %}btn{% else %}btn-ghost{% endif %}" href="{{ url_for('patients.list_patients', q=q) }}">همه <span class="badge badge-muted">{{ counts.all|fa_num }}</span></a>
-        <a class="btn btn-sm {% if active_filter=='uncontrolled' %}btn-danger{% else %}btn-ghost{% endif %}" href="{{ url_for('patients.list_patients', q=q, filter='uncontrolled') }}">کنترل‌نشده {% if counts.uncontrolled %}<span class="badge badge-danger">{{ counts.uncontrolled|fa_num }}</span>{% endif %}</a>
+        <div class="filter-options">
+        <a class="btn btn-sm filter-option {% if not active_filter %}btn{% else %}btn-ghost{% endif %}" href="{{ url_for('patients.list_patients', q=q) }}"><span>همه</span><span class="filter-count">{{ counts.all|fa_num }}</span></a>
+        <a class="btn btn-sm filter-option {% if active_filter=='uncontrolled' %}btn-danger{% else %}btn-ghost{% endif %}" href="{{ url_for('patients.list_patients', q=q, filter='uncontrolled') }}"><span>کنترل‌نشده</span><span class="filter-count{% if counts.uncontrolled %} is-danger{% endif %}">{{ counts.uncontrolled|fa_num }}</span></a>
         {% for c in condition_catalog %}{% if c.code %}
-        <a class="btn btn-sm {% if active_filter==c.code %}btn{% else %}btn-ghost{% endif %}" href="{{ url_for('patients.list_patients', q=q, filter=c.code) }}">{{ c.name }}</a>
+        <a class="btn btn-sm filter-option {% if active_filter==c.code %}btn{% else %}btn-ghost{% endif %}" href="{{ url_for('patients.list_patients', q=q, filter=c.code) }}">{{ c.name }}</a>
         {% endif %}{% endfor %}
+        </div>
     </div>
 </div>
 

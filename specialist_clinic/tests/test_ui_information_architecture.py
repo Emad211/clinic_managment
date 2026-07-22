@@ -19,8 +19,12 @@ def test_followups_live_inside_message_hub_not_as_second_sidebar_destination():
 
 def test_management_page_has_one_navigation_surface_and_no_operational_duplicates():
     page = template("manager/index.html")
-    for endpoint in ("manager.settings", "manager.diseases", "manager.protocols", "manager.users"):
+    for endpoint in (
+        "manager.settings", "manager.clinical_engine",
+        "manager.protocols", "manager.users",
+    ):
         assert page.count(f"url_for('{endpoint}')") == 1
+    assert "url_for('manager.diseases')" not in page
     assert "url_for('manager.engagement')" not in page
     assert "پیگیری‌های باز" not in page
     assert "card kpi" not in page

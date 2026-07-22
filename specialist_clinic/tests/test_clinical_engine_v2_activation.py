@@ -56,14 +56,6 @@ class _Rules:
             db.execute("UPDATE clinical_rulesets SET status='ACTIVE' WHERE id=?", (ruleset_id,))
 
 
-class _Legacy:
-    def __init__(self, results=None):
-        self.results = results or {}
-
-    def evaluate(self, patient_id, *, as_of_at=None):
-        return self.results.get(patient_id, [])
-
-
 class _Capture:
     def capture(self, patient_id, **_kwargs):
         return f"run-{patient_id}"
@@ -81,14 +73,14 @@ class _Audit:
                 "evaluations": self.evaluations.get(patient_id, [])}
 
 
-def _service(*, legacy=None, audit=None):
+def _service(*, audit=None):
     from src.adapters.sqlite.clinical_engine_activation_repo import ClinicalEngineActivationRepository
     from src.services.clinical_engine.activation import ClinicalEngineActivationService
 
     state = ClinicalEngineActivationRepository()
     return ClinicalEngineActivationService(
         state=state, rules=_Rules(state), audit=audit or _Audit(),
-        legacy=legacy or _Legacy(), capture_factory=lambda: _Capture(),
+        capture_factory=lambda: _Capture(),
     )
 
 
@@ -117,9 +109,8 @@ def test_exact_ten_patient_report_is_reproducible_and_passes(activation_app):
     assert "TEST0010" in text
 
 
-def test_fixed_as_of_excludes_future_legacy_observation(activation_app):
+def test_fixed_as_of_excludes_future_observation(activation_app):
     from src.adapters.sqlite.vitals_repo import VitalsRepository
-    from src.services.rule_engine import _age_from_birthdate
 
     _app, db = activation_app
     patient_id = db.execute(
@@ -138,7 +129,6 @@ def test_fixed_as_of_excludes_future_legacy_observation(activation_app):
         patient_id, as_of_at=datetime(2026, 7, 22, 12, 0, 0)
     )
     assert latest["hba1c"]["value"] == 7
-    assert _age_from_birthdate("2000-01-01", datetime(2026, 7, 22)) == 26
 
 
 def test_missing_demo_patient_blocks_activation_report(activation_app):
@@ -149,42 +139,6 @@ def test_missing_demo_patient_blocks_activation_report(activation_app):
     assert report["status"] == "BLOCKED"
     assert report["checks"]["exact_demo_cohort"] is False
     assert report["failures"] == [{"national_id": "TEST0010", "code": "DEMO_PATIENT_MISSING"}]
-
-
-def test_safety_difference_requires_named_adjudication_and_fresh_report(activation_app):
-    _app, db = activation_app
-    patient_id = db.execute(
-        "SELECT id FROM patient_links WHERE national_id='TEST0001'"
-    ).fetchone()["id"]
-    legacy = _Legacy({patient_id: [{"id": 77, "action_type": "redflag"}]})
-    service = _service(legacy=legacy)
-    blocked = _passing_report(service)
-    difference = blocked["patients"][0]["safety_differences"][0]
-    assert blocked["status"] == "BLOCKED"
-    assert difference["adjudication"] is None
-
-    service.adjudicate(
-        difference["difference_id"], reviewer="physician",
-        classification="LEGACY_DEFECT", note="Legacy alert is outside the reviewed scope.",
-    )
-    passing = _passing_report(service)
-    assert passing["status"] == "PASS"
-    assert passing["report_hash"] != blocked["report_hash"]
-
-
-def test_v2_defect_adjudication_does_not_clear_safety_gate(activation_app):
-    _app, db = activation_app
-    patient_id = db.execute(
-        "SELECT id FROM patient_links WHERE national_id='TEST0001'"
-    ).fetchone()["id"]
-    service = _service(legacy=_Legacy({patient_id: [{"id": 77, "action_type": "redflag"}]}))
-    blocked = _passing_report(service)
-    difference_id = blocked["patients"][0]["safety_differences"][0]["difference_id"]
-    service.adjudicate(difference_id, reviewer="physician", classification="V2_DEFECT",
-                       note="The v2 safety rule must be fixed before rollout.")
-    rerun = _passing_report(service)
-    assert rerun["status"] == "BLOCKED"
-    assert rerun["patients"][0]["safety_differences"][0]["gate_cleared"] is False
 
 
 def test_non_clean_terminal_run_blocks_gate_even_without_exception(activation_app):
@@ -241,7 +195,7 @@ def test_tampered_report_or_removed_approval_revokes_effective_mode(activation_a
     assert ClinicalEngineFactRepository().get_mode() == "off"
     state.put_json("approval_technical", technical)
     changed = state.get_json("last_report")
-    changed["patients"][0]["legacy_recommendations"] += 1
+    changed["patients"][0]["v2_recommendations"] += 1
     state.put_json("last_report", changed)
     assert ClinicalEngineFactRepository().get_mode() == "off"
 

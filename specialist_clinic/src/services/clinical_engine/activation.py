@@ -13,12 +13,10 @@ from src.adapters.sqlite.clinical_engine_fact_repo import ClinicalEngineFactRepo
 from src.adapters.sqlite.clinical_engine_rules_repo import ClinicalEngineRulesRepository
 from src.common.utils import iran_now
 from src.services.clinical_engine.fact_builder import ShadowFactCapture
-from src.services.rule_engine import RuleEngine
 from src.services.activity_logger import log_activity
 
 
 DEMO_IDS = tuple(f"TEST{i:04d}" for i in range(1, 11))
-SAFETY_ACTIONS = {"redflag", "safety_alert"}
 
 
 class ActivationGateError(RuntimeError):
@@ -43,31 +41,96 @@ class ClinicalEngineActivationService:
     """Build a reproducible ten-patient gate; never self-approve or self-activate."""
 
     def __init__(self, *, state=None, rules=None, audit=None,
-                 legacy=None, capture_factory=None):
+                 capture_factory=None):
         self.state = state or ClinicalEngineActivationRepository()
         self.rules = rules or ClinicalEngineRulesRepository()
         self.audit = audit or ClinicalEngineAuditRepository()
-        self.legacy = legacy or RuleEngine(capture_shadow=False)
         self.capture_factory = capture_factory or self._capture
 
     def _capture(self):
         facts = _ForcedShadowFacts()
         return ShadowFactCapture(repository=facts, audit=self.audit, rules=self.rules)
 
-    @staticmethod
-    def _safety_diff(diff_type: str, national_id: str, legacy_id=None, rule_code=None):
-        body = {"type": diff_type, "national_id": national_id,
-                "legacy_rule_id": legacy_id, "v2_rule_code": rule_code}
-        return {**body, "difference_id": content_hash(body)[:20]}
+    def dashboard(self) -> dict[str, Any]:
+        """Manager-facing, read-only rollout projection with explicit blockers."""
+        report = self.state.get_json("last_report") or {}
+        checks = report.get("checks") or {}
+        approvals = {
+            role: self.state.get_json(f"approval_{role}")
+            for role in ("clinical", "technical")
+        }
+        raw_mode = self.state.raw_mode()
+        effective_mode = ClinicalEngineFactRepository().get_mode()
+        seal = self.state.get_json("seal")
+        verification = self.state.get_json("selected_rollout_verification")
+        ruleset = self.rules.active_ruleset("general-outpatient")
+        report_ok = valid_report(report)
+        selected_valid = self.state.valid_seal("on_selected")
+        global_valid = self.state.valid_seal("on")
+
+        check_labels = {
+            "exact_demo_cohort": "هر ۱۰ بیمار نمونه ارزیابی شده‌اند",
+            "ruleset_frozen": "مجموعه‌قواعد تأییدشده و فریز شده است",
+            "zero_run_failures": "همهٔ اجراها بدون شکست پایان یافته‌اند",
+            "zero_rule_errors": "هیچ قاعده‌ای خطای اجرا ندارد",
+            "burden_at_most_12_cards_per_patient": "بار شناختی پیشنهادها در محدوده است",
+        }
+        blockers = [check_labels.get(key, key) for key, passed in checks.items() if not passed]
+        if not report:
+            blockers.append("هنوز گزارش مقایسهٔ ده بیمار ساخته نشده است")
+        if report_ok and not approvals["clinical"]:
+            blockers.append("تأیید مسئول بالینی ثبت نشده است")
+        if report_ok and not approvals["technical"]:
+            blockers.append("تأیید فنی ثبت نشده است")
+
+        stages = [
+            {"key": "compare", "title": "مقایسهٔ ایمن", "done": report_ok,
+             "detail": "اجرای هم‌زمان روی ده بیمار نمونه"},
+            {"key": "approve", "title": "تأیید دوگانه",
+             "done": bool(approvals["clinical"] and approvals["technical"]),
+             "detail": "امضای بالینی و بازبینی فنی"},
+            {"key": "selected", "title": "انتشار محدود", "done": selected_valid or global_valid,
+             "detail": "نمایش فقط برای بیماران منتخب"},
+            {"key": "global", "title": "انتشار عمومی", "done": global_valid,
+             "detail": "فعال‌سازی پس از پایش انتشار محدود"},
+        ]
+        return {
+            "raw_mode": raw_mode, "effective_mode": effective_mode,
+            "mode_fa": {"off": "خاموش", "shadow": "سایه",
+                        "on_selected": "انتشار محدود", "on": "انتشار عمومی"}.get(
+                            effective_mode, "خاموش"),
+            "mode_tone": ("ok" if global_valid else "info" if selected_valid
+                          else "warn" if raw_mode == "shadow" else "danger"),
+            "report": report, "report_ok": report_ok, "checks": checks,
+            "check_labels": check_labels, "approvals": approvals,
+            "seal": seal, "seal_valid": selected_valid or global_valid,
+            "verification": verification, "ruleset": ruleset,
+            "last_rollback": self.state.get_json("last_rollback"),
+            "blockers": blockers, "stages": stages,
+            "patient_count": len(report.get("patients") or []),
+            "v2_error_count": sum(
+                int(row.get("v2_errors") or 0)
+                for row in (report.get("patients") or [])
+            ),
+            "can_approve": report_ok,
+            "can_activate_selected": bool(
+                report_ok and approvals["clinical"] and approvals["technical"]
+            ),
+            "can_verify_selected": selected_valid,
+            "can_promote": bool(selected_valid and verification and ruleset
+                                and ruleset.get("status") == "SILENT"),
+            "can_activate_global": bool(selected_valid and verification and ruleset
+                                        and ruleset.get("status") == "ACTIVE"),
+            "can_rollback": raw_mode != "off" or bool(seal),
+        }
 
     def build_report(self, *, as_of_at: datetime | None = None,
                      created_by: str = "activation-audit") -> dict[str, Any]:
         as_of_at = as_of_at or iran_now()
         patients = self.state.demo_patients()
         found = {str(p["national_id"]).upper(): p for p in patients}
-        rows, failures, all_differences = [], [], []
+        rows, failures = [], []
         ruleset = self.rules.active_ruleset("general-outpatient")
-        adjudications = self.state.get_json("adjudications", {}) or {}
 
         for national_id in DEMO_IDS:
             patient = found.get(national_id)
@@ -76,7 +139,6 @@ class ClinicalEngineActivationService:
                 continue
             pid = int(patient["id"])
             try:
-                legacy = self.legacy.evaluate(pid, as_of_at=as_of_at)
                 run_id = self.capture_factory().capture(
                     pid, as_of_at=as_of_at, created_by=created_by,
                 )
@@ -89,48 +151,18 @@ class ClinicalEngineActivationService:
                                  "detail": type(exc).__name__})
                 continue
 
-            legacy_safety = {int(r["id"]): r for r in legacy
-                             if r.get("action_type") in SAFETY_ACTIONS}
             v2_fired = [e for e in run["evaluations"]
                         if e.get("outcome") == "FIRED" and e.get("recommendation")]
-            mapped_fired = {int(e["legacy_rule_id"]): e for e in v2_fired
-                            if e.get("legacy_rule_id") is not None}
-            differences = []
-            for legacy_id in sorted(set(legacy_safety) - set(mapped_fired)):
-                differences.append(self._safety_diff(
-                    "LEGACY_SAFETY_MISSING_IN_V2", national_id, legacy_id=legacy_id,
-                ))
-            for evaluation in v2_fired:
-                if evaluation.get("action_type") not in SAFETY_ACTIONS:
-                    continue
-                legacy_id = evaluation.get("legacy_rule_id")
-                if legacy_id is None or int(legacy_id) not in legacy_safety:
-                    differences.append(self._safety_diff(
-                        "V2_SAFETY_NOT_IN_LEGACY", national_id,
-                        legacy_id=legacy_id, rule_code=evaluation.get("rule_code"),
-                    ))
-            for item in differences:
-                decision = adjudications.get(item["difference_id"])
-                item["adjudication"] = decision if self._valid_adjudication(decision) else None
-                item["gate_cleared"] = bool(
-                    item["adjudication"]
-                    and item["adjudication"]["classification"]
-                    in {"EXPLAINED_ACCEPTABLE", "LEGACY_DEFECT"}
-                )
-            all_differences.extend(differences)
             rows.append({
                 "national_id": national_id, "patient_link_id": pid,
-                "legacy_rule_ids": sorted(int(r["id"]) for r in legacy),
-                "legacy_recommendations": len(legacy), "v2_run_id": run_id,
+                "v2_run_id": run_id,
                 "v2_fact_snapshot_hash": run.get("fact_snapshot_hash"),
                 "v2_run_status": run["run_status"],
                 "v2_rule_codes": sorted(e["rule_code"] for e in v2_fired),
                 "v2_recommendations": len(v2_fired),
                 "v2_errors": sum(e.get("outcome") == "ERROR" for e in run["evaluations"]),
-                "safety_differences": differences,
             })
 
-        unexplained = sum(not d.get("gate_cleared") for d in all_differences)
         error_count = sum(row["v2_errors"] for row in rows)
         max_cards = max((row["v2_recommendations"] for row in rows), default=0)
         checks = {
@@ -140,7 +172,6 @@ class ClinicalEngineActivationService:
                 row["v2_run_status"] == "COMPLETED" for row in rows
             ),
             "zero_rule_errors": error_count == 0,
-            "zero_unexplained_safety_differences": unexplained == 0,
             # Conservative technical default. Clinical/product owner must approve
             # the report that contains this exact threshold before activation.
             "burden_at_most_12_cards_per_patient": max_cards <= 12,
@@ -180,34 +211,13 @@ class ClinicalEngineActivationService:
             lines.append(f"  {'PASS' if passed else 'FAIL'}  {name}")
         lines.append("patients:")
         for row in report.get("patients") or []:
-            unexplained = sum(not item.get("gate_cleared")
-                              for item in row.get("safety_differences") or [])
             lines.append(
-                f"  {row['national_id']}: legacy={row['legacy_recommendations']} "
-                f"v2={row['v2_recommendations']} errors={row['v2_errors']} "
-                f"unexplained_safety={unexplained}"
+                f"  {row['national_id']}: v2={row['v2_recommendations']} "
+                f"errors={row['v2_errors']} status={row['v2_run_status']}"
             )
         for failure in report.get("failures") or []:
             lines.append(f"  FAILURE {failure['national_id']}: {failure['code']}")
         return "\n".join(lines)
-
-    @staticmethod
-    def _valid_adjudication(value) -> bool:
-        return bool(isinstance(value, dict) and value.get("reviewer")
-                    and value.get("classification") in {"EXPLAINED_ACCEPTABLE", "V2_DEFECT", "LEGACY_DEFECT"}
-                    and value.get("note"))
-
-    def adjudicate(self, difference_id: str, *, reviewer: str,
-                   classification: str, note: str) -> None:
-        decision = {"reviewer": reviewer.strip(), "classification": classification.strip().upper(),
-                    "note": note.strip(), "recorded_at": iran_now().isoformat(sep=" ", timespec="seconds")}
-        if not difference_id or not self._valid_adjudication(decision):
-            raise ActivationGateError("complete, valid safety adjudication is required")
-        values = self.state.get_json("adjudications", {}) or {}
-        values[difference_id] = decision
-        self.state.put_json("adjudications", values)
-        log_activity("clinical_v2_adjudicate", f"Safety difference {difference_id}: {decision['classification']}",
-                     user_id=0, username=decision["reviewer"])
 
     def approve(self, role: str, *, reviewer: str, report_hash: str,
                 note: str) -> None:

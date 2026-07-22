@@ -182,19 +182,6 @@ def create_app(test_config=None):
             click.echo(f"technical_approval: {'YES' if value['technical_approval'] else 'NO'}")
             click.echo(f"seal: {'VALID' if value['seal'] else 'NONE'}")
 
-    @clinical_v2.command("adjudicate")
-    @click.option("--difference-id", required=True)
-    @click.option("--reviewer", required=True)
-    @click.option("--classification", required=True,
-                  type=click.Choice(["EXPLAINED_ACCEPTABLE", "V2_DEFECT", "LEGACY_DEFECT"]))
-    @click.option("--note", required=True)
-    def clinical_v2_adjudicate(difference_id, reviewer, classification, note):
-        from src.services.clinical_engine.activation import ClinicalEngineActivationService
-        ClinicalEngineActivationService().adjudicate(
-            difference_id, reviewer=reviewer, classification=classification, note=note,
-        )
-        click.echo("Safety difference adjudication recorded; rerun compare before approval.")
-
     @clinical_v2.command("approve")
     @click.option("--role", required=True, type=click.Choice(["clinical", "technical"]))
     @click.option("--reviewer", required=True)
