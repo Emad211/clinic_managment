@@ -7,6 +7,8 @@ audited engine run still represents the current patient record:
 * ``patient_links.clinical_data_revision`` is a monotonic per-patient counter.
 * database triggers increment it for every patient-owned source consumed by v2.
 * shared catalog changes invalidate every affected patient snapshot.
+* collection reconciliation events are append-only clinical facts and also invalidate
+  prior runs.
 
 The migration is safe to call repeatedly. Missing guards fail loudly; silently running
 without them could make a stale recommendation look current.
@@ -18,9 +20,12 @@ import sqlite3
 import threading
 
 from src.adapters.sqlite.core import get_db
+from src.adapters.sqlite.clinical_reconciliation_schema import (
+    ensure_clinical_reconciliation_storage,
+)
 
 
-_SCHEMA_VERSION = 2
+_SCHEMA_VERSION = 3
 _MIGRATION_LOCK = threading.Lock()
 _VERIFIED_DATABASES: set[tuple[str, int]] = set()
 _CLINICAL_SOURCE_TABLES = (
@@ -129,7 +134,7 @@ def _revision_trigger_sql(table: str) -> str:
     """
 
 
-def _catalog_trigger_sql() -> str:
+def _shared_trigger_sql() -> str:
     return """
     -- The active flag catalog determines which NOT_ASKED facts exist and how a
     -- stored patient flag is typed. Any catalog change therefore invalidates all
@@ -169,6 +174,17 @@ def _catalog_trigger_sql() -> str:
               WHERE condition_id = NEW.id AND is_active = 1
          );
     END;
+
+    -- A review event changes verification/absence semantics even when the source
+    -- rows themselves are unchanged, so every appended reconciliation event
+    -- invalidates the previous clinical run for that patient.
+    CREATE TRIGGER IF NOT EXISTS trg_clinical_revision_reconciliation_insert
+    AFTER INSERT ON clinical_reconciliation_events
+    BEGIN
+        UPDATE patient_links
+           SET clinical_data_revision = clinical_data_revision + 1
+         WHERE id = NEW.patient_link_id;
+    END;
     """
 
 
@@ -179,6 +195,7 @@ def _expected_trigger_names() -> set[str]:
         "trg_clinical_revision_flag_catalog_update",
         "trg_clinical_revision_flag_catalog_delete",
         "trg_clinical_revision_condition_code_update",
+        "trg_clinical_revision_reconciliation_insert",
     }
     for table in _CLINICAL_SOURCE_TABLES:
         prefix = f"trg_clinical_revision_{table}"
@@ -208,6 +225,7 @@ def ensure_runtime_schema(db: sqlite3.Connection | None = None) -> None:
             "clinical_data_revision",
             "INTEGER NOT NULL DEFAULT 0",
         )
+        ensure_clinical_reconciliation_storage(db)
 
         # Demographic fields are part of the canonical fact snapshot. Updating
         # the revision itself does not recurse because it is not in UPDATE OF.
@@ -226,7 +244,7 @@ def ensure_runtime_schema(db: sqlite3.Connection | None = None) -> None:
         )
         for table in _CLINICAL_SOURCE_TABLES:
             db.executescript(_revision_trigger_sql(table))
-        db.executescript(_catalog_trigger_sql())
+        db.executescript(_shared_trigger_sql())
 
         db.execute(
             "CREATE INDEX IF NOT EXISTS idx_patient_links_clinical_revision "
