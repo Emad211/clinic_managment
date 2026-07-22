@@ -308,6 +308,9 @@ class LegacyFactBundleAdapter:
                 else:
                     fact_key, key_warnings = _key(prefix, raw, row["id"])
                     fact_value = True
+                # Presence of a concrete source row is independently knowable;
+                # reconciliation governs completeness and confirmed absence of the
+                # aggregate list, not whether this particular recorded item exists.
                 add(
                     fact_id=f"{prefix}:{row['id']}",
                     kind=kind,
@@ -318,8 +321,8 @@ class LegacyFactBundleAdapter:
                     system=source,
                     record_id=row["id"],
                     actor=row.get("recorded_by") or row.get("created_by"),
-                    verification=projection.verification,
-                    freshness=projection.freshness,
+                    verification=VerificationStatus.CONFIRMED,
+                    freshness=FreshnessStatus.UNKNOWN,
                     warnings=(
                         *projection.warnings,
                         *(row.get("_history_warnings") or ()),
@@ -346,7 +349,8 @@ class LegacyFactBundleAdapter:
                 )
                 continue
             rows = [
-                row for row in bundle.get(source, [])
+                row
+                for row in bundle.get(source, [])
                 if int(row.get("is_active", 1) or 0)
             ]
             values = sorted(
@@ -373,10 +377,7 @@ class LegacyFactBundleAdapter:
                     if incomplete
                     else VerificationStatus.CONFIRMED
                 ),
-                warnings=(
-                    "LEGACY_RECONCILIATION_ASSUMED",
-                    *( ("LEGACY_APPROXIMATION",) if incomplete else () ),
-                ),
+                warnings=("LEGACY_APPROXIMATION",) if incomplete else (),
             )
             for row in rows:
                 raw = row.get(field)
@@ -406,7 +407,7 @@ class LegacyFactBundleAdapter:
                     system=source,
                     record_id=row["id"],
                     actor=row.get("recorded_by"),
-                    warnings=("LEGACY_RECONCILIATION_ASSUMED", *key_warnings),
+                    warnings=key_warnings,
                 )
 
     def _flags(self, bundle, pid, as_of_at, add):
