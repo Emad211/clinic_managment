@@ -74,6 +74,7 @@
     <div class="reconcile-empty">هیچ مورد فعالی ثبت نشده است. این عبارت فقط پس از «مرور کامل» به معنای نبود صریح مورد خواهد بود.</div>
     {% endif %}
 
+    {% if g.user and g.user.role == 'manager' %}
     <form class="reconcile-form" method="post" action="{{ url_for('clinical_reconciliation.review', pid=patient.id, collection_key=key) }}">
         <input type="hidden" name="return_to" value="workspace">
         <fieldset>
@@ -88,6 +89,9 @@
         <label class="reconcile-check"><input type="checkbox" name="attested" value="yes" required><span>تمام اقلام نمایش‌داده‌شده و وضعیت نبود مورد را بررسی کردم و می‌دانم هر تغییر بعدی این مرور را منسوخ می‌کند.</span></label>
         <button class="btn btn-primary" type="submit"><svg class="icon"><use href="#i-check"></use></svg> ثبت رویداد مرور</button>
     </form>
+    {% else %}
+    <div class="alert-banner alert-warn"><svg class="icon"><use href="#i-shield"></use></svg><span>مشاهده برای کارکنان مجاز است؛ ثبت attestation بالینی در نقش فعلی شما مجاز نیست.</span></div>
+    {% endif %}
 </section>
 {% endmacro %}
 
