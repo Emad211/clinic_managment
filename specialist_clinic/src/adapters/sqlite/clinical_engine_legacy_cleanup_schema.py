@@ -23,6 +23,10 @@ class LegacyClinicalLineagePresent(RuntimeError):
     """Raised when destructive cleanup would discard referenced legacy lineage."""
 
 
+class LegacyClinicalCleanupTransactionActive(RuntimeError):
+    """Raised instead of committing or disturbing a caller-owned transaction."""
+
+
 def _table_exists(db: sqlite3.Connection, table: str) -> bool:
     return bool(
         db.execute(
@@ -226,8 +230,14 @@ def cleanup_legacy_clinical_schema(
 
     Returns a deterministic change report. A second call is a no-op. Every rebuild
     statement executes inside one explicit transaction; no ``executescript`` implicit
-    commit is permitted in this safety boundary.
+    commit is permitted in this safety boundary. A caller-owned transaction is never
+    committed, rolled back or reused.
     """
+    if db.in_transaction:
+        raise LegacyClinicalCleanupTransactionActive(
+            "legacy clinical cleanup requires an idle SQLite connection"
+        )
+
     _assert_no_lineage(
         db,
         "clinical_rule_versions",
@@ -250,7 +260,6 @@ def cleanup_legacy_clinical_schema(
     if not any(before.values()):
         return {"changed": False, "removed": []}
 
-    db.commit()
     foreign_keys = int(db.execute("PRAGMA foreign_keys").fetchone()[0])
     db.execute("PRAGMA foreign_keys=OFF")
     try:
