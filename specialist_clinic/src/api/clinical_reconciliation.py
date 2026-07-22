@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from flask import (
     Blueprint,
+    current_app,
     flash,
     g,
     jsonify,
@@ -13,6 +14,7 @@ from flask import (
 )
 
 from src.adapters.sqlite.clinical_engine_v1_cutover import (
+    ensure_v1_schema_cutover,
     install_v1_request_projection,
 )
 from src.adapters.sqlite.core import get_db
@@ -33,7 +35,7 @@ bp = Blueprint(
 
 
 @bp.record_once
-def install_patient_mutation_guards(state):
+def install_clinical_boundaries(state):
     # The patients blueprint is registered first. Replace only the four legacy
     # endpoint callables that need patient-row ownership checks while preserving
     # every public URL and endpoint name.
@@ -41,12 +43,24 @@ def install_patient_mutation_guards(state):
 
     install(state.app)
 
+    # File-backed databases are cut over while the application is being built,
+    # before a socket can accept traffic. This preserves the zero-write contract
+    # of public/read-only GET routes.
+    if (state.app.config.get("DATABASE_PATH") or "") != ":memory:":
+        with state.app.app_context():
+            ensure_v1_schema_cutover(get_db())
+
 
 @bp.before_app_request
 def install_request_local_v2_rule_projection():
-    """Install only a TEMP read projection required by one manager endpoint."""
+    """Install only connection-local read compatibility required by one route."""
+    db = get_db()
+    # An in-memory database belongs to this exact request connection, so its
+    # bootstrap cleanup must occur here. It cannot alter any persistent file.
+    if (current_app.config.get("DATABASE_PATH") or "") == ":memory:":
+        ensure_v1_schema_cutover(db)
     install_v1_request_projection(
-        get_db(),
+        db,
         endpoint=request.endpoint,
     )
 
