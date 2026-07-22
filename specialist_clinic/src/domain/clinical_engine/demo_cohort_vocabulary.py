@@ -1,6 +1,6 @@
 """Explicit vocabulary corrections for the versioned synthetic activation cohort.
 
-This is not a fuzzy production mapper.  Each entry documents one known seed-only label
+This is not a fuzzy production mapper. Each entry documents one known seed-only label
 that must be converted to the exact canonical catalog display/class before persistence.
 Unknown labels remain unchanged and the repository subsequently fails loudly when no
 single active catalog concept exists.
@@ -12,9 +12,15 @@ from typing import Any, Iterable
 
 
 _DRUG_ALIASES = {
-    # Historical fixture typo; canonical drug_catalog generic_fa is
-    # «روزوواستاتین».
+    # Historical fixture spelling variants. Values are the exact active
+    # ``drug_catalog.generic_fa`` / ``drug_class_key`` pairs.
     ("رزوواستاتین", "statin"): ("روزوواستاتین", "statin"),
+    ("گلیکلازید", "su"): ("گلی‌کلازید", "su"),
+    ("گلی‌بنکلامید", "su"): (
+        "گلی‌بنکلامید (گلی‌بوراید)",
+        "su",
+    ),
+    ("لیسینوپریل", "acei"): ("لیزینوپریل", "acei"),
 }
 
 
