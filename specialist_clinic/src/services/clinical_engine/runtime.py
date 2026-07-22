@@ -137,9 +137,13 @@ class ClinicalEngineRuntimeService:
                 raise ClinicalEngineRuntimeError("clinical evaluation was not started")
             refreshed = self.contract(patient_link_id)
             if refreshed is None:
-                raise ClinicalEngineRuntimeStale("clinical engine mode changed during evaluation")
+                raise ClinicalEngineRuntimeStale(
+                    "clinical engine mode changed during evaluation"
+                )
             if refreshed.ruleset_id != contract.ruleset_id:
-                raise ClinicalEngineRuntimeStale("clinical ruleset changed during evaluation")
+                raise ClinicalEngineRuntimeStale(
+                    "clinical ruleset changed during evaluation"
+                )
             current = self.current_run(refreshed)
             if current:
                 return refreshed, current
@@ -151,11 +155,18 @@ class ClinicalEngineRuntimeService:
     def present_recommendation(
         self, recommendation_event_id: int, contract: ClinicalRuntimeContract
     ) -> int:
-        return self.runtime_repo.append_presentation_once(
-            recommendation_event_id,
-            patient_link_id=contract.patient_link_id,
-            engine_version=contract.engine_version,
-            ruleset_id=contract.ruleset_id,
-            clinical_data_revision=contract.clinical_data_revision,
-            allow_legacy_revision=contract.allow_legacy_test_run,
-        )
+        try:
+            return self.runtime_repo.append_presentation_once(
+                recommendation_event_id,
+                patient_link_id=contract.patient_link_id,
+                engine_version=contract.engine_version,
+                ruleset_id=contract.ruleset_id,
+                clinical_data_revision=contract.clinical_data_revision,
+                allow_legacy_revision=contract.allow_legacy_test_run,
+            )
+        except RuntimeError as exc:
+            if str(exc) == "STALE_RECOMMENDATION":
+                raise ClinicalEngineRuntimeStale(
+                    "patient data changed before recommendation presentation"
+                ) from exc
+            raise
