@@ -4,10 +4,17 @@ from __future__ import annotations
 
 from src.adapters.sqlite.clinical_engine_audit_repo import ClinicalEngineAuditRepository
 from src.adapters.sqlite.clinical_engine_fact_repo import ClinicalEngineFactRepository
+from src.adapters.sqlite.clinical_engine_runtime_repo import (
+    ClinicalEngineRuntimeRepository,
+)
 from src.domain.clinical_engine import (
     ClinicalDecision,
     RecommendationEventType,
     RunStatus,
+)
+from src.services.clinical_engine.runtime import (
+    ClinicalEngineRuntimeError,
+    ClinicalEngineRuntimeService,
 )
 
 
@@ -37,9 +44,16 @@ class ClinicalDecisionConflict(RuntimeError):
 class ClinicalDecisionService:
     """Validate and append review state without prescribing or mutating care."""
 
-    def __init__(self, *, audit=None, facts=None):
+    def __init__(self, *, audit=None, facts=None, runtime=None, runtime_repo=None):
+        # ``audit`` remains accepted for backward-compatible dependency injection;
+        # current decisions are deliberately written only through runtime_repo.
         self.audit = audit or ClinicalEngineAuditRepository()
         self.facts = facts or ClinicalEngineFactRepository()
+        self.runtime_repo = runtime_repo or ClinicalEngineRuntimeRepository()
+        self.runtime = runtime or ClinicalEngineRuntimeService(
+            facts=self.facts,
+            runtime_repo=self.runtime_repo,
+        )
 
     def record(
         self,
@@ -53,17 +67,25 @@ class ClinicalDecisionService:
         reason_code: str | None = None,
         reason_text: str | None = None,
     ) -> dict:
-        mode = self.facts.get_mode()
-        if mode not in {"on_selected", "on"} or (
-            mode == "on_selected" and not self.facts.is_selected_patient(patient_link_id)
-        ):
-            raise ClinicalDecisionValidationError("v2 decisions are not enabled for this patient")
+        try:
+            contract = self.runtime.contract(patient_link_id)
+        except ClinicalEngineRuntimeError as exc:
+            raise ClinicalDecisionValidationError(
+                "clinical runtime is not available for this patient"
+            ) from exc
+        if contract is None or contract.mode not in {"on_selected", "on"}:
+            raise ClinicalDecisionValidationError(
+                "v2 decisions are not enabled for this patient"
+            )
+
         try:
             normalized_decision = ClinicalDecision(str(decision).upper())
         except ValueError as exc:
             raise ClinicalDecisionValidationError("invalid decision") from exc
         if normalized_decision not in _ALLOWED_DECISIONS:
-            raise ClinicalDecisionValidationError("CORRECTED is reserved for imported audit repair")
+            raise ClinicalDecisionValidationError(
+                "CORRECTED is reserved for imported audit repair"
+            )
         actor = (actor_username or "").strip()
         if not actor:
             raise ClinicalDecisionValidationError("actor_username is required")
@@ -76,21 +98,26 @@ class ClinicalDecisionService:
         if normalized_decision is ClinicalDecision.DISMISSED and not normalized_reason:
             raise ClinicalDecisionValidationError("reason_code is required for dismissal")
 
-        context = self.audit.recommendation_context(
-            recommendation_event_id, patient_link_id=patient_link_id
+        context = self.runtime_repo.recommendation_context(
+            recommendation_event_id,
+            patient_link_id=patient_link_id,
         )
         if not context or not context["payload"].get("suggestion_only", False):
             raise ClinicalDecisionValidationError(
                 "recommendation is unavailable or does not belong to this patient"
             )
         try:
-            return self.audit.append_current_decision(
+            return self.runtime_repo.append_current_decision(
                 recommendation_event_id=recommendation_event_id,
                 patient_link_id=patient_link_id,
                 decision=normalized_decision,
                 actor_user_id=actor_user_id,
                 actor_username=actor,
                 expected_current_event_id=expected_current_event_id,
+                engine_version=contract.engine_version,
+                ruleset_id=contract.ruleset_id,
+                clinical_data_revision=contract.clinical_data_revision,
+                allow_legacy_revision=contract.allow_legacy_test_run,
                 reason_code=normalized_reason,
                 reason_text=text,
             )
@@ -98,6 +125,10 @@ class ClinicalDecisionService:
             if str(exc) == "STALE_DECISION_STATE":
                 raise ClinicalDecisionConflict(
                     "recommendation decision changed; reload before recording another decision"
+                ) from exc
+            if str(exc) == "STALE_RECOMMENDATION":
+                raise ClinicalDecisionValidationError(
+                    "patient data changed after this recommendation; reload and review the current run"
                 ) from exc
             raise
 
