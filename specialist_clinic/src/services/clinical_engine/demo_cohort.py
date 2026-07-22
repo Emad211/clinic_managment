@@ -8,15 +8,18 @@ from src.domain.clinical_engine.demo_cohort import (
     DEMO_REFERENCE_AT,
     expected_totals,
 )
+from src.domain.clinical_engine.demo_cohort_vocabulary import (
+    canonical_demo_patients,
+)
 from src.services.activity_logger import log_activity
 
 
 # v2 adds explicit reconciliation; v3 additionally binds every synthetic active
-# medication to one exact catalog concept. Installed seed cohorts rebuild once when
-# either semantic contract changes.
+# medication to one exact catalog concept and canonicalizes declared seed aliases.
 CURRENT_DEMO_COHORT_VERSION = (
     f"{DEMO_COHORT_VERSION}-reconciled-concepts-v3"
 )
+CANONICAL_DEMO_PATIENTS = canonical_demo_patients(DEMO_PATIENTS)
 
 
 class DemoCohortService:
@@ -47,7 +50,7 @@ class DemoCohortService:
         rebuilt = force or not before["ready"]
         if rebuilt:
             self.repository.replace_all(
-                DEMO_PATIENTS,
+                CANONICAL_DEMO_PATIENTS,
                 version=CURRENT_DEMO_COHORT_VERSION,
                 actor=actor,
                 reference_at=DEMO_REFERENCE_AT,
