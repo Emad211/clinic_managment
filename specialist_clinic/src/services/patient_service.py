@@ -99,7 +99,10 @@ class PatientService:
         return {
             "patient": patient,
             "conditions": self.repo.get_patient_conditions(pid),
-            "medications": self.repo.get_medications(pid, active_only=False),
+            # Preserve the long-standing cockpit contract: only active medicines
+            # are shown. Historical rows are consumed by the reconciliation/fact
+            # repositories, not leaked into current prescription and UI flows.
+            "medications": self.repo.get_medications(pid),
             "allergies": self.repo.get_allergies(pid),
             "reconciliation": self.reconciliation.patient_status(pid),
             "visit_history": visit_history,
