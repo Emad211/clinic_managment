@@ -39,12 +39,69 @@ def test_control_center_renders_fail_closed_empty_state(manager_ui_app):
     response = _manager_client(manager_ui_app).get("/manager/clinical-engine")
     assert response.status_code == 200
     html = response.get_data(as_text=True)
-    assert "راه‌اندازی موتور بالینی جدید" in html
-    assert "الان چه کار کنم؟" in html
-    assert "وضعیت مؤثر" in html and "خاموش" in html
-    assert "مواردی که باید تکمیل شوند" in html
-    assert "هنوز گزارشی وجود ندارد" in html
-    assert 'disabled' in html
+    assert "راه‌اندازی قدم‌به‌قدم" in html
+    assert "وضعیت فعلی" in html and "خاموش" in html
+    assert "بستهٔ اولیهٔ قواعد را آماده کنید" in html
+    assert "آماده‌سازی بستهٔ اولیه" in html
+    assert '<button class="btn btn-lg engine-primary-action" type="submit" disabled' not in html
+    assert "گیت‌های ایمنی" not in html
+
+
+def test_guided_package_prepare_then_clinical_review_and_freeze(manager_ui_app):
+    from src.adapters.sqlite.clinical_engine_activation_repo import ClinicalEngineActivationRepository
+    from src.adapters.sqlite.clinical_engine_fact_repo import ClinicalEngineFactRepository
+    from src.adapters.sqlite.clinical_engine_rules_repo import ClinicalEngineRulesRepository
+
+    client = _manager_client(manager_ui_app)
+    prepared = client.post(
+        "/manager/clinical-engine/prepare-rules", follow_redirects=True,
+    )
+    html = prepared.get_data(as_text=True)
+    assert prepared.status_code == 200
+    assert "متن هر قاعده را بررسی" in html
+    assert "هشدار فوری فشار خون بسیار بالا" in html
+    assert "هشدار ایمنی متفورمین" in html
+    assert "قاعده دقیقاً چه زمانی فعال می‌شود؟" in html
+    assert "بیشتر یا مساوی" in html and "۱۸۰" in html and "۱۱۰" in html
+    assert "کمتر از" in html and "۳۰" in html
+    assert "هیچ دارو یا نسخه‌ای را خودکار تغییر نمی‌دهد" in html
+    with manager_ui_app.app_context():
+        assert ClinicalEngineFactRepository().get_mode() == "off"
+        package = ClinicalEngineRulesRepository().latest_ruleset("general-outpatient")
+        assert package["status"] == "DRAFT"
+        assert {item["lifecycle_status"] for item in package["members"]} == {"VALIDATED"}
+        ruleset_id = package["id"]
+
+    incomplete = client.post(
+        "/manager/clinical-engine/approve-rules",
+        data={"ruleset_id": ruleset_id, "reviewer": "doctor", "note": "reviewed",
+              "attested_rule": ["T2-REDFLAG-BP"]},
+        follow_redirects=True,
+    )
+    assert "هر قاعده باید جداگانه" in incomplete.get_data(as_text=True)
+
+    approved = client.post(
+        "/manager/clinical-engine/approve-rules",
+        data={"ruleset_id": ruleset_id, "reviewer": "doctor", "note": "reviewed",
+              "attested_rule": ["T2-REDFLAG-BP", "T2-SAFE-MET-STOP"]},
+        follow_redirects=True,
+    )
+    html = approved.get_data(as_text=True)
+    assert "هر 2 قاعده تأیید" in html
+    assert "آزمون ایمنی را اجرا کنید" in html
+    with manager_ui_app.app_context():
+        package = ClinicalEngineRulesRepository().latest_ruleset("general-outpatient")
+        assert package["status"] == "SILENT"
+        assert ClinicalEngineFactRepository().get_mode() == "off"
+
+    compared = client.post(
+        "/manager/clinical-engine/compare", follow_redirects=True,
+    )
+    html = compared.get_data(as_text=True)
+    assert "آزمون هر ۱۰ بیمار با موفقیت انجام شد" in html
+    assert "آزمون موفق بود" in html
+    with manager_ui_app.app_context():
+        assert len(ClinicalEngineActivationRepository().demo_patients()) == 10
 
 
 def test_manager_home_and_sidebar_make_v2_the_primary_engine_ui(manager_ui_app):

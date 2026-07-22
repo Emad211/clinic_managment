@@ -290,6 +290,15 @@ class ClinicalEngineRulesRepository:
         ]
         return result
 
+    def latest_ruleset(self, ruleset_code: str) -> dict | None:
+        """Latest package in any lifecycle state, for the review workflow."""
+        row = get_db().execute(
+            "SELECT id FROM clinical_rulesets WHERE ruleset_code=? "
+            "ORDER BY id DESC LIMIT 1",
+            ((ruleset_code or "").strip(),),
+        ).fetchone()
+        return self.get_ruleset(int(row["id"])) if row else None
+
     def activate_ruleset(
         self,
         ruleset_id: int,

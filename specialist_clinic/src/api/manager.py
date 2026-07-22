@@ -27,6 +27,8 @@ def index():
 @manager_required
 def clinical_engine():
     projection = ClinicalEngineActivationService().dashboard()
+    from src.services.clinical_engine.package_service import ClinicalRulePackageService
+    projection["package"] = ClinicalRulePackageService().projection()
     return render_template(
         "manager/clinical_engine.html", engine=projection,
         active_page="clinical_engine",
@@ -42,12 +44,34 @@ def clinical_engine_action(action):
     reviewer = (request.form.get("reviewer") or g.user["full_name"] or actor).strip()
     note = request.form.get("note", "").strip()
     try:
-        if action == "compare":
+        if action == "prepare-rules":
+            from src.services.clinical_engine.package_service import ClinicalRulePackageService
+            package = ClinicalRulePackageService().prepare(actor=actor)
+            flash(
+                f"بستهٔ اولیه با {len(package['members'])} قاعده آماده شد؛ اکنون متن هر قاعده را بررسی کنید.",
+                "success",
+            )
+        elif action == "approve-rules":
+            from src.services.clinical_engine.package_service import ClinicalRulePackageService
+            package = ClinicalRulePackageService().approve_and_freeze(
+                request.form.get("ruleset_id", type=int),
+                reviewer=reviewer,
+                attested_codes=request.form.getlist("attested_rule"),
+                note=note,
+            )
+            flash(
+                f"هر {len(package['members'])} قاعده تأیید و برای آزمون ایمنی فریز شد.",
+                "success",
+            )
+        elif action == "compare":
             if not service.rules.active_ruleset("general-outpatient"):
                 raise ActivationGateError("ابتدا بستهٔ قواعد v2 باید وارد، بازبینی و فریز شود")
+            from src.services.clinical_engine.demo_cohort import DemoCohortService
+            created = DemoCohortService().ensure(actor=actor)
             report = service.build_report(as_of_at=iran_now(), created_by=actor)
             if report["status"] == "PASS":
-                flash("گزارش ده بیمار با موفقیت ساخته شد و همهٔ گیت‌ها عبور کردند.", "success")
+                prefix = f"{created} بیمار نمونه ساخته شد و " if created else ""
+                flash(prefix + "آزمون هر ۱۰ بیمار با موفقیت انجام شد.", "success")
             else:
                 flash("گزارش ساخته شد، اما فعال‌سازی همچنان مسدود است. موارد قرمز را بررسی کنید.", "warning")
         elif action == "approve":

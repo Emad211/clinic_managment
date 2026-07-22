@@ -1,0 +1,6 @@
+<div class="engine-check-list">
+{% for key, label in engine.check_labels.items() %}{% if key in engine.checks %}
+<div class="engine-check {% if engine.checks[key] %}is-pass{% else %}is-fail{% endif %}"><svg class="icon"><use href="#i-{% if engine.checks[key] %}check{% else %}x{% endif %}"></use></svg><span>{{ label }}</span><b>{% if engine.checks[key] %}موفق{% else %}ناموفق{% endif %}</b></div>
+{% endif %}{% endfor %}
+</div>
+{% if engine.report.patients %}<div class="table-wrap mt-3"><table class="engine-table"><thead><tr><th>بیمار نمونه</th><th>اجرای موتور</th><th>پیشنهادها</th><th>خطا</th></tr></thead><tbody>{% for patient in engine.report.patients %}<tr><td>{{ patient.national_id }}</td><td>{{ 'موفق' if patient.v2_run_status == 'COMPLETED' else 'ناموفق' }}</td><td>{{ patient.v2_recommendations|fa_num }}</td><td>{{ patient.v2_errors|fa_num }}</td></tr>{% endfor %}</tbody></table></div>{% endif %}
