@@ -218,16 +218,19 @@ class ClinicalRulePackageService:
 
     def projection(self) -> dict:
         ruleset = self.rules.latest_ruleset(RULESET_CODE)
-        if (
-            not ruleset
-            or ruleset["status"] == "RETIRED"
-            or base_ruleset_version(ruleset.get("version")) != PACKAGE_VERSION
-        ):
+        same_package = bool(
+            ruleset
+            and base_ruleset_version(ruleset.get("version")) == PACKAGE_VERSION
+        )
+        if not ruleset or ruleset["status"] == "RETIRED" or not same_package:
             return {
                 "state": "missing",
                 "ruleset": None,
                 "rules": [],
-                "upgrade_from": ruleset,
+                # A retired attempt of the same current package means the user
+                # intentionally reset the workflow; it is a restart, not an
+                # upgrade warning. Only a genuinely older package is upgrade_from.
+                "upgrade_from": ruleset if ruleset and not same_package else None,
                 "expected_version": PACKAGE_VERSION,
             }
         rules = []
