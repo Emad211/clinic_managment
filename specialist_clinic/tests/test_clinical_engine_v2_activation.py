@@ -4,6 +4,8 @@ from datetime import datetime
 
 import pytest
 
+from src.domain.clinical_engine.release import CURRENT_BUNDLED_PACKAGE_VERSION
+
 
 @pytest.fixture()
 def activation_app(tmp_path):
@@ -29,8 +31,9 @@ def activation_app(tmp_path):
     db.execute(
         """INSERT INTO clinical_rulesets
            (id, ruleset_code, version, content_hash, status, created_by, created_at)
-           VALUES (9001, 'general-outpatient', 'gate-test', 'gate-test-hash',
-                   'SILENT', 'pytest', '2026-07-22 10:00:00')"""
+           VALUES (9001, 'general-outpatient', ?, 'gate-test-hash',
+                   'SILENT', 'pytest', '2026-07-22 10:00:00')""",
+        (CURRENT_BUNDLED_PACKAGE_VERSION,),
     )
     db.commit()
     yield app, db
