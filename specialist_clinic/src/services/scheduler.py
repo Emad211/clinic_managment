@@ -1,9 +1,7 @@
-"""Background scheduler: appointment reminders, scheduled campaigns,
-follow-up generation, and weekly DB backup. Runs in a daemon thread.
+"""Background scheduler: engagement, clinical worklists, campaigns and backups.
 
 All DB access happens inside an app context so get_db() works off-request.
-Diagnostics go through `logging` (a rotating file in the frozen .exe, where stdout is
-lost, plus the console in dev) — see src/common/logging_setup.py.
+Diagnostics go through rotating application logging.
 """
 import logging
 import os
@@ -43,7 +41,6 @@ class Scheduler:
         logger.info("[scheduler] started")
 
     def _loop(self):
-        # Small initial delay so the app finishes booting.
         time.sleep(20)
         while self.running:
             try:
@@ -51,37 +48,59 @@ class Scheduler:
                     self._tick()
             except Exception:
                 logger.exception("[scheduler] tick error")
-            time.sleep(120)  # every 2 minutes
+            time.sleep(120)
 
     def _tick(self):
         now = iran_now()
         today = now.strftime('%Y-%m-%d')
 
-        # 1) Engagement engine: collect every due reminder + follow-up and dispatch
-        #    it to SMS and/or the worklist per the editable engagement_events table.
-        #    This REPLACES the old appointment-reminder and follow-up-generation
-        #    passes. Safe to run every tick — the dispatch ledger + cooldown + daily
-        #    cap make it idempotent, and SMS deferred during quiet hours is retried
-        #    on a later tick once inside the allowed window.
+        # Clinical v2 due rules are distinct from administrative engagement
+        # events.  Project them once per Tehran day from exact current runs.  A
+        # failed pass is deliberately retried on the next tick.
+        if self._last_followup_day != today:
+            if self._run_clinical_followups():
+                self._last_followup_day = today
+
+        # Unified administrative engagement: reminders, lapsed/refill worklist
+        # events and SMS approval queue. Safe to run every tick via its dispatch
+        # ledger, cooldown and daily cap.
         self._run_engagement()
 
-        # 1b) Read-only invoice-sync: pull recently-closed accounting invoices into the
-        #     local ledger (ADR-0003 D3+). Read-only — never writes the accounting DB.
+        # Read-only accounting invoice consumer.
         self._sync_invoices()
 
-        # 2) Due scheduled campaigns (manual broadcasts)
+        # Scheduled campaigns and delivery reconciliation.
         self._run_due_campaigns()
-
-        # 2b) Delivery reconciliation never sends; it only follows accepted Mediana IDs.
         self._reconcile_sms_delivery()
 
-        # 3) Weekly backup (Saturday ~3 AM)
+        # Weekly consistent backup (Saturday ~03:00 Tehran).
         if now.weekday() == 5 and now.hour == 3 and self._last_backup_day != today:
             self._backup()
             self._last_backup_day = today
 
+    def _run_clinical_followups(self) -> bool:
+        try:
+            from src.services.followup_engine import ClinicalV2FollowupService
+
+            result = ClinicalV2FollowupService().generate_all()
+            if result["created"]:
+                logger.info(
+                    "[scheduler] clinical-v2 followups: %s task(s) created",
+                    result["created"],
+                )
+            if result["issues"]:
+                logger.warning(
+                    "[scheduler] clinical-v2 followups: %s evaluation issue(s); "
+                    "no unsafe task was created for those cases",
+                    len(result["issues"]),
+                )
+            return True
+        except Exception:
+            logger.exception("[scheduler] clinical-v2 followup projection error")
+            return False
+
     def _run_engagement(self):
-        """Run the unified engagement engine: due reminders + follow-ups -> SMS/worklist."""
+        """Run administrative due reminders/follow-ups -> SMS/worklist."""
         try:
             from src.services.engagement_service import EngagementService
             EngagementService().run_all()
@@ -96,9 +115,7 @@ class Scheduler:
                 pass
 
     def _sync_invoices(self):
-        """Read-only invoice-sync consumer (ADR-0003 D3+): record recently-closed
-        accounting invoices into the local ledger. Fail-loud — on error the cursor is
-        NOT advanced (the exception is logged, the tick continues)."""
+        """Read-only invoice-sync consumer; never advances cursor on failure."""
         try:
             from src.services.invoice_sync_service import InvoiceSyncService
             res = InvoiceSyncService().run()
@@ -125,13 +142,7 @@ class Scheduler:
             logger.exception("[scheduler] SMS delivery reconciliation error")
 
     def _backup(self):
-        """Weekly snapshot of THIS app's DB (specialist.db; the accounting DB is never
-        touched). Uses the SQLite Online Backup API for a consistent copy even while the
-        app holds the DB open — `shutil.copy2` of a live DB could capture a torn write.
-        pages=-1 copies the whole (small, single-clinic) DB in ONE step, which is atomic
-        w.r.t. concurrent same-process writers (avoids the page-by-page restart loop).
-        Writes to a temp file and os.replace()s it in, so a crash mid-copy never leaves a
-        half-written file under a valid backup name."""
+        """Create an atomic SQLite online-backup snapshot and retain the latest four."""
         tmp = None
         try:
             if not self.db_path.exists():
@@ -143,14 +154,13 @@ class Scheduler:
             try:
                 out = sqlite3.connect(str(tmp))
                 try:
-                    src.backup(out, pages=-1)   # whole-DB consistent snapshot
+                    src.backup(out, pages=-1)
                 finally:
                     out.close()
             finally:
                 src.close()
-            os.replace(tmp, dest)   # publish only after a clean, complete copy
+            os.replace(tmp, dest)
             tmp = None
-            # keep last 4
             backups = sorted(self.backup_dir.glob('backup_auto_*.db'),
                              key=lambda f: f.stat().st_mtime, reverse=True)
             for old in backups[4:]:
@@ -162,7 +172,7 @@ class Scheduler:
             logger.exception("[scheduler] backup error")
             if tmp is not None:
                 try:
-                    tmp.unlink()   # drop a half-written temp so it can't pass as a backup
+                    tmp.unlink()
                 except Exception:
                     pass
 
