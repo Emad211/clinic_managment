@@ -1,27 +1,37 @@
 """Canonical Clinical Engine v2 snapshot construction and shadow capture."""
-
 from __future__ import annotations
 
-from datetime import datetime
 from collections import Counter
+from datetime import datetime
 import hashlib
 import json
 from typing import Any
 
-from src.adapters.sqlite.clinical_engine_audit_repo import ClinicalEngineAuditRepository
-from src.adapters.sqlite.clinical_engine_fact_repo import ClinicalEngineFactRepository
-from src.adapters.sqlite.clinical_engine_rules_repo import ClinicalEngineRulesRepository
-from src.domain.clinical_engine import FactSnapshot, RunStatus
+from src.adapters.sqlite.clinical_engine_audit_repo import (
+    ClinicalEngineAuditRepository,
+)
+from src.adapters.sqlite.clinical_engine_fact_repo import (
+    ClinicalEngineFactRepository,
+)
+from src.adapters.sqlite.clinical_engine_rules_repo import (
+    ClinicalEngineRulesRepository,
+)
 from src.common.utils import IRAN_TZ
+from src.domain.clinical_engine import FactSnapshot, RunStatus
 from src.services.clinical_engine.compiler import RuleCompiler
 from src.services.clinical_engine.composer import (
     RecommendationComposer,
     recommendation_payload,
 )
 from src.services.clinical_engine.conflicts import ConflictResolver
-from src.services.clinical_engine.evaluator import RuleEvaluator, evaluation_payload
+from src.services.clinical_engine.evaluator import (
+    RuleEvaluator,
+    evaluation_payload,
+)
+from src.services.clinical_engine.reconciled_adapter import (
+    ReconciledFactBundleAdapter,
+)
 from src.services.clinical_engine.safety import SafetyKernel
-from src.services.clinical_engine.legacy_adapter import LegacyFactBundleAdapter
 
 
 # Changing the fact/runtime freshness contract invalidates older presentable runs.
@@ -38,8 +48,14 @@ def _json_default(value: Any):
 
 
 def canonical_json(value: Any) -> str:
-    return json.dumps(value, default=_json_default, ensure_ascii=False,
-                      sort_keys=True, separators=(",", ":"), allow_nan=False)
+    return json.dumps(
+        value,
+        default=_json_default,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    )
 
 
 def _iso(value: datetime) -> str:
@@ -49,14 +65,22 @@ def _iso(value: datetime) -> str:
 
 def _fact_payload(fact, *, assessed_at: datetime) -> dict:
     source_types = {
-        "laboratory": "laboratory", "clinician": "clinician", "derived": "derived",
-        "patient": "patient", "caregiver": "caregiver", "device": "device",
+        "laboratory": "laboratory",
+        "clinician": "clinician",
+        "derived": "derived",
+        "patient": "patient",
+        "caregiver": "caregiver",
+        "device": "device",
         "accounting_bridge": "accounting_bridge",
     }
     source_type = source_types.get(fact.source.system, "system")
     conflict_state = {
-        "NONE": "NONE", "PRESENT": "CONFIRMED", "UNKNOWN": "POSSIBLE",
-        "POSSIBLE": "POSSIBLE", "CONFIRMED": "CONFIRMED", "RESOLVED": "RESOLVED",
+        "NONE": "NONE",
+        "PRESENT": "CONFIRMED",
+        "UNKNOWN": "POSSIBLE",
+        "POSSIBLE": "POSSIBLE",
+        "CONFIRMED": "CONFIRMED",
+        "RESOLVED": "RESOLVED",
     }.get(fact.conflict.value, "POSSIBLE")
     return {
         "schema_version": fact.schema_version,
@@ -68,12 +92,20 @@ def _fact_payload(fact, *, assessed_at: datetime) -> dict:
         "status": fact.status.value,
         "value": fact.value,
         "unit": fact.unit,
-        "reference_range": dict(fact.reference_range) if fact.reference_range else None,
+        "reference_range": (
+            dict(fact.reference_range)
+            if fact.reference_range
+            else None
+        ),
         "effective_at": _iso(fact.effective_at),
         "recorded_at": _iso(fact.recorded_at),
         "source": {
             "type": source_type,
-            "table": None if fact.source.system in source_types else fact.source.system,
+            "table": (
+                None
+                if fact.source.system in source_types
+                else fact.source.system
+            ),
             "record_id": fact.source.record_id,
             "recorded_by": fact.source.actor,
         },
@@ -94,14 +126,23 @@ def _fact_payload(fact, *, assessed_at: datetime) -> dict:
     }
 
 
-def snapshot_payload(snapshot: FactSnapshot, *, include_hash: bool = True) -> dict:
+def snapshot_payload(
+    snapshot: FactSnapshot,
+    *,
+    include_hash: bool = True,
+) -> dict:
     payload = {
         "schema_version": snapshot.schema_version,
         "patient_link_id": snapshot.patient_link_id,
-        "clinical_data_revision": int(snapshot.clinical_data_revision),
+        "clinical_data_revision": int(
+            snapshot.clinical_data_revision
+        ),
         "as_of_at": _iso(snapshot.as_of_at),
         "encounter_key": snapshot.encounter_key,
-        "facts": [_fact_payload(fact, assessed_at=snapshot.as_of_at) for fact in snapshot.facts],
+        "facts": [
+            _fact_payload(fact, assessed_at=snapshot.as_of_at)
+            for fact in snapshot.facts
+        ],
     }
     if include_hash:
         payload["content_hash"] = snapshot.content_hash
@@ -111,38 +152,68 @@ def snapshot_payload(snapshot: FactSnapshot, *, include_hash: bool = True) -> di
 class FactBuilder:
     def __init__(self, repository=None, adapter=None):
         self.repository = repository or ClinicalEngineFactRepository()
-        self.adapter = adapter or LegacyFactBundleAdapter()
+        self.adapter = adapter or ReconciledFactBundleAdapter()
 
-    def build(self, patient_link_id: int, *, as_of_at: datetime,
-              encounter_key: str | None = None) -> FactSnapshot:
+    def build(
+        self,
+        patient_link_id: int,
+        *,
+        as_of_at: datetime,
+        encounter_key: str | None = None,
+    ) -> FactSnapshot:
         if not isinstance(as_of_at, datetime):
             raise TypeError("as_of_at must be a datetime")
         bundle = self.repository.load_bundle(patient_link_id)
-        revision = int(bundle["patient"].get("clinical_data_revision") or 0)
+        revision = int(
+            bundle["patient"].get("clinical_data_revision") or 0
+        )
+        # Reconciliation verification is applied before canonical serialization;
+        # changing confidence therefore necessarily changes the snapshot hash.
         facts = self.adapter.adapt(bundle, as_of_at=as_of_at)
         provisional = FactSnapshot(
-            schema_version="2.0", patient_link_id=patient_link_id,
-            as_of_at=as_of_at, facts=facts, content_hash="", encounter_key=encounter_key,
+            schema_version="2.0",
+            patient_link_id=patient_link_id,
+            as_of_at=as_of_at,
+            facts=facts,
+            content_hash="",
+            encounter_key=encounter_key,
             clinical_data_revision=revision,
         )
         body = snapshot_payload(provisional, include_hash=False)
-        content_hash = hashlib.sha256(canonical_json(body).encode("utf-8")).hexdigest()
+        content_hash = hashlib.sha256(
+            canonical_json(body).encode("utf-8")
+        ).hexdigest()
         return FactSnapshot(
-            schema_version="2.0", patient_link_id=patient_link_id,
-            as_of_at=as_of_at, facts=facts, content_hash=content_hash,
-            encounter_key=encounter_key, clinical_data_revision=revision,
+            schema_version="2.0",
+            patient_link_id=patient_link_id,
+            as_of_at=as_of_at,
+            facts=facts,
+            content_hash=content_hash,
+            encounter_key=encounter_key,
+            clinical_data_revision=revision,
         )
 
 
 class ShadowFactCapture:
     """Persist audited evaluations for shadow or explicitly selected rollout."""
 
-    def __init__(self, repository=None, builder=None, audit=None, rules=None,
-                 compiler=None, evaluator=None, safety=None, composer=None,
-                 conflicts=None,
-                 ruleset_code=DEFAULT_RULESET_CODE):
+    def __init__(
+        self,
+        repository=None,
+        builder=None,
+        audit=None,
+        rules=None,
+        compiler=None,
+        evaluator=None,
+        safety=None,
+        composer=None,
+        conflicts=None,
+        ruleset_code=DEFAULT_RULESET_CODE,
+    ):
         self.repository = repository or ClinicalEngineFactRepository()
-        self.builder = builder or FactBuilder(repository=self.repository)
+        self.builder = builder or FactBuilder(
+            repository=self.repository
+        )
         self.audit = audit or ClinicalEngineAuditRepository()
         self.rules = rules or ClinicalEngineRulesRepository()
         self.compiler = compiler or RuleCompiler()
@@ -152,17 +223,28 @@ class ShadowFactCapture:
         self.conflicts = conflicts or ConflictResolver()
         self.ruleset_code = ruleset_code
 
-    def capture(self, patient_link_id: int, *, as_of_at: datetime,
-                encounter_key: str | None = None, created_by: str | None = None,
-                ruleset_id: int | None = None) -> str | None:
+    def capture(
+        self,
+        patient_link_id: int,
+        *,
+        as_of_at: datetime,
+        encounter_key: str | None = None,
+        created_by: str | None = None,
+        ruleset_id: int | None = None,
+    ) -> str | None:
         mode = self.repository.get_mode()
         if mode == "off" or (
             mode == "on_selected"
-            and not self.repository.is_selected_patient(patient_link_id)
+            and not self.repository.is_selected_patient(
+                patient_link_id
+            )
         ):
             return None
-        snapshot = self.builder.build(patient_link_id, as_of_at=as_of_at,
-                                      encounter_key=encounter_key)
+        snapshot = self.builder.build(
+            patient_link_id,
+            as_of_at=as_of_at,
+            encounter_key=encounter_key,
+        )
         payload = snapshot_payload(snapshot)
         ruleset = (
             self.rules.get_ruleset(int(ruleset_id))
@@ -170,22 +252,40 @@ class ShadowFactCapture:
             else self.rules.active_ruleset(self.ruleset_code)
         )
         if ruleset_id is not None:
-            if not ruleset or ruleset.get("ruleset_code") != self.ruleset_code:
-                raise LookupError("the requested clinical ruleset does not exist")
+            if (
+                not ruleset
+                or ruleset.get("ruleset_code") != self.ruleset_code
+            ):
+                raise LookupError(
+                    "the requested clinical ruleset does not exist"
+                )
             if ruleset.get("status") not in {"SILENT", "ACTIVE"}:
-                raise ValueError("the requested clinical ruleset is not executable")
+                raise ValueError(
+                    "the requested clinical ruleset is not executable"
+                )
         run_id = self.audit.start_run(
-            patient_link_id=patient_link_id, encounter_key=encounter_key,
-            as_of_at=as_of_at.isoformat(sep=" ", timespec="seconds"),
+            patient_link_id=patient_link_id,
+            encounter_key=encounter_key,
+            as_of_at=as_of_at.isoformat(
+                sep=" ", timespec="seconds"
+            ),
             engine_version=ENGINE_VERSION,
             ruleset_id=ruleset["id"] if ruleset else None,
-            fact_snapshot=payload, created_by=created_by,
+            fact_snapshot=payload,
+            created_by=created_by,
         )
         if not ruleset:
             self.audit.complete_run(
-                run_id, status=RunStatus.COMPLETED,
-                summary={"mode": mode, "evaluated_rules": 0,
-                         "recommendations": 0},
+                run_id,
+                status=RunStatus.COMPLETED,
+                summary={
+                    "mode": mode,
+                    "evaluated_rules": 0,
+                    "recommendations": 0,
+                    "clinical_data_revision": (
+                        snapshot.clinical_data_revision
+                    ),
+                },
             )
             return run_id
 
@@ -196,34 +296,57 @@ class ShadowFactCapture:
             safety_precheck_failed = False
             for member in ruleset["members"]:
                 try:
-                    compiled = self.compiler.compile(json.loads(member["rule_json"]))
+                    compiled = self.compiler.compile(
+                        json.loads(member["rule_json"])
+                    )
                     compiled_entries.append((member, compiled))
                 except Exception as exc:
-                    compile_failures[int(member["rule_version_id"])] = {
+                    compile_failures[
+                        int(member["rule_version_id"])
+                    ] = {
                         "predicate_state": "ERROR",
                         "outcome": "ERROR",
                         "trace": {
-                            "node_id": "compile-error", "kind": "PREDICATE",
-                            "state": "ERROR", "message_fa": "قاعدهٔ ذخیره‌شده قابل اجرا نیست.",
-                            "fact_ids": [], "actual": None, "expected": None,
-                            "reason_code": "STORED_RULE_INVALID", "children": [],
+                            "node_id": "compile-error",
+                            "kind": "PREDICATE",
+                            "state": "ERROR",
+                            "message_fa": (
+                                "قاعدهٔ ذخیره‌شده قابل اجرا نیست."
+                            ),
+                            "fact_ids": [],
+                            "actual": None,
+                            "expected": None,
+                            "reason_code": "STORED_RULE_INVALID",
+                            "children": [],
                         },
                         "data_issues": [],
-                        "error": {"code": "STORED_RULE_INVALID", "message": str(exc)},
+                        "error": {
+                            "code": "STORED_RULE_INVALID",
+                            "message": str(exc),
+                        },
                     }
                     if member.get("phase") != "ROUTINE":
                         safety_precheck_failed = True
 
             safety_run = self.safety.evaluate(
-                [compiled for _, compiled in compiled_entries], snapshot,
+                [
+                    compiled
+                    for _, compiled in compiled_entries
+                ],
+                snapshot,
                 safety_precheck_failed=safety_precheck_failed,
             )
-            conflict_run = self.conflicts.resolve(safety_run.evaluations)
+            conflict_run = self.conflicts.resolve(
+                safety_run.evaluations
+            )
             resolved_by_identity = {
-                id(item.compiled): item for item in conflict_run
+                id(item.compiled): item
+                for item in conflict_run
             }
             resolved_by_member_id = {
-                int(member["rule_version_id"]): resolved_by_identity[id(compiled)]
+                int(member["rule_version_id"]): (
+                    resolved_by_identity[id(compiled)]
+                )
                 for member, compiled in compiled_entries
             }
             compiled_by_member_id = {
@@ -250,14 +373,22 @@ class ShadowFactCapture:
                     recommendation = recommendation_payload(
                         self.composer.compose(compiled, result),
                         title_fa=compiled.definition.title,
-                        semantic_key=compiled.definition.semantic_key,
-                        merged_rule_codes=resolved.merged_rule_codes,
+                        semantic_key=(
+                            compiled.definition.semantic_key
+                        ),
+                        merged_rule_codes=(
+                            resolved.merged_rule_codes
+                        ),
                         merged_titles=resolved.merged_titles,
                     )
                     suppression = result_payload["suppression"]
                     if recommendation:
                         recommendation_count += 1
-                outcome_value = outcome.value if hasattr(outcome, "value") else outcome
+                outcome_value = (
+                    outcome.value
+                    if hasattr(outcome, "value")
+                    else outcome
+                )
                 counts[outcome_value] += 1
                 evaluation_id = self.audit.append_evaluation(
                     run_id=run_id,
@@ -274,31 +405,49 @@ class ShadowFactCapture:
                     self.audit.append_recommendation_event(
                         run_id=run_id,
                         evaluation_id=evaluation_id,
-                        recommendation_key=recommendation["recommendation_key"],
+                        recommendation_key=(
+                            recommendation["recommendation_key"]
+                        ),
                         action_type=recommendation["action_type"],
                         event_type="CREATED",
                         payload=recommendation,
                     )
             status = safety_run.status
-            if compile_failures and status is RunStatus.COMPLETED:
+            if (
+                compile_failures
+                and status is RunStatus.COMPLETED
+            ):
                 status = RunStatus.COMPLETED_WITH_ERRORS
             self.audit.complete_run(
-                run_id, status=status,
+                run_id,
+                status=status,
                 summary={
                     "mode": mode,
-                    "clinical_data_revision": snapshot.clinical_data_revision,
+                    "clinical_data_revision": (
+                        snapshot.clinical_data_revision
+                    ),
                     "evaluated_rules": sum(counts.values()),
                     "recommendations": recommendation_count,
-                    "redflag_active": bool(safety_run.redflag_rule_codes),
-                    "redflag_rule_codes": list(safety_run.redflag_rule_codes),
-                    "routine_outputs_blocked": safety_run.routine_outputs_blocked,
+                    "redflag_active": bool(
+                        safety_run.redflag_rule_codes
+                    ),
+                    "redflag_rule_codes": list(
+                        safety_run.redflag_rule_codes
+                    ),
+                    "routine_outputs_blocked": (
+                        safety_run.routine_outputs_blocked
+                    ),
                     "counts": dict(sorted(counts.items())),
                 },
             )
         except Exception as exc:
             self.audit.complete_run(
-                run_id, status=RunStatus.AUDIT_FAILED,
-                error={"code": "SHADOW_EVALUATION_FAILED", "message": str(exc)},
+                run_id,
+                status=RunStatus.AUDIT_FAILED,
+                error={
+                    "code": "SHADOW_EVALUATION_FAILED",
+                    "message": str(exc),
+                },
             )
             raise
         return run_id
