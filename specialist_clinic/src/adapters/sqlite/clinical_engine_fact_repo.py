@@ -1,9 +1,10 @@
 """Read-only legacy inputs and mode access for Clinical Engine v2 facts.
 
-Every query used to assemble the legacy record lives here.  The service layer
-receives plain dictionaries and never knows about SQLite.
+Every query used to assemble the legacy record lives here. The service layer receives
+plain dictionaries and never knows about SQLite. Collection rows are deliberately read
+with their inactive history; the pure adapter applies the requested ``as_of_at`` and the
+append-only reconciliation contract.
 """
-
 from __future__ import annotations
 
 import sqlite3
@@ -19,11 +20,15 @@ _SOURCE_QUERIES = {
     "conditions": """SELECT pc.*, c.code AS condition_code, c.name AS condition_name
                        FROM patient_conditions pc
                        JOIN conditions c ON c.id=pc.condition_id
-                       WHERE pc.patient_link_id=? AND pc.is_active=1
-                       ORDER BY pc.id""",
+                       WHERE pc.patient_link_id=? ORDER BY pc.id""",
     "medications": """SELECT * FROM patient_medications
-                        WHERE patient_link_id=? AND is_active=1 ORDER BY id""",
-    "allergies": "SELECT * FROM allergies WHERE patient_link_id=? ORDER BY id",
+                         WHERE patient_link_id=? ORDER BY id""",
+    "medication_events": """SELECT * FROM medication_events
+                              WHERE patient_link_id=? ORDER BY event_date, id""",
+    "allergies": """SELECT * FROM allergies
+                      WHERE patient_link_id=? ORDER BY id""",
+    "reconciliations": """SELECT * FROM clinical_reconciliation_events
+                            WHERE patient_link_id=? ORDER BY reconciled_at, id""",
     "flags": """SELECT pf.*, fc.flag_type, fc.category
                   FROM patient_flags pf
                   LEFT JOIN flag_catalog fc ON fc.flag_key=pf.flag_key
@@ -69,7 +74,7 @@ class ClinicalEngineFactRepository:
             return "off"
         if mode in {"on_selected", "on"}:
             # Global rollout is never available through a raw setting write,
-            # including in tests.  The test-only compatibility bypass applies
+            # including in tests. The test-only compatibility bypass applies
             # solely to the historical selected-demo mode.
             require_gate = mode == "on"
             if mode == "on_selected" and has_app_context():
@@ -107,10 +112,8 @@ class ClinicalEngineFactRepository:
     def load_bundle(self, patient_link_id: int) -> dict[str, Any]:
         """Read every fact source from one SQLite snapshot.
 
-        A SAVEPOINT keeps the patient revision and all source rows consistent even
-        if another request records a vital or changes a medication concurrently.
-        If that mutation happens after this snapshot, its trigger increments the
-        revision and the resulting run is rejected as stale by the runtime facade.
+        A SAVEPOINT keeps the patient revision, collection review events and all
+        source rows consistent even if another request changes the record.
         """
         db = self._db()
         db.execute("SAVEPOINT clinical_fact_bundle")
@@ -123,11 +126,12 @@ class ClinicalEngineFactRepository:
 
             bundle: dict[str, Any] = {"patient": dict(patient), "unavailable": {}}
             for source, sql in _SOURCE_QUERIES.items():
-                params = () if source == "flag_catalog" else (
-                    (patient_link_id, patient_link_id)
-                    if source == "observations"
-                    else (patient_link_id,)
-                )
+                if source == "flag_catalog":
+                    params = ()
+                elif source == "observations":
+                    params = (patient_link_id, patient_link_id)
+                else:
+                    params = (patient_link_id,)
                 try:
                     bundle[source] = [
                         dict(row) for row in db.execute(sql, params).fetchall()
