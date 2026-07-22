@@ -104,15 +104,19 @@ def test_empty_database_is_unknown_until_absence_is_explicitly_reviewed(
         assert fact.verification is VerificationStatus.UNVERIFIED
         assert "UNRECONCILED_COLLECTION" in fact.warnings
 
-    revision_before = int(db.execute(
-        "SELECT clinical_data_revision FROM patient_links WHERE id=?",
-        (patient_id,),
-    ).fetchone()["clinical_data_revision"])
+    revision_before = int(
+        db.execute(
+            "SELECT clinical_data_revision FROM patient_links WHERE id=?",
+            (patient_id,),
+        ).fetchone()["clinical_data_revision"]
+    )
     _record(patient_id, "medications")
-    revision_after = int(db.execute(
-        "SELECT clinical_data_revision FROM patient_links WHERE id=?",
-        (patient_id,),
-    ).fetchone()["clinical_data_revision"])
+    revision_after = int(
+        db.execute(
+            "SELECT clinical_data_revision FROM patient_links WHERE id=?",
+            (patient_id,),
+        ).fetchone()["clinical_data_revision"]
+    )
 
     after = FactBuilder().build(patient_id, as_of_at=AS_OF)
     medications = _fact(after, "medication.classes")
@@ -201,14 +205,38 @@ def test_partial_review_never_claims_confirmed_collection(
     assert "PARTIAL_RECONCILIATION" in condition_list.warnings
 
 
+def test_known_item_presence_is_independent_of_collection_completeness(
+    reconciliation_app,
+):
+    from src.adapters.sqlite.core import get_db
+
+    db = get_db()
+    patient_id = _patient(db, "REC0004")
+    db.execute(
+        """INSERT INTO patient_conditions
+           (patient_link_id, condition_id, onset_date, diagnosed_at)
+           VALUES (?, 1, '2020-01-01', '2020-01-01')""",
+        (patient_id,),
+    )
+    db.commit()
+
+    snapshot = FactBuilder().build(patient_id, as_of_at=AS_OF)
+    collection = _fact(snapshot, "condition.codes")
+    specific = _fact(snapshot, "condition.diabetes")
+    assert collection.verification is VerificationStatus.UNVERIFIED
+    assert specific.status is FactStatus.PRESENT
+    assert specific.verification is VerificationStatus.CONFIRMED
+    assert "UNRECONCILED_COLLECTION" in specific.warnings
+
+
 def test_reconciliation_events_are_append_only_and_scope_bound(
     reconciliation_app,
 ):
     from src.adapters.sqlite.core import get_db
 
     db = get_db()
-    first = _patient(db, "REC0004")
-    second = _patient(db, "REC0005")
+    first = _patient(db, "REC0005")
+    second = _patient(db, "REC0006")
     event = _record(first, "allergies")
 
     with pytest.raises(sqlite3.IntegrityError, match="append-only"):
@@ -223,7 +251,7 @@ def test_reconciliation_events_are_append_only_and_scope_bound(
             (event["id"],),
         )
     db.rollback()
-    with pytest.raises(sqlite3.IntegrityError, match="same scope"):
+    with pytest.raises(sqlite3.IntegrityError, match="supersession"):
         db.execute(
             """INSERT INTO clinical_reconciliation_events
                (patient_link_id, collection_key, completeness, item_count,
@@ -242,7 +270,7 @@ def test_historical_medication_projection_uses_event_dose_and_effective_stop(
     from src.adapters.sqlite.core import get_db
 
     db = get_db()
-    patient_id = _patient(db, "REC0006")
+    patient_id = _patient(db, "REC0007")
     repo = PatientRepository()
     med_id = repo.add_medication(
         patient_id,
@@ -313,12 +341,10 @@ def test_soft_resolution_preserves_history_and_checks_patient_ownership(
     from src.adapters.sqlite.core import get_db
 
     db = get_db()
-    first = _patient(db, "REC0007")
-    second = _patient(db, "REC0008")
+    first = _patient(db, "REC0008")
+    second = _patient(db, "REC0009")
     repo = PatientRepository()
-    condition_id = repo.add_condition(
-        first, 1, onset_date="2020-01-01"
-    )
+    condition_id = repo.add_condition(first, 1, onset_date="2020-01-01")
     allergy_id = repo.add_allergy(
         first,
         substance="Penicillin",
@@ -358,10 +384,8 @@ def test_service_requires_attestation_and_reason_for_partial_review(
 ):
     from src.adapters.sqlite.core import get_db
 
-    patient_id = _patient(get_db(), "REC0009")
-    service = ClinicalReconciliationService(
-        clock=lambda: AS_OF
-    )
+    patient_id = _patient(get_db(), "REC0010")
+    service = ClinicalReconciliationService(clock=lambda: AS_OF)
     with pytest.raises(ValueError, match="تأیید"):
         service.record(
             patient_link_id=patient_id,
