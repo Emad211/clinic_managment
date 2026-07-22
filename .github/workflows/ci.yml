@@ -7,8 +7,10 @@ name: CI
 on:
   push:
     branches: [main]
+  # Stacked PRs are part of the normal hardening workflow. Restricting this event
+  # to base=main silently skipped CI for later tranches and allowed integration
+  # regressions to accumulate between dependent branches.
   pull_request:
-    branches: [main]
   workflow_dispatch:
 
 jobs:
