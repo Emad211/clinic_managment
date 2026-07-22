@@ -11,10 +11,12 @@ from src.adapters.sqlite.clinical_engine_activation_repo import ClinicalEngineAc
 from src.services.activity_logger import log_activity
 from src.services.clinical_engine.compiler import RuleCompiler
 from src.common.utils import iran_now
+from src.domain.clinical_engine.release import (
+    CURRENT_BUNDLED_PACKAGE_VERSION as PACKAGE_VERSION,
+    RULESET_CODE,
+    base_ruleset_version,
+)
 
-
-PACKAGE_VERSION = "2026.1-draft.2"
-RULESET_CODE = "general-outpatient"
 
 _FACT_LABELS = {
     "condition.codes": "فهرست تشخیص‌های فعال",
@@ -86,10 +88,6 @@ def _package_dir() -> Path:
     return bundle_root / relative
 
 
-def _base_ruleset_version(version: str | None) -> str:
-    return str(version or "").split("-attempt.", 1)[0]
-
-
 class ClinicalRulePackageService:
     """Turn bundled, compiled drafts into a clinician-approved SILENT package.
 
@@ -114,7 +112,7 @@ class ClinicalRulePackageService:
         latest = self.rules.latest_ruleset(RULESET_CODE)
         same_package = bool(
             latest
-            and _base_ruleset_version(latest.get("version")) == manifest["version"]
+            and base_ruleset_version(latest.get("version")) == manifest["version"]
         )
         if latest and latest["status"] == "DRAFT" and same_package:
             return latest
@@ -158,7 +156,7 @@ class ClinicalRulePackageService:
         ruleset = self.rules.get_ruleset(int(ruleset_id))
         if not ruleset or ruleset["ruleset_code"] != RULESET_CODE:
             raise LookupError("بستهٔ قواعد پیدا نشد")
-        if _base_ruleset_version(ruleset.get("version")) != PACKAGE_VERSION:
+        if base_ruleset_version(ruleset.get("version")) != PACKAGE_VERSION:
             raise ValueError("این بسته قدیمی است؛ ابتدا بستهٔ اصلاح‌شدهٔ فعلی را آماده کنید")
         if ruleset["status"] != "DRAFT":
             raise ValueError("فقط بستهٔ درحال بازبینی قابل تأیید است")
@@ -175,7 +173,6 @@ class ClinicalRulePackageService:
         self.rules.activate_ruleset(
             int(ruleset["id"]), activated_by=reviewer, silent=True,
         )
-        # A report/approval is valid only for the exact ruleset it evaluated.
         for key in (
             "last_report", "approval_clinical", "approval_technical",
             "selected_rollout_verification", "seal",
@@ -224,7 +221,7 @@ class ClinicalRulePackageService:
         if (
             not ruleset
             or ruleset["status"] == "RETIRED"
-            or _base_ruleset_version(ruleset.get("version")) != PACKAGE_VERSION
+            or base_ruleset_version(ruleset.get("version")) != PACKAGE_VERSION
         ):
             return {
                 "state": "missing",
