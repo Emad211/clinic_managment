@@ -12,7 +12,9 @@ import json
 from src.adapters.sqlite.clinical_engine_fact_repo import (
     ClinicalEngineFactRepository,
 )
-from src.adapters.sqlite.followups_repo import FollowupRepository
+from src.adapters.sqlite.clinical_followup_repo import (
+    ClinicalFollowupRepository,
+)
 from src.services.clinical_engine.runtime import (
     ClinicalEngineRuntimeError,
     ClinicalEngineRuntimeService,
@@ -39,7 +41,7 @@ class ClinicalV2FollowupService:
 
     def __init__(self, *, facts=None, repo=None, runtime=None):
         self.facts = facts or ClinicalEngineFactRepository()
-        self.repo = repo or FollowupRepository()
+        self.repo = repo or ClinicalFollowupRepository()
         self.runtime = runtime or ClinicalEngineRuntimeService(
             facts=self.facts
         )
