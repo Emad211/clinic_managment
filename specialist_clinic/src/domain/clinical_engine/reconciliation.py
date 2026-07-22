@@ -1,8 +1,8 @@
 """Canonical, immutable reconciliation semantics for longitudinal collections.
 
-A current row set is not the same thing as a reviewed row set.  This module keeps
+A current row set is not the same thing as a reviewed row set. This module keeps
 those concepts separate for conditions, medications and allergies, and provides one
-content-hash contract shared by the write repository and the Clinical Engine adapter.
+content-hash contract shared by the write repository and Clinical Engine adapter.
 """
 from __future__ import annotations
 
@@ -53,24 +53,25 @@ def _integer(value: Any) -> int | None:
         return None
 
 
-def _not_future(value: Any, as_of_at: datetime) -> bool:
-    parsed = _local_naive(value)
-    return parsed is None or parsed <= as_of_at
-
-
-def _not_resolved(value: Any, as_of_at: datetime) -> bool:
-    parsed = _local_naive(value)
-    return parsed is None or as_of_at < parsed
+def _has_raw_value(value: Any) -> bool:
+    return value is not None and str(value).strip() != ""
 
 
 def _event_sort_key(row: Mapping[str, Any]) -> tuple[datetime, int]:
-    return (_local_naive(row.get("event_date") or row.get("created_at")) or datetime.min,
-            _integer(row.get("id")) or 0)
+    return (
+        _local_naive(row.get("event_date") or row.get("created_at"))
+        or datetime.min,
+        _integer(row.get("id")) or 0,
+    )
 
 
-def _reconciliation_sort_key(row: Mapping[str, Any]) -> tuple[datetime, int]:
-    return (_local_naive(row.get("reconciled_at")) or datetime.min,
-            _integer(row.get("id")) or 0)
+def _reconciliation_sort_key(
+    row: Mapping[str, Any],
+) -> tuple[datetime, int]:
+    return (
+        _local_naive(row.get("reconciled_at")) or datetime.min,
+        _integer(row.get("id")) or 0,
+    )
 
 
 def _dose_at(
@@ -79,15 +80,106 @@ def _dose_at(
     as_of_at: datetime,
 ) -> tuple[str | None, tuple[str, ...]]:
     applicable = [
-        event for event in events
-        if _integer(event.get("medication_id")) == _integer(medication.get("id"))
-        and _not_future(event.get("event_date") or event.get("created_at"), as_of_at)
-        and str(event.get("event_type") or "") in {"start", "dose_change"}
+        event
+        for event in events
+        if _integer(event.get("medication_id"))
+        == _integer(medication.get("id"))
+        and (
+            (_local_naive(event.get("event_date") or event.get("created_at")))
+            or datetime.max
+        )
+        <= as_of_at
+        and str(event.get("event_type") or "")
+        in {"start", "dose_change"}
     ]
     if applicable:
         latest = max(applicable, key=_event_sort_key)
         return _text(latest.get("dose")), ()
-    return _text(medication.get("dose")), ("HISTORICAL_DOSE_APPROXIMATION",)
+    return (
+        _text(medication.get("dose")),
+        ("HISTORICAL_DOSE_APPROXIMATION",),
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class _ActiveRows:
+    rows: tuple[dict[str, Any], ...]
+    warnings: tuple[str, ...]
+
+
+def _project_active_rows(
+    collection_key: str,
+    rows: Iterable[Mapping[str, Any]],
+    *,
+    as_of_at: datetime,
+    medication_events: Iterable[Mapping[str, Any]] = (),
+) -> _ActiveRows:
+    """Project source rows active at ``as_of_at`` exactly once.
+
+    Missing/invalid legacy interval timestamps do not silently become exact history:
+    the row is retained as current knowledge at the requested snapshot and receives
+    an explicit approximation warning. Inactive legacy rows without an end date are
+    excluded because their historical interval cannot be reconstructed honestly.
+    """
+    if collection_key not in COLLECTION_KEYS:
+        raise ValueError(
+            f"unsupported reconciliation collection: {collection_key}"
+        )
+    as_of_at = _local_naive(as_of_at) or as_of_at
+    projected: list[dict[str, Any]] = []
+    projection_warnings: list[str] = []
+
+    for raw in rows:
+        row = dict(raw)
+        warnings: list[str] = []
+        if collection_key == "conditions":
+            start_raw = row.get("onset_date") or row.get("diagnosed_at")
+            end_raw = row.get("resolved_at")
+        elif collection_key == "medications":
+            start_raw = row.get("start_date") or row.get("created_at")
+            end_raw = row.get("end_date")
+        else:
+            start_raw = row.get("created_at")
+            end_raw = row.get("resolved_at")
+
+        start = _local_naive(start_raw)
+        if start is None:
+            warnings.append("HISTORICAL_INTERVAL_APPROXIMATION")
+            start = as_of_at
+        if start > as_of_at:
+            continue
+
+        end = _local_naive(end_raw)
+        if _has_raw_value(end_raw) and end is None:
+            warnings.append("HISTORICAL_INTERVAL_APPROXIMATION")
+        if end is not None and as_of_at >= end:
+            continue
+        if end is None and not int(row.get("is_active", 1) or 0):
+            # Current absence is known, but without an effective end date this row
+            # cannot be copied into an arbitrary historical snapshot.
+            continue
+
+        if collection_key == "medications":
+            dose, dose_warnings = _dose_at(
+                row, medication_events, as_of_at
+            )
+            row["_dose_as_of"] = dose
+            warnings.extend(dose_warnings)
+
+        row["_effective_at"] = start
+        row["_history_warnings"] = tuple(sorted(set(warnings)))
+        projection_warnings.extend(warnings)
+        projected.append(row)
+
+    return _ActiveRows(
+        rows=tuple(
+            sorted(
+                projected,
+                key=lambda row: _integer(row.get("id")) or 0,
+            )
+        ),
+        warnings=tuple(sorted(set(projection_warnings))),
+    )
 
 
 def active_collection_rows(
@@ -97,63 +189,55 @@ def active_collection_rows(
     as_of_at: datetime,
     medication_events: Iterable[Mapping[str, Any]] = (),
 ) -> tuple[dict[str, Any], ...]:
-    """Project source rows that were active at ``as_of_at``.
+    """Public effective-row projection retained for repository/test callers."""
+    return _project_active_rows(
+        collection_key,
+        rows,
+        as_of_at=as_of_at,
+        medication_events=medication_events,
+    ).rows
 
-    New stop/removal operations persist an effective end date.  Older inactive rows
-    without one cannot be placed honestly on a historical timeline and are excluded
-    rather than being copied into the past.
-    """
-    if collection_key not in COLLECTION_KEYS:
-        raise ValueError(f"unsupported reconciliation collection: {collection_key}")
-    as_of_at = _local_naive(as_of_at) or as_of_at
-    projected: list[dict[str, Any]] = []
 
-    for raw in rows:
-        row = dict(raw)
-        warnings: list[str] = []
+def _canonical_items_from_active_rows(
+    collection_key: str,
+    active_rows: Iterable[Mapping[str, Any]],
+) -> tuple[dict[str, Any], ...]:
+    items: list[dict[str, Any]] = []
+    for row in active_rows:
         if collection_key == "conditions":
-            start = row.get("onset_date") or row.get("diagnosed_at")
-            end = row.get("resolved_at")
-            if not _not_future(start, as_of_at):
-                continue
-            if end is not None:
-                if not _not_resolved(end, as_of_at):
-                    continue
-            elif not int(row.get("is_active", 1) or 0):
-                continue
-            row["_effective_at"] = start or row.get("diagnosed_at") or as_of_at
-
+            items.append(
+                {
+                    "record_id": _integer(row.get("id")),
+                    "condition_id": _integer(row.get("condition_id")),
+                    "code": _text(row.get("condition_code")),
+                    "stage": _text(row.get("stage")),
+                    "onset_date": _text(row.get("onset_date")),
+                }
+            )
         elif collection_key == "medications":
-            start = row.get("start_date") or row.get("created_at")
-            end = row.get("end_date")
-            if not _not_future(start, as_of_at):
-                continue
-            if end is not None:
-                if not _not_resolved(end, as_of_at):
-                    continue
-            elif not int(row.get("is_active", 1) or 0):
-                continue
-            dose, dose_warnings = _dose_at(row, medication_events, as_of_at)
-            row["_dose_as_of"] = dose
-            warnings.extend(dose_warnings)
-            row["_effective_at"] = start or row.get("created_at") or as_of_at
-
-        else:  # allergies
-            start = row.get("created_at")
-            end = row.get("resolved_at")
-            if not _not_future(start, as_of_at):
-                continue
-            if end is not None:
-                if not _not_resolved(end, as_of_at):
-                    continue
-            elif not int(row.get("is_active", 1) or 0):
-                continue
-            row["_effective_at"] = start or as_of_at
-
-        row["_history_warnings"] = tuple(sorted(set(warnings)))
-        projected.append(row)
-
-    return tuple(sorted(projected, key=lambda row: (_integer(row.get("id")) or 0)))
+            items.append(
+                {
+                    "record_id": _integer(row.get("id")),
+                    "drug_catalog_id": _integer(
+                        row.get("drug_catalog_id")
+                    ),
+                    "name": _text(row.get("drug_name")),
+                    "drug_class": _text(row.get("drug_class")),
+                    "dose": _text(row.get("_dose_as_of")),
+                    "schedule": _text(row.get("schedule")),
+                    "start_date": _text(row.get("start_date")),
+                }
+            )
+        else:
+            items.append(
+                {
+                    "record_id": _integer(row.get("id")),
+                    "substance": _text(row.get("substance")),
+                    "reaction": _text(row.get("reaction")),
+                    "severity": _text(row.get("severity")),
+                }
+            )
+    return tuple(items)
 
 
 def canonical_collection_items(
@@ -163,40 +247,13 @@ def canonical_collection_items(
     as_of_at: datetime,
     medication_events: Iterable[Mapping[str, Any]] = (),
 ) -> tuple[dict[str, Any], ...]:
-    active = active_collection_rows(
+    active = _project_active_rows(
         collection_key,
         rows,
         as_of_at=as_of_at,
         medication_events=medication_events,
     )
-    items: list[dict[str, Any]] = []
-    for row in active:
-        if collection_key == "conditions":
-            items.append({
-                "record_id": _integer(row.get("id")),
-                "condition_id": _integer(row.get("condition_id")),
-                "code": _text(row.get("condition_code")),
-                "stage": _text(row.get("stage")),
-                "onset_date": _text(row.get("onset_date")),
-            })
-        elif collection_key == "medications":
-            items.append({
-                "record_id": _integer(row.get("id")),
-                "drug_catalog_id": _integer(row.get("drug_catalog_id")),
-                "name": _text(row.get("drug_name")),
-                "drug_class": _text(row.get("drug_class")),
-                "dose": _text(row.get("_dose_as_of")),
-                "schedule": _text(row.get("schedule")),
-                "start_date": _text(row.get("start_date")),
-            })
-        else:
-            items.append({
-                "record_id": _integer(row.get("id")),
-                "substance": _text(row.get("substance")),
-                "reaction": _text(row.get("reaction")),
-                "severity": _text(row.get("severity")),
-            })
-    return tuple(items)
+    return _canonical_items_from_active_rows(collection_key, active.rows)
 
 
 def canonical_json(value: Any) -> str:
@@ -207,6 +264,20 @@ def canonical_json(value: Any) -> str:
         separators=(",", ":"),
         allow_nan=False,
     )
+
+
+def _content_hash_from_items(
+    collection_key: str,
+    items: tuple[dict[str, Any], ...],
+) -> str:
+    payload = {
+        "schema_version": "1.0",
+        "collection_key": collection_key,
+        "items": items,
+    }
+    return hashlib.sha256(
+        canonical_json(payload).encode("utf-8")
+    ).hexdigest()
 
 
 def collection_content_hash(
@@ -222,30 +293,43 @@ def collection_content_hash(
         as_of_at=as_of_at,
         medication_events=medication_events,
     )
-    payload = {
-        "schema_version": "1.0",
-        "collection_key": collection_key,
-        "items": items,
-    }
-    return hashlib.sha256(canonical_json(payload).encode("utf-8")).hexdigest()
+    return _content_hash_from_items(collection_key, items)
 
 
-def _values(collection_key: str, items: Iterable[Mapping[str, Any]]) -> tuple[str, ...]:
+def _values(
+    collection_key: str,
+    items: Iterable[Mapping[str, Any]],
+) -> tuple[str, ...]:
     field = {
         "conditions": "code",
         "medications": "drug_class",
         "allergies": "substance",
     }[collection_key]
-    return tuple(sorted({str(item[field]) for item in items if item.get(field)}))
+    return tuple(
+        sorted({str(item[field]) for item in items if item.get(field)})
+    )
 
 
-def _mapping_complete(collection_key: str, items: Iterable[Mapping[str, Any]]) -> bool:
+def _mapping_complete(
+    collection_key: str,
+    items: Iterable[Mapping[str, Any]],
+) -> bool:
     required = {
         "conditions": ("code",),
-        "medications": ("name", "drug_class"),
+        # A manually typed class is useful provisional evidence but is not a
+        # complete medication identity. Confirmed medication aggregates require
+        # an active catalog concept as well as the canonical class.
+        "medications": ("name", "drug_class", "drug_catalog_id"),
         "allergies": ("substance",),
     }[collection_key]
-    return all(all(item.get(field) for field in required) for item in items)
+    return all(
+        all(item.get(field) is not None for field in required)
+        for item in items
+    )
+
+
+def _status_for_values(values: tuple[str, ...]) -> FactStatus:
+    return FactStatus.PRESENT if values else FactStatus.UNKNOWN
 
 
 @dataclass(frozen=True, slots=True)
@@ -277,51 +361,48 @@ def project_collection(
     as_of_at: datetime,
     medication_events: Iterable[Mapping[str, Any]] = (),
 ) -> CollectionProjection:
-    """Combine effective rows with the latest applicable reconciliation event."""
+    """Combine one effective-row projection with its latest review event."""
     if collection_key not in COLLECTION_KEYS:
-        raise ValueError(f"unsupported reconciliation collection: {collection_key}")
+        raise ValueError(
+            f"unsupported reconciliation collection: {collection_key}"
+        )
     as_of_at = _local_naive(as_of_at) or as_of_at
-    active_rows = active_collection_rows(
+    active = _project_active_rows(
         collection_key,
         rows,
         as_of_at=as_of_at,
         medication_events=medication_events,
     )
-    items = canonical_collection_items(
-        collection_key,
-        active_rows,
-        as_of_at=as_of_at,
-        medication_events=medication_events,
-    )
+    items = _canonical_items_from_active_rows(collection_key, active.rows)
     values = _values(collection_key, items)
-    content_hash = collection_content_hash(
-        collection_key,
-        active_rows,
-        as_of_at=as_of_at,
-        medication_events=medication_events,
-    )
+    content_hash = _content_hash_from_items(collection_key, items)
     mapping_complete = _mapping_complete(collection_key, items)
 
     candidates = [
         dict(event)
         for event in reconciliation_events
         if str(event.get("collection_key") or "") == collection_key
-        and _not_future(event.get("reconciled_at"), as_of_at)
+        and (
+            _local_naive(event.get("reconciled_at")) or datetime.max
+        )
+        <= as_of_at
     ]
-    event = max(candidates, key=_reconciliation_sort_key) if candidates else None
-    warnings: list[str] = []
+    event = (
+        max(candidates, key=_reconciliation_sort_key)
+        if candidates
+        else None
+    )
+    warnings = list(active.warnings)
     if collection_key == "medications" and any(
         item.get("drug_catalog_id") is None for item in items
     ):
         warnings.append("UNMAPPED_MEDICATION_CONCEPT")
     if not mapping_complete:
         warnings.append("CANONICAL_MAPPING_INCOMPLETE")
-    for row in active_rows:
-        warnings.extend(row.get("_history_warnings") or ())
 
     if event is None:
         state = "unreconciled"
-        status = FactStatus.PRESENT if values and mapping_complete else FactStatus.UNKNOWN
+        status = _status_for_values(values)
         verification = VerificationStatus.UNVERIFIED
         freshness = FreshnessStatus.UNKNOWN
         effective_at = as_of_at
@@ -330,7 +411,9 @@ def project_collection(
         actor = None
         warnings.append("UNRECONCILED_COLLECTION")
     else:
-        effective_at = _local_naive(event.get("reconciled_at")) or as_of_at
+        effective_at = (
+            _local_naive(event.get("reconciled_at")) or as_of_at
+        )
         source_system = "clinical_reconciliation"
         source_record_id = str(event.get("id"))
         actor = _text(event.get("actor_username"))
@@ -340,30 +423,44 @@ def project_collection(
         )
         if not exact:
             state = "stale"
-            status = FactStatus.PRESENT if values and mapping_complete else FactStatus.UNKNOWN
+            status = _status_for_values(values)
             verification = VerificationStatus.UNVERIFIED
             freshness = FreshnessStatus.STALE
-            warnings.append("COLLECTION_CHANGED_AFTER_RECONCILIATION")
+            warnings.append(
+                "COLLECTION_CHANGED_AFTER_RECONCILIATION"
+            )
         elif str(event.get("completeness") or "") == "partial":
             state = "partial"
-            status = FactStatus.PRESENT if values and mapping_complete else FactStatus.UNKNOWN
+            status = _status_for_values(values)
             verification = VerificationStatus.PROVISIONAL
             freshness = FreshnessStatus.FRESH
             warnings.append("PARTIAL_RECONCILIATION")
         elif not mapping_complete:
             state = "mapping_incomplete"
-            status = FactStatus.UNKNOWN
-            verification = VerificationStatus.UNVERIFIED
+            status = _status_for_values(values)
+            verification = (
+                VerificationStatus.PROVISIONAL
+                if values
+                else VerificationStatus.UNVERIFIED
+            )
             freshness = FreshnessStatus.FRESH
         else:
-            state = "confirmed_absent" if not values else "confirmed_present"
-            status = FactStatus.ABSENT if not values else FactStatus.PRESENT
+            state = (
+                "confirmed_absent"
+                if not values
+                else "confirmed_present"
+            )
+            status = (
+                FactStatus.ABSENT
+                if not values
+                else FactStatus.PRESENT
+            )
             verification = VerificationStatus.CONFIRMED
             freshness = FreshnessStatus.FRESH
 
     return CollectionProjection(
         collection_key=collection_key,
-        rows=active_rows,
+        rows=active.rows,
         items=items,
         values=values,
         content_hash=content_hash,
