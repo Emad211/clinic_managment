@@ -21,7 +21,7 @@ def _now_text() -> str:
 
 
 class ClinicalEngineActionRepository:
-    """Append action events only while the sealed current-run contract still holds."""
+    """Append action events only while the sealed context-specific run is current."""
 
     def __init__(self, *, runtime_repo=None, activation=None):
         self.runtime_repo = runtime_repo or ClinicalEngineRuntimeRepository()
@@ -34,7 +34,9 @@ class ClinicalEngineActionRepository:
     def _context(db, recommendation_event_id: int, patient_link_id: int):
         context = db.execute(
             """SELECT e.*, r.patient_link_id, r.run_status, r.engine_version,
-                      r.ruleset_id, r.fact_snapshot_json
+                      r.ruleset_id, r.fact_snapshot_json, r.context_hash,
+                      r.context_json, r.evaluation_mode, r.context_key,
+                      r.encounter_key, r.encounter_event_id
                FROM clinical_recommendation_events e
                JOIN clinical_engine_runs r ON r.run_id=e.run_id
                WHERE e.id=? AND e.event_type='CREATED'
@@ -63,6 +65,7 @@ class ClinicalEngineActionRepository:
         engine_version: str,
         ruleset_id: int | None,
         clinical_data_revision: int,
+        context_hash: str,
     ) -> None:
         assert_current_rollout_contract(
             db,
@@ -72,6 +75,7 @@ class ClinicalEngineActionRepository:
             engine_version=engine_version,
             ruleset_id=ruleset_id,
             clinical_data_revision=clinical_data_revision,
+            context_hash=context_hash,
             error_code="STALE_RECOMMENDATION",
             activation=self.activation,
         )
@@ -85,6 +89,7 @@ class ClinicalEngineActionRepository:
         engine_version: str,
         ruleset_id: int | None,
         clinical_data_revision: int,
+        context_hash: str,
     ) -> int:
         db = self._db()
         db.execute("BEGIN IMMEDIATE")
@@ -100,9 +105,13 @@ class ClinicalEngineActionRepository:
                 engine_version=engine_version,
                 ruleset_id=ruleset_id,
                 clinical_data_revision=clinical_data_revision,
+                context_hash=context_hash,
             )
             payload = json.dumps(
-                {"source_event_id": recommendation_event_id},
+                {
+                    "source_event_id": recommendation_event_id,
+                    "context_hash": context_hash,
+                },
                 ensure_ascii=False,
                 sort_keys=True,
                 separators=(",", ":"),
@@ -163,6 +172,7 @@ class ClinicalEngineActionRepository:
         engine_version: str,
         ruleset_id: int | None,
         clinical_data_revision: int,
+        context_hash: str,
         reason_code: str | None = None,
         reason_text: str | None = None,
     ) -> dict:
@@ -180,6 +190,7 @@ class ClinicalEngineActionRepository:
                 engine_version=engine_version,
                 ruleset_id=ruleset_id,
                 clinical_data_revision=clinical_data_revision,
+                context_hash=context_hash,
             )
             current = db.execute(
                 """SELECT id FROM clinical_decision_events
