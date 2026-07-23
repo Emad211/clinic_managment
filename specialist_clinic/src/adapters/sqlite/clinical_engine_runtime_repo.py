@@ -1,21 +1,24 @@
 """Exact read-side projection for current Clinical Engine v2 runs.
 
-Historical audit access remains available through the audit repository.  This boundary
-returns only a terminal run whose engine identity, ruleset and patient clinical-data
-revision exactly match the caller's current rollout contract.  It never accepts older
-2.x labels or snapshots without a revision, including in tests.
+Historical audit access remains available through the audit repository. This boundary
+returns only a terminal run whose engine identity, ruleset, patient clinical-data
+revision and immutable evaluation-context hash exactly match the caller's contract.
 """
 from __future__ import annotations
 
 import json
 from typing import Any
 
-from src.adapters.sqlite.core import get_db
+from src.adapters.sqlite.clinical_context_schema import (
+    ensure_clinical_context_storage,
+)
 from src.adapters.sqlite.clinical_engine_current_contract import (
     same_optional_int,
+    snapshot_context_hash,
     snapshot_revision,
 )
 from src.adapters.sqlite.clinical_engine_runtime_schema import ensure_runtime_schema
+from src.adapters.sqlite.core import get_db
 
 
 _TERMINAL_PRESENTABLE = (
@@ -36,6 +39,7 @@ class ClinicalEngineRuntimeRepository:
     def _db():
         db = get_db()
         ensure_runtime_schema(db)
+        ensure_clinical_context_storage(db)
         return db
 
     def latest_current_run(
@@ -45,14 +49,15 @@ class ClinicalEngineRuntimeRepository:
         engine_version: str,
         ruleset_id: int | None,
         clinical_data_revision: int,
+        context_hash: str,
     ) -> dict | None:
         rows = self._db().execute(
             """SELECT * FROM clinical_engine_runs
-               WHERE patient_link_id=? AND engine_version=?
+               WHERE patient_link_id=? AND engine_version=? AND context_hash=?
                  AND run_status IN
                      ('COMPLETED','COMPLETED_WITH_ERRORS','SAFETY_FAILED')
                ORDER BY started_at DESC, rowid DESC""",
-            (patient_link_id, engine_version),
+            (patient_link_id, engine_version, context_hash),
         ).fetchall()
         for row in rows:
             if not same_optional_int(row["ruleset_id"], ruleset_id):
@@ -60,6 +65,8 @@ class ClinicalEngineRuntimeRepository:
             if snapshot_revision(row["fact_snapshot_json"]) != int(
                 clinical_data_revision
             ):
+                continue
+            if snapshot_context_hash(row["fact_snapshot_json"]) != context_hash:
                 continue
             return self.decoded_presentable_run(str(row["run_id"]))
         return None
@@ -78,6 +85,7 @@ class ClinicalEngineRuntimeRepository:
         run = dict(row)
         for key in (
             "fact_snapshot_json",
+            "context_json",
             "summary_json",
             "error_json",
             "legacy_compare_json",
@@ -156,7 +164,9 @@ class ClinicalEngineRuntimeRepository:
         db = self._db()
         row = db.execute(
             """SELECT e.*, r.patient_link_id, r.run_status, r.engine_version,
-                      r.ruleset_id, r.fact_snapshot_json
+                      r.ruleset_id, r.fact_snapshot_json, r.evaluation_mode,
+                      r.context_key, r.context_json, r.context_hash,
+                      r.encounter_key, r.encounter_event_id
                FROM clinical_recommendation_events e
                JOIN clinical_engine_runs r ON r.run_id=e.run_id
                WHERE e.id=? AND r.patient_link_id=? AND e.event_type='CREATED'
@@ -168,6 +178,7 @@ class ClinicalEngineRuntimeRepository:
             return None
         result = dict(row)
         result["payload"] = json.loads(result["payload_json"])
+        result["context"] = _json(result.get("context_json"))
         result["clinical_data_revision"] = snapshot_revision(
             result.get("fact_snapshot_json")
         )
