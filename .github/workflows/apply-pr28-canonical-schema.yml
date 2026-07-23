@@ -104,3 +104,5 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -m "remove Clinical Engine v1 from the canonical schema"
           git push origin "HEAD:${GITHUB_REF_NAME}"
+
+# This second push exists only to activate a workflow introduced on the branch itself.
