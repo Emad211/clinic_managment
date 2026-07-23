@@ -1,8 +1,9 @@
 """Exact current-rollout validation shared by all Clinical Engine writes.
 
-There is intentionally no legacy or test-only bypass.  Tests construct the same sealed
+There is intentionally no legacy or test-only bypass. Tests construct the same sealed
 rollout contract as production; an older engine version, missing revision, different
-ruleset, raw setting change or revoked seal always fails closed.
+ruleset, different evaluation context, raw setting change or revoked seal always fails
+closed.
 """
 from __future__ import annotations
 
@@ -16,13 +17,26 @@ from src.adapters.sqlite.clinical_engine_activation_repo import (
 VISIBLE_MODES = frozenset({"on_selected", "on"})
 
 
-def snapshot_revision(snapshot_json: str | None) -> int | None:
+def _snapshot(snapshot_json: str | None) -> dict:
     try:
         payload = json.loads(snapshot_json or "{}")
-        value = payload.get("clinical_data_revision")
-        return int(value) if value is not None else None
+        return payload if isinstance(payload, dict) else {}
     except (TypeError, ValueError, json.JSONDecodeError):
+        return {}
+
+
+def snapshot_revision(snapshot_json: str | None) -> int | None:
+    value = _snapshot(snapshot_json).get("clinical_data_revision")
+    try:
+        return int(value) if value is not None else None
+    except (TypeError, ValueError):
         return None
+
+
+def snapshot_context_hash(snapshot_json: str | None) -> str | None:
+    value = _snapshot(snapshot_json).get("context_hash")
+    normalized = str(value or "").strip()
+    return normalized if len(normalized) == 64 else None
 
 
 def same_optional_int(left, right) -> bool:
@@ -40,6 +54,7 @@ def assert_current_rollout_contract(
     engine_version: str,
     ruleset_id: int | None,
     clinical_data_revision: int,
+    context_hash: str,
     error_code: str,
     activation: ClinicalEngineActivationRepository | None = None,
 ) -> None:
@@ -55,6 +70,7 @@ def assert_current_rollout_contract(
         if isinstance(seal, dict) and seal.get("ruleset_id") is not None
         else None
     )
+    normalized_context_hash = str(context_hash or "").strip()
     valid = (
         mode in VISIBLE_MODES
         and raw_mode == mode
@@ -65,6 +81,10 @@ def assert_current_rollout_contract(
         and snapshot_revision(context["fact_snapshot_json"])
         == int(clinical_data_revision)
         and int(patient_revision) == int(clinical_data_revision)
+        and len(normalized_context_hash) == 64
+        and str(context["context_hash"]) == normalized_context_hash
+        and snapshot_context_hash(context["fact_snapshot_json"])
+        == normalized_context_hash
         and activation.valid_seal(mode)
     )
     if not valid:
