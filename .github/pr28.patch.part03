@@ -117,72 +117,72 @@
 +    )
 +
 +    assert repository.condition_rule_counts() == {"thyroid": 1}
-+diff --git a/specialist_clinic/tests/test_clinical_engine_v1_request_cutover.py b/specialist_clinic/tests/test_clinical_engine_v1_request_cutover.py
-+index c331aa7..52eabda 100644
-+--- a/specialist_clinic/tests/test_clinical_engine_v1_request_cutover.py
-++++ b/specialist_clinic/tests/test_clinical_engine_v1_request_cutover.py
-+@@ -94,6 +94,29 @@ def _seed_pre_cutover_v2_rule(db_path: Path) -> int:
-+     connection = sqlite3.connect(db_path)
-+     try:
-+         connection.executescript(core._load_schema_text())
-++        connection.executescript(
-++            """
-++            CREATE TABLE clinical_rules (
-++                id INTEGER PRIMARY KEY AUTOINCREMENT,
-++                rule_code TEXT UNIQUE NOT NULL,
-++                title TEXT NOT NULL,
-++                category TEXT NOT NULL
-++            );
-++            CREATE TABLE suggestion_log (
-++                id INTEGER PRIMARY KEY AUTOINCREMENT,
-++                patient_link_id INTEGER NOT NULL,
-++                rule_code TEXT NOT NULL,
-++                status TEXT NOT NULL DEFAULT 'pending',
-++                FOREIGN KEY(patient_link_id) REFERENCES patient_links(id)
-++            );
-++            ALTER TABLE clinical_rule_versions
-++              ADD COLUMN source_legacy_rule_id INTEGER
-++              REFERENCES clinical_rules(id);
-++            ALTER TABLE clinical_decision_events
-++              ADD COLUMN legacy_source_suggestion_log_id INTEGER
-++              REFERENCES suggestion_log(id);
-++            """
-++        )
-+         cursor = connection.execute(
-+             """INSERT INTO clinical_rule_versions
-+                (rule_code, version, schema_version, dsl_version, phase,
-+@@ -157,8 +180,7 @@ def test_restart_cutover_is_idempotent_and_preserves_clean_v2_rows(
-+     core._initialized = False
-+     second_app = _create_app(cutover_db_path)
-+     try:
-+-        # schema.sql may transiently recreate the two inert tables during process
-+-        # bootstrap, but application construction removes them before returning.
-++        # The canonical schema never recreates v1 objects; restart remains a no-op.
-+         with second_app.app_context():
-+             db = core.get_db()
-+             _assert_clean_main_schema(db)
-+diff --git a/specialist_clinic/tests/test_v1_runtime_retired.py b/specialist_clinic/tests/test_v1_runtime_retired.py
-+index 65377f6..6d10cf8 100644
-+--- a/specialist_clinic/tests/test_v1_runtime_retired.py
-++++ b/specialist_clinic/tests/test_v1_runtime_retired.py
-+@@ -51,16 +51,10 @@ def test_retired_v1_api_is_inert_without_shadow_capture():
-+     }
-+ 
-+ 
-+-def test_legacy_rule_seed_is_a_no_write_tombstone():
-+-    from src.adapters.sqlite.clinical_rules_seed import seed_clinical_rules
-+-
-+-    class ExplodingDatabase:
-+-        def __getattr__(self, name):
-+-            raise AssertionError(
-+-                f"legacy seed attempted database access: {name}"
-+-            )
-+-
-+-    assert seed_clinical_rules(ExplodingDatabase()) == 0
-++def test_legacy_rule_seed_module_is_physically_removed():
-++    assert not (
-++        ROOT / "adapters" / "sqlite" / "clinical_rules_seed.py"
-++    ).exists()
-+ 
-+ 
-+ def test_legacy_dosage_guidance_is_inert_without_database_access():
+diff --git a/specialist_clinic/tests/test_clinical_engine_v1_request_cutover.py b/specialist_clinic/tests/test_clinical_engine_v1_request_cutover.py
+index c331aa7..52eabda 100644
+--- a/specialist_clinic/tests/test_clinical_engine_v1_request_cutover.py
++++ b/specialist_clinic/tests/test_clinical_engine_v1_request_cutover.py
+@@ -94,6 +94,29 @@ def _seed_pre_cutover_v2_rule(db_path: Path) -> int:
+     connection = sqlite3.connect(db_path)
+     try:
+         connection.executescript(core._load_schema_text())
++        connection.executescript(
++            """
++            CREATE TABLE clinical_rules (
++                id INTEGER PRIMARY KEY AUTOINCREMENT,
++                rule_code TEXT UNIQUE NOT NULL,
++                title TEXT NOT NULL,
++                category TEXT NOT NULL
++            );
++            CREATE TABLE suggestion_log (
++                id INTEGER PRIMARY KEY AUTOINCREMENT,
++                patient_link_id INTEGER NOT NULL,
++                rule_code TEXT NOT NULL,
++                status TEXT NOT NULL DEFAULT 'pending',
++                FOREIGN KEY(patient_link_id) REFERENCES patient_links(id)
++            );
++            ALTER TABLE clinical_rule_versions
++              ADD COLUMN source_legacy_rule_id INTEGER
++              REFERENCES clinical_rules(id);
++            ALTER TABLE clinical_decision_events
++              ADD COLUMN legacy_source_suggestion_log_id INTEGER
++              REFERENCES suggestion_log(id);
++            """
++        )
+         cursor = connection.execute(
+             """INSERT INTO clinical_rule_versions
+                (rule_code, version, schema_version, dsl_version, phase,
+@@ -157,8 +180,7 @@ def test_restart_cutover_is_idempotent_and_preserves_clean_v2_rows(
+     core._initialized = False
+     second_app = _create_app(cutover_db_path)
+     try:
+-        # schema.sql may transiently recreate the two inert tables during process
+-        # bootstrap, but application construction removes them before returning.
++        # The canonical schema never recreates v1 objects; restart remains a no-op.
+         with second_app.app_context():
+             db = core.get_db()
+             _assert_clean_main_schema(db)
+diff --git a/specialist_clinic/tests/test_v1_runtime_retired.py b/specialist_clinic/tests/test_v1_runtime_retired.py
+index 65377f6..6d10cf8 100644
+--- a/specialist_clinic/tests/test_v1_runtime_retired.py
++++ b/specialist_clinic/tests/test_v1_runtime_retired.py
+@@ -51,16 +51,10 @@ def test_retired_v1_api_is_inert_without_shadow_capture():
+     }
+ 
+ 
+-def test_legacy_rule_seed_is_a_no_write_tombstone():
+-    from src.adapters.sqlite.clinical_rules_seed import seed_clinical_rules
+-
+-    class ExplodingDatabase:
+-        def __getattr__(self, name):
+-            raise AssertionError(
+-                f"legacy seed attempted database access: {name}"
+-            )
+-
+-    assert seed_clinical_rules(ExplodingDatabase()) == 0
++def test_legacy_rule_seed_module_is_physically_removed():
++    assert not (
++        ROOT / "adapters" / "sqlite" / "clinical_rules_seed.py"
++    ).exists()
+ 
+ 
+ def test_legacy_dosage_guidance_is_inert_without_database_access():
