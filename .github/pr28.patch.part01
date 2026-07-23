@@ -1,0 +1,139 @@
+diff --git a/specialist_clinic/src/adapters/sqlite/core.py b/specialist_clinic/src/adapters/sqlite/core.py
+index b569206..a127853 100644
+--- a/specialist_clinic/src/adapters/sqlite/core.py
++++ b/specialist_clinic/src/adapters/sqlite/core.py
+@@ -267,8 +267,6 @@ def _run_migrations(db):
+     # Engagement engine: per-patient SMS opt-out + which event generated a worklist task
+     _ensure_column(db, "patient_links", "sms_opt_out", "INTEGER NOT NULL DEFAULT 0")
+     _ensure_column(db, "followup_tasks", "source_event", "TEXT")
+-    # Per-disease modular engine: each rule belongs to a disease module ('all' = cross-disease)
+-    _ensure_column(db, "clinical_rules", "condition_code", "TEXT NOT NULL DEFAULT 'all'")
+     # Disease-module registry metadata on the conditions table
+     _ensure_column(db, "conditions", "is_chronic", "INTEGER NOT NULL DEFAULT 1")
+     _ensure_column(db, "conditions", "display_order", "INTEGER NOT NULL DEFAULT 100")
+@@ -311,13 +309,6 @@ def _run_migrations(db):
+     _ensure_column(db, "lab_results", "test_key", "TEXT")
+     _seed_flag_sections(db)
+     _ensure_clinical_engine_v2_storage(db)
+-    # Seed the clinical decision-rule catalog (idempotent; manager edits preserved).
+-    # Also tags each rule's owning disease module (condition_code) on existing DBs.
+-    try:
+-        from src.adapters.sqlite.clinical_rules_seed import seed_clinical_rules
+-        seed_clinical_rules(db)
+-    except Exception:
+-        pass
+     # Seed the lab-test and drug catalogs (idempotent; wrapped so a missing seed
+     # module or any failure never breaks startup).
+     try:
+@@ -331,11 +322,9 @@ def _run_migrations(db):
+     except Exception:
+         pass
+ 
+-    # The schema loader is intentionally idempotent and may recreate retired v1
+-    # compatibility objects on an existing database. Remove them on the same
+-    # connection, immediately after every migration pass, before `_initialized` is
+-    # published to the process. This is the authoritative cutover boundary; app and
+-    # Blueprint lifecycle state cannot skip it.
++    # A copied pre-cutover database may still contain retired v1 objects. Remove
++    # them on the same connection before `_initialized` is published. Fresh and
++    # already-clean databases are a verified no-op.
+     db.commit()
+     from src.adapters.sqlite.clinical_engine_v1_cutover import (
+         ensure_v1_schema_cutover,
+diff --git a/specialist_clinic/src/adapters/sqlite/schema.sql b/specialist_clinic/src/adapters/sqlite/schema.sql
+index 1faa0b8..6086f9c 100644
+--- a/specialist_clinic/src/adapters/sqlite/schema.sql
++++ b/specialist_clinic/src/adapters/sqlite/schema.sql
+@@ -515,54 +515,7 @@ INSERT OR IGNORE INTO flag_catalog (flag_key, label, flag_type, options, categor
+  ('eye_exam_date', 'آخرین معاینهٔ چشم (ته‌چشم گشاد)', 'date', NULL, 'exam', 170),
+  ('foot_exam_date', 'آخرین معاینهٔ جامع پا', 'date', NULL, 'exam', 180);
+ 
+--- ============================================================================
+--- clinical_rules: the If/Then decision catalog covering EVERY section of the
+--- ADA T2D document (diagnosis, screening, targets, medication, drug-safety,
+--- insulin, monitoring, complication-screening, red-flags, hypoglycemia,
+--- lifestyle, vaccination). Seeded idempotently from clinical_rules_seed.py.
+--- Editable at /manager/decision-rules.
+--- ============================================================================
+-CREATE TABLE IF NOT EXISTS clinical_rules (
+-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+-    rule_code TEXT UNIQUE NOT NULL,
+-    title TEXT NOT NULL,
+-    category TEXT NOT NULL,        -- diagnosis|target|medication|drug_safety|insulin|
+-                                   -- monitoring|screening|redflag|hypo|lifestyle|vaccination|bp_rx|lipid_rx
+-    condition_code TEXT NOT NULL DEFAULT 'all',  -- owning disease module: a conditions.code, or 'all' (cross-disease)
+-    trigger_json TEXT,             -- machine-evaluable condition tree (NULL = informational/manual)
+-    human_if TEXT,
+-    recommendation TEXT,           -- the "Then" shown to the clinician
+-    dosage_titration TEXT,
+-    monitoring TEXT,
+-    contraindications TEXT,
+-    evidence_level TEXT,           -- A|B|C|E
+-    action_type TEXT NOT NULL DEFAULT 'educate',
+-                                   -- flag_risk|suggest_med|safety_alert|create_followup|
+-                                   -- schedule_screening|educate|classify|set_target|redflag|hypo|vaccine
+-    action_params_json TEXT,
+-    severity TEXT NOT NULL DEFAULT 'info',  -- info|warn|urgent
+-    priority INTEGER NOT NULL DEFAULT 100,
+-    source_ref TEXT,
+-    is_active INTEGER NOT NULL DEFAULT 1,
+-    notes TEXT
+-);
+-CREATE INDEX IF NOT EXISTS idx_clinical_rules_cat ON clinical_rules (category, priority);
+-
+--- Physician action on engine suggestions (accountability; suggestion-only system)
+-CREATE TABLE IF NOT EXISTS suggestion_log (
+-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+-    patient_link_id INTEGER NOT NULL,
+-    rule_code TEXT NOT NULL,
+-    suggestion_text TEXT,
+-    evidence_level TEXT,
+-    status TEXT NOT NULL DEFAULT 'pending',   -- pending|accepted|dismissed
+-    acted_by TEXT,
+-    acted_at TIMESTAMP,
+-    note TEXT,
+-    created_at TIMESTAMP DEFAULT (datetime('now', '+3 hours', '+30 minutes')),
+-    UNIQUE (patient_link_id, rule_code),
+-    FOREIGN KEY (patient_link_id) REFERENCES patient_links(id)
+-);
++-- Clinical decision support is stored exclusively in the versioned v2 tables below.
+ 
+ -- Seed drug-class catalog
+ INSERT OR IGNORE INTO drug_classes (class_key, label, glucose_lowering, display_order) VALUES
+@@ -752,8 +705,8 @@ CREATE INDEX IF NOT EXISTS idx_doctor_visit_log_workdate ON doctor_visit_log(wor
+ 
+ -- ============================================================================
+ -- Clinical Engine v2: immutable rule/ruleset versions and append-only audit.
+--- These tables live beside the legacy clinical_rules/suggestion_log tables.
+--- Runtime remains disabled by clinical_engine_v2_mode=off until later PRs.
++-- This is the only clinical decision-rule storage contract. Runtime remains
++-- disabled by clinical_engine_v2_mode=off until an activation seal is valid.
+ -- ============================================================================
+ CREATE TABLE IF NOT EXISTS clinical_rule_versions (
+     id INTEGER PRIMARY KEY AUTOINCREMENT,
+@@ -765,7 +718,6 @@ CREATE TABLE IF NOT EXISTS clinical_rule_versions (
+     action_type TEXT NOT NULL,
+     rule_json TEXT NOT NULL,
+     content_hash TEXT NOT NULL,
+-    source_legacy_rule_id INTEGER,
+     lifecycle_status TEXT NOT NULL DEFAULT 'DRAFT'
+         CHECK (lifecycle_status IN ('DRAFT', 'VALIDATED', 'APPROVED', 'SILENT',
+                                     'ACTIVE', 'SUSPENDED', 'RETIRED')),
+@@ -778,7 +730,6 @@ CREATE TABLE IF NOT EXISTS clinical_rule_versions (
+     change_note TEXT,
+     UNIQUE(rule_code, version),
+     UNIQUE(content_hash),
+-    FOREIGN KEY(source_legacy_rule_id) REFERENCES clinical_rules(id),
+     FOREIGN KEY(supersedes_rule_version_id) REFERENCES clinical_rule_versions(id)
+ );
+ CREATE INDEX IF NOT EXISTS idx_rule_versions_code
+@@ -900,12 +851,10 @@ CREATE TABLE IF NOT EXISTS clinical_decision_events (
+     actor_username TEXT NOT NULL,
+     occurred_at TEXT NOT NULL,
+     supersedes_event_id INTEGER,
+-    legacy_source_suggestion_log_id INTEGER,
+     FOREIGN KEY(recommendation_event_id) REFERENCES clinical_recommendation_events(id),
+     FOREIGN KEY(patient_link_id) REFERENCES patient_links(id),
+     FOREIGN KEY(actor_user_id) REFERENCES users(id),
+-    FOREIGN KEY(supersedes_event_id) REFERENCES clinical_decision_events(id),
+-    FOREIGN KEY(legacy_source_suggestion_log_id) REFERENCES suggestion_log(id)
