@@ -1,0 +1,45 @@
+name: Apply reviewed PR27 runtime fix
+
+on:
+  push:
+    branches:
+      - agent-clinical-schema-cutover
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apply-pr27-runtime-fix
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+          fetch-depth: 0
+
+      - name: Apply and verify patch
+        run: |
+          set -euo pipefail
+          git apply --check .github/pr27-runtime-fix.patch
+          git apply .github/pr27-runtime-fix.patch
+          rm -f .github/pr27-runtime-fix.patch
+          rm -f .github/workflows/apply-pr27-runtime-fix.yml
+          git add -A
+          git diff --cached --check
+          python -m py_compile \
+            specialist_clinic/src/adapters/sqlite/core.py \
+            specialist_clinic/src/adapters/sqlite/clinical_engine_v1_cutover.py \
+            specialist_clinic/tests/test_end_to_end_loops.py
+
+      - name: Commit corrected runtime boundary
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "make v1 cutover authoritative and e2e time deterministic"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
