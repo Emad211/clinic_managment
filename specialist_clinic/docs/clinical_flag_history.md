@@ -130,3 +130,7 @@ fail-closed به `UNKNOWN` می‌روند. اگر در آینده نمایش د
 - Factهای موتور false، unknown و not-asked را با status و verification مستقل حمل کنند.
 - run و activation evidence متعلق به engine identity قبلی current تلقی نشوند.
 - تمام تست‌های Specialist Clinic و Accounting بدون failure، error یا skip عبور کنند.
+
+تست‌های migration باید callable و exception class را از همان module object بگیرند؛
+این الزام مانع false-negative ناشی از بازسازی چند Flask app یا reload ماژول در یک
+فرآیند pytest می‌شود، بدون آن‌که نوع خطای مورد انتظار به `RuntimeError` عمومی تقلیل یابد.
