@@ -1,0 +1,184 @@
++    FOREIGN KEY(supersedes_event_id) REFERENCES clinical_decision_events(id)
+ );
+ CREATE INDEX IF NOT EXISTS idx_decision_events_recommendation
+ ON clinical_decision_events(recommendation_event_id, occurred_at, id);
+@@ -996,7 +945,7 @@ END;
+ -- Rule content and ruleset identity are versioned; lifecycle fields may change.
+ CREATE TRIGGER IF NOT EXISTS trg_rule_version_content_immutable
+ BEFORE UPDATE OF rule_code, version, schema_version, dsl_version, phase,
+-                 action_type, rule_json, content_hash, source_legacy_rule_id,
++                 action_type, rule_json, content_hash,
+                  created_by, created_at, supersedes_rule_version_id
+ ON clinical_rule_versions BEGIN
+     SELECT RAISE(ABORT, 'clinical rule version content is immutable');
+diff --git a/specialist_clinic/src/api/clinical_reconciliation.py b/specialist_clinic/src/api/clinical_reconciliation.py
+index 95debe6..0134b1c 100644
+--- a/specialist_clinic/src/api/clinical_reconciliation.py
++++ b/specialist_clinic/src/api/clinical_reconciliation.py
+@@ -12,10 +12,6 @@ from flask import (
+     url_for,
+ )
+ 
+-from src.adapters.sqlite.clinical_engine_v1_cutover import (
+-    install_v1_request_projection,
+-)
+-from src.adapters.sqlite.core import get_db
+ from src.adapters.sqlite.patients_repo import PatientRepository
+ from src.api.auth import login_required, manager_required
+ from src.services.activity_logger import log_activity
+@@ -42,15 +38,6 @@ def install_patient_mutation_guards(state):
+     install(state.app)
+ 
+ 
+-@bp.before_app_request
+-def install_request_local_v2_rule_projection():
+-    """Install only connection-local read compatibility required by one route."""
+-    install_v1_request_projection(
+-        get_db(),
+-        endpoint=request.endpoint,
+-    )
+-
+-
+ def _patient_or_none(pid: int):
+     return PatientRepository().get_by_id(pid)
+ 
+diff --git a/specialist_clinic/src/api/manager.py b/specialist_clinic/src/api/manager.py
+index 7692397..74e9242 100644
+--- a/specialist_clinic/src/api/manager.py
++++ b/specialist_clinic/src/api/manager.py
+@@ -306,9 +306,15 @@ def decision_rules_update():
+ def diseases():
+     """Per-disease module hub — each chronic condition is its own protocol page."""
+     from src.adapters.sqlite.clinical_rules_repo import ClinicalRulesRepository
++    from src.adapters.sqlite.clinical_engine_rules_repo import (
++        ClinicalEngineRulesRepository,
++    )
++
+     db = get_db()
+     repo = ClinicalRulesRepository()
+     active_inds = repo.all_indicators(active_only=True)
++    rule_counts = ClinicalEngineRulesRepository().condition_rule_counts()
++    cross_disease_rules = int(rule_counts.get("all", 0))
+     rows = db.execute(
+         "SELECT * FROM conditions WHERE is_active=1 AND COALESCE(is_chronic,1)=1 "
+         "ORDER BY display_order, id").fetchall()
+@@ -317,9 +323,9 @@ def diseases():
+         c = dict(c)
+         code = c.get('code')
+         c['ind_count'] = sum(1 for i in active_inds if _indicator_applies(i, code))
+-        c['rule_count'] = db.execute(
+-            "SELECT COUNT(*) n FROM clinical_rules WHERE condition_code IN (?, 'all')",
+-            (code,)).fetchone()['n']
++        c['rule_count'] = (
++            int(rule_counts.get(code, 0)) + cross_disease_rules
++        )
+         c['pat_count'] = db.execute(
+             "SELECT COUNT(DISTINCT pc.patient_link_id) n FROM patient_conditions pc "
+             "JOIN patient_links p ON p.id=pc.patient_link_id AND p.is_active=1 "
+diff --git a/specialist_clinic/src/app.py b/specialist_clinic/src/app.py
+index bf81a5f..2482f41 100644
+--- a/specialist_clinic/src/app.py
++++ b/specialist_clinic/src/app.py
+@@ -66,22 +66,14 @@ def create_app(test_config=None):
+         except Exception as exc:
+             print(f"[logging] not configured: {exc}")
+ 
+-    # Safety-critical schema and the v1 cutover are completed before a file-backed
+-    # application can serve traffic. Keeping both operations in the application
+-    # factory avoids Blueprint registration state and guarantees every app instance
+-    # in a long-lived desktop/test process receives the same schema contract.
++    # Safety-critical schema is installed before serving file-backed databases.
++    # The core migration pass owns any copied pre-cutover database cleanup.
+     if (app.config.get("DATABASE_PATH") or "") != ":memory:":
+         with app.app_context():
+             from src.adapters.sqlite.clinical_engine_runtime_schema import (
+                 ensure_runtime_schema,
+             )
+-            from src.adapters.sqlite.clinical_engine_v1_cutover import (
+-                ensure_v1_schema_cutover,
+-            )
+-
+-            db = get_db()
+-            ensure_runtime_schema(db)
+-            ensure_v1_schema_cutover(db)
++            ensure_runtime_schema(get_db())
+     else:
+ 
+         @app.before_request
+@@ -89,13 +81,7 @@ def create_app(test_config=None):
+             from src.adapters.sqlite.clinical_engine_runtime_schema import (
+                 ensure_runtime_schema,
+             )
+-            from src.adapters.sqlite.clinical_engine_v1_cutover import (
+-                ensure_v1_schema_cutover,
+-            )
+-
+-            db = get_db()
+-            ensure_runtime_schema(db)
+-            ensure_v1_schema_cutover(db)
++            ensure_runtime_schema(get_db())
+ 
+     @app.before_request
+     def load_logged_in_user():
+diff --git a/specialist_clinic/tests/test_clinical_engine_cutover_boundary.py b/specialist_clinic/tests/test_clinical_engine_cutover_boundary.py
+index 2266913..f384ad6 100644
+--- a/specialist_clinic/tests/test_clinical_engine_cutover_boundary.py
++++ b/specialist_clinic/tests/test_clinical_engine_cutover_boundary.py
+@@ -25,11 +25,15 @@ def test_migration_pass_owns_persistent_v1_cutover():
+     )
+ 
+ 
+-def test_blueprint_never_owns_persistent_schema_cleanup():
++def test_blueprint_has_no_schema_or_compatibility_projection():
+     boundary = _source("api/clinical_reconciliation.py")
+ 
+     assert "ensure_v1_schema_cutover" not in boundary
+-    assert "install_v1_request_projection" in boundary
++    assert "install_v1_request_projection" not in boundary
++    assert "before_app_request" not in boundary
++    assert "TEMP VIEW clinical_rules" not in _source(
++        "adapters/sqlite/clinical_engine_v1_cutover.py"
++    )
+ 
+ 
+ def test_cutover_verifies_its_postcondition():
+@@ -40,3 +44,21 @@ def test_cutover_verifies_its_postcondition():
+         "retired Clinical Engine v1 storage remained after schema cutover"
+         in cutover
+     )
++
++
++def test_canonical_schema_never_defines_v1_objects():
++    schema = (SRC / "adapters/sqlite/schema.sql").read_text(encoding="utf-8")
++    core = _source("adapters/sqlite/core.py")
++
++    assert "CREATE TABLE IF NOT EXISTS clinical_rules" not in schema
++    assert "CREATE TABLE IF NOT EXISTS suggestion_log" not in schema
++    assert "source_legacy_rule_id" not in schema
++    assert "legacy_source_suggestion_log_id" not in schema
++    assert '"clinical_rules", "condition_code"' not in core
++    assert "seed_clinical_rules" not in core
++
++
++def test_app_factory_does_not_duplicate_migration_cutover_policy():
++    app_source = _source("app.py")
++
++    assert "ensure_v1_schema_cutover" not in app_source
+diff --git a/specialist_clinic/tests/test_clinical_engine_rule_projection.py b/specialist_clinic/tests/test_clinical_engine_rule_projection.py
+new file mode 100644
+index 0000000..0ff755b
+--- /dev/null
++++ b/specialist_clinic/tests/test_clinical_engine_rule_projection.py
+@@ -0,0 +1,131 @@
++"""Governed v2 rule-count projections for the disease manager page."""
++from __future__ import annotations
++
++from copy import deepcopy
++from pathlib import Path
++import sys
++
++import pytest
++
++
++SPECIALIST_ROOT = Path(__file__).resolve().parents[1]
++if str(SPECIALIST_ROOT) not in sys.path:
