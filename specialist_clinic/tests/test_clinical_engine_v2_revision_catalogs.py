@@ -88,19 +88,30 @@ def test_flag_catalog_insert_update_delete_invalidates_every_patient(catalog_app
     first = _patient(db, "CAT0002")
     second = _patient(db, "CAT0003")
 
-    flag_id = int(db.execute(
-        """INSERT INTO flag_catalog
-           (flag_key, label, flag_type, category, is_active)
-           VALUES ('runtime_catalog_flag', 'پرچم آزمون runtime', 'bool', 'other', 1)"""
-    ).lastrowid)
-    db.commit()
+    from src.adapters.sqlite.flags_repo import ClinicalFlagsRepository
+
+    flags = ClinicalFlagsRepository()
+    flag_id = flags.create_catalog_definition(
+        flag_key="runtime_catalog_flag",
+        label="پرچم آزمون runtime",
+        flag_type="bool",
+        category="other",
+    )
     assert (_revision(db, first), _revision(db, second)) == (1, 1)
 
+    # Presentation-only metadata must not invalidate every patient's run.
     db.execute(
-        "UPDATE flag_catalog SET flag_type='text' WHERE id=?",
+        "UPDATE flag_catalog SET label='برچسب تازه' WHERE id=?",
         (flag_id,),
     )
     db.commit()
+    assert (_revision(db, first), _revision(db, second)) == (1, 1)
+
+    flags.update_catalog_semantics(
+        "runtime_catalog_flag",
+        flag_type="text",
+        is_active=True,
+    )
     assert (_revision(db, first), _revision(db, second)) == (2, 2)
 
     db.execute("DELETE FROM flag_catalog WHERE id=?", (flag_id,))

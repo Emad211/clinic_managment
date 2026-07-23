@@ -17,6 +17,7 @@ _CLINICAL_ENGINE_V2_TABLES = frozenset({
     "clinical_rule_evaluations",
     "clinical_recommendation_events",
     "clinical_decision_events",
+    "clinical_flag_events",
 })
 _CLINICAL_ENGINE_V2_TRIGGERS = frozenset({
     "trg_engine_runs_terminal_no_update",
@@ -308,6 +309,24 @@ def _run_migrations(db):
     _ensure_column(db, "processed_invoices", "outreach_done", "INTEGER NOT NULL DEFAULT 0")
     _ensure_column(db, "lab_results", "test_key", "TEXT")
     _seed_flag_sections(db)
+    # Installed pre-history revision triggers target the mutable table and treat
+    # presentation-only catalog edits as clinical changes. Remove them before the
+    # one-time migration; ensure_runtime_schema recreates the canonical bodies.
+    db.executescript(
+        """
+        DROP TRIGGER IF EXISTS trg_clinical_revision_patient_flags_insert;
+        DROP TRIGGER IF EXISTS trg_clinical_revision_patient_flags_update;
+        DROP TRIGGER IF EXISTS trg_clinical_revision_patient_flags_delete;
+        DROP TRIGGER IF EXISTS trg_clinical_revision_flag_catalog_insert;
+        DROP TRIGGER IF EXISTS trg_clinical_revision_flag_catalog_update;
+        DROP TRIGGER IF EXISTS trg_clinical_revision_flag_catalog_delete;
+        DROP TRIGGER IF EXISTS trg_clinical_revision_flag_event_insert;
+        """
+    )
+    from src.adapters.sqlite.clinical_flag_history_schema import (
+        ensure_clinical_flag_history_storage,
+    )
+    ensure_clinical_flag_history_storage(db)
     _ensure_clinical_engine_v2_storage(db)
     # Seed the lab-test and drug catalogs (idempotent; wrapped so a missing seed
     # module or any failure never breaks startup).

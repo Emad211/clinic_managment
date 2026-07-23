@@ -23,16 +23,18 @@ from src.adapters.sqlite.core import get_db
 from src.adapters.sqlite.clinical_reconciliation_schema import (
     ensure_clinical_reconciliation_storage,
 )
+from src.adapters.sqlite.clinical_flag_history_schema import (
+    ensure_clinical_flag_history_storage,
+)
 
 
-_SCHEMA_VERSION = 3
+_SCHEMA_VERSION = 4
 _MIGRATION_LOCK = threading.Lock()
 _VERIFIED_DATABASES: set[tuple[str, int]] = set()
 _CLINICAL_SOURCE_TABLES = (
     "patient_conditions",
     "patient_medications",
     "allergies",
-    "patient_flags",
     "vital_readings",
     "lab_results",
 )
@@ -147,7 +149,15 @@ def _shared_trigger_sql() -> str:
     END;
 
     CREATE TRIGGER IF NOT EXISTS trg_clinical_revision_flag_catalog_update
-    AFTER UPDATE ON flag_catalog
+    AFTER UPDATE OF flag_key, flag_type, options_json, definition_hash,
+                    definition_version, is_active
+    ON flag_catalog
+    WHEN COALESCE(OLD.flag_key, '') <> COALESCE(NEW.flag_key, '')
+      OR COALESCE(OLD.flag_type, '') <> COALESCE(NEW.flag_type, '')
+      OR COALESCE(OLD.options_json, '') <> COALESCE(NEW.options_json, '')
+      OR COALESCE(OLD.definition_hash, '') <> COALESCE(NEW.definition_hash, '')
+      OR COALESCE(OLD.definition_version, 0) <> COALESCE(NEW.definition_version, 0)
+      OR COALESCE(OLD.is_active, 0) <> COALESCE(NEW.is_active, 0)
     BEGIN
         UPDATE patient_links
            SET clinical_data_revision = clinical_data_revision + 1;
@@ -175,6 +185,16 @@ def _shared_trigger_sql() -> str:
          );
     END;
 
+    -- Clinical flag events are append-only. Every event changes one patient's
+    -- effective clinical decision-input snapshot.
+    CREATE TRIGGER IF NOT EXISTS trg_clinical_revision_flag_event_insert
+    AFTER INSERT ON clinical_flag_events
+    BEGIN
+        UPDATE patient_links
+           SET clinical_data_revision = clinical_data_revision + 1
+         WHERE id = NEW.patient_link_id;
+    END;
+
     -- A review event changes verification/absence semantics even when the source
     -- rows themselves are unchanged, so every appended reconciliation event
     -- invalidates the previous clinical run for that patient.
@@ -196,6 +216,7 @@ def _expected_trigger_names() -> set[str]:
         "trg_clinical_revision_flag_catalog_delete",
         "trg_clinical_revision_condition_code_update",
         "trg_clinical_revision_reconciliation_insert",
+        "trg_clinical_revision_flag_event_insert",
     }
     for table in _CLINICAL_SOURCE_TABLES:
         prefix = f"trg_clinical_revision_{table}"
@@ -219,6 +240,20 @@ def ensure_runtime_schema(db: sqlite3.Connection | None = None) -> None:
         if cache_key is None and _memory_connection_is_ready(db):
             return
 
+        # Remove installed revision triggers whose body targets the retired
+        # mutable patient_flags table before that table is migrated/dropped.
+        db.executescript(
+            """
+            DROP TRIGGER IF EXISTS trg_clinical_revision_patient_flags_insert;
+            DROP TRIGGER IF EXISTS trg_clinical_revision_patient_flags_update;
+            DROP TRIGGER IF EXISTS trg_clinical_revision_patient_flags_delete;
+            DROP TRIGGER IF EXISTS trg_clinical_revision_flag_catalog_insert;
+            DROP TRIGGER IF EXISTS trg_clinical_revision_flag_catalog_update;
+            DROP TRIGGER IF EXISTS trg_clinical_revision_flag_catalog_delete;
+            DROP TRIGGER IF EXISTS trg_clinical_revision_flag_event_insert;
+            """
+        )
+        ensure_clinical_flag_history_storage(db)
         _ensure_column(
             db,
             "patient_links",
@@ -244,6 +279,16 @@ def ensure_runtime_schema(db: sqlite3.Connection | None = None) -> None:
         )
         for table in _CLINICAL_SOURCE_TABLES:
             db.executescript(_revision_trigger_sql(table))
+        db.executescript(
+            """
+            DROP TRIGGER IF EXISTS trg_clinical_revision_flag_catalog_insert;
+            DROP TRIGGER IF EXISTS trg_clinical_revision_flag_catalog_update;
+            DROP TRIGGER IF EXISTS trg_clinical_revision_flag_catalog_delete;
+            DROP TRIGGER IF EXISTS trg_clinical_revision_flag_event_insert;
+            DROP TRIGGER IF EXISTS trg_clinical_revision_condition_code_update;
+            DROP TRIGGER IF EXISTS trg_clinical_revision_reconciliation_insert;
+            """
+        )
         db.executescript(_shared_trigger_sql())
 
         db.execute(

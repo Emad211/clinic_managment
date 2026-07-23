@@ -17,11 +17,13 @@ from src.domain.clinical_engine import (
     VerificationStatus,
 )
 from src.domain.clinical_engine.reconciliation import project_collection
+from src.domain.clinical_engine.flag_history import (
+    ClinicalFlagState,
+    project_flag_events,
+)
 
 
 _FA_DIGITS = str.maketrans("۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩", "01234567890123456789")
-_TRUE = {"1", "true", "yes", "on"}
-_FALSE = {"0", "false", "no", "off"}
 _KEY_PART = re.compile(r"^[a-z0-9][a-z0-9._-]*$")
 _COLLECTION_DEFINITIONS = (
     (
@@ -85,17 +87,6 @@ def _dt(value: Any, fallback: datetime) -> datetime:
     return parsed
 
 
-def _typed_flag(value: Any, flag_type: str | None) -> Any:
-    text = str(value)
-    if flag_type in {"boolean", "bool"}:
-        lowered = text.strip().lower()
-        if lowered in _TRUE:
-            return True
-        if lowered in _FALSE:
-            return False
-    return text
-
-
 def _key(prefix: str, raw: Any, record_id: Any) -> tuple[str, tuple[str, ...]]:
     part = str(raw or "").strip().lower()
     if _KEY_PART.fullmatch(part):
@@ -146,6 +137,7 @@ class LegacyFactBundleAdapter:
             status: FactStatus,
             value: Any,
             effective_at: datetime,
+            recorded_at: datetime | None = None,
             system: str,
             record_id: Any,
             actor: str | None = None,
@@ -168,7 +160,7 @@ class LegacyFactBundleAdapter:
                     value=value,
                     unit=unit,
                     effective_at=effective_at,
-                    recorded_at=effective_at,
+                    recorded_at=recorded_at or effective_at,
                     source=FactSource(
                         system=system, record_id=str(record_id), actor=actor
                     ),
@@ -426,43 +418,56 @@ class LegacyFactBundleAdapter:
                 warnings=("SOURCE_UNAVAILABLE",),
             )
             return
-        values = {row["flag_key"]: row for row in bundle.get("flags", [])}
+        projections = project_flag_events(
+            bundle.get("flags", []),
+            bundle.get("flag_catalog", []),
+            as_of_at=as_of_at,
+            knowledge_at=as_of_at,
+        )
+        present_keys = sorted(
+            key for key, item in projections.items()
+            if item["state"] == ClinicalFlagState.PRESENT.value
+        )
         add(
             fact_id=f"collection:{pid}:flags",
             kind=FactKind.FLAG,
             key="flag.values",
             status=FactStatus.PRESENT,
-            value=sorted(values),
+            value=present_keys,
             effective_at=as_of_at,
-            system="legacy_collection",
+            system="clinical_flag_events",
             record_id="flags",
+            verification=VerificationStatus.UNVERIFIED,
         )
-        for catalog in bundle.get("flag_catalog", []):
-            key = catalog["flag_key"]
-            row = values.get(key)
+        status_map = {
+            ClinicalFlagState.PRESENT.value: FactStatus.PRESENT,
+            ClinicalFlagState.UNKNOWN.value: FactStatus.UNKNOWN,
+            ClinicalFlagState.NOT_ASKED.value: FactStatus.NOT_ASKED,
+        }
+        for key, projection in projections.items():
+            catalog = projection["catalog"]
+            event = projection["event"]
             fact_key, key_warnings = _key("flag", key, catalog["id"])
+            verification = VerificationStatus(projection["verification"])
             add(
-                fact_id=f"flag:{pid}:{key}",
+                fact_id=(
+                    f"flag-event:{event['id']}"
+                    if event else f"flag-catalog:{catalog['id']}"
+                ),
                 kind=FactKind.FLAG,
                 key=fact_key,
-                status=FactStatus.PRESENT if row else FactStatus.NOT_ASKED,
-                value=(
-                    _typed_flag(row["value"], catalog.get("flag_type"))
-                    if row
-                    else None
+                status=status_map[projection["state"]],
+                value=projection["value"],
+                effective_at=_dt(projection["effective_at"], as_of_at),
+                recorded_at=_dt(projection["recorded_at"], as_of_at),
+                system=(event.get("source") if event else "flag_catalog"),
+                record_id=(event["id"] if event else catalog["id"]),
+                actor=(event.get("actor_username") if event else None),
+                verification=verification,
+                warnings=(
+                    *projection["warnings"],
+                    *key_warnings,
                 ),
-                effective_at=(
-                    _dt(row.get("updated_at"), as_of_at) if row else as_of_at
-                ),
-                system="patient_flags" if row else "flag_catalog",
-                record_id=row["id"] if row else catalog["id"],
-                actor=row.get("recorded_by") if row else None,
-                verification=(
-                    VerificationStatus.CONFIRMED
-                    if row
-                    else VerificationStatus.UNVERIFIED
-                ),
-                warnings=key_warnings,
             )
 
     def _observations(self, bundle, pid, as_of_at, add):

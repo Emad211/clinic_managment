@@ -173,7 +173,7 @@ def detail(pid):
 
     # Clinical decision inputs (flags + drug-class catalog)
     flag_groups = flags_repo.catalog_grouped()
-    patient_flags = flags_repo.get_flags(pid)
+    patient_flags = flags_repo.get_flag_states(pid)
     drug_class_options = flags_repo.drug_classes()
     drug_class_map = flags_repo.drug_class_map()
 
@@ -612,41 +612,117 @@ def clinical_v2_decision(pid):
 @bp.route("/<int:pid>/flags", methods=["POST"])
 @login_required
 def save_flags(pid):
-    """Save the patient's clinical decision inputs (ADA flags).
+    """Append one atomic, optimistic-concurrency-controlled flag review batch."""
+    from src.adapters.sqlite.flags_repo import (
+        ClinicalFlagConflict,
+        ClinicalFlagValidationError,
+        ClinicalFlagsRepository,
+    )
+    from src.domain.clinical_engine.flag_history import ClinicalFlagState
 
-    PARTIAL-SAFE: a per-section record form sends a hidden `flag_keys` field
-    (comma-separated keys it manages); only those keys are updated, leaving
-    flags from other sections untouched. If `flag_keys` is absent we fall back
-    to the legacy whole-catalog behavior (backward compat).
-    """
-    from src.adapters.sqlite.flags_repo import ClinicalFlagsRepository
     repo = ClinicalFlagsRepository()
-    catalog_by_key = {f['flag_key']: f for f in repo.catalog()}
-
+    catalog = repo.catalog()
+    catalog_by_key = {item["flag_key"]: item for item in catalog}
+    section = (request.form.get("flag_section") or "").strip()
+    allowed_by_section = {
+        "comorbidity": {
+            item["flag_key"]
+            for item in catalog
+            if (item.get("record_section") or "general")
+            in {"disease", "general"}
+        },
+        "lifestyle": {
+            item["flag_key"]
+            for item in catalog
+            if (item.get("record_section") or "general") == "lifestyle"
+        },
+        "exam": {
+            item["flag_key"]
+            for item in catalog
+            if (item.get("record_section") or "general") == "exam"
+        },
+    }
+    expected_keys = allowed_by_section.get(section)
     raw_keys = request.form.get("flag_keys")
-    if raw_keys is not None:
-        managed = [k.strip() for k in raw_keys.split(",") if k.strip()]
-        flags = [catalog_by_key[k] for k in managed if k in catalog_by_key]
-    else:
-        flags = list(catalog_by_key.values())
+    submitted_keys = [
+        key.strip() for key in (raw_keys or "").split(",") if key.strip()
+    ]
+    if (
+        expected_keys is None
+        or not submitted_keys
+        or len(submitted_keys) != len(set(submitted_keys))
+        or set(submitted_keys) != expected_keys
+    ):
+        flash("فرم وضعیت بالینی معتبر نیست؛ صفحه را دوباره باز کنید.", "error")
+        return redirect(url_for("patients.detail", pid=pid) + "#record")
 
-    values = {}
-    for f in flags:
-        key, ftype = f['flag_key'], f['flag_type']
-        if ftype == 'bool':
-            values[key] = '1' if request.form.get(key) == 'on' else ''
-        elif ftype == 'date':
-            # The date input re-renders empty (the stored value shows in the placeholder),
-            # so a blank submission must NOT wipe a stored date — only update when a new
-            # date is actually entered.
-            greg = jalali_to_gregorian_str(request.form.get(key, ""))
-            if greg:
-                values[key] = greg
-        else:  # enum / text
-            values[key] = request.form.get(key, "").strip()
-    repo.set_flags(pid, values, recorded_by=g.user["username"])
-    log_activity("flags_update", "ثبت وضعیت بالینی بیمار", patient_link_id=pid)
-    flash("وضعیت بالینی ذخیره شد", "success")
+    updates = {}
+    expected_event_ids = {}
+    expected_hashes = {}
+    try:
+        for key in sorted(submitted_keys):
+            definition = catalog_by_key[key]
+            prefix = f"flag__{key}__"
+            token = (request.form.get(prefix + "state") or "").strip()
+            if definition["flag_type"] == "bool":
+                if token == "PRESENT_TRUE":
+                    state, value = ClinicalFlagState.PRESENT, True
+                elif token == "PRESENT_FALSE":
+                    state, value = ClinicalFlagState.PRESENT, False
+                elif token in {"UNKNOWN", "NOT_ASKED"}:
+                    state, value = ClinicalFlagState(token), None
+                else:
+                    raise ClinicalFlagValidationError(
+                        f"وضعیت {definition['label']} انتخاب نشده است"
+                    )
+            else:
+                if token not in {"PRESENT", "UNKNOWN", "NOT_ASKED"}:
+                    raise ClinicalFlagValidationError(
+                        f"وضعیت {definition['label']} انتخاب نشده است"
+                    )
+                state = ClinicalFlagState(token)
+                value = None
+                if state is ClinicalFlagState.PRESENT:
+                    raw_value = (request.form.get(prefix + "value") or "").strip()
+                    if definition["flag_type"] == "date":
+                        value = jalali_to_gregorian_str(raw_value)
+                        if value is None and len(raw_value) == 10 and raw_value[4] == "-":
+                            value = raw_value
+                    else:
+                        value = raw_value
+            updates[key] = {"state": state.value, "value": value}
+            raw_event_id = (request.form.get(prefix + "event_id") or "").strip()
+            expected_event_ids[key] = int(raw_event_id) if raw_event_id else None
+            expected_hashes[key] = (
+                request.form.get(prefix + "definition_hash") or ""
+            ).strip()
+
+        events = repo.append_batch(
+            pid,
+            updates,
+            actor_username=g.user["username"],
+            actor_user_id=int(g.user["id"]),
+            expected_event_ids=expected_event_ids,
+            expected_definition_hashes=expected_hashes,
+            source="clinician",
+            verification="CONFIRMED",
+            record_unchanged=True,
+            note=f"Patient record section review: {section}",
+        )
+    except ClinicalFlagConflict:
+        flash(
+            "این بخش هم‌زمان تغییر کرده است؛ صفحه را مرور و دوباره ثبت کنید.",
+            "warning",
+        )
+    except (ClinicalFlagValidationError, ValueError, LookupError) as exc:
+        flash(f"وضعیت بالینی ثبت نشد: {exc}", "error")
+    else:
+        log_activity(
+            "flags_review",
+            f"ثبت {len(events)} رویداد وضعیت بالینی در بخش {section}",
+            patient_link_id=pid,
+        )
+        flash("مرور وضعیت بالینی به‌صورت تاریخی ثبت شد", "success")
     return redirect(url_for("patients.detail", pid=pid) + "#record")
 
 

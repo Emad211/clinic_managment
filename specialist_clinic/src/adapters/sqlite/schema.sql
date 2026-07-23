@@ -458,7 +458,7 @@ CREATE INDEX IF NOT EXISTS idx_medevents_patient ON medication_events (patient_l
 -- ============================================================================
 -- Clinical decision inputs (ADA T2D engines) — see docs/treatment_engine_plan.md
 -- flag_catalog: editable catalog of categorical/boolean clinical inputs (ADA §2)
--- patient_flags: per-patient values for those inputs
+-- clinical_flag_events: typed append-only per-patient history
 -- drug_classes : editable catalog mapping medications to a pharmacologic class
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS flag_catalog (
@@ -466,24 +466,60 @@ CREATE TABLE IF NOT EXISTS flag_catalog (
     flag_key TEXT UNIQUE NOT NULL,
     label TEXT NOT NULL,
     flag_type TEXT NOT NULL DEFAULT 'bool',   -- bool | enum | date | text
-    options TEXT,                             -- enum: "value|label,value|label,..."
-    category TEXT NOT NULL DEFAULT 'other',    -- cardiac|renal|risk|hepatic|repro|lifestyle|functional|history|exam
+    options TEXT,                             -- retired input format; migration canonicalizes it
+    options_json TEXT,                        -- canonical [{"value","label"}, ...]
+    definition_hash TEXT,                     -- semantic identity (key/type/options/active/version)
+    definition_version INTEGER NOT NULL DEFAULT 1,
+    category TEXT NOT NULL DEFAULT 'other',   -- cardiac|renal|risk|hepatic|repro|lifestyle|functional|history|exam
     display_order INTEGER NOT NULL DEFAULT 100,
     is_active INTEGER NOT NULL DEFAULT 1,
+    record_section TEXT,
     notes TEXT
 );
 
-CREATE TABLE IF NOT EXISTS patient_flags (
+-- Longitudinal, typed and append-only decision inputs. Audit triggers and strict
+-- value/supersession guards are installed by clinical_flag_history_schema.py.
+CREATE TABLE IF NOT EXISTS clinical_flag_events (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     patient_link_id INTEGER NOT NULL,
-    flag_key TEXT NOT NULL,
-    value TEXT,
-    recorded_by TEXT,
-    updated_at TIMESTAMP DEFAULT (datetime('now', '+3 hours', '+30 minutes')),
-    UNIQUE (patient_link_id, flag_key),
-    FOREIGN KEY (patient_link_id) REFERENCES patient_links(id)
+    flag_key TEXT NOT NULL CHECK (length(trim(flag_key)) > 0),
+    status TEXT NOT NULL CHECK (status IN ('PRESENT','UNKNOWN','NOT_ASKED')),
+    value_json TEXT,
+    flag_type TEXT NOT NULL CHECK (flag_type IN ('bool','enum','date','text')),
+    definition_hash TEXT NOT NULL CHECK (length(definition_hash)=64),
+    verification TEXT NOT NULL DEFAULT 'CONFIRMED'
+      CHECK (verification IN ('CONFIRMED','PROVISIONAL','UNVERIFIED','REFUTED')),
+    source TEXT NOT NULL DEFAULT 'clinician'
+      CHECK (source IN ('clinician','patient','caregiver','imported','system')),
+    source_record_id TEXT,
+    actor_user_id INTEGER,
+    actor_username TEXT NOT NULL CHECK (length(trim(actor_username)) > 0),
+    effective_at TEXT NOT NULL CHECK (datetime(effective_at) IS NOT NULL),
+    recorded_at TEXT NOT NULL CHECK (datetime(recorded_at) IS NOT NULL),
+    batch_id TEXT NOT NULL CHECK (length(trim(batch_id)) > 0),
+    supersedes_event_id INTEGER,
+    note TEXT,
+    CHECK (datetime(effective_at) <= datetime(recorded_at)),
+    CHECK (
+      (status='PRESENT' AND value_json IS NOT NULL AND json_valid(value_json))
+      OR (status<>'PRESENT' AND value_json IS NULL)
+    ),
+    FOREIGN KEY (patient_link_id) REFERENCES patient_links(id),
+    FOREIGN KEY (flag_key) REFERENCES flag_catalog(flag_key),
+    FOREIGN KEY (actor_user_id) REFERENCES users(id),
+    FOREIGN KEY (supersedes_event_id) REFERENCES clinical_flag_events(id)
 );
-CREATE INDEX IF NOT EXISTS idx_patient_flags ON patient_flags (patient_link_id);
+CREATE INDEX IF NOT EXISTS idx_clinical_flag_events_projection
+    ON clinical_flag_events(patient_link_id, flag_key, recorded_at DESC, id DESC);
+CREATE INDEX IF NOT EXISTS idx_clinical_flag_events_effective
+    ON clinical_flag_events(patient_link_id, effective_at, recorded_at, id);
+CREATE INDEX IF NOT EXISTS idx_clinical_flag_events_batch
+    ON clinical_flag_events(patient_link_id, batch_id, id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_clinical_flag_events_one_per_batch
+    ON clinical_flag_events(patient_link_id, batch_id, flag_key);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_clinical_flag_events_one_child
+    ON clinical_flag_events(supersedes_event_id)
+    WHERE supersedes_event_id IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS drug_classes (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -495,25 +531,25 @@ CREATE TABLE IF NOT EXISTS drug_classes (
 );
 
 -- Seed clinical-flag catalog (ADA §2 decision inputs)
-INSERT OR IGNORE INTO flag_catalog (flag_key, label, flag_type, options, category, display_order) VALUES
- ('ascvd', 'سابقهٔ ASCVD (بیماری قلبی-عروقی آترواسکلروتیک)', 'bool', NULL, 'cardiac', 10),
- ('cvd_high_risk', 'ریسک بسیار بالای قلبی-عروقی (≥۵۵ سال + ≥۲ ریسک‌فاکتور)', 'bool', NULL, 'cardiac', 20),
- ('hf', 'نارسایی قلب (HF)', 'bool', NULL, 'cardiac', 30),
- ('hf_type', 'نوع نارسایی قلب', 'enum', 'HFrEF|EF کاهش‌یافته,HFpEF|EF حفظ‌شده,unknown|نامشخص', 'cardiac', 40),
- ('hf_symptomatic', 'نارسایی قلبِ علامت‌دار', 'bool', NULL, 'cardiac', 50),
- ('ckd_stage_g', 'مرحلهٔ CKD بر اساس eGFR', 'enum', 'G1|G1 (≥۹۰),G2|G2 (۶۰–۸۹),G3a|G3a (۴۵–۵۹),G3b|G3b (۳۰–۴۴),G4|G4 (۱۵–۲۹),G5|G5 (<۱۵)', 'renal', 60),
- ('ckd_stage_a', 'مرحلهٔ آلبومینوری', 'enum', 'A1|A1 (<۳۰),A2|A2 (۳۰–۲۹۹),A3|A3 (≥۳۰۰)', 'renal', 70),
- ('hypo_risk', 'ریسک هیپوگلیسمی', 'enum', 'low|پایین,atrisk|در معرض,high|بالا', 'risk', 80),
- ('masld', 'کبد چربِ متابولیک (MASLD)', 'bool', NULL, 'hepatic', 90),
- ('mash_biopsy', 'MASH اثبات‌شده / ریسک بالای فیبروز', 'bool', NULL, 'hepatic', 100),
- ('pregnancy', 'بارداری', 'bool', NULL, 'repro', 110),
- ('childbearing_no_contraception', 'توان بارداری بدون پیشگیری', 'bool', NULL, 'repro', 120),
- ('smoking', 'مصرف دخانیات/ویپ', 'enum', 'never|هرگز,former|ترک‌کرده,current|فعلی,vape|ویپ', 'lifestyle', 130),
- ('frailty', 'وضعیت سلامت/فراژیلیتی (سالمند)', 'enum', 'robust|سالم,intermediate|میانی,complex|پیچیده/فراژیل', 'functional', 140),
- ('metabolic_surgery', 'سابقهٔ جراحی متابولیک', 'bool', NULL, 'history', 150),
- ('monofilament', 'مونوفیلامان ۱۰گرمی (حس محافظتی پا)', 'enum', 'normal|طبیعی,impaired|مختل,not_done|انجام‌نشده', 'exam', 160),
- ('eye_exam_date', 'آخرین معاینهٔ چشم (ته‌چشم گشاد)', 'date', NULL, 'exam', 170),
- ('foot_exam_date', 'آخرین معاینهٔ جامع پا', 'date', NULL, 'exam', 180);
+INSERT OR IGNORE INTO flag_catalog (flag_key, label, flag_type, options, options_json, definition_hash, definition_version, category, display_order) VALUES
+ ('ascvd', 'سابقهٔ ASCVD (بیماری قلبی-عروقی آترواسکلروتیک)', 'bool', NULL, '[]', '3d19e17c0e34a0fdfffed3508ec52bb78146435dc65042984addd4834c26304d', 1, 'cardiac', 10),
+ ('cvd_high_risk', 'ریسک بسیار بالای قلبی-عروقی (≥۵۵ سال + ≥۲ ریسک‌فاکتور)', 'bool', NULL, '[]', 'f540af588404e0684fc37ec3b8ef2c064e9c48d97ec92348f9d76f10d1626fb4', 1, 'cardiac', 20),
+ ('hf', 'نارسایی قلب (HF)', 'bool', NULL, '[]', '33a983fb8c46be7fafe64e76132912befd15592177351dfc4c94fdced858f221', 1, 'cardiac', 30),
+ ('hf_type', 'نوع نارسایی قلب', 'enum', 'HFrEF|EF کاهش‌یافته,HFpEF|EF حفظ‌شده,unknown|نامشخص', '[{"label":"EF کاهش‌یافته","value":"HFrEF"},{"label":"EF حفظ‌شده","value":"HFpEF"},{"label":"نامشخص","value":"unknown"}]', '5357fb10b920702b86ac174ba8ed037e61137e150b9ab92fc1099dd5fba5928b', 1, 'cardiac', 40),
+ ('hf_symptomatic', 'نارسایی قلبِ علامت‌دار', 'bool', NULL, '[]', '2998b151451e32396c1f08a8ff1c67c7f8e52830c671dbebb8616e9737eedcf4', 1, 'cardiac', 50),
+ ('ckd_stage_g', 'مرحلهٔ CKD بر اساس eGFR', 'enum', 'G1|G1 (≥۹۰),G2|G2 (۶۰–۸۹),G3a|G3a (۴۵–۵۹),G3b|G3b (۳۰–۴۴),G4|G4 (۱۵–۲۹),G5|G5 (<۱۵)', '[{"label":"G1 (≥۹۰)","value":"G1"},{"label":"G2 (۶۰–۸۹)","value":"G2"},{"label":"G3a (۴۵–۵۹)","value":"G3a"},{"label":"G3b (۳۰–۴۴)","value":"G3b"},{"label":"G4 (۱۵–۲۹)","value":"G4"},{"label":"G5 (<۱۵)","value":"G5"}]', '8d8b96cd7e6fed405d5719e629333550f25368f93ee2c3f828160bcb531c5bc5', 1, 'renal', 60),
+ ('ckd_stage_a', 'مرحلهٔ آلبومینوری', 'enum', 'A1|A1 (<۳۰),A2|A2 (۳۰–۲۹۹),A3|A3 (≥۳۰۰)', '[{"label":"A1 (<۳۰)","value":"A1"},{"label":"A2 (۳۰–۲۹۹)","value":"A2"},{"label":"A3 (≥۳۰۰)","value":"A3"}]', '9e394eea169c368f3e404abb5a40156afff8ebc24107cb824426597c181b4073', 1, 'renal', 70),
+ ('hypo_risk', 'ریسک هیپوگلیسمی', 'enum', 'low|پایین,atrisk|در معرض,high|بالا', '[{"label":"پایین","value":"low"},{"label":"در معرض","value":"atrisk"},{"label":"بالا","value":"high"}]', '29eca6db11c90736cb5f3d43ffffa5b971f62dba1b027514ea3af3e46b40dcef', 1, 'risk', 80),
+ ('masld', 'کبد چربِ متابولیک (MASLD)', 'bool', NULL, '[]', 'e4a61128e35c278f3af215487551450de0ba42c5110dfbf7abbbea59353b0267', 1, 'hepatic', 90),
+ ('mash_biopsy', 'MASH اثبات‌شده / ریسک بالای فیبروز', 'bool', NULL, '[]', 'c6434309bd8a4fdbc8365cc2fb4e8dff8ce49080573bd2b14db5d03442b065b0', 1, 'hepatic', 100),
+ ('pregnancy', 'بارداری', 'bool', NULL, '[]', '495d687e880cab3d73def759a3065d543fb89f1e6e3eb04572fa0db07244a797', 1, 'repro', 110),
+ ('childbearing_no_contraception', 'توان بارداری بدون پیشگیری', 'bool', NULL, '[]', '02f08c682405d5483b58f9a8737e5d21c80b15653413b44c5ba9623623340b27', 1, 'repro', 120),
+ ('smoking', 'مصرف دخانیات/ویپ', 'enum', 'never|هرگز,former|ترک‌کرده,current|فعلی,vape|ویپ', '[{"label":"هرگز","value":"never"},{"label":"ترک‌کرده","value":"former"},{"label":"فعلی","value":"current"},{"label":"ویپ","value":"vape"}]', '1a3a78d436c0cbeb05828eb329caef736aae75511b831153a512e8f0ce4cfa4a', 1, 'lifestyle', 130),
+ ('frailty', 'وضعیت سلامت/فراژیلیتی (سالمند)', 'enum', 'robust|سالم,intermediate|میانی,complex|پیچیده/فراژیل', '[{"label":"سالم","value":"robust"},{"label":"میانی","value":"intermediate"},{"label":"پیچیده/فراژیل","value":"complex"}]', 'e8b9d3b5667ff5f5381f31376dc10f0f5f64968b6ad3ba5b336b2727d847e628', 1, 'functional', 140),
+ ('metabolic_surgery', 'سابقهٔ جراحی متابولیک', 'bool', NULL, '[]', 'a621ae8b11e34ce52c1c37bd5730a4c10ad12d156ffcf8b7888a4e5aaa075c23', 1, 'history', 150),
+ ('monofilament', 'مونوفیلامان ۱۰گرمی (حس محافظتی پا)', 'enum', 'normal|طبیعی,impaired|مختل,not_done|انجام‌نشده', '[{"label":"طبیعی","value":"normal"},{"label":"مختل","value":"impaired"},{"label":"انجام‌نشده","value":"not_done"}]', '1646698e884e9d59c93812662eb1d3302e7910baf71054c9b80ae0413d38d33e', 1, 'exam', 160),
+ ('eye_exam_date', 'آخرین معاینهٔ چشم (ته‌چشم گشاد)', 'date', NULL, '[]', 'e8aaeac1db2b36bf5223ff3d3256c7e50315fe53bc9116eb93edd02cae6b442e', 1, 'exam', 170),
+ ('foot_exam_date', 'آخرین معاینهٔ جامع پا', 'date', NULL, '[]', '3be3418d8cf3d798bed2c4ca9616907e8e79821913dc10f9d41d19677bd3e2c2', 1, 'exam', 180);
 
 -- Clinical decision support is stored exclusively in the versioned v2 tables below.
 

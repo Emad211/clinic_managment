@@ -3,10 +3,15 @@ from __future__ import annotations
 
 from datetime import datetime
 import json
+from uuid import uuid4
 
 from src.adapters.sqlite.clinical_reconciliation_repo import (
     ClinicalReconciliationRepository,
 )
+from src.adapters.sqlite.clinical_flag_event_repo import (
+    ClinicalFlagEventRepositoryMixin,
+)
+from src.domain.clinical_engine.flag_history import ClinicalFlagState
 from src.adapters.sqlite.core import get_db
 from src.common.utils import iran_now
 
@@ -152,7 +157,6 @@ class DemoCohortRepository:
             "allergies",
             "medication_events",
             "patient_medications",
-            "patient_flags",
             "lab_results",
             "vital_readings",
             "patient_conditions",
@@ -197,13 +201,47 @@ class DemoCohortRepository:
                 ),
             )
 
-        for key, value in patient["flags"].items():
-            db.execute(
-                """INSERT INTO patient_flags
-                   (patient_link_id, flag_key, value, recorded_by, updated_at)
-                   VALUES (?, ?, ?, ?, ?)""",
-                (patient_id, key, str(value), actor, now),
+        flag_catalog = {
+            str(row["flag_key"]): dict(row)
+            for row in db.execute(
+                "SELECT * FROM flag_catalog WHERE is_active=1 ORDER BY id"
+            ).fetchall()
+        }
+        unknown_fixture_flags = sorted(
+            set(patient["flags"]) - set(flag_catalog)
+        )
+        if unknown_fixture_flags:
+            raise LookupError(
+                "synthetic cohort references unknown clinical flags: "
+                + ", ".join(unknown_fixture_flags)
             )
+        flag_updates = {
+            key: (
+                {
+                    "state": ClinicalFlagState.PRESENT.value,
+                    "value": patient["flags"][key],
+                }
+                if key in patient["flags"]
+                else {
+                    "state": ClinicalFlagState.NOT_ASKED.value,
+                    "value": None,
+                }
+            )
+            for key in flag_catalog
+        }
+        ClinicalFlagEventRepositoryMixin.append_batch_in_transaction(
+            db,
+            patient_id,
+            flag_updates,
+            actor_username=actor,
+            source="system",
+            verification="CONFIRMED",
+            effective_at=reference_at,
+            recorded_at=reference_at,
+            batch_id=f"demo-cohort:{patient_id}:{uuid4()}",
+            note="Deterministic synthetic cohort flag review.",
+            record_unchanged=True,
+        )
 
         db.executemany(
             """INSERT INTO vital_readings
@@ -478,6 +516,8 @@ class DemoCohortRepository:
                 "conditions",
                 "reconciled_collections",
                 "unmapped_active_medications",
+                "flag_heads",
+                "active_flag_definitions",
             )
         }
         table_map = {
@@ -525,12 +565,34 @@ class DemoCohortRepository:
                     patient_ids,
                 ).fetchone()["count"]
             )
+            totals["active_flag_definitions"] = int(
+                db.execute(
+                    "SELECT COUNT(*) AS count FROM flag_catalog WHERE is_active=1"
+                ).fetchone()["count"]
+            )
+            totals["flag_heads"] = int(
+                db.execute(
+                    f"""SELECT COUNT(*) AS count
+                        FROM clinical_flag_events event
+                        JOIN flag_catalog catalog
+                          ON catalog.flag_key=event.flag_key
+                         AND catalog.is_active=1
+                        WHERE event.patient_link_id IN ({patient_marks})
+                          AND NOT EXISTS (
+                            SELECT 1 FROM clinical_flag_events child
+                             WHERE child.supersedes_event_id=event.id
+                          )""",
+                    patient_ids,
+                ).fetchone()["count"]
+            )
         version = self.version()
         return {
             "ready": (
                 len(patients) == 10
                 and version == expected_version
                 and totals["unmapped_active_medications"] == 0
+                and totals["flag_heads"]
+                    == len(patients) * totals["active_flag_definitions"]
             ),
             "version": version,
             "patient_count": len(patients),

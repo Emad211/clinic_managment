@@ -32,10 +32,8 @@ _SOURCE_QUERIES = {
                      WHERE patient_link_id=? ORDER BY id""",
     "reconciliations": """SELECT * FROM clinical_reconciliation_events
                            WHERE patient_link_id=? ORDER BY reconciled_at, id""",
-    "flags": """SELECT pf.*, fc.flag_type, fc.category
-                 FROM patient_flags pf
-                 LEFT JOIN flag_catalog fc ON fc.flag_key=pf.flag_key
-                 WHERE pf.patient_link_id=? ORDER BY pf.flag_key""",
+    "flags": """SELECT * FROM clinical_flag_events
+                 WHERE patient_link_id=? ORDER BY recorded_at, id""",
     "flag_catalog": """SELECT * FROM flag_catalog WHERE is_active=1
                         ORDER BY display_order, id""",
     "observations": """SELECT channel, record_id, key, value, unit,

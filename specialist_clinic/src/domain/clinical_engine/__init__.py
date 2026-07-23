@@ -20,6 +20,10 @@ from .enums import (
     VerificationStatus,
 )
 from .facts import ClinicalFact, FactSnapshot, FactSource
+from .flag_history import (
+    ClinicalFlagState,
+    ClinicalFlagValueError,
+)
 from .rules import (
     AllExpression,
     AnyExpression,
@@ -47,6 +51,8 @@ __all__ = [
     "AnyExpression",
     "ClinicalPhase",
     "ClinicalFact",
+    "ClinicalFlagState",
+    "ClinicalFlagValueError",
     "CompilationDiagnostic",
     "DataIssue",
     "CompiledRule",

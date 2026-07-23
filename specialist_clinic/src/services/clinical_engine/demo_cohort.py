@@ -14,10 +14,9 @@ from src.domain.clinical_engine.demo_cohort_vocabulary import (
 from src.services.activity_logger import log_activity
 
 
-# v2 adds explicit reconciliation; v3 additionally binds every synthetic active
-# medication to one exact catalog concept and canonicalizes declared seed aliases.
+# v4 adds a complete append-only flag snapshot for every synthetic patient.
 CURRENT_DEMO_COHORT_VERSION = (
-    f"{DEMO_COHORT_VERSION}-reconciled-concepts-v3"
+    f"{DEMO_COHORT_VERSION}-reconciled-concepts-flags-v4"
 )
 CANONICAL_DEMO_PATIENTS = canonical_demo_patients(DEMO_PATIENTS)
 
@@ -94,6 +93,11 @@ class DemoCohortService:
             "conditions": actual["conditions"] == expected["conditions"],
             "reconciliation": (
                 actual.get("reconciled_collections") == 30
+            ),
+            "flag_history": (
+                actual.get("flag_heads")
+                == summary["patient_count"]
+                * actual.get("active_flag_definitions", 0)
             ),
         }
         failed = [key for key, passed in checks.items() if not passed]

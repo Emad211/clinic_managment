@@ -487,33 +487,50 @@
 <!-- ============================================================= -->
 <section class="tab-pane" id="pane-record" aria-labelledby="tab-record" data-pane="record" role="tabpanel" hidden>
 
-    {# ============ reusable flag-field renderer (pf = patient_flags, passed in: macros don't see render context) ============ #}
-    {% macro flag_field(f, pf) %}
-        {% if f.flag_type == 'bool' %}
-        <label class="switch-row">
-            <span class="switch"><input type="checkbox" name="{{ f.flag_key }}" {% if pf.get(f.flag_key) %}checked{% endif %}><span class="sl"></span></span>
-            <span class="text-sm">{{ f.label }}</span>
-        </label>
-        {% elif f.flag_type == 'enum' %}
-        <div class="fld">
+    {# Typed four-state flag renderer. Each field carries optimistic concurrency
+       metadata so a stale form cannot overwrite a newer clinical answer. #}
+    {% macro flag_field(f, states) %}
+        {% set current = states.get(f.flag_key) or {} %}
+        <div class="fld clinical-flag-field" data-flag-key="{{ f.flag_key }}">
+            <input type="hidden" name="flag__{{ f.flag_key }}__event_id" value="{{ current.event_id or '' }}">
+            <input type="hidden" name="flag__{{ f.flag_key }}__definition_hash" value="{{ f.definition_hash }}">
             <label>{{ f.label }}</label>
-            <select name="{{ f.flag_key }}">
-                <option value="">—</option>
-                {% for o in f.option_list %}<option value="{{ o.value }}" {% if pf.get(f.flag_key)==o.value %}selected{% endif %}>{{ o.label }}</option>{% endfor %}
+            {% if f.flag_type == 'bool' %}
+            <select name="flag__{{ f.flag_key }}__state" required>
+                <option value="">— انتخاب وضعیت —</option>
+                <option value="PRESENT_TRUE" {% if current.state=='PRESENT' and current.value is sameas true %}selected{% endif %}>بله</option>
+                <option value="PRESENT_FALSE" {% if current.state=='PRESENT' and current.value is sameas false %}selected{% endif %}>خیر</option>
+                <option value="UNKNOWN" {% if current.state=='UNKNOWN' %}selected{% endif %}>نامشخص</option>
+                <option value="NOT_ASKED" {% if current.event_id and current.state=='NOT_ASKED' %}selected{% endif %}>پرسیده‌نشده</option>
             </select>
+            {% else %}
+            <select name="flag__{{ f.flag_key }}__state" required>
+                <option value="">— انتخاب وضعیت —</option>
+                <option value="PRESENT" {% if current.state=='PRESENT' %}selected{% endif %}>مقدار مشخص است</option>
+                <option value="UNKNOWN" {% if current.state=='UNKNOWN' %}selected{% endif %}>نامشخص</option>
+                <option value="NOT_ASKED" {% if current.event_id and current.state=='NOT_ASKED' %}selected{% endif %}>پرسیده‌نشده</option>
+            </select>
+            {% if f.flag_type == 'enum' %}
+            <select name="flag__{{ f.flag_key }}__value" aria-label="مقدار {{ f.label }}">
+                <option value="">— انتخاب مقدار —</option>
+                {% for o in f.option_list %}<option value="{{ o.value }}" {% if current.state=='PRESENT' and current.value==o.value %}selected{% endif %}>{{ o.label }}</option>{% endfor %}
+            </select>
+            {% elif f.flag_type == 'date' %}
+            <input type="text" class="jdate" name="flag__{{ f.flag_key }}__value"
+                   value="{% if current.state=='PRESENT' and current.value %}{{ current.value|jalali_date }}{% endif %}"
+                   placeholder="انتخاب تاریخ">
+            {% else %}
+            <input type="text" name="flag__{{ f.flag_key }}__value"
+                   value="{% if current.state=='PRESENT' %}{{ current.value or '' }}{% endif %}">
+            {% endif %}
+            {% endif %}
+            {% if current.warnings %}
+            <div class="text-xs" style="color:var(--warn);margin-top:var(--s1);">نیازمند مرور مجدد</div>
+            {% endif %}
+            {% if current.recorded_at and current.event_id %}
+            <div class="muted text-xs">آخرین ثبت: {{ current.recorded_at|jalali }}</div>
+            {% endif %}
         </div>
-        {% elif f.flag_type == 'date' %}
-        <div class="fld">
-            <label>{{ f.label }}</label>
-            <input type="text" class="jdate" name="{{ f.flag_key }}"
-                   placeholder="{% if pf.get(f.flag_key) %}ثبت‌شده: {{ pf.get(f.flag_key)|jalali_date }}{% else %}انتخاب تاریخ{% endif %}">
-        </div>
-        {% else %}
-        <div class="fld">
-            <label>{{ f.label }}</label>
-            <input type="text" name="{{ f.flag_key }}" value="{{ pf.get(f.flag_key) or '' }}">
-        </div>
-        {% endif %}
     {% endmacro %}
 
     {# ============ reusable clinical-note block (pid passed in: macros don't see render context) ============ #}
@@ -611,6 +628,7 @@
                 </div>
             </div>
             <form method="post" action="{{ url_for('patients.save_flags', pid=patient.id) }}">
+                <input type="hidden" name="flag_section" value="comorbidity">
                 <input type="hidden" name="flag_keys" value="{{ comorb_flags|map(attribute='flag_key')|join(',') }}">
                 {% if comorb_detail_flags %}
                 <fieldset class="condition-group">
@@ -639,6 +657,7 @@
         <div class="section-title"><svg class="icon"><use href="#i-activity"></use></svg> سبک زندگی</div>
         {% if flags_by_section.lifestyle %}
         <form method="post" action="{{ url_for('patients.save_flags', pid=patient.id) }}" style="margin-bottom:var(--s4);">
+            <input type="hidden" name="flag_section" value="lifestyle">
             <input type="hidden" name="flag_keys" value="{{ flags_by_section.lifestyle|map(attribute='flag_key')|join(',') }}">
             <div class="grid grid-3">
                 {% for f in flags_by_section.lifestyle %}{{ flag_field(f, patient_flags) }}{% endfor %}
@@ -672,6 +691,7 @@
         <div class="section-title"><svg class="icon"><use href="#i-stethoscope"></use></svg> علائم و معاینات</div>
         {% if flags_by_section.exam %}
         <form method="post" action="{{ url_for('patients.save_flags', pid=patient.id) }}" style="margin-bottom:var(--s4);">
+            <input type="hidden" name="flag_section" value="exam">
             <input type="hidden" name="flag_keys" value="{{ flags_by_section.exam|map(attribute='flag_key')|join(',') }}">
             <div class="grid grid-3">
                 {% for f in flags_by_section.exam %}{{ flag_field(f, patient_flags) }}{% endfor %}
