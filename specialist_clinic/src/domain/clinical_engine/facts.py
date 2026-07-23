@@ -1,11 +1,11 @@
-"""Immutable canonical fact contracts; population is deferred to PR-04."""
-
+"""Immutable canonical fact and snapshot contracts."""
 from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Mapping
 
+from .context import ClinicalEvaluationContext
 from .enums import (
     ConflictStatus,
     FactKind,
@@ -52,7 +52,9 @@ class FactSnapshot:
     facts: tuple[ClinicalFact, ...]
     content_hash: str
     encounter_key: str | None = None
+    # Every production snapshot supplies this immutable context. It remains optional
+    # only so the low-level predicate evaluator can continue to be unit-tested in
+    # isolation; the contextual evaluator fails closed when it is absent.
+    evaluation_context: ClinicalEvaluationContext | None = None
     # Monotonic revision captured from the same SQLite read snapshot as the facts.
-    # It is the runtime contract that prevents an older audited run from being
-    # presented after the patient record has changed.
     clinical_data_revision: int = 0
