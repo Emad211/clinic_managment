@@ -46,7 +46,7 @@ jobs:
       - name: Install test dependencies
         run: python -m pip install -r specialist_clinic/requirements.txt pytest
 
-      - name: Verify canonical schema and focused cutover suite
+      - name: Verify syntax and canonical SQLite schema
         run: |
           set -euo pipefail
           python -m py_compile \
@@ -92,13 +92,31 @@ jobs:
           assert "legacy_source_suggestion_log_id" not in decision_columns
           assert db.execute("PRAGMA foreign_key_check").fetchall() == []
           PY
-          cd specialist_clinic
-          python -m pytest -q --tb=short \
-            tests/test_clinical_engine_v1_request_cutover.py \
-            tests/test_clinical_engine_cutover_boundary.py \
-            tests/test_clinical_engine_rule_projection.py \
-            tests/test_v1_runtime_retired.py \
-            tests/test_clinical_engine_v2_storage.py
+
+      - name: Verify cutover, restart and source boundaries
+        working-directory: specialist_clinic
+        run: >-
+          python -m pytest -q --tb=short
+          tests/test_clinical_engine_v1_request_cutover.py
+          tests/test_clinical_engine_cutover_boundary.py
+
+      - name: Verify governed disease rule projection
+        working-directory: specialist_clinic
+        run: >-
+          python -m pytest -q --tb=short
+          tests/test_clinical_engine_rule_projection.py
+
+      - name: Verify physical v1 retirement
+        working-directory: specialist_clinic
+        run: >-
+          python -m pytest -q --tb=short
+          tests/test_v1_runtime_retired.py
+
+      - name: Verify v2 storage and audit contract
+        working-directory: specialist_clinic
+        run: >-
+          python -m pytest -q --tb=short
+          tests/test_clinical_engine_v2_storage.py
 
       - name: Commit canonical schema cutover
         run: |
