@@ -31,8 +31,18 @@ jobs:
           cat .github/pr28.patch.part0[0-4] > /tmp/pr28-main.patch
           git apply --check /tmp/pr28-main.patch
           git apply /tmp/pr28-main.patch
-          git apply --check .github/pr28.patch.part05
-          git apply .github/pr28.patch.part05
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path(
+              "specialist_clinic/tests/test_clinical_engine_rule_projection.py"
+          )
+          source = path.read_text(encoding="utf-8")
+          old = 'condition_codes=["thyroid", "thyroid"],'
+          new = 'condition_codes=["thyroid"],'
+          assert source.count(old) == 1
+          path.write_text(source.replace(old, new), encoding="utf-8")
+          PY
           rm -f .github/pr28.patch.part*
           rm -f .github/workflows/apply-pr28-canonical-schema.yml
           git add -A
