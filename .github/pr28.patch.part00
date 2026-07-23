@@ -1,0 +1,183 @@
+diff --git a/specialist_clinic/src/adapters/sqlite/clinical_engine_rule_projection_repo.py b/specialist_clinic/src/adapters/sqlite/clinical_engine_rule_projection_repo.py
+new file mode 100644
+index 0000000..ae01d29
+--- /dev/null
++++ b/specialist_clinic/src/adapters/sqlite/clinical_engine_rule_projection_repo.py
+@@ -0,0 +1,59 @@
++"""Read-only projections over one governed Clinical Engine v2 ruleset."""
++from __future__ import annotations
++
++from collections import Counter
++import json
++
++from src.adapters.sqlite.core import get_db
++
++
++class RuleProjectionRepositoryMixin:
++    """Produce manager-facing counts without exposing mutable rule storage."""
++
++    def condition_rule_counts(
++        self,
++        ruleset_code: str = "general-outpatient",
++    ) -> dict[str, int]:
++        """Count rules in the current governed package by condition scope.
++
++        Prefer the executable ACTIVE/SILENT ruleset. Before activation, show the
++        newest DRAFT package under review. Historical RETIRED versions are never
++        mixed into the count. A rule with no condition scope contributes to ``all``.
++        """
++        db = get_db()
++        row = db.execute(
++            """SELECT id
++                 FROM clinical_rulesets
++                WHERE ruleset_code=? AND status IN ('ACTIVE', 'SILENT')
++                ORDER BY CASE status WHEN 'ACTIVE' THEN 0 ELSE 1 END, id DESC
++                LIMIT 1""",
++            ((ruleset_code or "").strip(),),
++        ).fetchone()
++        if not row:
++            row = db.execute(
++                """SELECT id
++                     FROM clinical_rulesets
++                    WHERE ruleset_code=? AND status='DRAFT'
++                    ORDER BY id DESC LIMIT 1""",
++                ((ruleset_code or "").strip(),),
++            ).fetchone()
++        if not row:
++            return {}
++
++        counts: Counter[str] = Counter()
++        members = db.execute(
++            """SELECT version.rule_json
++                 FROM clinical_ruleset_members member
++                 JOIN clinical_rule_versions version
++                   ON version.id=member.rule_version_id
++                WHERE member.ruleset_id=?
++                ORDER BY member.rule_version_id""",
++            (int(row["id"]),),
++        ).fetchall()
++        for member in members:
++            raw = json.loads(member["rule_json"])
++            values = (raw.get("scope") or {}).get("condition_codes") or ["all"]
++            codes = {str(value).strip() for value in values if str(value).strip()}
++            for code in codes or {"all"}:
++                counts[code] += 1
++        return dict(sorted(counts.items()))
+diff --git a/specialist_clinic/src/adapters/sqlite/clinical_engine_rules_repo.py b/specialist_clinic/src/adapters/sqlite/clinical_engine_rules_repo.py
+index 4cf3b66..4394d6d 100644
+--- a/specialist_clinic/src/adapters/sqlite/clinical_engine_rules_repo.py
++++ b/specialist_clinic/src/adapters/sqlite/clinical_engine_rules_repo.py
+@@ -5,6 +5,7 @@ v1 catalog or persists a legacy lineage identifier.
+ """
+ from __future__ import annotations
+ 
++from .clinical_engine_rule_projection_repo import RuleProjectionRepositoryMixin
+ from .clinical_engine_rule_version_repo import RuleVersionRepositoryMixin
+ from .clinical_engine_rules_common import ClinicalEngineStorageConflict
+ from .clinical_engine_ruleset_repo import RulesetRepositoryMixin
+@@ -13,6 +14,7 @@ from .clinical_engine_ruleset_repo import RulesetRepositoryMixin
+ class ClinicalEngineRulesRepository(
+     RuleVersionRepositoryMixin,
+     RulesetRepositoryMixin,
++    RuleProjectionRepositoryMixin,
+ ):
+     """SQLite boundary for compiled rule versions and frozen rulesets."""
+ 
+diff --git a/specialist_clinic/src/adapters/sqlite/clinical_engine_v1_cutover.py b/specialist_clinic/src/adapters/sqlite/clinical_engine_v1_cutover.py
+index 4051072..75de20b 100644
+--- a/specialist_clinic/src/adapters/sqlite/clinical_engine_v1_cutover.py
++++ b/specialist_clinic/src/adapters/sqlite/clinical_engine_v1_cutover.py
+@@ -1,9 +1,8 @@
+ """Startup cutover from retired Clinical Engine v1 storage.
+ 
+-The canonical cleanup primitive is destructive but preserving. Persistent schema cleanup
+-runs during application construction, before the server can accept a request. The only
+-request-time compatibility is a narrowly scoped TEMP view used by the manager disease
+-counter; it is connection-local, read-only and never changes the database file.
++The canonical cleanup primitive is destructive but preserving. It is retained only for
++copied pre-cutover databases. Fresh databases are created directly from the canonical v2
++schema and no request-time compatibility object is installed.
+ """
+ from __future__ import annotations
+ 
+@@ -15,8 +14,6 @@ from src.adapters.sqlite.clinical_engine_legacy_cleanup_schema import (
+ )
+ 
+ 
+-_MANAGER_DISEASE_ENDPOINT = "manager.diseases"
+-
+ 
+ def _cleanup_needed(db: sqlite3.Connection) -> bool:
+     """Detect both retired tables and either transitional lineage column."""
+@@ -50,50 +47,3 @@ def ensure_v1_schema_cutover(
+             "retired Clinical Engine v1 storage remained after schema cutover"
+         )
+     return result
+-
+-
+-def _install_manager_rule_count_projection(
+-    db: sqlite3.Connection,
+-) -> None:
+-    """Expose a request-local read-only count projection over governed v2 rules.
+-
+-    The old manager route only selects ``condition_code`` and counts rows. A TEMP view
+-    is used instead of a permanent compatibility object, so the main schema remains
+-    clean and the projection disappears with the request connection.
+-    """
+-    db.execute("DROP VIEW IF EXISTS temp.clinical_rules")
+-    db.execute(
+-        """CREATE TEMP VIEW clinical_rules AS
+-           SELECT DISTINCT
+-                  version.id AS id,
+-                  CAST(condition_code.value AS TEXT) AS condition_code
+-             FROM main.clinical_rule_versions AS version
+-             JOIN json_each(
+-                    version.rule_json,
+-                    '$.scope.condition_codes'
+-                  ) AS condition_code
+-            WHERE version.lifecycle_status <> 'RETIRED'
+-           UNION ALL
+-           SELECT version.id AS id, 'all' AS condition_code
+-             FROM main.clinical_rule_versions AS version
+-            WHERE version.lifecycle_status <> 'RETIRED'
+-              AND COALESCE(
+-                    json_array_length(
+-                      json_extract(
+-                        version.rule_json,
+-                        '$.scope.condition_codes'
+-                      )
+-                    ),
+-                    0
+-                  ) = 0"""
+-    )
+-
+-
+-def install_v1_request_projection(
+-    db: sqlite3.Connection,
+-    *,
+-    endpoint: str | None,
+-) -> None:
+-    """Install only connection-local read compatibility needed by one route."""
+-    if endpoint == _MANAGER_DISEASE_ENDPOINT:
+-        _install_manager_rule_count_projection(db)
+diff --git a/specialist_clinic/src/adapters/sqlite/clinical_rules_seed.py b/specialist_clinic/src/adapters/sqlite/clinical_rules_seed.py
+deleted file mode 100644
+index 5ab9f44..0000000
+--- a/specialist_clinic/src/adapters/sqlite/clinical_rules_seed.py
++++ /dev/null
+@@ -1,15 +0,0 @@
+-"""Retired Clinical Engine v1 seed boundary.
+-
+-The mutable ``clinical_rules`` catalog is no longer populated. Clinical decision rules
+-are versioned, reviewed and activated exclusively through Clinical Engine v2 packages.
+-The function remains temporarily import-compatible for installed code paths while the
+-legacy table is removed in a later schema-cleanup tranche.
+-"""
+-from __future__ import annotations
+-
+-import sqlite3
+-
+-
+-def seed_clinical_rules(_db: sqlite3.Connection) -> int:
+-    """Perform no writes and report that zero legacy rules were seeded."""
+-    return 0
