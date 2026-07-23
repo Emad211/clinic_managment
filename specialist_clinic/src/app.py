@@ -66,14 +66,22 @@ def create_app(test_config=None):
         except Exception as exc:
             print(f"[logging] not configured: {exc}")
 
-    # Safety-critical schema is installed before serving file-backed databases.
+    # Safety-critical schema and the v1 cutover are completed before a file-backed
+    # application can serve traffic. Keeping both operations in the application
+    # factory avoids Blueprint registration state and guarantees every app instance
+    # in a long-lived desktop/test process receives the same schema contract.
     if (app.config.get("DATABASE_PATH") or "") != ":memory:":
         with app.app_context():
             from src.adapters.sqlite.clinical_engine_runtime_schema import (
                 ensure_runtime_schema,
             )
+            from src.adapters.sqlite.clinical_engine_v1_cutover import (
+                ensure_v1_schema_cutover,
+            )
 
-            ensure_runtime_schema(get_db())
+            db = get_db()
+            ensure_runtime_schema(db)
+            ensure_v1_schema_cutover(db)
     else:
 
         @app.before_request
@@ -81,8 +89,13 @@ def create_app(test_config=None):
             from src.adapters.sqlite.clinical_engine_runtime_schema import (
                 ensure_runtime_schema,
             )
+            from src.adapters.sqlite.clinical_engine_v1_cutover import (
+                ensure_v1_schema_cutover,
+            )
 
-            ensure_runtime_schema(get_db())
+            db = get_db()
+            ensure_runtime_schema(db)
+            ensure_v1_schema_cutover(db)
 
     @app.before_request
     def load_logged_in_user():
@@ -165,7 +178,7 @@ def create_app(test_config=None):
             return redirect(url_for("auth.login"))
         return redirect(url_for("dashboard.index"))
 
-    # The legacy clinical-decision importer was intentionally removed.  The
+    # The legacy clinical-decision importer was"intentionally" removed.  The
     # application has seed-only data and all visible decisions must originate from
     # an exact current v2 run rather than reconstructed v1 state.
     @app.cli.group("clinical-v2")
@@ -232,8 +245,8 @@ def create_app(test_config=None):
             "effective_mode": ClinicalEngineFactRepository().get_mode(),
             "raw_mode": state.raw_mode(),
             "report": state.get_json("last_report"),
-            "clinical_approval": state.get_json("approval_clinical"),
-            "technical_approval": state.get_json("approval_technical"),
+            "clinical_approval": state.get_json("mapproval_clinical"),
+            "technical_approval": state.get_json("mapproval_technical"),
             "seal": state.get_json("seal"),
             "rollback": state.get_json("last_rollback"),
         }

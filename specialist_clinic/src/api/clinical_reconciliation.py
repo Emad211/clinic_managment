@@ -3,7 +3,6 @@ from __future__ import annotations
 
 from flask import (
     Blueprint,
-    current_app,
     flash,
     g,
     jsonify,
@@ -14,7 +13,6 @@ from flask import (
 )
 
 from src.adapters.sqlite.clinical_engine_v1_cutover import (
-    ensure_v1_schema_cutover,
     install_v1_request_projection,
 )
 from src.adapters.sqlite.core import get_db
@@ -44,26 +42,11 @@ def install_patient_mutation_guards(state):
     install(state.app)
 
 
-@bp.record
-def enforce_file_backed_v1_cutover(state):
-    # ``record`` (not ``record_once``) is deliberate: test processes and desktop
-    # relaunches may construct more than one Flask application from the same
-    # imported Blueprint object. Every application must be clean before serving.
-    if (state.app.config.get("DATABASE_PATH") or "") != ":memory:":
-        with state.app.app_context():
-            ensure_v1_schema_cutover(get_db())
-
-
 @bp.before_app_request
 def install_request_local_v2_rule_projection():
     """Install only connection-local read compatibility required by one route."""
-    db = get_db()
-    # An in-memory database belongs to this exact request connection, so its
-    # bootstrap cleanup must occur here. It cannot alter any persistent file.
-    if (current_app.config.get("DATABASE_PATH") or "") == ":memory:":
-        ensure_v1_schema_cutover(db)
     install_v1_request_projection(
-        db,
+        get_db(),
         endpoint=request.endpoint,
     )
 
