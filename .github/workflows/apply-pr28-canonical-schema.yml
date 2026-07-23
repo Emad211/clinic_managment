@@ -25,12 +25,16 @@ jobs:
           ref: ${{ github.head_ref || github.ref_name }}
           fetch-depth: 0
 
-      - name: Reconstruct and apply reviewed patch
+      - name: Apply canonical schema main patch
         run: |
           set -euo pipefail
           cat .github/pr28.patch.part0[0-4] > /tmp/pr28-main.patch
           git apply --check /tmp/pr28-main.patch
           git apply /tmp/pr28-main.patch
+
+      - name: Correct schema-valid projection fixture
+        run: |
+          set -euo pipefail
           python - <<'PY'
           from pathlib import Path
 
@@ -43,6 +47,10 @@ jobs:
           assert source.count(old) == 1
           path.write_text(source.replace(old, new), encoding="utf-8")
           PY
+
+      - name: Remove patch transport and verify staged diff
+        run: |
+          set -euo pipefail
           rm -f .github/pr28.patch.part*
           rm -f .github/workflows/apply-pr28-canonical-schema.yml
           git add -A
