@@ -116,3 +116,17 @@ flag.ascvd     = NOT_ASKED
 fail-closed به `UNKNOWN` می‌روند. اگر در آینده نمایش دقیق تعریف تاریخی لازم باشد،
 یک append-only definition registry مستقل اضافه خواهد شد؛ این محدودیت نباید با
 بازاعتباردهی خودکار event قدیمی دور زده شود.
+
+## دروازهٔ انتشار این مرحله
+
+این tranche فقط زمانی آمادهٔ review نهایی است که همهٔ شروط زیر هم‌زمان برقرار باشند:
+
+- دیتابیس تازه از ابتدا فقط `clinical_flag_events` بسازد و جدول mutable قدیمی نداشته باشد.
+- کپی دیتابیس قدیمی، مقدار صریح false را بدون تبدیل به `NOT_ASKED` مهاجرت دهد.
+- دادهٔ نامعتبر، orphan catalog یا زنجیرهٔ چندریشه باعث rollback کامل migration شود.
+- projection دو‌زمانه، اصلاح دیرهنگام را وارد snapshot دانش قدیمی نکند.
+- تغییر نمایشی catalog، revision بیمار را عوض نکند؛ تغییر معنایی آن را منسوخ کند.
+- فرم stale هیچ subsetی را ثبت نکند و کاربر را مجبور به مرور مجدد سازد.
+- Factهای موتور false، unknown و not-asked را با status و verification مستقل حمل کنند.
+- run و activation evidence متعلق به engine identity قبلی current تلقی نشوند.
+- تمام تست‌های Specialist Clinic و Accounting بدون failure، error یا skip عبور کنند.
