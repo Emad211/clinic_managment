@@ -51,16 +51,10 @@ def test_retired_v1_api_is_inert_without_shadow_capture():
     }
 
 
-def test_legacy_rule_seed_is_a_no_write_tombstone():
-    from src.adapters.sqlite.clinical_rules_seed import seed_clinical_rules
-
-    class ExplodingDatabase:
-        def __getattr__(self, name):
-            raise AssertionError(
-                f"legacy seed attempted database access: {name}"
-            )
-
-    assert seed_clinical_rules(ExplodingDatabase()) == 0
+def test_legacy_rule_seed_module_is_physically_removed():
+    assert not (
+        ROOT / "adapters" / "sqlite" / "clinical_rules_seed.py"
+    ).exists()
 
 
 def test_legacy_dosage_guidance_is_inert_without_database_access():

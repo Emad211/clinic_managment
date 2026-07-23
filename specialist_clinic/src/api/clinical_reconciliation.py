@@ -12,10 +12,6 @@ from flask import (
     url_for,
 )
 
-from src.adapters.sqlite.clinical_engine_v1_cutover import (
-    install_v1_request_projection,
-)
-from src.adapters.sqlite.core import get_db
 from src.adapters.sqlite.patients_repo import PatientRepository
 from src.api.auth import login_required, manager_required
 from src.services.activity_logger import log_activity
@@ -40,15 +36,6 @@ def install_patient_mutation_guards(state):
     from src.api.patient_mutation_guards import install
 
     install(state.app)
-
-
-@bp.before_app_request
-def install_request_local_v2_rule_projection():
-    """Install only connection-local read compatibility required by one route."""
-    install_v1_request_projection(
-        get_db(),
-        endpoint=request.endpoint,
-    )
 
 
 def _patient_or_none(pid: int):

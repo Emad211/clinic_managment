@@ -267,8 +267,6 @@ def _run_migrations(db):
     # Engagement engine: per-patient SMS opt-out + which event generated a worklist task
     _ensure_column(db, "patient_links", "sms_opt_out", "INTEGER NOT NULL DEFAULT 0")
     _ensure_column(db, "followup_tasks", "source_event", "TEXT")
-    # Per-disease modular engine: each rule belongs to a disease module ('all' = cross-disease)
-    _ensure_column(db, "clinical_rules", "condition_code", "TEXT NOT NULL DEFAULT 'all'")
     # Disease-module registry metadata on the conditions table
     _ensure_column(db, "conditions", "is_chronic", "INTEGER NOT NULL DEFAULT 1")
     _ensure_column(db, "conditions", "display_order", "INTEGER NOT NULL DEFAULT 100")
@@ -311,13 +309,6 @@ def _run_migrations(db):
     _ensure_column(db, "lab_results", "test_key", "TEXT")
     _seed_flag_sections(db)
     _ensure_clinical_engine_v2_storage(db)
-    # Seed the clinical decision-rule catalog (idempotent; manager edits preserved).
-    # Also tags each rule's owning disease module (condition_code) on existing DBs.
-    try:
-        from src.adapters.sqlite.clinical_rules_seed import seed_clinical_rules
-        seed_clinical_rules(db)
-    except Exception:
-        pass
     # Seed the lab-test and drug catalogs (idempotent; wrapped so a missing seed
     # module or any failure never breaks startup).
     try:
@@ -331,11 +322,9 @@ def _run_migrations(db):
     except Exception:
         pass
 
-    # The schema loader is intentionally idempotent and may recreate retired v1
-    # compatibility objects on an existing database. Remove them on the same
-    # connection, immediately after every migration pass, before `_initialized` is
-    # published to the process. This is the authoritative cutover boundary; app and
-    # Blueprint lifecycle state cannot skip it.
+    # A copied pre-cutover database may still contain retired v1 objects. Remove
+    # them on the same connection before `_initialized` is published. Fresh and
+    # already-clean databases are a verified no-op.
     db.commit()
     from src.adapters.sqlite.clinical_engine_v1_cutover import (
         ensure_v1_schema_cutover,

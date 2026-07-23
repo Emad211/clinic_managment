@@ -66,22 +66,14 @@ def create_app(test_config=None):
         except Exception as exc:
             print(f"[logging] not configured: {exc}")
 
-    # Safety-critical schema and the v1 cutover are completed before a file-backed
-    # application can serve traffic. Keeping both operations in the application
-    # factory avoids Blueprint registration state and guarantees every app instance
-    # in a long-lived desktop/test process receives the same schema contract.
+    # Safety-critical schema is installed before serving file-backed databases.
+    # The core migration pass owns any copied pre-cutover database cleanup.
     if (app.config.get("DATABASE_PATH") or "") != ":memory:":
         with app.app_context():
             from src.adapters.sqlite.clinical_engine_runtime_schema import (
                 ensure_runtime_schema,
             )
-            from src.adapters.sqlite.clinical_engine_v1_cutover import (
-                ensure_v1_schema_cutover,
-            )
-
-            db = get_db()
-            ensure_runtime_schema(db)
-            ensure_v1_schema_cutover(db)
+            ensure_runtime_schema(get_db())
     else:
 
         @app.before_request
@@ -89,13 +81,7 @@ def create_app(test_config=None):
             from src.adapters.sqlite.clinical_engine_runtime_schema import (
                 ensure_runtime_schema,
             )
-            from src.adapters.sqlite.clinical_engine_v1_cutover import (
-                ensure_v1_schema_cutover,
-            )
-
-            db = get_db()
-            ensure_runtime_schema(db)
-            ensure_v1_schema_cutover(db)
+            ensure_runtime_schema(get_db())
 
     @app.before_request
     def load_logged_in_user():

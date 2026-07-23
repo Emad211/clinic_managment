@@ -5,6 +5,7 @@ v1 catalog or persists a legacy lineage identifier.
 """
 from __future__ import annotations
 
+from .clinical_engine_rule_projection_repo import RuleProjectionRepositoryMixin
 from .clinical_engine_rule_version_repo import RuleVersionRepositoryMixin
 from .clinical_engine_rules_common import ClinicalEngineStorageConflict
 from .clinical_engine_ruleset_repo import RulesetRepositoryMixin
@@ -13,6 +14,7 @@ from .clinical_engine_ruleset_repo import RulesetRepositoryMixin
 class ClinicalEngineRulesRepository(
     RuleVersionRepositoryMixin,
     RulesetRepositoryMixin,
+    RuleProjectionRepositoryMixin,
 ):
     """SQLite boundary for compiled rule versions and frozen rulesets."""
 

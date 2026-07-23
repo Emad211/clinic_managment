@@ -94,6 +94,29 @@ def _seed_pre_cutover_v2_rule(db_path: Path) -> int:
     connection = sqlite3.connect(db_path)
     try:
         connection.executescript(core._load_schema_text())
+        connection.executescript(
+            """
+            CREATE TABLE clinical_rules (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                rule_code TEXT UNIQUE NOT NULL,
+                title TEXT NOT NULL,
+                category TEXT NOT NULL
+            );
+            CREATE TABLE suggestion_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                patient_link_id INTEGER NOT NULL,
+                rule_code TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'pending',
+                FOREIGN KEY(patient_link_id) REFERENCES patient_links(id)
+            );
+            ALTER TABLE clinical_rule_versions
+              ADD COLUMN source_legacy_rule_id INTEGER
+              REFERENCES clinical_rules(id);
+            ALTER TABLE clinical_decision_events
+              ADD COLUMN legacy_source_suggestion_log_id INTEGER
+              REFERENCES suggestion_log(id);
+            """
+        )
         cursor = connection.execute(
             """INSERT INTO clinical_rule_versions
                (rule_code, version, schema_version, dsl_version, phase,
@@ -157,8 +180,7 @@ def test_restart_cutover_is_idempotent_and_preserves_clean_v2_rows(
     core._initialized = False
     second_app = _create_app(cutover_db_path)
     try:
-        # schema.sql may transiently recreate the two inert tables during process
-        # bootstrap, but application construction removes them before returning.
+        # The canonical schema never recreates v1 objects; restart remains a no-op.
         with second_app.app_context():
             db = core.get_db()
             _assert_clean_main_schema(db)

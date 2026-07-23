@@ -306,9 +306,15 @@ def decision_rules_update():
 def diseases():
     """Per-disease module hub — each chronic condition is its own protocol page."""
     from src.adapters.sqlite.clinical_rules_repo import ClinicalRulesRepository
+    from src.adapters.sqlite.clinical_engine_rules_repo import (
+        ClinicalEngineRulesRepository,
+    )
+
     db = get_db()
     repo = ClinicalRulesRepository()
     active_inds = repo.all_indicators(active_only=True)
+    rule_counts = ClinicalEngineRulesRepository().condition_rule_counts()
+    cross_disease_rules = int(rule_counts.get("all", 0))
     rows = db.execute(
         "SELECT * FROM conditions WHERE is_active=1 AND COALESCE(is_chronic,1)=1 "
         "ORDER BY display_order, id").fetchall()
@@ -317,9 +323,9 @@ def diseases():
         c = dict(c)
         code = c.get('code')
         c['ind_count'] = sum(1 for i in active_inds if _indicator_applies(i, code))
-        c['rule_count'] = db.execute(
-            "SELECT COUNT(*) n FROM clinical_rules WHERE condition_code IN (?, 'all')",
-            (code,)).fetchone()['n']
+        c['rule_count'] = (
+            int(rule_counts.get(code, 0)) + cross_disease_rules
+        )
         c['pat_count'] = db.execute(
             "SELECT COUNT(DISTINCT pc.patient_link_id) n FROM patient_conditions pc "
             "JOIN patient_links p ON p.id=pc.patient_link_id AND p.is_active=1 "

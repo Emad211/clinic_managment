@@ -515,54 +515,7 @@ INSERT OR IGNORE INTO flag_catalog (flag_key, label, flag_type, options, categor
  ('eye_exam_date', 'آخرین معاینهٔ چشم (ته‌چشم گشاد)', 'date', NULL, 'exam', 170),
  ('foot_exam_date', 'آخرین معاینهٔ جامع پا', 'date', NULL, 'exam', 180);
 
--- ============================================================================
--- clinical_rules: the If/Then decision catalog covering EVERY section of the
--- ADA T2D document (diagnosis, screening, targets, medication, drug-safety,
--- insulin, monitoring, complication-screening, red-flags, hypoglycemia,
--- lifestyle, vaccination). Seeded idempotently from clinical_rules_seed.py.
--- Editable at /manager/decision-rules.
--- ============================================================================
-CREATE TABLE IF NOT EXISTS clinical_rules (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    rule_code TEXT UNIQUE NOT NULL,
-    title TEXT NOT NULL,
-    category TEXT NOT NULL,        -- diagnosis|target|medication|drug_safety|insulin|
-                                   -- monitoring|screening|redflag|hypo|lifestyle|vaccination|bp_rx|lipid_rx
-    condition_code TEXT NOT NULL DEFAULT 'all',  -- owning disease module: a conditions.code, or 'all' (cross-disease)
-    trigger_json TEXT,             -- machine-evaluable condition tree (NULL = informational/manual)
-    human_if TEXT,
-    recommendation TEXT,           -- the "Then" shown to the clinician
-    dosage_titration TEXT,
-    monitoring TEXT,
-    contraindications TEXT,
-    evidence_level TEXT,           -- A|B|C|E
-    action_type TEXT NOT NULL DEFAULT 'educate',
-                                   -- flag_risk|suggest_med|safety_alert|create_followup|
-                                   -- schedule_screening|educate|classify|set_target|redflag|hypo|vaccine
-    action_params_json TEXT,
-    severity TEXT NOT NULL DEFAULT 'info',  -- info|warn|urgent
-    priority INTEGER NOT NULL DEFAULT 100,
-    source_ref TEXT,
-    is_active INTEGER NOT NULL DEFAULT 1,
-    notes TEXT
-);
-CREATE INDEX IF NOT EXISTS idx_clinical_rules_cat ON clinical_rules (category, priority);
-
--- Physician action on engine suggestions (accountability; suggestion-only system)
-CREATE TABLE IF NOT EXISTS suggestion_log (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    patient_link_id INTEGER NOT NULL,
-    rule_code TEXT NOT NULL,
-    suggestion_text TEXT,
-    evidence_level TEXT,
-    status TEXT NOT NULL DEFAULT 'pending',   -- pending|accepted|dismissed
-    acted_by TEXT,
-    acted_at TIMESTAMP,
-    note TEXT,
-    created_at TIMESTAMP DEFAULT (datetime('now', '+3 hours', '+30 minutes')),
-    UNIQUE (patient_link_id, rule_code),
-    FOREIGN KEY (patient_link_id) REFERENCES patient_links(id)
-);
+-- Clinical decision support is stored exclusively in the versioned v2 tables below.
 
 -- Seed drug-class catalog
 INSERT OR IGNORE INTO drug_classes (class_key, label, glucose_lowering, display_order) VALUES
@@ -752,8 +705,8 @@ CREATE INDEX IF NOT EXISTS idx_doctor_visit_log_workdate ON doctor_visit_log(wor
 
 -- ============================================================================
 -- Clinical Engine v2: immutable rule/ruleset versions and append-only audit.
--- These tables live beside the legacy clinical_rules/suggestion_log tables.
--- Runtime remains disabled by clinical_engine_v2_mode=off until later PRs.
+-- This is the only clinical decision-rule storage contract. Runtime remains
+-- disabled by clinical_engine_v2_mode=off until an activation seal is valid.
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS clinical_rule_versions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -765,7 +718,6 @@ CREATE TABLE IF NOT EXISTS clinical_rule_versions (
     action_type TEXT NOT NULL,
     rule_json TEXT NOT NULL,
     content_hash TEXT NOT NULL,
-    source_legacy_rule_id INTEGER,
     lifecycle_status TEXT NOT NULL DEFAULT 'DRAFT'
         CHECK (lifecycle_status IN ('DRAFT', 'VALIDATED', 'APPROVED', 'SILENT',
                                     'ACTIVE', 'SUSPENDED', 'RETIRED')),
@@ -778,7 +730,6 @@ CREATE TABLE IF NOT EXISTS clinical_rule_versions (
     change_note TEXT,
     UNIQUE(rule_code, version),
     UNIQUE(content_hash),
-    FOREIGN KEY(source_legacy_rule_id) REFERENCES clinical_rules(id),
     FOREIGN KEY(supersedes_rule_version_id) REFERENCES clinical_rule_versions(id)
 );
 CREATE INDEX IF NOT EXISTS idx_rule_versions_code
@@ -900,12 +851,10 @@ CREATE TABLE IF NOT EXISTS clinical_decision_events (
     actor_username TEXT NOT NULL,
     occurred_at TEXT NOT NULL,
     supersedes_event_id INTEGER,
-    legacy_source_suggestion_log_id INTEGER,
     FOREIGN KEY(recommendation_event_id) REFERENCES clinical_recommendation_events(id),
     FOREIGN KEY(patient_link_id) REFERENCES patient_links(id),
     FOREIGN KEY(actor_user_id) REFERENCES users(id),
-    FOREIGN KEY(supersedes_event_id) REFERENCES clinical_decision_events(id),
-    FOREIGN KEY(legacy_source_suggestion_log_id) REFERENCES suggestion_log(id)
+    FOREIGN KEY(supersedes_event_id) REFERENCES clinical_decision_events(id)
 );
 CREATE INDEX IF NOT EXISTS idx_decision_events_recommendation
 ON clinical_decision_events(recommendation_event_id, occurred_at, id);
@@ -996,7 +945,7 @@ END;
 -- Rule content and ruleset identity are versioned; lifecycle fields may change.
 CREATE TRIGGER IF NOT EXISTS trg_rule_version_content_immutable
 BEFORE UPDATE OF rule_code, version, schema_version, dsl_version, phase,
-                 action_type, rule_json, content_hash, source_legacy_rule_id,
+                 action_type, rule_json, content_hash,
                  created_by, created_at, supersedes_rule_version_id
 ON clinical_rule_versions BEGIN
     SELECT RAISE(ABORT, 'clinical rule version content is immutable');
