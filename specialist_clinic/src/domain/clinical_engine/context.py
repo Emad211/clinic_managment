@@ -2,7 +2,8 @@
 
 An appointment is an administrative plan, not proof that a clinical encounter happened.
 Every run therefore declares either an exact encounter event or an explicit longitudinal
-review context.  The canonical context hash is part of current-run identity.
+review context. The canonical context hash is part of current-run identity and is stable
+within one Tehran-local assessment day.
 """
 from __future__ import annotations
 
@@ -69,6 +70,11 @@ def local_naive(value: datetime) -> datetime:
     if value.tzinfo is not None:
         return value.astimezone(IRAN_TZ).replace(tzinfo=None)
     return value
+
+
+def assessment_midnight(value: datetime) -> datetime:
+    local = local_naive(value)
+    return local.replace(hour=0, minute=0, second=0, microsecond=0)
 
 
 def iso_local(value: datetime) -> str:
@@ -149,7 +155,9 @@ class ClinicalEvaluationContext:
             raise ClinicalContextError("chief complaint is too long")
         if self.responsible_actor and len(self.responsible_actor.strip()) > 200:
             raise ClinicalContextError("responsible actor is too long")
-        normalize_reason_codes(self.reason_codes)
+        normalized_reasons = normalize_reason_codes(self.reason_codes)
+        if normalized_reasons != tuple(self.reason_codes):
+            raise ClinicalContextError("reason codes are not canonical")
         if self.evaluation_mode is EvaluationMode.LONGITUDINAL:
             if self.encounter_key is not None or self.encounter_event_id is not None:
                 raise ClinicalContextError(
@@ -237,7 +245,7 @@ def longitudinal_context(
     care_setting: CareSetting = CareSetting.SPECIALTY_CLINIC,
     responsible_actor: str | None = None,
 ) -> ClinicalEvaluationContext:
-    recorded = local_naive(as_of_at)
+    recorded = assessment_midnight(as_of_at)
     assessment_date = recorded.date().isoformat()
     return make_context(
         patient_link_id=int(patient_link_id),
@@ -246,7 +254,7 @@ def longitudinal_context(
         care_setting=CareSetting(care_setting),
         encounter_type=EncounterType.LONGITUDINAL_REVIEW,
         assessment_date=assessment_date,
-        effective_at=recorded.replace(hour=0, minute=0, second=0, microsecond=0),
+        effective_at=recorded,
         recorded_at=recorded,
         source="runtime-longitudinal-review",
         responsible_actor=(responsible_actor or "").strip() or None,
