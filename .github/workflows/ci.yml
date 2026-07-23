@@ -40,13 +40,14 @@ jobs:
           --exclude='.venv'
           --exclude='__pycache__'
           --exclude='.pytest_cache'
-          -czf ../context-source-snapshot.tar.gz ..
+          -czf /tmp/context-source-snapshot.tar.gz
+          -C .. .
 
       - name: Upload temporary source snapshot
         uses: actions/upload-artifact@v4
         with:
           name: context-source-snapshot
-          path: context-source-snapshot.tar.gz
+          path: /tmp/context-source-snapshot.tar.gz
           if-no-files-found: error
           retention-days: 1
 
