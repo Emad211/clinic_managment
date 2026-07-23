@@ -41,10 +41,15 @@ def _cleanup_needed(db: sqlite3.Connection) -> bool:
 def ensure_v1_schema_cutover(
     db: sqlite3.Connection,
 ) -> dict[str, Any]:
-    """Remove retired storage before the application starts serving requests."""
+    """Remove retired storage and verify the persistent schema is actually clean."""
     if not _cleanup_needed(db):
         return {"changed": False, "removed": []}
-    return cleanup_legacy_clinical_schema(db)
+    result = cleanup_legacy_clinical_schema(db)
+    if _cleanup_needed(db):
+        raise RuntimeError(
+            "retired Clinical Engine v1 storage remained after schema cutover"
+        )
+    return result
 
 
 def _install_manager_rule_count_projection(

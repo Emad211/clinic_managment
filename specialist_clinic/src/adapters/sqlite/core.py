@@ -331,6 +331,18 @@ def _run_migrations(db):
     except Exception:
         pass
 
+    # The schema loader is intentionally idempotent and may recreate retired v1
+    # compatibility objects on an existing database. Remove them on the same
+    # connection, immediately after every migration pass, before `_initialized` is
+    # published to the process. This is the authoritative cutover boundary; app and
+    # Blueprint lifecycle state cannot skip it.
+    db.commit()
+    from src.adapters.sqlite.clinical_engine_v1_cutover import (
+        ensure_v1_schema_cutover,
+    )
+
+    ensure_v1_schema_cutover(db)
+
 
 def _ensure_default_admin(db):
     """Create a default manager account (admin/admin) if no users exist."""

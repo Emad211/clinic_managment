@@ -210,6 +210,9 @@ def test_reconciled_severe_bp_to_presentation_and_decision(e2e_app):
         ClinicalEngineReadOnlyFacade,
     )
     from src.services.clinical_engine.fact_builder import ENGINE_VERSION
+    from src.services.clinical_engine.runtime import (
+        ClinicalEngineRuntimeService,
+    )
     from src.services.clinical_engine.package_service import (
         ClinicalRulePackageService,
     )
@@ -256,7 +259,12 @@ def test_reconciled_severe_bp_to_presentation_and_decision(e2e_app):
     )
     assert install_sealed_rollout() == int(frozen["id"])
 
-    projection = ClinicalEngineReadOnlyFacade().patient_detail(patient_id)
+    runtime = ClinicalEngineRuntimeService(
+        clock=lambda: datetime(2026, 7, 22, 10, 0, 0),
+    )
+    projection = ClinicalEngineReadOnlyFacade(
+        runtime=runtime,
+    ).patient_detail(patient_id)
     assert projection["current"] is True
     assert projection["engine_version"] == ENGINE_VERSION
     redflags = [
