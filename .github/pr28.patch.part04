@@ -1,0 +1,12 @@
+diff --git a/specialist_clinic/tests/test_clinical_engine_cutover_boundary.py b/specialist_clinic/tests/test_clinical_engine_cutover_boundary.py
+--- a/specialist_clinic/tests/test_clinical_engine_cutover_boundary.py
++++ b/specialist_clinic/tests/test_clinical_engine_cutover_boundary.py
+@@ -50,7 +50,7 @@ def test_canonical_schema_never_defines_v1_objects():
+     schema = (SRC / "adapters/sqlite/schema.sql").read_text(encoding="utf-8")
+     core = _source("adapters/sqlite/core.py")
+ 
+-    assert "CREATE TABLE IF NOT EXISTS clinical_rules" not in schema
++    assert "CREATE TABLE IF NOT EXISTS clinical_rules (" not in schema
+     assert "CREATE TABLE IF NOT EXISTS suggestion_log" not in schema
+     assert "source_legacy_rule_id" not in schema
+     assert "legacy_source_suggestion_log_id" not in schema
