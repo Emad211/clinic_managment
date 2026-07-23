@@ -61,6 +61,21 @@ jobs:
       - name: Install dependencies
         run: python -m pip install -r requirements.txt pytest
 
+      - name: Pack temporary CI test dependencies
+        run: |
+          set -euo pipefail
+          SITE="$(python -c 'import site; print(site.getsitepackages()[0])')"
+          tar -czf /tmp/context-test-deps.tar.gz -C "$SITE" \
+            flask werkzeug bcrypt jdatetime jalali_core segno blinker
+
+      - name: Upload temporary CI test dependencies
+        uses: actions/upload-artifact@v4
+        with:
+          name: context-test-deps
+          path: /tmp/context-test-deps.tar.gz
+          if-no-files-found: error
+          retention-days: 1
+
       - name: Run specialist clinic tests
         run: >-
           python -m pytest tests -q --tb=short
