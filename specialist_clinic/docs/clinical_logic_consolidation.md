@@ -50,3 +50,10 @@ reason یا event قدیمی `uncontrolled` فقط با برچسب «پیگیر�
 هرگز دوباره از یک measurement ساخته نمی‌شود. رویدادهای clinical engagement قدیمی خاموش و از UI مدیریتی حذف می‌شوند؛ approval
 در انتظارِ متعلق به آن‌ها نیز پیش از ارسال رد می‌شود. Task بالینی جدید فقط از
 recommendation audit‌شدهٔ v2 ساخته می‌شود.
+
+## دروازهٔ انتشار
+
+این مرحله فقط روی commitی قابل پذیرش است که CI canonical همان commit را اجرا کند؛
+موفقیت workflow انتقال یا commit تولیدشده با `GITHUB_TOKEN` به‌تنهایی مدرک انتشار
+نیست. هر دو suite مستقل Specialist Clinic و Accounting باید روی head نهایی اجرا شوند
+و گزارش JUnit آن‌ها بدون failure، error یا skip ناخواسته ثبت شود.
