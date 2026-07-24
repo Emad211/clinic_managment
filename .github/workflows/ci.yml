@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
@@ -14,7 +14,7 @@ concurrency:
 
 jobs:
   export-consolidation:
-    name: "export complete clinical logic consolidation bundle"
+    name: "export current clinical logic consolidation source"
     if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
@@ -22,12 +22,31 @@ jobs:
         with:
           ref: agent-clinical-parallel-logic-consolidation
           fetch-depth: 0
-      - name: Pack complete reviewed staging bundle
+      - name: Pack reviewed staging bundle
         run: tar -czf /tmp/step3-transfer-bundle.tar.gz .github/step3-batch .github/step3-full
-      - name: Upload complete staging bundle
+      - name: Upload reviewed staging bundle
         uses: actions/upload-artifact@v4
         with:
           name: step3-transfer-bundle
           path: /tmp/step3-transfer-bundle.tar.gz
+          if-no-files-found: error
+          retention-days: 1
+      - name: Pack current branch source
+        run: >-
+          tar
+          --exclude=.git
+          --exclude='*.db'
+          --exclude='.venv'
+          --exclude='__pycache__'
+          --exclude='.pytest_cache'
+          --exclude='webapp/build'
+          --exclude='webapp/dist'
+          --exclude='specialist_clinic/dist'
+          -czf /tmp/step3-source-snapshot.tar.gz .
+      - name: Upload current branch source
+        uses: actions/upload-artifact@v4
+        with:
+          name: step3-source-snapshot
+          path: /tmp/step3-source-snapshot.tar.gz
           if-no-files-found: error
           retention-days: 1
