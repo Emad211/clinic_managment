@@ -10,6 +10,8 @@ from flask import Flask, g, redirect, render_template, session, url_for
 
 from src.adapters.sqlite.core import close_connection, get_db
 from src.config.settings import Config, DEFAULT_SECRET_KEY
+from src.security.csrf import install_csrf
+from src.security.permissions import permissions_for_template
 
 
 def create_app(test_config=None):
@@ -44,7 +46,11 @@ def create_app(test_config=None):
     app.config["SESSION_COOKIE_SECURE"] = bool(
         app.config.get("PRODUCTION")
     )
+    app.config.setdefault("SESSION_COOKIE_NAME", "clinic_session")
+    app.config.setdefault("SESSION_REFRESH_EACH_REQUEST", False)
+    app.config.setdefault("MAX_CONTENT_LENGTH", 16 * 1024 * 1024)
     app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(hours=8)
+    install_csrf(app)
 
     if not getattr(sys, "frozen", False):
         app.config["TEMPLATES_AUTO_RELOAD"] = True
@@ -94,6 +100,12 @@ def create_app(test_config=None):
                 (user_id,),
             ).fetchone()
 
+    @app.context_processor
+    def inject_security_context():
+        return {
+            "permissions": permissions_for_template(),
+        }
+
     from src.api.appointments import bp as appointments_bp
     from src.api.auth import bp as auth_bp
     from src.api.clinical_reconciliation import (
@@ -104,6 +116,7 @@ def create_app(test_config=None):
     from src.api.doctor_queue import bp as doctor_queue_bp
     from src.api.ext import bp as ext_bp
     from src.api.followups import bp as followups_bp
+    from src.api.health import bp as health_bp
     from src.api.manager import bp as manager_bp
     from src.api.patient_card import bp as patient_card_bp
     from src.api.patients import bp as patients_bp
@@ -124,6 +137,7 @@ def create_app(test_config=None):
         ext_bp,
         doctor_queue_bp,
         patient_card_bp,
+        health_bp,
     ):
         app.register_blueprint(blueprint)
 
@@ -164,7 +178,7 @@ def create_app(test_config=None):
             return redirect(url_for("auth.login"))
         return redirect(url_for("dashboard.index"))
 
-    # The legacy clinical-decision importer was"intentionally" removed.  The
+    # The legacy clinical-decision importer was intentionally removed. The
     # application has seed-only data and all visible decisions must originate from
     # an exact current v2 run rather than reconstructed v1 state.
     @app.cli.group("clinical-v2")
@@ -340,6 +354,35 @@ def create_app(test_config=None):
             "Clinical Engine v2 rolled back to off; audit history was retained."
         )
 
+    @app.errorhandler(400)
+    def bad_request(_error):
+        return (
+            render_template(
+                "errors/error.html",
+                status_code=400,
+                error_title="درخواست نامعتبر",
+                error_message=(
+                    "درخواست ایمن نبود یا دادهٔ ارسالی معتبر نبود. صفحه را تازه "
+                    "کنید و دوباره تلاش کنید."
+                ),
+                active_page=None,
+            ),
+            400,
+        )
+
+    @app.errorhandler(403)
+    def forbidden(_error):
+        return (
+            render_template(
+                "errors/error.html",
+                status_code=403,
+                error_title="دسترسی غیرمجاز",
+                error_message="مجوز لازم برای این عملیات ثبت نشده است.",
+                active_page=None,
+            ),
+            403,
+        )
+
     @app.errorhandler(404)
     def not_found(_error):
         return (
@@ -394,13 +437,8 @@ if __name__ == "__main__":
     application = create_app()
     threading.Timer(1.5, open_browser).start()
     application.run(
-        debug=False,
-        host=(
-            "127.0.0.1"
-            if application.config.get("PRODUCTION")
-            else "0.0.0.0"
-        ),
+        host=Config.HOST,
         port=Config.PORT,
+        debug=False,
         use_reloader=False,
-        threaded=True,
     )
