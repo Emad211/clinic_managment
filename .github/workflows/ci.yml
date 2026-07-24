@@ -22,24 +22,39 @@ jobs:
           ref: agent-clinical-parallel-logic-consolidation
           fetch-depth: 0
 
-      - name: Decode, compile and commit
+      - name: Decode analytics service
+        run: base64 --decode .github/step3-batch/analytics_service.py.b64 > specialist_clinic/src/services/analytics_service.py
+
+      - name: Decode patient route
+        run: base64 --decode .github/step3-batch/patients.py.gz.b64 | gzip --decompress > specialist_clinic/src/api/patients.py
+
+      - name: Decode patient template
+        run: base64 --decode .github/step3-batch/detail.html.gz.b64 | gzip --decompress > specialist_clinic/src/templates/patients/detail.html
+
+      - name: Decode regression tests
         shell: bash
         run: |
           set -euo pipefail
-          cp .github/step3-batch/ci.yml /tmp/canonical-ci.yml
-          base64 --decode .github/step3-batch/analytics_service.py.b64 > specialist_clinic/src/services/analytics_service.py
-          base64 --decode .github/step3-batch/patients.py.gz.b64 | gzip --decompress > specialist_clinic/src/api/patients.py
-          base64 --decode .github/step3-batch/detail.html.gz.b64 | gzip --decompress > specialist_clinic/src/templates/patients/detail.html
           base64 --decode .github/step3-batch/test_canonical_consistency.py.gz.b64 | gzip --decompress > specialist_clinic/tests/test_canonical_consistency.py
           base64 --decode .github/step3-batch/test_patient_card.py.gz.b64 | gzip --decompress > specialist_clinic/tests/test_patient_card.py
           base64 --decode .github/step3-batch/test_parallel_clinical_logic_retired.py.gz.b64 | gzip --decompress > specialist_clinic/tests/test_parallel_clinical_logic_retired.py
 
+      - name: Compile and prepare clean tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp .github/step3-batch/ci.yml /tmp/canonical-ci.yml
           rm -rf .github/step3-batch
           rm -f .github/workflows/apply-step3-descriptive-batch.yml
           mv /tmp/canonical-ci.yml .github/workflows/ci.yml
           python -m compileall -q specialist_clinic/src specialist_clinic/tests
           git add -A
           git diff --cached --check
+
+      - name: Commit and push
+        shell: bash
+        run: |
+          set -euo pipefail
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git commit -m 'make patient analytics descriptive-only'
