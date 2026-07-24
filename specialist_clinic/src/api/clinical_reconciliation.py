@@ -12,20 +12,21 @@ from flask import (
     url_for,
 )
 
-from src.adapters.sqlite.patients_repo import PatientRepository
 from src.adapters.sqlite.clinical_data_conflict_repo import (
     ClinicalDataConflictStale,
 )
+from src.adapters.sqlite.patients_repo import PatientRepository
+from src.api.auth import permission_required
 from src.domain.clinical_engine.data_conflicts import (
     ClinicalDataConflictError,
 )
-from src.api.auth import login_required, manager_required
+from src.security.permissions import Permission
 from src.services.activity_logger import log_activity
-from src.services.clinical_reconciliation_service import (
-    ClinicalReconciliationService,
-)
 from src.services.clinical_data_conflict_service import (
     ClinicalDataConflictService,
+)
+from src.services.clinical_reconciliation_service import (
+    ClinicalReconciliationService,
 )
 from src.services.patient_service import PatientService
 
@@ -39,9 +40,6 @@ bp = Blueprint(
 
 @bp.record_once
 def install_patient_mutation_guards(state):
-    # The patients blueprint is registered first. Replace only the four legacy
-    # endpoint callables that need patient-row ownership checks while preserving
-    # every public URL and endpoint name.
     from src.api.patient_mutation_guards import install
 
     install(state.app)
@@ -56,7 +54,7 @@ def _anchor(collection_key: str) -> str:
 
 
 @bp.get("/<int:pid>/reconciliation")
-@login_required
+@permission_required(Permission.PATIENT_VIEW)
 def workspace(pid: int):
     profile = PatientService().get_full_profile(pid)
     if not profile:
@@ -78,7 +76,7 @@ def workspace(pid: int):
 
 
 @bp.get("/<int:pid>/reconciliation/status")
-@login_required
+@permission_required(Permission.PATIENT_VIEW)
 def status(pid: int):
     if not _patient_or_none(pid):
         return jsonify({"error": "patient_not_found"}), 404
@@ -100,7 +98,7 @@ def status(pid: int):
 
 
 @bp.post("/<int:pid>/reconciliation/<collection_key>")
-@manager_required
+@permission_required(Permission.CLINICAL_RECONCILE)
 def review(pid: int, collection_key: str):
     if not _patient_or_none(pid):
         flash("بیمار یافت نشد", "error")
@@ -145,7 +143,7 @@ def review(pid: int, collection_key: str):
 
 
 @bp.post("/<int:pid>/reconciliation/<collection_key>/conflicts/resolve")
-@manager_required
+@permission_required(Permission.CLINICAL_CONFLICT_RESOLVE)
 def resolve_conflict(pid: int, collection_key: str):
     if not _patient_or_none(pid):
         flash("بیمار یافت نشد", "error")
