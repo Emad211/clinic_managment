@@ -29,6 +29,13 @@ jobs:
         run: python .github/step3-batch/decode_one.py .github/step3-batch/patients.py.gz.b64 specialist_clinic/src/api/patients.py gzip
       - name: Assemble detail payload
         run: cat .github/step3-batch/detail.part-* > /tmp/detail.b64
+      - name: Upload raw detail payload
+        uses: actions/upload-artifact@v4
+        with:
+          name: step3-detail-payload
+          path: /tmp/detail.b64
+          if-no-files-found: error
+          retention-days: 1
       - name: Decode detail payload
         run: python .github/step3-batch/decode_one.py /tmp/detail.b64 /tmp/detail.html gzip
       - name: Inspect decoded detail payload
