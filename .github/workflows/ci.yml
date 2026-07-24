@@ -23,20 +23,24 @@ jobs:
           ref: agent-clinical-parallel-logic-consolidation
           fetch-depth: 0
 
-      - name: Decode reviewed files
+      - name: Install analytics file
+        run: python .github/step3-batch/decode_one.py .github/step3-batch/analytics_service.py.b64 specialist_clinic/src/services/analytics_service.py plain
+      - name: Install patients file
+        run: python .github/step3-batch/decode_one.py .github/step3-batch/patients.py.gz.b64 specialist_clinic/src/api/patients.py gzip
+      - name: Install detail template
         run: |
-          python .github/step3-batch/decode_one.py .github/step3-batch/analytics_service.py.b64 specialist_clinic/src/services/analytics_service.py plain
-          python .github/step3-batch/decode_one.py .github/step3-batch/patients.py.gz.b64 specialist_clinic/src/api/patients.py gzip
           cat .github/step3-batch/detail.part-* > /tmp/detail.b64
           python .github/step3-batch/decode_one.py /tmp/detail.b64 specialist_clinic/src/templates/patients/detail.html gzip
-          python .github/step3-batch/decode_one.py .github/step3-batch/test_canonical_consistency.py.gz.b64 specialist_clinic/tests/test_canonical_consistency.py gzip
-          python .github/step3-batch/decode_one.py .github/step3-batch/test_patient_card.py.gz.b64 specialist_clinic/tests/test_patient_card.py gzip
-          python .github/step3-batch/decode_one.py .github/step3-batch/test_parallel_clinical_logic_retired.py.gz.b64 specialist_clinic/tests/test_parallel_clinical_logic_retired.py gzip
+      - name: Install canonical test
+        run: python .github/step3-batch/decode_one.py .github/step3-batch/test_canonical_consistency.py.gz.b64 specialist_clinic/tests/test_canonical_consistency.py gzip
+      - name: Install card test
+        run: python .github/step3-batch/decode_one.py .github/step3-batch/test_patient_card.py.gz.b64 specialist_clinic/tests/test_patient_card.py gzip
+      - name: Install retirement guard test
+        run: python .github/step3-batch/decode_one.py .github/step3-batch/test_parallel_clinical_logic_retired.py.gz.b64 specialist_clinic/tests/test_parallel_clinical_logic_retired.py gzip
+      - name: Install second patch
+        run: |
           cat .github/step3-full/part-* > /tmp/second.b64
           python .github/step3-batch/decode_one.py /tmp/second.b64 /tmp/second.patch gzip
-
-      - name: Apply remaining reviewed files
-        run: |
           git apply --check /tmp/second.patch
           git apply /tmp/second.patch
 
