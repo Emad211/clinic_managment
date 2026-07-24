@@ -29,6 +29,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: agent-clinical-parallel-logic-consolidation
           fetch-depth: 0
 
       - name: Set up Python 3.13
@@ -42,10 +43,7 @@ jobs:
         run: python -m pip install -r requirements.txt pytest
 
       - name: Apply staged descriptive consolidation
-        if: >-
-          github.event_name == 'push' &&
-          github.ref_name == 'agent-clinical-parallel-logic-consolidation' &&
-          hashFiles('.github/step3-batch/README') != ''
+        if: hashFiles('.github/step3-batch/README') != ''
         working-directory: .
         shell: bash
         run: |
@@ -93,7 +91,7 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git commit -m 'make patient analytics descriptive-only'
-          git push origin HEAD:${GITHUB_REF_NAME}
+          git push origin HEAD:agent-clinical-parallel-logic-consolidation
 
       - name: Run specialist clinic tests
         run: >-
