@@ -1,8 +1,14 @@
-"""Strict worklist writes derived from exact current Clinical Engine output."""
+"""Strict clinical-task creation from exact current Clinical Engine output."""
 from __future__ import annotations
 
 import sqlite3
 
+from src.adapters.sqlite.clinical_care_loop_repo import (
+    ClinicalCareLoopRepository,
+)
+from src.adapters.sqlite.clinical_care_loop_schema import (
+    ensure_clinical_care_loop_storage,
+)
 from src.adapters.sqlite.clinical_engine_activation_repo import (
     ClinicalEngineActivationRepository,
 )
@@ -17,7 +23,7 @@ from src.adapters.sqlite.followups_repo import FollowupRepository
 
 
 class ClinicalFollowupRepository(FollowupRepository):
-    """Add clinical tasks only while their sealed source run remains current."""
+    """Create a clinical task and its immutable CREATED event in one transaction."""
 
     def __init__(self, *, activation=None):
         self.activation = activation or ClinicalEngineActivationRepository()
@@ -67,17 +73,37 @@ class ClinicalFollowupRepository(FollowupRepository):
     @staticmethod
     def _existing(db, task: dict):
         return db.execute(
-            """SELECT id FROM followup_tasks
-               WHERE clinical_task_key=?
-                  OR (patient_link_id=? AND clinical_semantic_key=?
-                      AND clinical_context_hash=?
-                      AND source_engine='clinical_v2' AND status='open')
-               ORDER BY id LIMIT 1""",
+            """SELECT root.id
+               FROM followup_tasks root
+               WHERE root.source_engine='clinical_v2'
+                 AND (
+                     root.clinical_task_key=?
+                     OR (
+                         root.patient_link_id=?
+                         AND root.clinical_semantic_key=?
+                         AND root.clinical_context_hash=?
+                         AND COALESCE(root.clinical_due_period,'')=COALESCE(?, '')
+                         AND EXISTS (
+                             SELECT 1 FROM clinical_task_events head
+                             WHERE head.task_id=root.id
+                               AND head.status IN (
+                                   'OPEN','ASSIGNED','SCHEDULED',
+                                   'IN_PROGRESS','DEFERRED'
+                               )
+                               AND NOT EXISTS (
+                                   SELECT 1 FROM clinical_task_events child
+                                   WHERE child.supersedes_event_id=head.id
+                               )
+                         )
+                     )
+                 )
+               ORDER BY root.id LIMIT 1""",
             (
                 task["clinical_task_key"],
                 task["patient_link_id"],
                 task["clinical_semantic_key"],
                 task["clinical_context_hash"],
+                task.get("due_period"),
             ),
         ).fetchone()
 
@@ -86,6 +112,7 @@ class ClinicalFollowupRepository(FollowupRepository):
     ) -> tuple[int, bool]:
         db = get_db()
         ensure_runtime_schema(db)
+        ensure_clinical_care_loop_storage(db)
         db.execute("BEGIN IMMEDIATE")
         try:
             self._assert_current_source(db, task)
@@ -93,14 +120,19 @@ class ClinicalFollowupRepository(FollowupRepository):
             if existing:
                 db.commit()
                 return int(existing["id"]), False
+            decision_event_id = ClinicalCareLoopRepository.latest_decision_event_id(
+                db,
+                int(task["source_recommendation_event_id"]),
+            )
             cursor = db.execute(
                 """INSERT INTO followup_tasks
                    (patient_link_id, reason, detail, due_date, fulfillment,
                     source_rule, source_event, source_engine, source_run_id,
                     source_recommendation_event_id, clinical_semantic_key,
-                    clinical_context_hash, clinical_task_key)
+                    clinical_context_hash, clinical_task_key,
+                    clinical_due_period, clinical_source_decision_event_id)
                    VALUES (?, ?, ?, ?, 'in_person', ?, 'clinical_due',
-                           'clinical_v2', ?, ?, ?, ?, ?)""",
+                           'clinical_v2', ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     task["patient_link_id"],
                     task["reason"],
@@ -112,10 +144,20 @@ class ClinicalFollowupRepository(FollowupRepository):
                     task["clinical_semantic_key"],
                     task["clinical_context_hash"],
                     task["clinical_task_key"],
+                    task.get("due_period"),
+                    decision_event_id,
                 ),
             )
+            task_id = int(cursor.lastrowid)
+            ClinicalCareLoopRepository.create_initial_event(
+                db,
+                task_id=task_id,
+                due_at=task.get("due_date"),
+                actor_username=str(task.get("source_actor") or "clinical-followup"),
+                actor_user_id=task.get("source_actor_user_id"),
+            )
             db.commit()
-            return int(cursor.lastrowid), True
+            return task_id, True
         except sqlite3.IntegrityError:
             db.rollback()
             existing = self._existing(db, task)
