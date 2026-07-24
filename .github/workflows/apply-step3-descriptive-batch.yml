@@ -29,8 +29,11 @@ jobs:
             > specialist_clinic/src/services/analytics_service.py
           base64 --decode .github/step3-batch/patients.py.gz.b64 \
             | gzip --decompress > specialist_clinic/src/api/patients.py
-          base64 --decode .github/step3-batch/detail.html.gz.b64 \
-            | gzip --decompress > specialist_clinic/src/templates/patients/detail.html
+          cat .github/step3-batch/detail.part-* \
+            | tr -d '\r\n' \
+            | base64 --decode \
+            | gzip --decompress \
+            > specialist_clinic/src/templates/patients/detail.html
           base64 --decode .github/step3-batch/test_canonical_consistency.py.gz.b64 \
             | gzip --decompress > specialist_clinic/tests/test_canonical_consistency.py
           base64 --decode .github/step3-batch/test_patient_card.py.gz.b64 \
