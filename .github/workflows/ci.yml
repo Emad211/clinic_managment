@@ -13,8 +13,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  apply-consolidation:
-    name: "apply complete clinical logic consolidation"
+  diagnose-transfer:
+    name: "diagnose step3 payloads"
     if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
@@ -23,106 +23,28 @@ jobs:
           ref: agent-clinical-parallel-logic-consolidation
           fetch-depth: 0
 
-      - name: Decode reviewed payloads
-        shell: bash
+      - name: Decode analytics
+        run: python .github/step3-batch/decode_one.py .github/step3-batch/analytics_service.py.b64 /tmp/analytics.py plain
+        continue-on-error: true
+      - name: Decode patients
+        run: python .github/step3-batch/decode_one.py .github/step3-batch/patients.py.gz.b64 /tmp/patients.py gzip
+        continue-on-error: true
+      - name: Decode detail
         run: |
-          set -euo pipefail
-          python - <<'PY'
-          import base64, gzip
-          from pathlib import Path
-
-          def decode(source, target, *, compressed):
-              raw = ''.join(Path(source).read_text(encoding='utf-8').split())
-              raw += '=' * (-len(raw) % 4)
-              data = base64.b64decode(raw, validate=False)
-              if compressed:
-                  data = gzip.decompress(data)
-              Path(target).write_bytes(data)
-              print(f'decoded {source} -> {target} ({len(data)} bytes)')
-
-          decode('.github/step3-batch/analytics_service.py.b64',
-                 'specialist_clinic/src/services/analytics_service.py',
-                 compressed=False)
-          decode('.github/step3-batch/patients.py.gz.b64',
-                 'specialist_clinic/src/api/patients.py',
-                 compressed=True)
-
-          parts = sorted(Path('.github/step3-batch').glob('detail.part-*'))
-          detail_raw = ''.join(''.join(path.read_text(encoding='utf-8').split()) for path in parts)
-          detail_raw += '=' * (-len(detail_raw) % 4)
-          Path('specialist_clinic/src/templates/patients/detail.html').write_bytes(
-              gzip.decompress(base64.b64decode(detail_raw, validate=False))
-          )
-
-          for source, target in (
-              ('.github/step3-batch/test_canonical_consistency.py.gz.b64',
-               'specialist_clinic/tests/test_canonical_consistency.py'),
-              ('.github/step3-batch/test_patient_card.py.gz.b64',
-               'specialist_clinic/tests/test_patient_card.py'),
-              ('.github/step3-batch/test_parallel_clinical_logic_retired.py.gz.b64',
-               'specialist_clinic/tests/test_parallel_clinical_logic_retired.py'),
-          ):
-              decode(source, target, compressed=True)
-
-          patch_parts = sorted(Path('.github/step3-full').glob('part-*'))
-          patch_raw = ''.join(''.join(path.read_text(encoding='utf-8').split()) for path in patch_parts)
-          patch_raw += '=' * (-len(patch_raw) % 4)
-          Path('/tmp/step3-second.patch').write_bytes(
-              gzip.decompress(base64.b64decode(patch_raw, validate=False))
-          )
-          PY
-
-      - name: Apply remaining reviewed files
-        shell: bash
+          cat .github/step3-batch/detail.part-* > /tmp/detail.b64
+          python .github/step3-batch/decode_one.py /tmp/detail.b64 /tmp/detail.html gzip
+        continue-on-error: true
+      - name: Decode canonical test
+        run: python .github/step3-batch/decode_one.py .github/step3-batch/test_canonical_consistency.py.gz.b64 /tmp/canonical.py gzip
+        continue-on-error: true
+      - name: Decode card test
+        run: python .github/step3-batch/decode_one.py .github/step3-batch/test_patient_card.py.gz.b64 /tmp/card.py gzip
+        continue-on-error: true
+      - name: Decode guard test
+        run: python .github/step3-batch/decode_one.py .github/step3-batch/test_parallel_clinical_logic_retired.py.gz.b64 /tmp/guard.py gzip
+        continue-on-error: true
+      - name: Decode second patch
         run: |
-          set -euo pipefail
-          git apply --check /tmp/step3-second.patch
-          git apply /tmp/step3-second.patch
-
-      - name: Set up Python 3.13
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.13'
-          cache: pip
-          cache-dependency-path: specialist_clinic/requirements.txt
-
-      - name: Install focused test dependencies
-        working-directory: specialist_clinic
-        run: python -m pip install -r requirements.txt pytest
-
-      - name: Verify minimum safe consolidation gate
-        working-directory: specialist_clinic
-        env:
-          PYTEST_DISABLE_PLUGIN_AUTOLOAD: '1'
-          PYTHONIOENCODING: utf-8
-        run: >-
-          python -m pytest -q --tb=short
-          tests/test_parallel_clinical_logic_retired.py
-          tests/test_public_card_descriptive_only.py
-          tests/test_patient_card.py
-          tests/test_canonical_consistency.py
-          tests/test_patient_cockpit_service.py
-          tests/test_clinical_engine_v2_manager_ui.py
-          tests/test_visit_invites.py::TestFAutomaticEngagementRegression::test_high_reading_does_not_create_administrative_event
-          tests/test_visit_invites.py::TestFAutomaticEngagementRegression::test_high_reading_does_not_create_admin_worklist_or_sms
-
-      - name: Restore canonical CI and remove transfer files
-        shell: bash
-        run: |
-          set -euo pipefail
-          cp .github/step3-batch/ci.yml /tmp/canonical-ci.yml
-          rm -rf .github/step3-batch .github/step3-full
-          rm -f .github/workflows/apply-step3-descriptive-batch.yml
-          mv /tmp/canonical-ci.yml .github/workflows/ci.yml
-          python -m compileall -q specialist_clinic/src specialist_clinic/tests
-          git add -A
-          git diff --cached --check
-
-      - name: Commit and push clean product tree
-        shell: bash
-        run: |
-          set -euo pipefail
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git commit -m 'consolidate parallel clinical logic into governed v2'
-          git push origin HEAD:agent-clinical-parallel-logic-consolidation
+          cat .github/step3-full/part-* > /tmp/second.b64
+          python .github/step3-batch/decode_one.py /tmp/second.b64 /tmp/second.patch gzip
+        continue-on-error: true
