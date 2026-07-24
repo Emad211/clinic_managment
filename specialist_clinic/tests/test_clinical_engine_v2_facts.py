@@ -404,6 +404,7 @@ def test_off_writes_nothing_and_shadow_persists_only_v2_audit(facts_app):
     ).content_hash
     assert json.loads(row["summary_json"]) == {
         "clinical_data_revision": 0,
+        "context_hash": payload["context_hash"],
         "engine_version": ENGINE_VERSION,
         "evaluated_rules": 0,
         "mode": "shadow",

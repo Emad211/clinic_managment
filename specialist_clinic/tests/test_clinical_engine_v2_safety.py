@@ -457,6 +457,8 @@ def test_shadow_capture_persists_suppression_and_created_recommendation_event():
     for raw in (redflag, routine):
         _declare(raw, "observation.bp_systolic")
     snap = snapshot(
+        fact("demographic.age_years", 38, fact_id="age"),
+        fact("condition.codes", ["diabetes"], fact_id="conditions"),
         fact("condition.diabetes", True, fact_id="dm"),
         fact("observation.bp_systolic", 185, unit="mmHg", fact_id="sbp"),
     )
@@ -489,7 +491,11 @@ def test_corrupt_stored_safety_rule_fails_closed_and_blocks_valid_routine():
         "T2-ROUTINE", "ROUTINE", "educate",
         _leaf("routine-dm", "condition.diabetes"),
     )
-    snap = snapshot(fact("condition.diabetes", True, fact_id="dm"))
+    snap = snapshot(
+        fact("demographic.age_years", 38, fact_id="age"),
+        fact("condition.codes", ["diabetes"], fact_id="conditions"),
+        fact("condition.diabetes", True, fact_id="dm"),
+    )
     audit = _ShadowAudit()
     capture = ShadowFactCapture(
         repository=_ShadowRepository(), builder=_ShadowBuilder(snap), audit=audit,

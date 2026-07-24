@@ -393,8 +393,13 @@ def test_audit_is_reproducible_append_only_and_survives_backup(storage_app):
     )
 
     stored = audit.get_run(run_id)
+    stored_snapshot = json.loads(stored["fact_snapshot_json"])
+    assert stored_snapshot["facts"] == snapshot["facts"]
+    assert stored_snapshot["patient_link_id"] == patient_id
+    assert stored_snapshot["context_hash"] == stored["context_hash"]
+    assert stored_snapshot["evaluation_context"]["content_hash"] == stored["context_hash"]
     expected_snapshot = json.dumps(
-        snapshot, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+        stored_snapshot, ensure_ascii=False, sort_keys=True, separators=(",", ":")
     )
     assert stored["fact_snapshot_json"] == expected_snapshot
     assert stored["fact_snapshot_hash"] == hashlib.sha256(
