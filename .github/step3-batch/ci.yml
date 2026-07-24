@@ -1,0 +1,93 @@
+# CI for the two production Flask + SQLite desktop applications.
+# All tests use temporary databases; the committed accounting database is never
+# mutated and no real SMS provider is configured.
+
+name: CI
+
+on:
+  # Every development branch is executable evidence. This also covers stacked PR
+  # branches, whose pull_request workflow definition is read from the base branch
+  # and may not yet contain the newest CI configuration.
+  push:
+  pull_request:
+  workflow_dispatch:
+
+# A push and its PR event represent the same branch state. Keep only the newest
+# evidence for that branch, including stacked PRs, instead of consuming two runners
+# for obsolete commits.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  specialist-clinic:
+    name: "specialist clinic (pytest)"
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: specialist_clinic
+    env:
+      PYTHONIOENCODING: utf-8
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: specialist_clinic/requirements.txt
+
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt pytest
+
+      - name: Run specialist clinic tests
+        run: >-
+          python -m pytest tests -q --tb=short
+          --junitxml=pytest-specialist.xml
+
+      - name: Upload specialist pytest report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: specialist-pytest-results
+          path: specialist_clinic/pytest-specialist.xml
+          if-no-files-found: warn
+          retention-days: 7
+
+  accounting:
+    name: "accounting (pytest)"
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: webapp
+    env:
+      PYTHONIOENCODING: utf-8
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: webapp/requirements.txt
+
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt
+
+      - name: Run accounting tests
+        run: >-
+          python -m pytest tests -q --tb=short
+          --junitxml=pytest-accounting.xml
+
+      - name: Upload accounting pytest report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: accounting-pytest-results
+          path: webapp/pytest-accounting.xml
+          if-no-files-found: warn
+          retention-days: 7
