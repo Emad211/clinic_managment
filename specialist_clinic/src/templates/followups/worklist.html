@@ -10,7 +10,6 @@
     </form>
 </div>
 
-<!-- SEARCH -->
 <div class="card card-soft">
     <form class="row" method="get" action="{{ url_for('followups.worklist') }}">
         {% if active_reason %}<input type="hidden" name="reason" value="{{ active_reason }}">{% endif %}
@@ -23,7 +22,6 @@
     </form>
 </div>
 
-<!-- REASON FILTER -->
 <div class="card card-soft">
     <div class="flex items-center gap-2 wrap">
         <a class="btn btn-sm {% if not active_reason %}btn{% else %}btn-ghost{% endif %}" href="{{ url_for('followups.worklist', q=q) }}">
@@ -37,13 +35,12 @@
     </div>
 </div>
 
-<!-- WORKLIST: per-patient accordion -->
 <div class="card">
     <div class="section-title">
         <svg class="icon"><use href="#i-list-checks"></use></svg>
         <div>
             <div>پیگیری‌های باز</div>
-            <div class="section-sub">بیماران نیازمند تماس یا اقدام بعدی — روی هر بیمار بزنید تا پیگیری‌هایش باز شود</div>
+            <div class="section-sub">پیگیری اداری با وضعیت ساده بسته می‌شود؛ پیگیری بالینی فقط با رویداد lifecycle و شاهد نتیجه خاتمه می‌یابد.</div>
         </div>
     </div>
     {% if patient_groups %}
@@ -54,7 +51,7 @@
                 <span class="flex items-center gap-2 wrap">
                     <svg class="icon icon-sm"><use href="#i-chevron-left"></use></svg>
                     <a href="{{ url_for('patients.detail', pid=pg.patient_link_id) }}"><b>{{ pg.patient_name }}</b></a>
-                    <span class="badge badge-warn">{{ pg.open_count|fa_num }} پیگیریِ باز</span>
+                    <span class="badge badge-warn">{{ pg.open_count|fa_num }} پیگیری باز</span>
                 </span>
                 <span class="flex items-center gap-2 wrap muted text-sm">
                     {% if pg.phone_number %}<span class="nums"><svg class="icon icon-sm"><use href="#i-phone"></use></svg> {{ pg.phone_number }}</span>{% endif %}
@@ -62,10 +59,9 @@
                 </span>
             </summary>
 
-            <!-- tasks for this patient -->
             <div class="table-wrap" style="margin-top:var(--s3);">
                 <table>
-                    <thead><tr><th>دلیل</th><th>نحوهٔ بستن</th><th>توضیح</th><th>سررسید</th><th>اقدام</th></tr></thead>
+                    <thead><tr><th>دلیل و وضعیت</th><th>توضیح</th><th>سررسید</th><th>اقدام</th></tr></thead>
                     <tbody>
                     {% for t in pg.tasks %}
                         <tr>
@@ -73,26 +69,108 @@
                                 <span class="badge badge-warn">{{ t.reason_fa }}</span>
                                 {% if t.source_engine == 'clinical_v2' %}
                                     <span class="badge badge-info">بالینی v2</span>
-                                {% endif %}
-                            </td>
-                            <td>
-                                {% if t.fulfillment == 'remote' %}
-                                    <span class="badge badge-info">از راه دور</span>
+                                    <span class="badge badge-muted">{{ t.status_fa or t.current_status }}</span>
+                                    {% if t.is_overdue %}<span class="badge badge-danger">{{ t.overdue_days|fa_num }} روز تأخیر</span>{% endif %}
+                                {% elif t.fulfillment == 'remote' %}
+                                    <span class="badge badge-info">اداری ـ از راه دور</span>
                                 {% else %}
-                                    <span class="badge badge-muted">حضوری</span>
+                                    <span class="badge badge-muted">اداری ـ حضوری</span>
                                 {% endif %}
                             </td>
-                            <td class="muted">{{ t.detail or '—' }}</td>
-                            <td class="nums">{{ t.due_date|jalali_date if t.due_date else '—' }}</td>
+                            <td class="muted">
+                                {{ t.detail or '—' }}
+                                {% if t.source_engine == 'clinical_v2' %}
+                                    <div class="text-xs" style="margin-top:var(--s1);">
+                                        <span class="nums">context: {{ (t.clinical_context_hash or '')[:10] }}</span>
+                                        {% if t.current_assigned_to %} · مسئول: {{ t.current_assigned_to }}{% endif %}
+                                        {% if t.latest_outcome_event_id %} · آخرین شاهد: #{{ t.latest_outcome_event_id|fa_num }}{% endif %}
+                                    </div>
+                                {% endif %}
+                            </td>
+                            <td class="nums">{{ t.current_due|jalali_date if t.current_due else '—' }}</td>
                             <td>
-                                <div class="flex items-center gap-2">
-                                    <form class="m-0" method="post" action="{{ url_for('followups.resolve', task_id=t.id) }}">
-                                        <input type="hidden" name="status" value="done"><button class="btn btn-sm btn-ok" type="submit"><svg class="icon icon-sm"><use href="#i-check"></use></svg> انجام شد</button>
-                                    </form>
-                                    <form class="m-0" method="post" action="{{ url_for('followups.resolve', task_id=t.id) }}">
-                                        <input type="hidden" name="status" value="dismissed"><button class="btn btn-sm btn-ghost" type="submit"><svg class="icon icon-sm"><use href="#i-x"></use></svg> رد</button>
-                                    </form>
-                                </div>
+                                {% if t.source_engine != 'clinical_v2' %}
+                                    <div class="flex items-center gap-2">
+                                        <form class="m-0" method="post" action="{{ url_for('followups.resolve', task_id=t.id) }}">
+                                            <input type="hidden" name="status" value="done">
+                                            <button class="btn btn-sm btn-ok" type="submit"><svg class="icon icon-sm"><use href="#i-check"></use></svg> انجام شد</button>
+                                        </form>
+                                        <form class="m-0" method="post" action="{{ url_for('followups.resolve', task_id=t.id) }}">
+                                            <input type="hidden" name="status" value="dismissed">
+                                            <button class="btn btn-sm btn-ghost" type="submit"><svg class="icon icon-sm"><use href="#i-x"></use></svg> رد</button>
+                                        </form>
+                                    </div>
+                                {% elif g.user and g.user['role'] == 'manager' %}
+                                    <details>
+                                        <summary class="btn btn-sm btn-ghost">ثبت lifecycle / نتیجه</summary>
+                                        <div class="card card-soft" style="min-width:340px;margin-top:var(--s2);">
+                                            <div class="text-sm"><b>۱. ثبت شاهد نتیجه</b></div>
+                                            <form method="post" action="{{ url_for('followups.clinical_outcome', task_id=t.id) }}" class="flex" style="flex-direction:column;gap:var(--s2);margin-top:var(--s2);">
+                                                <div class="row">
+                                                    <div class="fld">
+                                                        <label>نوع شاهد</label>
+                                                        <select name="outcome_type">
+                                                            {% for key, label in outcome_labels.items() %}<option value="{{ key }}">{{ label }}</option>{% endfor %}
+                                                        </select>
+                                                    </div>
+                                                    <div class="fld"><label>تاریخ مشاهده</label><input class="jdate" name="observed_at" placeholder="انتخاب تاریخ"></div>
+                                                </div>
+                                                <div class="row">
+                                                    <div class="fld"><label>کلید Fact (اختیاری)</label><input name="fact_key" placeholder="مثلاً lab.hba1c"></div>
+                                                    <div class="fld"><label>مقدار</label><input name="value"></div>
+                                                    <div class="fld"><label>واحد</label><input name="unit"></div>
+                                                </div>
+                                                <div class="row">
+                                                    <div class="fld"><label>اعتبار</label><select name="verification"><option value="CONFIRMED">تأییدشده</option><option value="PROVISIONAL">موقت</option><option value="UNVERIFIED">تأییدنشده</option></select></div>
+                                                    <div class="fld" style="flex:2;"><label>یادداشت شاهد</label><input name="note"></div>
+                                                </div>
+                                                <button class="btn btn-sm" type="submit">ثبت outcome افزایشی</button>
+                                            </form>
+
+                                            <hr>
+                                            <div class="text-sm"><b>۲. تغییر وضعیت</b></div>
+                                            <div class="flex gap-2 wrap" style="margin-top:var(--s2);">
+                                                <form method="post" action="{{ url_for('followups.clinical_transition', task_id=t.id) }}">
+                                                    <input type="hidden" name="expected_current_event_id" value="{{ t.current_event_id }}">
+                                                    <input type="hidden" name="transition" value="start">
+                                                    <button class="btn btn-sm" type="submit">شروع انجام</button>
+                                                </form>
+                                                {% if t.latest_outcome_event_id %}
+                                                <form method="post" action="{{ url_for('followups.clinical_transition', task_id=t.id) }}">
+                                                    <input type="hidden" name="expected_current_event_id" value="{{ t.current_event_id }}">
+                                                    <input type="hidden" name="transition" value="complete">
+                                                    <input type="hidden" name="outcome_event_id" value="{{ t.latest_outcome_event_id }}">
+                                                    <button class="btn btn-sm btn-ok" type="submit">تکمیل با شاهد #{{ t.latest_outcome_event_id|fa_num }}</button>
+                                                </form>
+                                                {% else %}
+                                                    <span class="muted text-xs">برای تکمیل، ابتدا شاهد نتیجه ثبت شود.</span>
+                                                {% endif %}
+                                            </div>
+                                            <form method="post" action="{{ url_for('followups.clinical_transition', task_id=t.id) }}" class="row" style="margin-top:var(--s2);">
+                                                <input type="hidden" name="expected_current_event_id" value="{{ t.current_event_id }}">
+                                                <input type="hidden" name="transition" value="assign">
+                                                <div class="fld"><label>واگذاری به</label><input name="assigned_to" required></div>
+                                                <div class="fld" style="align-self:flex-end;"><button class="btn btn-sm" type="submit">ثبت واگذاری</button></div>
+                                            </form>
+                                            <form method="post" action="{{ url_for('followups.clinical_transition', task_id=t.id) }}" class="row" style="margin-top:var(--s2);">
+                                                <input type="hidden" name="expected_current_event_id" value="{{ t.current_event_id }}">
+                                                <input type="hidden" name="transition" value="defer">
+                                                <div class="fld"><label>سررسید جدید</label><input class="jdate" name="due_at" required></div>
+                                                <div class="fld"><label>علت تعویق</label><input name="note" required></div>
+                                                <div class="fld" style="align-self:flex-end;"><button class="btn btn-sm btn-ghost" type="submit">تعویق</button></div>
+                                            </form>
+                                            <form method="post" action="{{ url_for('followups.clinical_transition', task_id=t.id) }}" class="row" style="margin-top:var(--s2);">
+                                                <input type="hidden" name="expected_current_event_id" value="{{ t.current_event_id }}">
+                                                <input type="hidden" name="transition" value="not_done">
+                                                <div class="fld"><label>علت انجام‌نشدن</label><select name="disposition_code" required>{% for key, label in disposition_labels.items() %}<option value="{{ key }}">{{ label }}</option>{% endfor %}</select></div>
+                                                <div class="fld"><label>توضیح</label><input name="note"></div>
+                                                <div class="fld" style="align-self:flex-end;"><button class="btn btn-sm btn-ghost" type="submit">ثبت انجام‌نشدن</button></div>
+                                            </form>
+                                        </div>
+                                    </details>
+                                {% else %}
+                                    <span class="muted text-xs">مشاهده فقط؛ تغییر lifecycle نیازمند دسترسی مدیر است.</span>
+                                {% endif %}
                             </td>
                         </tr>
                     {% endfor %}
@@ -109,14 +187,12 @@
             </div>
             {% endif %}
 
-            <!-- close to visit: merge checked follow-ups into ONE visit -->
-            <form method="post" action="{{ url_for('followups.patient_to_visit', pid=pg.patient_link_id) }}"
-                  class="card card-soft" style="margin-top:var(--s3);">
+            <form method="post" action="{{ url_for('followups.patient_to_visit', pid=pg.patient_link_id) }}" class="card card-soft" style="margin-top:var(--s3);">
                 <div class="section-title" style="margin-bottom:var(--s2);">
                     <svg class="icon icon-sm"><use href="#i-stethoscope"></use></svg>
                     <div>
-                        <div>ختم به ویزیت</div>
-                        <div class="section-sub">پیگیری‌های انتخاب‌شده در یک ویزیت ادغام و بسته می‌شوند</div>
+                        <div>زمان‌بندی یک ویزیت</div>
+                        <div class="section-sub">پیگیری اداری بسته می‌شود؛ پیگیری بالینی فقط SCHEDULED می‌شود و تا ثبت outcome باز می‌ماند.</div>
                     </div>
                 </div>
                 <div class="flex" style="flex-direction:column;gap:var(--s1);margin-bottom:var(--s2);">
@@ -124,23 +200,15 @@
                     <label class="flex items-center gap-2">
                         <input type="checkbox" name="task_ids" value="{{ t.id }}"{% if t.fulfillment != 'remote' %} checked{% endif %}>
                         <span class="badge badge-warn">{{ t.reason_fa }}</span>
-                        {% if t.source_engine == 'clinical_v2' %}<span class="badge badge-info">بالینی v2</span>{% endif %}
+                        {% if t.source_engine == 'clinical_v2' %}<span class="badge badge-info">بالینی ـ فقط زمان‌بندی</span>{% endif %}
                         <span class="muted text-sm">{{ t.detail or '' }}</span>
                     </label>
                 {% endfor %}
                 </div>
                 <div class="row">
-                    <div class="fld">
-                        <label>تاریخِ ویزیت</label>
-                        <input type="text" class="jdate" name="scheduled_date" placeholder="انتخاب تاریخ" required>
-                    </div>
-                    <div class="fld">
-                        <label>ساعت</label>
-                        <input type="time" class="time-input" name="scheduled_time" value="09:00" step="900" lang="fa-IR" required>
-                    </div>
-                    <div class="fld" style="align-self:flex-end;">
-                        <button class="btn btn-ok" type="submit"><svg class="icon icon-sm"><use href="#i-calendar"></use></svg> ثبت ویزیت و بستن</button>
-                    </div>
+                    <div class="fld"><label>تاریخ ویزیت</label><input type="text" class="jdate" name="scheduled_date" placeholder="انتخاب تاریخ" required></div>
+                    <div class="fld"><label>ساعت</label><input type="time" class="time-input" name="scheduled_time" value="09:00" step="900" lang="fa-IR" required></div>
+                    <div class="fld" style="align-self:flex-end;"><button class="btn btn-ok" type="submit"><svg class="icon icon-sm"><use href="#i-calendar"></use></svg> ثبت ویزیت</button></div>
                 </div>
             </form>
         </details>
@@ -149,9 +217,7 @@
     {% else %}
     <div class="empty">
         <svg class="icon"><use href="#i-list-checks"></use></svg>
-        <div>
-            {% if q %}نتیجه‌ای برای «{{ q }}» یافت نشد.{% else %}پیگیری بازی وجود ندارد؛ موتور خودکار هر دو دقیقه موارد سررسیده را همگام می‌کند.{% endif %}
-        </div>
+        <div>{% if q %}نتیجه‌ای برای «{{ q }}» یافت نشد.{% else %}پیگیری بازی وجود ندارد.{% endif %}</div>
     </div>
     {% endif %}
 </div>
