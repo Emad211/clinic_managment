@@ -10,7 +10,7 @@ from src.adapters.sqlite.lab_catalog_repo import LabCatalogRepository
 from src.adapters.sqlite.drug_catalog_repo import DrugCatalogRepository
 from src.adapters.sqlite.sms_repo import SmsRepository
 from src.services.vitals_service import VitalsService, evaluate_reading
-from src.services.analytics_service import AnalyticsService, TARGETS
+from src.services.analytics_service import AnalyticsService
 from src.adapters.sqlite.wallet_repo import WalletRepository
 from src.services.activity_logger import log_activity
 from src.common.utils import jalali_to_gregorian_str, format_jalali_date, today_str, iran_now
@@ -216,21 +216,8 @@ def detail(pid):
     lab_catalog = lab_catalog_repo.all()
     suggested_labs = lab_catalog_repo.for_conditions(condition_codes)
 
-    # Meds tab (Phase 3): drug catalog for the class->name->doses cascade,
-    # the diabetic gate for the insulin calculator, and per-disease dose
-    # titration guidance for the non-diabetes conditions the patient has.
+    # Medications remain descriptive; dosing recommendations belong to governed v2 output.
     drug_catalog = DrugCatalogRepository().all()
-    is_diabetic = 'diabetes' in condition_codes
-    condition_name_by_code = {
-        c.get('condition_code'): c.get('condition_name')
-        for c in profile['conditions'] if c.get('condition_code')
-    }
-    guidance_codes = [c for c in condition_codes if c != 'diabetes']
-    dose_guidance = rules_repo.dosage_guidance(guidance_codes)
-    for grp in dose_guidance:
-        grp['condition_name'] = condition_name_by_code.get(
-            grp['condition_code'], grp['condition_code'])
-
     medication_events = PatientRepository().get_medication_events(pid)
     cockpit_service = PatientCockpitService()
     next_action = cockpit_service.next_action(
@@ -274,7 +261,6 @@ def detail(pid):
         visit_history=profile['visit_history'],
         control=control,
         charts=adata['charts'],
-        targets=TARGETS,
         vital_types=VITAL_TYPES,
         recent_vitals=recent_vitals,
         labs=labs,
@@ -296,8 +282,6 @@ def detail(pid):
         lab_catalog=lab_catalog,
         suggested_labs=suggested_labs,
         drug_catalog=drug_catalog,
-        is_diabetic=is_diabetic,
-        dose_guidance=dose_guidance,
         medication_events=medication_events,
         wallet_balance=wallet_balance,
         wallet_tx=wallet_tx,

@@ -18,9 +18,6 @@ from src.services.vitals_service import VitalsService
 from src.services.clinical_rules_service import evaluate as eval_rule
 from src.common.utils import format_jalali_date
 
-# Backward-compatible static targets (the patient detail page imports this).
-TARGETS = {'hba1c': 7.0, 'fbs': 130, 'bp_systolic': 130, 'bp_diastolic': 80}
-
 _CATEGORY_ORDER = ['glycemic', 'bp', 'lipid', 'kidney', 'anthro', 'other']
 
 
