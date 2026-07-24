@@ -49,7 +49,7 @@ def engine_identity_app(tmp_path):
 
 
 def test_reconciliation_contract_has_one_engine_identity():
-    assert CURRENT_ENGINE_VERSION == "2.6.0-evaluation-context"
+    assert CURRENT_ENGINE_VERSION == "2.7.0-data-conflicts"
     assert ENGINE_VERSION == CURRENT_ENGINE_VERSION
 
 

@@ -28,6 +28,7 @@ _REQUIRED_BUNDLE_KEYS = frozenset(
         "medication_events",
         "allergies",
         "reconciliations",
+        "conflicts",
         "flags",
         "flag_catalog",
         "observations",

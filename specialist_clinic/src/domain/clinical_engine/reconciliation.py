@@ -14,7 +14,16 @@ from typing import Any, Iterable, Mapping
 
 from src.common.utils import IRAN_TZ, parse_datetime
 
-from .enums import FactStatus, FreshnessStatus, VerificationStatus
+from .enums import (
+    ConflictStatus,
+    FactStatus,
+    FreshnessStatus,
+    VerificationStatus,
+)
+from .data_conflicts import (
+    detect_conflict_groups,
+    project_conflict_overlay,
+)
 
 
 COLLECTION_KEYS = ("conditions", "medications", "allergies")
@@ -131,6 +140,8 @@ def _project_active_rows(
 
     for raw in rows:
         row = dict(raw)
+        if str(row.get("source_assertion") or "PRESENT").upper() != "PRESENT":
+            continue
         warnings: list[str] = []
         if collection_key == "conditions":
             start_raw = row.get("onset_date") or row.get("diagnosed_at")
@@ -232,6 +243,8 @@ def _canonical_items_from_active_rows(
             items.append(
                 {
                     "record_id": _integer(row.get("id")),
+                    "allergy_concept_id": _integer(row.get("allergy_concept_id")),
+                    "concept_key": _text(row.get("allergy_concept_key")),
                     "substance": _text(row.get("substance")),
                     "reaction": _text(row.get("reaction")),
                     "severity": _text(row.get("severity")),
@@ -300,10 +313,19 @@ def _values(
     collection_key: str,
     items: Iterable[Mapping[str, Any]],
 ) -> tuple[str, ...]:
+    if collection_key == "allergies":
+        return tuple(
+            sorted(
+                {
+                    str(item.get("concept_key") or item.get("substance"))
+                    for item in items
+                    if item.get("concept_key") or item.get("substance")
+                }
+            )
+        )
     field = {
         "conditions": "code",
         "medications": "drug_class",
-        "allergies": "substance",
     }[collection_key]
     return tuple(
         sorted({str(item[field]) for item in items if item.get(field)})
@@ -320,7 +342,7 @@ def _mapping_complete(
         # complete medication identity. Confirmed medication aggregates require
         # an active catalog concept as well as the canonical class.
         "medications": ("name", "drug_class", "drug_catalog_id"),
-        "allergies": ("substance",),
+        "allergies": ("substance", "allergy_concept_id", "concept_key"),
     }[collection_key]
     return all(
         all(item.get(field) is not None for field in required)
@@ -341,6 +363,12 @@ class CollectionProjection:
     content_hash: str
     item_count: int
     mapping_complete: bool
+    conflict_snapshot_hash: str
+    conflict_count: int
+    unresolved_conflict_count: int
+    resolved_unknown_count: int
+    conflicts: tuple[dict[str, Any], ...]
+    conflict: ConflictStatus
     state: str
     status: FactStatus
     verification: VerificationStatus
@@ -360,6 +388,7 @@ def project_collection(
     *,
     as_of_at: datetime,
     medication_events: Iterable[Mapping[str, Any]] = (),
+    conflict_events: Iterable[Mapping[str, Any]] = (),
 ) -> CollectionProjection:
     """Combine one effective-row projection with its latest review event."""
     if collection_key not in COLLECTION_KEYS:
@@ -367,16 +396,82 @@ def project_collection(
             f"unsupported reconciliation collection: {collection_key}"
         )
     as_of_at = _local_naive(as_of_at) or as_of_at
+    source_rows = tuple(dict(row) for row in rows)
     active = _project_active_rows(
         collection_key,
-        rows,
+        source_rows,
         as_of_at=as_of_at,
         medication_events=medication_events,
     )
-    items = _canonical_items_from_active_rows(collection_key, active.rows)
+    groups = detect_conflict_groups(
+        collection_key,
+        source_rows,
+        as_of_at=as_of_at,
+        medication_events=medication_events,
+    )
+    conflict_overlay = project_conflict_overlay(
+        collection_key,
+        groups,
+        conflict_events,
+        as_of_at=as_of_at,
+    )
+    usable_rows = tuple(
+        {
+            **row,
+            "_resolution_confirmed": (
+                _integer(row.get("id"))
+                in conflict_overlay.resolution_confirmed_record_ids
+            ),
+        }
+        for row in active.rows
+        if _integer(row.get("id")) in conflict_overlay.usable_record_ids
+    )
+    items_list = list(_canonical_items_from_active_rows(collection_key, usable_rows))
+    synthetic_rows: list[dict[str, Any]] = []
+    for synthetic in conflict_overlay.synthetic_items:
+        item = {key: value for key, value in synthetic.items() if not key.startswith("_")}
+        items_list.append(item)
+        resolution_id = synthetic.get("_resolution_event_id")
+        if collection_key == "conditions":
+            synthetic_rows.append({
+                "id": f"resolution-{resolution_id}",
+                "condition_code": item.get("code"),
+                "stage": item.get("stage"),
+                "onset_date": item.get("onset_date"),
+                "_effective_at": synthetic.get("_effective_at"),
+                "_history_warnings": (),
+                "recorded_by": "clinical-conflict-resolution",
+            })
+        elif collection_key == "medications":
+            synthetic_rows.append({
+                "id": f"resolution-{resolution_id}",
+                "drug_catalog_id": item.get("drug_catalog_id"),
+                "drug_name": item.get("name"),
+                "drug_class": item.get("drug_class"),
+                "_dose_as_of": item.get("dose"),
+                "schedule": item.get("schedule"),
+                "start_date": item.get("start_date"),
+                "_effective_at": synthetic.get("_effective_at"),
+                "_history_warnings": (),
+                "recorded_by": "clinical-conflict-resolution",
+            })
+        else:
+            synthetic_rows.append({
+                "id": f"resolution-{resolution_id}",
+                "allergy_concept_id": item.get("allergy_concept_id"),
+                "allergy_concept_key": item.get("concept_key"),
+                "substance": item.get("substance"),
+                "reaction": item.get("reaction"),
+                "severity": item.get("severity"),
+                "_effective_at": synthetic.get("_effective_at"),
+                "_history_warnings": (),
+                "recorded_by": "clinical-conflict-resolution",
+            })
+    items = tuple(sorted(items_list, key=lambda item: canonical_json(item)))
     values = _values(collection_key, items)
     content_hash = _content_hash_from_items(collection_key, items)
     mapping_complete = _mapping_complete(collection_key, items)
+    projected_rows = tuple((*usable_rows, *synthetic_rows))
 
     candidates = [
         dict(event)
@@ -392,15 +487,39 @@ def project_collection(
         if candidates
         else None
     )
-    warnings = list(active.warnings)
+    warnings = [*active.warnings, *conflict_overlay.warnings]
     if collection_key == "medications" and any(
         item.get("drug_catalog_id") is None for item in items
     ):
         warnings.append("UNMAPPED_MEDICATION_CONCEPT")
+    if collection_key == "allergies" and any(
+        item.get("allergy_concept_id") is None for item in items
+    ):
+        warnings.append("UNMAPPED_ALLERGY_CONCEPT")
     if not mapping_complete:
         warnings.append("CANONICAL_MAPPING_INCOMPLETE")
 
-    if event is None:
+    if conflict_overlay.unresolved_count:
+        state = "conflict_unresolved"
+        status = FactStatus.UNKNOWN
+        verification = VerificationStatus.UNVERIFIED
+        freshness = FreshnessStatus.FRESH
+        effective_at = as_of_at
+        source_system = "clinical_data_conflict"
+        source_record_id = conflict_overlay.snapshot_hash
+        actor = None
+        warnings.append("UNRESOLVED_CLINICAL_CONFLICT")
+    elif conflict_overlay.resolved_unknown_count:
+        state = "conflict_unknown"
+        status = FactStatus.UNKNOWN
+        verification = VerificationStatus.UNVERIFIED
+        freshness = FreshnessStatus.FRESH
+        effective_at = as_of_at
+        source_system = "clinical_data_conflict"
+        source_record_id = conflict_overlay.snapshot_hash
+        actor = None
+        warnings.append("CLINICAL_CONFLICT_RESOLVED_UNKNOWN")
+    elif event is None:
         state = "unreconciled"
         status = _status_for_values(values)
         verification = VerificationStatus.UNVERIFIED
@@ -420,6 +539,10 @@ def project_collection(
         exact = (
             str(event.get("content_hash") or "") == content_hash
             and _integer(event.get("item_count")) == len(items)
+            and str(event.get("conflict_snapshot_hash") or "")
+                == conflict_overlay.snapshot_hash
+            and _integer(event.get("unresolved_conflict_count"))
+                == conflict_overlay.unresolved_count
         )
         if not exact:
             state = "stale"
@@ -460,12 +583,24 @@ def project_collection(
 
     return CollectionProjection(
         collection_key=collection_key,
-        rows=active.rows,
+        rows=projected_rows,
         items=items,
         values=values,
         content_hash=content_hash,
         item_count=len(items),
         mapping_complete=mapping_complete,
+        conflict_snapshot_hash=conflict_overlay.snapshot_hash,
+        conflict_count=conflict_overlay.conflict_count,
+        unresolved_conflict_count=conflict_overlay.unresolved_count,
+        resolved_unknown_count=conflict_overlay.resolved_unknown_count,
+        conflicts=conflict_overlay.groups,
+        conflict=(
+            ConflictStatus.PRESENT
+            if conflict_overlay.unresolved_count
+            else ConflictStatus.UNKNOWN
+            if conflict_overlay.resolved_unknown_count
+            else ConflictStatus.NONE
+        ),
         state=state,
         status=status,
         verification=verification,

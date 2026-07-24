@@ -114,6 +114,7 @@ def _bundle(
         "medication_events": [],
         "allergies": [],
         "reconciliations": [],
+        "conflicts": [],
         "flags": [],
         "flag_catalog": [],
         "observations": normalized_observations,

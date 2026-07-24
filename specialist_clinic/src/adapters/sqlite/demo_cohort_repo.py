@@ -5,6 +5,9 @@ from datetime import datetime
 import json
 from uuid import uuid4
 
+from src.adapters.sqlite.clinical_data_conflict_repo import (
+    ClinicalDataConflictRepository,
+)
 from src.adapters.sqlite.clinical_reconciliation_repo import (
     ClinicalReconciliationRepository,
 )
@@ -32,6 +35,35 @@ class DemoCohortRepository:
             (_VERSION_KEY,),
         ).fetchone()
         return str(row["value"]) if row else None
+
+    @staticmethod
+    def _canonical_allergy_catalog(db) -> dict[str, dict]:
+        """Return one exact active concept for every canonical name and alias.
+
+        Synthetic fixtures are safety controls, not free-text imports.  An alias that
+        resolves to two active concepts or a fixture substance without an exact match
+        aborts the whole cohort rebuild.
+        """
+        catalog: dict[str, dict] = {}
+        rows = db.execute(
+            """SELECT id, concept_key, display_name, aliases_json
+               FROM allergy_catalog WHERE is_active=1 ORDER BY id"""
+        ).fetchall()
+        for raw in rows:
+            row = dict(raw)
+            aliases = [row["display_name"], *json.loads(row["aliases_json"])]
+            for alias in aliases:
+                key = _clean(alias).casefold()
+                if not key:
+                    continue
+                prior = catalog.get(key)
+                if prior and int(prior["id"]) != int(row["id"]):
+                    raise RuntimeError(
+                        "active allergy catalog contains an ambiguous exact alias: "
+                        f"{alias!r}"
+                    )
+                catalog[key] = row
+        return catalog
 
     @staticmethod
     def _canonical_drug_catalog(db) -> dict[tuple[str, str], dict]:
@@ -77,6 +109,7 @@ class DemoCohortRepository:
                 for row in condition_rows
             }
             drug_catalog = self._canonical_drug_catalog(db)
+            allergy_catalog = self._canonical_allergy_catalog(db)
             for patient in cohort:
                 national_id = patient["nid"]
                 if not (
@@ -127,6 +160,7 @@ class DemoCohortRepository:
                     patient,
                     condition_ids=condition_ids,
                     drug_catalog=drug_catalog,
+                    allergy_catalog=allergy_catalog,
                     actor=actor,
                     now=now,
                     reference_at=reference_at,
@@ -175,6 +209,7 @@ class DemoCohortRepository:
         *,
         condition_ids: dict[str, int],
         drug_catalog: dict[tuple[str, str], dict],
+        allergy_catalog: dict[str, dict],
         actor: str,
         now: str,
         reference_at: datetime,
@@ -363,14 +398,35 @@ class DemoCohortRepository:
                 ],
             )
 
+        allergy_rows = []
+        for index, (substance, reaction, severity) in enumerate(
+            patient["allergies"], start=1
+        ):
+            catalog = allergy_catalog.get(_clean(substance).casefold())
+            if not catalog:
+                raise LookupError(
+                    "synthetic allergy lacks one exact active catalog concept: "
+                    f"{substance}"
+                )
+            allergy_rows.append(
+                (
+                    patient_id,
+                    substance,
+                    reaction,
+                    severity,
+                    int(catalog["id"]),
+                    f"demo-allergy:{patient_id}:{index}",
+                    actor,
+                )
+            )
         db.executemany(
             """INSERT INTO allergies
-               (patient_link_id, substance, reaction, severity, is_active)
-               VALUES (?, ?, ?, ?, 1)""",
-            [
-                (patient_id, substance, reaction, severity)
-                for substance, reaction, severity in patient["allergies"]
-            ],
+               (patient_link_id, substance, reaction, severity, is_active,
+                allergy_concept_id, source_system, source_record_id,
+                source_assertion, verification, recorded_by)
+               VALUES (?, ?, ?, ?, 1, ?, 'system', ?, 'PRESENT',
+                       'CONFIRMED', ?)""",
+            allergy_rows,
         )
 
         # The activation cohort represents fully reviewed synthetic records.
@@ -516,6 +572,8 @@ class DemoCohortRepository:
                 "conditions",
                 "reconciled_collections",
                 "unmapped_active_medications",
+                "unmapped_active_allergies",
+                "unresolved_conflicts",
                 "flag_heads",
                 "active_flag_definitions",
             )
@@ -565,6 +623,26 @@ class DemoCohortRepository:
                     patient_ids,
                 ).fetchone()["count"]
             )
+            totals["unmapped_active_allergies"] = int(
+                db.execute(
+                    f"""SELECT COUNT(*) AS count
+                        FROM allergies
+                        WHERE patient_link_id IN ({patient_marks})
+                          AND is_active=1
+                          AND source_assertion='PRESENT'
+                          AND allergy_concept_id IS NULL""",
+                    patient_ids,
+                ).fetchone()["count"]
+            )
+            conflicts = ClinicalDataConflictRepository(db)
+            totals["unresolved_conflicts"] = sum(
+                conflicts.projection(
+                    patient_id,
+                    collection_key,
+                ).unresolved_count
+                for patient_id in patient_ids
+                for collection_key in ("conditions", "medications", "allergies")
+            )
             totals["active_flag_definitions"] = int(
                 db.execute(
                     "SELECT COUNT(*) AS count FROM flag_catalog WHERE is_active=1"
@@ -591,6 +669,8 @@ class DemoCohortRepository:
                 len(patients) == 10
                 and version == expected_version
                 and totals["unmapped_active_medications"] == 0
+                and totals["unmapped_active_allergies"] == 0
+                and totals["unresolved_conflicts"] == 0
                 and totals["flag_heads"]
                     == len(patients) * totals["active_flag_definitions"]
             ),

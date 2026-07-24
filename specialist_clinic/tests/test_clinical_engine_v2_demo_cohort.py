@@ -41,6 +41,8 @@ def test_longitudinal_cohort_is_complete_diverse_and_idempotent(cohort_app):
     assert first["totals"]["appointments"] == 250
     assert first["totals"]["medication_events"] >= 50
     assert first["totals"]["unmapped_active_medications"] == 0
+    assert first["totals"]["unmapped_active_allergies"] == 0
+    assert first["totals"]["unresolved_conflicts"] == 0
 
     db = get_db()
     per_patient = db.execute(
@@ -82,6 +84,20 @@ def test_longitudinal_cohort_is_complete_diverse_and_idempotent(cohort_app):
         "SELECT COUNT(DISTINCT drug_class) AS count "
         "FROM patient_medications"
     ).fetchone()["count"] >= 12
+    allergy_mappings = db.execute(
+        """SELECT allergy.substance, catalog.concept_key
+           FROM allergies allergy
+           JOIN allergy_catalog catalog ON catalog.id=allergy.allergy_concept_id
+           WHERE allergy.patient_link_id IN (
+               SELECT id FROM patient_links WHERE national_id LIKE 'TEST____'
+           )
+           ORDER BY allergy.substance"""
+    ).fetchall()
+    assert {row["concept_key"] for row in allergy_mappings} == {
+        "ibuprofen",
+        "penicillin",
+        "trimethoprim_sulfamethoxazole",
+    }
     assert db.execute(
         """SELECT COUNT(*) AS count
            FROM patient_medications medication

@@ -18,6 +18,13 @@
 .reconcile-choice input,.reconcile-check input{margin-top:.2rem}
 .reconcile-meta{display:flex;flex-wrap:wrap;gap:.5rem;color:var(--muted);font-size:.85rem}
 .reconcile-map-warning{font-size:.85rem;color:var(--warn)}
+.conflict-stack{display:grid;gap:var(--s3)}
+.conflict-card{display:grid;gap:.65rem;padding:var(--s3);border:1px solid var(--danger);border-radius:var(--radius);background:var(--surface-2)}
+.conflict-head{display:flex;justify-content:space-between;gap:var(--s2);align-items:flex-start}
+.conflict-candidates{display:grid;gap:.45rem}
+.conflict-candidate{display:flex;gap:.55rem;align-items:flex-start;padding:.55rem;border:1px solid var(--border);border-radius:var(--radius-sm)}
+.conflict-candidate small{display:block;color:var(--muted)}
+.conflict-form{display:grid;gap:.55rem;padding-top:.55rem;border-top:1px dashed var(--border)}
 @media(max-width:1050px){.reconcile-grid{grid-template-columns:1fr}.reconcile-hero{display:grid}}
 </style>
 {% endblock %}
@@ -50,6 +57,73 @@
 
     {% if not state.mapping_complete %}
     <div class="reconcile-map-warning">برخی اقلام کد یا کلاس استاندارد قابل استفاده ندارند؛ ثبت مرور، این نقص را پنهان نمی‌کند.</div>
+    {% endif %}
+
+    {% if state.conflicts %}
+    <div class="conflict-stack" aria-label="تعارض‌های دادهٔ بالینی">
+        {% for group in state.conflicts %}
+        {% if group.requires_resolution or group.state != 'clear' %}
+        <article class="conflict-card">
+            <div class="conflict-head">
+                <div>
+                    <b>{{ group.concept_key }}</b>
+                    <small>{{ group.reasons|join(' · ') if group.reasons else 'resolution ثبت‌شده' }}</small>
+                </div>
+                <span class="badge badge-{{ group.tone }}">{{ group.state_fa }}</span>
+            </div>
+            <div class="conflict-candidates">
+                {% for candidate in group.candidates %}
+                <label class="conflict-candidate">
+                    {% if g.user and g.user.role == 'manager' %}
+                    <input type="checkbox" name="candidate-preview" disabled>
+                    {% endif %}
+                    <span>
+                        <b>{{ candidate.item.code or candidate.item.name or candidate.item.substance or group.concept_key }}</b>
+                        <small>
+                            {{ candidate.assertion_fa }} · {{ candidate.source_system }} / {{ candidate.source_record_id }}
+                            {% if candidate.verification %} · {{ candidate.verification }}{% endif %}
+                        </small>
+                        <small>
+                            {% if candidate.item.stage %}مرحله: {{ candidate.item.stage }}{% endif %}
+                            {% if candidate.item.dose %}دوز: {{ candidate.item.dose }}{% endif %}
+                            {% if candidate.item.schedule %} · {{ candidate.item.schedule }}{% endif %}
+                            {% if candidate.item.reaction %}واکنش: {{ candidate.item.reaction }}{% endif %}
+                            {% if candidate.item.severity %} · شدت: {{ candidate.item.severity }}{% endif %}
+                        </small>
+                    </span>
+                </label>
+                {% endfor %}
+            </div>
+            {% if g.user and g.user.role == 'manager' %}
+            <form class="conflict-form" method="post" action="{{ url_for('clinical_reconciliation.resolve_conflict', pid=patient.id, collection_key=key) }}">
+                <input type="hidden" name="conflict_group_key" value="{{ group.group_key }}">
+                <input type="hidden" name="expected_candidate_set_hash" value="{{ group.candidate_set_hash }}">
+                <input type="hidden" name="expected_current_event_id" value="{{ group.current_event_id or '' }}">
+                <label class="fld"><span>روش resolution</span>
+                    <select name="resolution_method" required>
+                        <option value="">انتخاب کنید</option>
+                        <option value="SELECT_CANDIDATE">انتخاب یک candidate</option>
+                        <option value="MERGE_CANDIDATES">ادغام candidateهای مکمل</option>
+                        <option value="CONFIRMED_ABSENT">تأیید نبود مورد</option>
+                        <option value="MARK_UNKNOWN">ثبت وضعیت نامشخص</option>
+                    </select>
+                </label>
+                <fieldset>
+                    <legend>candidateهای منتخب (برای انتخاب/ادغام)</legend>
+                    <div class="conflict-candidates">
+                    {% for candidate in group.candidates %}
+                        <label class="conflict-candidate"><input type="checkbox" name="candidate_keys" value="{{ candidate.candidate_key }}"><span>{{ candidate.source_system }} · {{ candidate.assertion_fa }} · {{ candidate.item.code or candidate.item.name or candidate.item.substance or group.concept_key }}</span></label>
+                    {% endfor %}
+                    </div>
+                </fieldset>
+                <label class="fld"><span>یادداشت resolution</span><textarea name="note" rows="2" placeholder="منبع بررسی‌شده و دلیل تصمیم را ثبت کنید."></textarea></label>
+                <button class="btn btn-primary btn-sm" type="submit">ثبت resolution append-only</button>
+            </form>
+            {% endif %}
+        </article>
+        {% endif %}
+        {% endfor %}
+    </div>
     {% endif %}
 
     {% if items %}

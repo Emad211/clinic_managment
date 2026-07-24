@@ -8,6 +8,9 @@ from src.adapters.sqlite.clinical_reconciliation_repo import (
     ClinicalReconciliationRepository,
 )
 from src.common.utils import iran_now
+from src.services.clinical_data_conflict_service import (
+    ClinicalDataConflictService,
+)
 from src.domain.clinical_engine.reconciliation import (
     COLLECTION_KEYS,
     COLLECTION_LABELS_FA,
@@ -15,6 +18,16 @@ from src.domain.clinical_engine.reconciliation import (
 
 
 _STATE_META = {
+    "conflict_unresolved": (
+        "تعارض بالینی حل‌نشده",
+        "danger",
+        "منابع برای یک مفهوم بالینی پاسخ ناسازگار دارند؛ موتور تا resolution صریح از این فهرست استفاده نمی‌کند.",
+    ),
+    "conflict_unknown": (
+        "تعارض با وضعیت نامشخص بسته شد",
+        "warn",
+        "پاسخ قطعی در دسترس نیست و این فهرست عمداً UNKNOWN باقی می‌ماند.",
+    ),
     "unreconciled": (
         "مرور نشده",
         "warn",
@@ -49,8 +62,9 @@ _STATE_META = {
 
 
 class ClinicalReconciliationService:
-    def __init__(self, repository=None, clock=None):
+    def __init__(self, repository=None, conflicts=None, clock=None):
         self.repository = repository or ClinicalReconciliationRepository()
+        self.conflicts = conflicts or ClinicalDataConflictService()
         self.clock = clock or iran_now
 
     def patient_status(
@@ -76,7 +90,15 @@ class ClinicalReconciliationService:
                 "detail": detail,
                 "item_count": projection.item_count,
                 "mapping_complete": projection.mapping_complete,
+                "clinical_complete": (
+                    projection.state in {"confirmed_present", "confirmed_absent"}
+                ),
                 "content_hash": projection.content_hash,
+                "conflict_snapshot_hash": projection.conflict_snapshot_hash,
+                "conflict_count": projection.conflict_count,
+                "unresolved_conflict_count": projection.unresolved_conflict_count,
+                "resolved_unknown_count": projection.resolved_unknown_count,
+                "conflicts": self.conflicts.present_groups(projection.conflicts),
                 "reconciled_at": event.get("reconciled_at"),
                 "actor_username": event.get("actor_username"),
                 "patient_confirmed": bool(event.get("patient_confirmed")),

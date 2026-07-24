@@ -2,10 +2,14 @@
 from __future__ import annotations
 
 from datetime import datetime
+import json
 import sqlite3
 from typing import Any
 
 from src.adapters.sqlite.core import get_db
+from src.adapters.sqlite.clinical_data_conflict_schema import (
+    ensure_clinical_data_conflict_storage,
+)
 from src.common.utils import iran_now, parse_datetime
 from src.domain.clinical_engine.reconciliation import (
     COLLECTION_KEYS,
@@ -21,8 +25,12 @@ _SOURCE_SQL = {
                        WHERE pc.patient_link_id=? ORDER BY pc.id""",
     "medications": """SELECT * FROM patient_medications
                        WHERE patient_link_id=? ORDER BY id""",
-    "allergies": """SELECT * FROM allergies
-                     WHERE patient_link_id=? ORDER BY id""",
+    "allergies": """SELECT allergy.*, catalog.concept_key AS allergy_concept_key,
+                             catalog.display_name AS allergy_concept_name
+                      FROM allergies allergy
+                      LEFT JOIN allergy_catalog catalog
+                        ON catalog.id=allergy.allergy_concept_id
+                      WHERE allergy.patient_link_id=? ORDER BY allergy.id""",
 }
 
 
@@ -31,7 +39,9 @@ class ClinicalReconciliationRepository:
         self._connection = db
 
     def _db(self) -> sqlite3.Connection:
-        return self._connection or get_db()
+        db = self._connection or get_db()
+        ensure_clinical_data_conflict_storage(db)
+        return db
 
     @staticmethod
     def _as_of(value: datetime | str | None) -> datetime:
@@ -92,6 +102,21 @@ class ClinicalReconciliationRepository:
             ).fetchall()
         ]
 
+    @staticmethod
+    def _conflict_events_db(
+        db: sqlite3.Connection,
+        patient_link_id: int,
+    ) -> list[dict[str, Any]]:
+        return [
+            dict(row)
+            for row in db.execute(
+                """SELECT * FROM clinical_data_conflict_events
+                   WHERE patient_link_id=?
+                   ORDER BY recorded_at, id""",
+                (patient_link_id,),
+            ).fetchall()
+        ]
+
     @classmethod
     def _source_bundle_db(
         cls,
@@ -122,6 +147,10 @@ class ClinicalReconciliationRepository:
                 db,
                 patient_link_id,
             ),
+            "conflicts": cls._conflict_events_db(
+                db,
+                patient_link_id,
+            ),
         }
 
     def source_bundle(self, patient_link_id: int) -> dict[str, Any]:
@@ -144,6 +173,7 @@ class ClinicalReconciliationRepository:
                 if collection_key == "medications"
                 else ()
             ),
+            conflict_events=bundle.get("conflicts", ()),
         )
 
     def projection(
@@ -228,6 +258,11 @@ class ClinicalReconciliationRepository:
             collection_key,
             as_of_at=as_of,
         )
+        if completeness == "complete" and projection.unresolved_conflict_count:
+            raise ValueError(
+                "unresolved clinical conflicts must be resolved or recorded as partial"
+            )
+
         prior = db.execute(
             """SELECT id FROM clinical_reconciliation_events
                WHERE patient_link_id=? AND collection_key=?
@@ -242,15 +277,33 @@ class ClinicalReconciliationRepository:
         cursor = db.execute(
             """INSERT INTO clinical_reconciliation_events
                (patient_link_id, collection_key, completeness, item_count,
-                content_hash, source, patient_confirmed, actor_user_id,
-                actor_username, reconciled_at, note, supersedes_event_id)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                content_hash, conflict_snapshot_hash, conflict_count,
+                unresolved_conflict_count, mapping_complete, reviewed_sources_json,
+                source, patient_confirmed, actor_user_id, actor_username,
+                reconciled_at, note, supersedes_event_id)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 patient_link_id,
                 collection_key,
                 completeness,
                 projection.item_count,
                 projection.content_hash,
+                projection.conflict_snapshot_hash,
+                projection.conflict_count,
+                projection.unresolved_conflict_count,
+                int(bool(projection.mapping_complete)),
+                json.dumps(
+                    sorted(
+                        {
+                            str(candidate.get("source_system"))
+                            for group in projection.conflicts
+                            for candidate in group.get("candidates", [])
+                            if candidate.get("source_system")
+                        }
+                    ),
+                    ensure_ascii=False,
+                    separators=(",", ":"),
+                ),
                 source,
                 int(bool(patient_confirmed)),
                 actor_user_id,

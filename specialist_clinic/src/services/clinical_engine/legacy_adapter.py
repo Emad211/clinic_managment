@@ -242,7 +242,7 @@ class LegacyFactBundleAdapter:
         reconciliation_events = bundle.get("reconciliations", [])
         medication_events = bundle.get("medication_events", [])
         for source, kind, key, prefix, field in _COLLECTION_DEFINITIONS:
-            blocked_sources = {source, "reconciliations"}
+            blocked_sources = {source, "reconciliations", "conflicts"}
             if source == "medications":
                 blocked_sources.add("medication_events")
             if blocked_sources & set(unavailable):
@@ -269,6 +269,7 @@ class LegacyFactBundleAdapter:
                 medication_events=(
                     medication_events if source == "medications" else ()
                 ),
+                conflict_events=bundle.get("conflicts", ()),
             )
             add(
                 fact_id=f"collection:{pid}:{source}",
@@ -286,6 +287,7 @@ class LegacyFactBundleAdapter:
                 actor=projection.actor,
                 verification=projection.verification,
                 freshness=projection.freshness,
+                conflict=projection.conflict,
                 warnings=projection.warnings,
             )
 
@@ -296,7 +298,7 @@ class LegacyFactBundleAdapter:
                 if prefix == "allergy":
                     fact_key = "allergy.substance"
                     key_warnings: tuple[str, ...] = ()
-                    fact_value = str(raw)
+                    fact_value = str(row.get("allergy_concept_key") or raw)
                 else:
                     fact_key, key_warnings = _key(prefix, raw, row["id"])
                     fact_value = True
@@ -313,7 +315,14 @@ class LegacyFactBundleAdapter:
                     system=source,
                     record_id=row["id"],
                     actor=row.get("recorded_by") or row.get("created_by"),
-                    verification=VerificationStatus.CONFIRMED,
+                    verification=(
+                        VerificationStatus.CONFIRMED
+                        if row.get("_resolution_confirmed")
+                        else VerificationStatus(str(row.get("verification") or "CONFIRMED").upper())
+                        if str(row.get("verification") or "CONFIRMED").upper()
+                        in {item.value for item in VerificationStatus}
+                        else VerificationStatus.UNVERIFIED
+                    ),
                     freshness=FreshnessStatus.UNKNOWN,
                     warnings=(
                         *projection.warnings,

@@ -14,9 +14,10 @@ from src.domain.clinical_engine.demo_cohort_vocabulary import (
 from src.services.activity_logger import log_activity
 
 
-# v4 adds a complete append-only flag snapshot for every synthetic patient.
+# v5 adds exact allergy concepts and proves the cohort has no unresolved source
+# conflicts before it can be used as activation evidence.
 CURRENT_DEMO_COHORT_VERSION = (
-    f"{DEMO_COHORT_VERSION}-reconciled-concepts-flags-v4"
+    f"{DEMO_COHORT_VERSION}-reconciled-concepts-flags-conflicts-v5"
 )
 CANONICAL_DEMO_PATIENTS = canonical_demo_patients(DEMO_PATIENTS)
 
@@ -80,6 +81,12 @@ class DemoCohortService:
             "medications": actual["medications"] == expected["meds"],
             "medication_concepts": (
                 actual.get("unmapped_active_medications") == 0
+            ),
+            "allergy_concepts": (
+                actual.get("unmapped_active_allergies") == 0
+            ),
+            "source_conflicts": (
+                actual.get("unresolved_conflicts") == 0
             ),
             "notes": actual["notes"] == expected["notes"],
             "appointments": (

@@ -29,9 +29,12 @@ from src.adapters.sqlite.clinical_flag_history_schema import (
 from src.adapters.sqlite.clinical_context_schema import (
     ensure_clinical_context_storage,
 )
+from src.adapters.sqlite.clinical_data_conflict_schema import (
+    ensure_clinical_data_conflict_storage,
+)
 
 
-_SCHEMA_VERSION = 5
+_SCHEMA_VERSION = 6
 _MIGRATION_LOCK = threading.Lock()
 _VERIFIED_DATABASES: set[tuple[str, int]] = set()
 _CLINICAL_SOURCE_TABLES = (
@@ -205,6 +208,44 @@ def _shared_trigger_sql() -> str:
          WHERE id = NEW.patient_link_id;
     END;
 
+    -- Conflict resolution is a clinical input and invalidates the prior run.
+    CREATE TRIGGER IF NOT EXISTS trg_clinical_revision_data_conflict_insert
+    AFTER INSERT ON clinical_data_conflict_events
+    BEGIN
+        UPDATE patient_links
+           SET clinical_data_revision = clinical_data_revision + 1
+         WHERE id = NEW.patient_link_id;
+    END;
+
+    -- Allergy concept semantics affect canonical identity. Be conservative: catalog
+    -- semantic changes invalidate all snapshots because previously unmapped exact
+    -- aliases may become mappable at the next storage reconciliation.
+    CREATE TRIGGER IF NOT EXISTS trg_clinical_revision_allergy_catalog_insert
+    AFTER INSERT ON allergy_catalog
+    BEGIN
+        UPDATE patient_links
+           SET clinical_data_revision = clinical_data_revision + 1;
+    END;
+
+    CREATE TRIGGER IF NOT EXISTS trg_clinical_revision_allergy_catalog_update
+    AFTER UPDATE OF concept_key, aliases_json, definition_hash, is_active
+    ON allergy_catalog
+    WHEN COALESCE(OLD.concept_key,'')<>COALESCE(NEW.concept_key,'')
+      OR COALESCE(OLD.aliases_json,'')<>COALESCE(NEW.aliases_json,'')
+      OR COALESCE(OLD.definition_hash,'')<>COALESCE(NEW.definition_hash,'')
+      OR COALESCE(OLD.is_active,0)<>COALESCE(NEW.is_active,0)
+    BEGIN
+        UPDATE patient_links
+           SET clinical_data_revision = clinical_data_revision + 1;
+    END;
+
+    CREATE TRIGGER IF NOT EXISTS trg_clinical_revision_allergy_catalog_delete
+    AFTER DELETE ON allergy_catalog
+    BEGIN
+        UPDATE patient_links
+           SET clinical_data_revision = clinical_data_revision + 1;
+    END;
+
     -- A review event changes verification/absence semantics even when the source
     -- rows themselves are unchanged, so every appended reconciliation event
     -- invalidates the previous clinical run for that patient.
@@ -227,6 +268,10 @@ def _expected_trigger_names() -> set[str]:
         "trg_clinical_revision_condition_code_update",
         "trg_clinical_revision_reconciliation_insert",
         "trg_clinical_revision_flag_event_insert",
+        "trg_clinical_revision_data_conflict_insert",
+        "trg_clinical_revision_allergy_catalog_insert",
+        "trg_clinical_revision_allergy_catalog_update",
+        "trg_clinical_revision_allergy_catalog_delete",
     }
     for table in _CLINICAL_SOURCE_TABLES:
         prefix = f"trg_clinical_revision_{table}"
@@ -271,6 +316,7 @@ def ensure_runtime_schema(db: sqlite3.Connection | None = None) -> None:
             "INTEGER NOT NULL DEFAULT 0",
         )
         ensure_clinical_reconciliation_storage(db)
+        ensure_clinical_data_conflict_storage(db)
         context_ready = ensure_clinical_context_storage(db)
         if _table_exists(db, "followup_tasks"):
             _ensure_column(
@@ -317,6 +363,10 @@ def ensure_runtime_schema(db: sqlite3.Connection | None = None) -> None:
             DROP TRIGGER IF EXISTS trg_clinical_revision_flag_event_insert;
             DROP TRIGGER IF EXISTS trg_clinical_revision_condition_code_update;
             DROP TRIGGER IF EXISTS trg_clinical_revision_reconciliation_insert;
+            DROP TRIGGER IF EXISTS trg_clinical_revision_data_conflict_insert;
+            DROP TRIGGER IF EXISTS trg_clinical_revision_allergy_catalog_insert;
+            DROP TRIGGER IF EXISTS trg_clinical_revision_allergy_catalog_update;
+            DROP TRIGGER IF EXISTS trg_clinical_revision_allergy_catalog_delete;
             """
         )
         db.executescript(_shared_trigger_sql())

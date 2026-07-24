@@ -356,6 +356,14 @@ def _run_migrations(db):
         ensure_clinical_flag_history_storage,
     )
     ensure_clinical_flag_history_storage(db)
+    from src.adapters.sqlite.clinical_reconciliation_schema import (
+        ensure_clinical_reconciliation_storage,
+    )
+    from src.adapters.sqlite.clinical_data_conflict_schema import (
+        ensure_clinical_data_conflict_storage,
+    )
+    ensure_clinical_reconciliation_storage(db)
+    ensure_clinical_data_conflict_storage(db)
     _ensure_clinical_engine_v2_storage(db)
     from src.adapters.sqlite.descriptive_indicator_catalog_schema import (
         ensure_descriptive_indicator_catalog,

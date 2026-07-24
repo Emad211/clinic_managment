@@ -1,5 +1,12 @@
 """Framework-independent domain contracts for Clinical Engine v2."""
 
+from .data_conflicts import (
+    CandidateAssertion,
+    ClinicalDataConflictError,
+    ConflictEventStatus,
+    ConflictEventType,
+    ConflictResolutionMethod,
+)
 from .context import (
     CareSetting,
     ClinicalContextError,
@@ -59,6 +66,11 @@ from .results import (
 
 __all__ = [
     "ActionType",
+    "CandidateAssertion",
+    "ClinicalDataConflictError",
+    "ConflictEventStatus",
+    "ConflictEventType",
+    "ConflictResolutionMethod",
     "AllExpression",
     "AnyExpression",
     "CareSetting",

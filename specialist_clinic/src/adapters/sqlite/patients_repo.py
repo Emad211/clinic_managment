@@ -113,6 +113,11 @@ class PatientRepository:
         stage: str | None = None,
         onset_date: str | None = None,
         notes: str | None = None,
+        source_system: str = "clinic",
+        source_record_id: str | None = None,
+        source_assertion: str = "PRESENT",
+        verification: str = "CONFIRMED",
+        recorded_by: str | None = None,
     ) -> int:
         db = get_db()
         catalog = db.execute(
@@ -121,19 +126,35 @@ class PatientRepository:
         ).fetchone()
         if not catalog:
             raise ValueError("condition is not available in the active catalog")
-        existing = db.execute(
-            """SELECT id FROM patient_conditions
-               WHERE patient_link_id=? AND condition_id=? AND is_active=1
-               ORDER BY id DESC LIMIT 1""",
-            (pid, condition_id),
-        ).fetchone()
+        if source_record_id:
+            existing = db.execute(
+                """SELECT id FROM patient_conditions
+                   WHERE patient_link_id=? AND source_system=?
+                     AND source_record_id=? AND is_active=1
+                   ORDER BY id DESC LIMIT 1""",
+                (pid, source_system, source_record_id),
+            ).fetchone()
+        else:
+            existing = db.execute(
+                """SELECT id FROM patient_conditions
+                   WHERE patient_link_id=? AND condition_id=?
+                     AND source_system=? AND is_active=1
+                   ORDER BY id DESC LIMIT 1""",
+                (pid, condition_id, source_system),
+            ).fetchone()
         if existing:
             return int(existing["id"])
         cursor = db.execute(
             """INSERT INTO patient_conditions
-               (patient_link_id, condition_id, stage, onset_date, notes)
-               VALUES (?, ?, ?, ?, ?)""",
-            (pid, condition_id, stage, onset_date, notes),
+               (patient_link_id, condition_id, stage, onset_date, notes,
+                source_system, source_record_id, source_assertion, verification,
+                recorded_by)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                pid, condition_id, stage, onset_date, notes,
+                source_system, source_record_id, source_assertion, verification,
+                recorded_by,
+            ),
         )
         db.commit()
         return int(cursor.lastrowid)
@@ -200,6 +221,11 @@ class PatientRepository:
         drug_class=None,
         drug_catalog_id: int | None = None,
         created_by=None,
+        source_system: str = "clinic",
+        source_record_id: str | None = None,
+        source_assertion: str = "PRESENT",
+        verification: str = "CONFIRMED",
+        recorded_by: str | None = None,
     ) -> int:
         db = get_db()
         name = " ".join(str(drug_name or "").strip().split())
@@ -218,20 +244,30 @@ class PatientRepository:
         if not name:
             raise ValueError("drug_name is required")
 
-        if catalog_id is not None:
+        if source_record_id:
             existing = db.execute(
                 """SELECT id FROM patient_medications
-                   WHERE patient_link_id=? AND drug_catalog_id=? AND is_active=1
+                   WHERE patient_link_id=? AND source_system=?
+                     AND source_record_id=? AND is_active=1
                    ORDER BY id DESC LIMIT 1""",
-                (pid, catalog_id),
+                (pid, source_system, source_record_id),
+            ).fetchone()
+        elif catalog_id is not None:
+            existing = db.execute(
+                """SELECT id FROM patient_medications
+                   WHERE patient_link_id=? AND drug_catalog_id=?
+                     AND source_system=? AND is_active=1
+                   ORDER BY id DESC LIMIT 1""",
+                (pid, catalog_id, source_system),
             ).fetchone()
         else:
             existing = db.execute(
                 """SELECT id FROM patient_medications
                    WHERE patient_link_id=? AND lower(trim(drug_name))=lower(trim(?))
-                     AND COALESCE(drug_class,'')=COALESCE(?, '') AND is_active=1
+                     AND COALESCE(drug_class,'')=COALESCE(?, '')
+                     AND source_system=? AND is_active=1
                    ORDER BY id DESC LIMIT 1""",
-                (pid, name, canonical_class),
+                (pid, name, canonical_class, source_system),
             ).fetchone()
         if existing:
             return int(existing["id"])
@@ -239,8 +275,10 @@ class PatientRepository:
         cursor = db.execute(
             """INSERT INTO patient_medications
                (patient_link_id, drug_name, dose, schedule, start_date,
-                refill_due_date, notes, drug_class, drug_catalog_id)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                refill_due_date, notes, drug_class, drug_catalog_id,
+                source_system, source_record_id, source_assertion, verification,
+                recorded_by)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 pid,
                 name,
@@ -251,6 +289,11 @@ class PatientRepository:
                 notes,
                 canonical_class,
                 catalog_id,
+                source_system,
+                source_record_id,
+                source_assertion,
+                verification,
+                recorded_by or created_by,
             ),
         )
         med_id = int(cursor.lastrowid)
@@ -405,25 +448,79 @@ class PatientRepository:
         return [dict(row) for row in get_db().execute(sql, (pid,)).fetchall()]
 
     def add_allergy(
-        self, pid: int, *, substance, reaction, severity
+        self,
+        pid: int,
+        *,
+        substance,
+        reaction,
+        severity,
+        allergy_concept_id: int | None = None,
+        source_system: str = "clinic",
+        source_record_id: str | None = None,
+        source_assertion: str = "PRESENT",
+        verification: str = "CONFIRMED",
+        recorded_by: str | None = None,
     ) -> int:
         db = get_db()
         normalized = " ".join(str(substance or "").strip().split())
         if not normalized:
             raise ValueError("allergy substance is required")
-        existing = db.execute(
-            """SELECT id FROM allergies
-               WHERE patient_link_id=? AND lower(trim(substance))=lower(trim(?))
-                 AND is_active=1 ORDER BY id DESC LIMIT 1""",
-            (pid, normalized),
-        ).fetchone()
+        concept_id = int(allergy_concept_id) if allergy_concept_id is not None else None
+        if concept_id is None:
+            matches = db.execute(
+                """SELECT DISTINCT catalog.id
+                   FROM allergy_catalog catalog
+                   LEFT JOIN json_each(catalog.aliases_json) alias ON 1=1
+                   WHERE catalog.is_active=1
+                     AND (lower(trim(catalog.display_name))=lower(trim(?))
+                          OR lower(trim(CAST(alias.value AS TEXT)))=lower(trim(?)))""",
+                (normalized, normalized),
+            ).fetchall()
+            if len(matches) == 1:
+                concept_id = int(matches[0]["id"])
+        if concept_id is not None:
+            catalog = db.execute(
+                "SELECT id FROM allergy_catalog WHERE id=? AND is_active=1",
+                (concept_id,),
+            ).fetchone()
+            if not catalog:
+                raise ValueError("selected allergy concept is not active")
+        if source_record_id:
+            existing = db.execute(
+                """SELECT id FROM allergies
+                   WHERE patient_link_id=? AND source_system=?
+                     AND source_record_id=? AND is_active=1
+                   ORDER BY id DESC LIMIT 1""",
+                (pid, source_system, source_record_id),
+            ).fetchone()
+        elif concept_id is not None:
+            existing = db.execute(
+                """SELECT id FROM allergies
+                   WHERE patient_link_id=? AND allergy_concept_id=? AND is_active=1
+                     AND source_system=?
+                   ORDER BY id DESC LIMIT 1""",
+                (pid, concept_id, source_system),
+            ).fetchone()
+        else:
+            existing = db.execute(
+                """SELECT id FROM allergies
+                   WHERE patient_link_id=? AND lower(trim(substance))=lower(trim(?))
+                     AND is_active=1 AND source_system=?
+                   ORDER BY id DESC LIMIT 1""",
+                (pid, normalized, source_system),
+            ).fetchone()
         if existing:
             return int(existing["id"])
         cursor = db.execute(
             """INSERT INTO allergies
-               (patient_link_id, substance, reaction, severity, is_active)
-               VALUES (?, ?, ?, ?, 1)""",
-            (pid, normalized, reaction, severity),
+               (patient_link_id, substance, reaction, severity, is_active,
+                allergy_concept_id, source_system, source_record_id,
+                source_assertion, verification, recorded_by)
+               VALUES (?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?)""",
+            (
+                pid, normalized, reaction, severity, concept_id, source_system,
+                source_record_id, source_assertion, verification, recorded_by,
+            ),
         )
         db.commit()
         return int(cursor.lastrowid)

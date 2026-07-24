@@ -28,10 +28,16 @@ _SOURCE_QUERIES = {
                        WHERE patient_link_id=? ORDER BY id""",
     "medication_events": """SELECT * FROM medication_events
                              WHERE patient_link_id=? ORDER BY event_date, id""",
-    "allergies": """SELECT * FROM allergies
-                     WHERE patient_link_id=? ORDER BY id""",
+    "allergies": """SELECT allergy.*, catalog.concept_key AS allergy_concept_key,
+                             catalog.display_name AS allergy_concept_name
+                      FROM allergies allergy
+                      LEFT JOIN allergy_catalog catalog
+                        ON catalog.id=allergy.allergy_concept_id
+                      WHERE allergy.patient_link_id=? ORDER BY allergy.id""",
     "reconciliations": """SELECT * FROM clinical_reconciliation_events
                            WHERE patient_link_id=? ORDER BY reconciled_at, id""",
+    "conflicts": """SELECT * FROM clinical_data_conflict_events
+                       WHERE patient_link_id=? ORDER BY recorded_at, id""",
     "flags": """SELECT * FROM clinical_flag_events
                  WHERE patient_link_id=? ORDER BY recorded_at, id""",
     "flag_catalog": """SELECT * FROM flag_catalog WHERE is_active=1

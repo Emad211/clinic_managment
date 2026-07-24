@@ -84,12 +84,15 @@ def test_patient_status_reads_one_bundle_for_all_three_collections(
         "patient_medications": (
             "from patient_medications where patient_link_id="
         ),
-        "allergies": "from allergies where patient_link_id=",
+        "allergies": "from allergies allergy",
         "medication_events": (
             "from medication_events where patient_link_id="
         ),
         "clinical_reconciliation_events": (
             "from clinical_reconciliation_events where patient_link_id="
+        ),
+        "clinical_data_conflict_events": (
+            "from clinical_data_conflict_events where patient_link_id="
         ),
     }
     for table, fragment in table_fragments.items():

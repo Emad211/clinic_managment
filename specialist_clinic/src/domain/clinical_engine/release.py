@@ -9,7 +9,7 @@ from __future__ import annotations
 
 RULESET_CODE = "general-outpatient"
 CURRENT_BUNDLED_PACKAGE_VERSION = "2026.1-draft.2"
-CURRENT_ENGINE_VERSION = "2.6.0-evaluation-context"
+CURRENT_ENGINE_VERSION = "2.7.0-data-conflicts"
 
 
 def base_ruleset_version(version: str | None) -> str:

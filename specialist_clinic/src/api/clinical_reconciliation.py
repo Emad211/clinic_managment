@@ -13,10 +13,19 @@ from flask import (
 )
 
 from src.adapters.sqlite.patients_repo import PatientRepository
+from src.adapters.sqlite.clinical_data_conflict_repo import (
+    ClinicalDataConflictStale,
+)
+from src.domain.clinical_engine.data_conflicts import (
+    ClinicalDataConflictError,
+)
 from src.api.auth import login_required, manager_required
 from src.services.activity_logger import log_activity
 from src.services.clinical_reconciliation_service import (
     ClinicalReconciliationService,
+)
+from src.services.clinical_data_conflict_service import (
+    ClinicalDataConflictService,
 )
 from src.services.patient_service import PatientService
 
@@ -132,4 +141,61 @@ def review(pid: int, collection_key: str):
         )
     return redirect(
         url_for("patients.detail", pid=pid) + _anchor(collection_key)
+    )
+
+
+@bp.post("/<int:pid>/reconciliation/<collection_key>/conflicts/resolve")
+@manager_required
+def resolve_conflict(pid: int, collection_key: str):
+    if not _patient_or_none(pid):
+        flash("بیمار یافت نشد", "error")
+        return redirect(url_for("patients.list_patients"))
+    expected_event_raw = (request.form.get("expected_current_event_id") or "").strip()
+    try:
+        expected_event_id = int(expected_event_raw) if expected_event_raw else None
+    except ValueError:
+        flash("resolution ثبت نشد: شناسهٔ وضعیت جاری معتبر نیست.", "error")
+        return redirect(
+            url_for("clinical_reconciliation.workspace", pid=pid)
+            + f"#{collection_key}"
+        )
+    selected = request.form.getlist("candidate_keys")
+    single = (request.form.get("selected_candidate_key") or "").strip()
+    if single and single not in selected:
+        selected.append(single)
+    try:
+        event = ClinicalDataConflictService().resolve(
+            patient_link_id=pid,
+            collection_key=collection_key,
+            conflict_group_key=(request.form.get("conflict_group_key") or "").strip(),
+            method=(request.form.get("resolution_method") or "").strip(),
+            actor_username=g.user["username"],
+            actor_user_id=int(g.user["id"]),
+            expected_candidate_set_hash=(
+                request.form.get("expected_candidate_set_hash") or ""
+            ).strip(),
+            expected_current_event_id=expected_event_id,
+            selected_candidate_keys=selected,
+            note=request.form.get("note"),
+        )
+    except ClinicalDataConflictStale as exc:
+        flash(f"resolution ثبت نشد؛ داده تغییر کرده است: {exc}", "error")
+    except (ClinicalDataConflictError, ValueError, LookupError) as exc:
+        flash(f"resolution ثبت نشد: {exc}", "error")
+    else:
+        log_activity(
+            "clinical_data_conflict_resolve",
+            (
+                f"{collection_key} group={event['conflict_group_key']} "
+                f"method={event['resolution_method']} event={event['id']}"
+            ),
+            patient_link_id=pid,
+        )
+        flash(
+            "resolution تعارض ثبت شد؛ برای تأیید کامل، فهرست را دوباره مرور کنید.",
+            "success",
+        )
+    return redirect(
+        url_for("clinical_reconciliation.workspace", pid=pid)
+        + f"#{collection_key}"
     )

@@ -149,10 +149,38 @@ def test_existing_rows_survive_additive_idempotent_migration(tmp_path):
             "drug_class",
             "drug_catalog_id",
         } <= _columns(db, "patient_medications")
-        assert {"is_active", "resolved_at"} <= _columns(db, "allergies")
+        assert {
+            "is_active",
+            "resolved_at",
+            "allergy_concept_id",
+            "source_system",
+            "source_record_id",
+            "source_assertion",
+            "verification",
+        } <= _columns(db, "allergies")
+        assert {
+            "source_system",
+            "source_record_id",
+            "source_assertion",
+            "verification",
+        } <= _columns(db, "patient_conditions")
+        assert {
+            "source_system",
+            "source_record_id",
+            "source_assertion",
+            "verification",
+        } <= _columns(db, "patient_medications")
         assert db.execute(
             """SELECT COUNT(*) AS count FROM sqlite_master
                WHERE type='table' AND name='clinical_reconciliation_events'"""
+        ).fetchone()["count"] == 1
+        assert db.execute(
+            """SELECT COUNT(*) AS count FROM sqlite_master
+               WHERE type='table' AND name='clinical_data_conflict_events'"""
+        ).fetchone()["count"] == 1
+        assert db.execute(
+            """SELECT COUNT(*) AS count FROM sqlite_master
+               WHERE type='table' AND name='allergy_catalog'"""
         ).fetchone()["count"] == 1
 
         patient = db.execute(
@@ -172,6 +200,16 @@ def test_existing_rows_survive_additive_idempotent_migration(tmp_path):
         assert medication["drug_name"] == "متفورمین"
         assert allergy["substance"] == "Penicillin"
         assert allergy["is_active"] == 1
+        assert allergy["source_system"] == "clinic"
+        assert allergy["source_assertion"] == "PRESENT"
+        assert allergy["verification"] == "CONFIRMED"
+        allergy_concept = db.execute(
+            """SELECT catalog.concept_key
+               FROM allergy_catalog catalog
+               WHERE catalog.id=?""",
+            (allergy["allergy_concept_id"],),
+        ).fetchone()
+        assert allergy_concept["concept_key"] == "penicillin"
 
         # A later class assignment resolves the legacy medication to the single
         # matching catalog concept and advances the patient's clinical revision.
@@ -202,6 +240,9 @@ def test_existing_rows_survive_additive_idempotent_migration(tmp_path):
             "trg_clinical_revision_reconciliation_insert",
             "trg_reconciliation_no_update",
             "trg_medication_catalog_validate_insert",
+            "trg_data_conflict_no_update",
+            "trg_data_conflict_no_delete",
+            "trg_allergy_concept_validate_insert",
         } <= triggers
     finally:
         db.close()
