@@ -1,0 +1,271 @@
+name: Apply and Verify Closed Clinical Care Loop
+
+on:
+  push:
+    branches:
+      - agent-clinical-closed-care-loop
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apply-step5-care-loop
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent-clinical-closed-care-loop
+          fetch-depth: 0
+
+      - name: Apply reviewed bootstrap and migration corrections
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          schema = Path('specialist_clinic/src/adapters/sqlite/clinical_care_loop_schema.py')
+          text = schema.read_text(encoding='utf-8')
+          text = text.replace(
+              'import sqlite3\n',
+              'import hashlib\nimport json\nimport sqlite3\n',
+              1,
+          )
+          text = text.replace('\n_SCHEMA_VERSION = 1\n', '\n')
+          marker = '\n\ndef ensure_clinical_care_loop_storage(\n'
+          assert marker in text
+          helper = r'''
+
+
+def _hash(payload: dict) -> str:
+    body = json.dumps(
+        payload,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    )
+    return hashlib.sha256(body.encode("utf-8")).hexdigest()
+
+
+def _backfill_open_clinical_tasks(db: sqlite3.Connection) -> None:
+    rows = db.execute(
+        """SELECT task.id, task.due_date, task.created_at, task.status
+           FROM followup_tasks task
+           WHERE task.source_engine='clinical_v2'
+             AND NOT EXISTS (
+                 SELECT 1 FROM clinical_task_events event
+                 WHERE event.task_id=task.id
+             )
+           ORDER BY task.id"""
+    ).fetchall()
+    terminal = [int(row[0]) for row in rows if str(row[3] or "open") != "open"]
+    if terminal:
+        raise RuntimeError(
+            "legacy terminal clinical tasks have no outcome evidence; reset seed data: "
+            + ",".join(str(value) for value in terminal)
+        )
+    for row in rows:
+        task_id = int(row[0])
+        due_at = str(row[1] or "").strip() or None
+        if due_at and len(due_at) == 10:
+            due_at = f"{due_at} 00:00:00"
+        recorded_at = str(row[2] or "").strip()
+        if not recorded_at:
+            recorded_at = str(
+                db.execute(
+                    "SELECT datetime('now','+3 hours','+30 minutes')"
+                ).fetchone()[0]
+            )
+        payload = {
+            "task_id": task_id,
+            "event_type": "CREATED",
+            "status": "OPEN",
+            "assigned_to": None,
+            "appointment_id": None,
+            "due_at": due_at,
+            "disposition_code": None,
+            "outcome_event_id": None,
+            "effective_at": recorded_at,
+            "recorded_at": recorded_at,
+            "supersedes_event_id": None,
+        }
+        db.execute(
+            """INSERT INTO clinical_task_events
+               (task_id, event_type, status, due_at, effective_at,
+                recorded_at, actor_username, content_hash)
+               VALUES (?, 'CREATED', 'OPEN', ?, ?, ?,
+                       'legacy-open-task-migration', ?)""",
+            (task_id, due_at, recorded_at, recorded_at, _hash(payload)),
+        )
+'''
+          text = text.replace(marker, helper + marker, 1)
+          old_tail = '''    db.execute(
+        "CREATE INDEX IF NOT EXISTS idx_clinical_followup_due_period "
+        "ON followup_tasks(patient_link_id, clinical_semantic_key, "
+        "clinical_context_hash, clinical_due_period) "
+        "WHERE source_engine='clinical_v2'"
+    )
+    db.execute("PRAGMA user_version = MAX(user_version, ?)", (_SCHEMA_VERSION,))
+    db.commit()
+'''
+          new_tail = '''    db.execute(
+        "DROP INDEX IF EXISTS idx_followup_open_clinical_semantic_context"
+    )
+    db.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_followup_clinical_task_key "
+        "ON followup_tasks(clinical_task_key) "
+        "WHERE source_engine='clinical_v2' AND clinical_task_key IS NOT NULL"
+    )
+    db.execute(
+        "CREATE INDEX IF NOT EXISTS idx_clinical_followup_due_period "
+        "ON followup_tasks(patient_link_id, clinical_semantic_key, "
+        "clinical_context_hash, clinical_due_period) "
+        "WHERE source_engine='clinical_v2'"
+    )
+    _backfill_open_clinical_tasks(db)
+    db.commit()
+'''
+          assert old_tail in text
+          text = text.replace(old_tail, new_tail, 1)
+          schema.write_text(text, encoding='utf-8')
+
+          repo = Path('specialist_clinic/src/adapters/sqlite/clinical_care_loop_repo.py')
+          text = repo.read_text(encoding='utf-8')
+          old = '        effective = _now_text(effective_at or recorded_at)\n'
+          new = '        effective = _datetime_text(effective_at) or recorded\n'
+          assert old in text
+          repo.write_text(text.replace(old, new, 1), encoding='utf-8')
+
+          runtime = Path('specialist_clinic/src/adapters/sqlite/clinical_engine_runtime_schema.py')
+          text = runtime.read_text(encoding='utf-8')
+          old_import = '''from src.adapters.sqlite.clinical_data_conflict_schema import (
+    ensure_clinical_data_conflict_storage,
+)
+'''
+          new_import = old_import + '''from src.adapters.sqlite.clinical_care_loop_schema import (
+    ensure_clinical_care_loop_storage,
+)
+'''
+          assert old_import in text
+          text = text.replace(old_import, new_import, 1)
+          text = text.replace('_SCHEMA_VERSION = 6', '_SCHEMA_VERSION = 7', 1)
+          old_block = '''        if _table_exists(db, "followup_tasks"):
+            _ensure_column(
+                db,
+                "followup_tasks",
+                "clinical_context_hash",
+                "TEXT",
+            )
+            db.execute(
+                "DROP INDEX IF EXISTS idx_followup_open_clinical_semantic"
+            )
+            db.execute(
+                "CREATE UNIQUE INDEX IF NOT EXISTS "
+                "idx_followup_open_clinical_semantic_context "
+                "ON followup_tasks(patient_link_id, clinical_semantic_key, "
+                "clinical_context_hash) "
+                "WHERE source_engine='clinical_v2' AND status='open' "
+                "AND clinical_semantic_key IS NOT NULL "
+                "AND clinical_context_hash IS NOT NULL"
+            )
+'''
+          new_block = '''        if _table_exists(db, "followup_tasks"):
+            _ensure_column(
+                db,
+                "followup_tasks",
+                "clinical_context_hash",
+                "TEXT",
+            )
+            db.execute(
+                "DROP INDEX IF EXISTS idx_followup_open_clinical_semantic"
+            )
+            db.execute(
+                "DROP INDEX IF EXISTS idx_followup_open_clinical_semantic_context"
+            )
+            ensure_clinical_care_loop_storage(db)
+'''
+          assert old_block in text
+          runtime.write_text(text.replace(old_block, new_block, 1), encoding='utf-8')
+
+          tests = Path('specialist_clinic/tests/test_clinical_engine_v2_followups.py')
+          text = tests.read_text(encoding='utf-8')
+          old_test = '''    db.execute(
+        """UPDATE followup_tasks
+           SET status='done', resolved_at='2026-07-22 12:00:00'"""
+    )
+    db.commit()
+'''
+          new_test = '''    from src.adapters.sqlite.clinical_care_loop_repo import (
+        ClinicalCareLoopRepository,
+    )
+
+    task_id = int(
+        db.execute(
+            "SELECT id FROM followup_tasks WHERE source_engine='clinical_v2'"
+        ).fetchone()["id"]
+    )
+    care = ClinicalCareLoopRepository()
+    outcome = care.record_outcome(
+        task_id,
+        outcome_type="LAB_COMPLETED",
+        actor_username="pytest",
+        note="دورهٔ اول تکمیل شد",
+    )
+    care.append_task_event(
+        task_id,
+        event_type="COMPLETED",
+        expected_current_event_id=care.current_task(task_id)["current_event_id"],
+        actor_username="pytest",
+        outcome_event_id=int(outcome["id"]),
+    )
+'''
+          assert old_test in text
+          tests.write_text(text.replace(old_test, new_test, 1), encoding='utf-8')
+          PY
+
+      - name: Remove one-time workflow and verify source
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f .github/workflows/apply-step5-core.yml
+          python -m compileall -q specialist_clinic/src specialist_clinic/tests
+          git diff --check
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: pip
+          cache-dependency-path: specialist_clinic/requirements.txt
+
+      - name: Install test dependencies
+        working-directory: specialist_clinic
+        run: python -m pip install -r requirements.txt pytest
+
+      - name: Run focused care-loop gate
+        working-directory: specialist_clinic
+        env:
+          PYTEST_DISABLE_PLUGIN_AUTOLOAD: '1'
+          PYTHONIOENCODING: utf-8
+        run: >-
+          python -m pytest -q --tb=short
+          tests/test_clinical_closed_care_loop.py
+          tests/test_clinical_engine_v2_followups.py
+          tests/test_ui_information_architecture.py
+          tests/test_datetime_controls.py
+
+      - name: Commit clean care-loop implementation
+        shell: bash
+        run: |
+          set -euo pipefail
+          git add -A
+          git diff --cached --check
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'complete append-only clinical care loop'
+          git push origin HEAD:agent-clinical-closed-care-loop
