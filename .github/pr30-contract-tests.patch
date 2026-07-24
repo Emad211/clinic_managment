@@ -1,0 +1,86 @@
+diff --git a/specialist_clinic/tests/test_clinical_engine_v2_facts.py b/specialist_clinic/tests/test_clinical_engine_v2_facts.py
+--- a/specialist_clinic/tests/test_clinical_engine_v2_facts.py
++++ b/specialist_clinic/tests/test_clinical_engine_v2_facts.py
+@@ -402,10 +402,11 @@ def test_off_writes_nothing_and_shadow_persists_only_v2_audit(facts_app):
+         patient_id,
+         as_of_at=AS_OF,
+     ).content_hash
+     assert json.loads(row["summary_json"]) == {
+         "clinical_data_revision": 0,
++        "context_hash": payload["context_hash"],
+         "engine_version": ENGINE_VERSION,
+         "evaluated_rules": 0,
+         "mode": "shadow",
+         "recommendations": 0,
+     }
+diff --git a/specialist_clinic/tests/test_clinical_engine_v2_safety.py b/specialist_clinic/tests/test_clinical_engine_v2_safety.py
+--- a/specialist_clinic/tests/test_clinical_engine_v2_safety.py
++++ b/specialist_clinic/tests/test_clinical_engine_v2_safety.py
+@@ -455,10 +455,12 @@ def test_shadow_capture_persists_suppression_and_created_recommendation_event():
+         _leaf("rx-sbp", "observation.bp_systolic", ">=", 130, "mm[Hg]"),
+     )
+     for raw in (redflag, routine):
+         _declare(raw, "observation.bp_systolic")
+     snap = snapshot(
++        fact("demographic.age_years", 38, fact_id="age"),
++        fact("condition.codes", ["diabetes"], fact_id="conditions"),
+         fact("condition.diabetes", True, fact_id="dm"),
+         fact("observation.bp_systolic", 185, unit="mmHg", fact_id="sbp"),
+     )
+     audit = _ShadowAudit()
+     capture = ShadowFactCapture(
+@@ -487,11 +489,15 @@ def test_shadow_capture_persists_suppression_and_created_recommendation_event():
+ def test_corrupt_stored_safety_rule_fails_closed_and_blocks_valid_routine():
+     routine = _rule(
+         "T2-ROUTINE", "ROUTINE", "educate",
+         _leaf("routine-dm", "condition.diabetes"),
+     )
+-    snap = snapshot(fact("condition.diabetes", True, fact_id="dm"))
++    snap = snapshot(
++        fact("demographic.age_years", 38, fact_id="age"),
++        fact("condition.codes", ["diabetes"], fact_id="conditions"),
++        fact("condition.diabetes", True, fact_id="dm"),
++    )
+     audit = _ShadowAudit()
+     capture = ShadowFactCapture(
+         repository=_ShadowRepository(), builder=_ShadowBuilder(snap), audit=audit,
+         rules=_ShadowRules([
+             _member(1, {}, "SAFETY"),
+diff --git a/specialist_clinic/tests/test_clinical_engine_v2_storage.py b/specialist_clinic/tests/test_clinical_engine_v2_storage.py
+--- a/specialist_clinic/tests/test_clinical_engine_v2_storage.py
++++ b/specialist_clinic/tests/test_clinical_engine_v2_storage.py
+@@ -391,12 +391,17 @@ def test_audit_is_reproducible_append_only_and_survives_backup(storage_app):
+         decision=ClinicalDecision.ACCEPTED,
+         actor_username="physician",
+     )
+ 
+     stored = audit.get_run(run_id)
++    stored_snapshot = json.loads(stored["fact_snapshot_json"])
++    assert stored_snapshot["facts"] == snapshot["facts"]
++    assert stored_snapshot["patient_link_id"] == patient_id
++    assert stored_snapshot["context_hash"] == stored["context_hash"]
++    assert stored_snapshot["evaluation_context"]["content_hash"] == stored["context_hash"]
+     expected_snapshot = json.dumps(
+-        snapshot, ensure_ascii=False, sort_keys=True, separators=(",", ":")
++        stored_snapshot, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+     )
+     assert stored["fact_snapshot_json"] == expected_snapshot
+     assert stored["fact_snapshot_hash"] == hashlib.sha256(
+         expected_snapshot.encode("utf-8")
+     ).hexdigest()
+diff --git a/specialist_clinic/tests/test_clinical_reconciliation_engine_identity.py b/specialist_clinic/tests/test_clinical_reconciliation_engine_identity.py
+--- a/specialist_clinic/tests/test_clinical_reconciliation_engine_identity.py
++++ b/specialist_clinic/tests/test_clinical_reconciliation_engine_identity.py
+@@ -47,11 +47,11 @@ def engine_identity_app(tmp_path):
+     context.pop()
+     core._initialized = False
+ 
+ 
+ def test_reconciliation_contract_has_one_engine_identity():
+-    assert CURRENT_ENGINE_VERSION == "2.5.0-flag-history"
++    assert CURRENT_ENGINE_VERSION == "2.6.0-evaluation-context"
+     assert ENGINE_VERSION == CURRENT_ENGINE_VERSION
+ 
+ 
+ def test_previous_engine_run_is_never_current(engine_identity_app):
+     from src.adapters.sqlite.core import get_db
