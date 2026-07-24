@@ -81,6 +81,20 @@ jobs:
               'style="align-self:flex-end;">\n                                                    <button class="btn',
           )
           template.write_text(text, encoding='utf-8')
+
+          api = Path('specialist_clinic/src/api/followups.py')
+          text = api.read_text(encoding='utf-8')
+          if 'import sqlite3\n' not in text:
+              text = text.replace(
+                  'from datetime import datetime\n',
+                  'from datetime import datetime\nimport sqlite3\n',
+                  1,
+              )
+          text = text.replace(
+              'except (LookupError, ClinicalCareLoopValidationError, ValueError) as exc:',
+              'except (LookupError, ClinicalCareLoopValidationError, ValueError, sqlite3.IntegrityError) as exc:',
+          )
+          api.write_text(text, encoding='utf-8')
           PY
 
       - name: Restore canonical CI before commit
