@@ -1,17 +1,25 @@
 """Fine-grained authorization vocabulary for clinical and operational mutations.
 
 Existing coarse roles are treated only as default grant bundles. Routes depend on a
-stable permission key, so future per-user grants or directory integration can replace
-the default resolver without rewriting clinical APIs.
+stable permission key, so per-user append-only overrides or future directory integration
+can change authorization without rewriting clinical APIs.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum
 import functools
-from typing import Iterable
+import sqlite3
 
-from flask import abort, flash, g, redirect, request, url_for
+from flask import (
+    abort,
+    flash,
+    g,
+    has_app_context,
+    redirect,
+    request,
+    url_for,
+)
 
 
 class Permission(StrEnum):
@@ -57,12 +65,59 @@ def default_permissions(role: str | None) -> frozenset[Permission]:
     return _ROLE_DEFAULTS.get(str(role or "").strip().lower(), frozenset())
 
 
+def _current_overrides(user_id: int) -> dict[Permission, bool] | None:
+    """Return overrides, ``{}`` when storage is not installed, or None on failure."""
+    if not has_app_context():
+        return {}
+    from src.adapters.sqlite.core import get_db
+
+    try:
+        db = get_db()
+        table = db.execute(
+            """SELECT 1 FROM sqlite_master
+               WHERE type='table' AND name='security_permission_events'"""
+        ).fetchone()
+        if not table:
+            return {}
+        rows = db.execute(
+            """SELECT event.permission_key, event.effect
+               FROM security_permission_events event
+               WHERE event.user_id=?
+                 AND NOT EXISTS (
+                     SELECT 1 FROM security_permission_events child
+                     WHERE child.supersedes_event_id=event.id
+                 )
+               ORDER BY event.permission_key""",
+            (int(user_id),),
+        ).fetchall()
+    except (sqlite3.Error, RuntimeError, TypeError, ValueError):
+        return None
+
+    result: dict[Permission, bool] = {}
+    for row in rows:
+        try:
+            permission = Permission(row["permission_key"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        result[permission] = row["effect"] == "GRANTED"
+    return result
+
+
 def resolved_permissions(user) -> frozenset[Permission]:
     if not user:
         return frozenset()
-    # Per-user grant events are added later in this tranche. Keeping resolution in
-    # one function prevents role checks from spreading back through clinical routes.
-    return default_permissions(user["role"])
+    grants = set(default_permissions(user["role"]))
+    overrides = _current_overrides(int(user["id"]))
+    if overrides is None:
+        # Failure to read revocations must never restore a role default. Authorization
+        # fails closed until storage health is restored.
+        return frozenset()
+    for permission, allowed in overrides.items():
+        if allowed:
+            grants.add(permission)
+        else:
+            grants.discard(permission)
+    return frozenset(grants)
 
 
 def decide(user, permission: str | Permission) -> PermissionDecision:
@@ -71,7 +126,7 @@ def decide(user, permission: str | Permission) -> PermissionDecision:
     return PermissionDecision(
         permission=required,
         allowed=allowed,
-        source=f"role:{user['role']}" if user else "anonymous",
+        source="effective-grants" if user else "anonymous",
     )
 
 
@@ -89,8 +144,6 @@ def permission_required(permission: str | Permission):
                 return redirect(url_for("auth.login"))
             decision = decide(g.user, required)
             if not decision.allowed:
-                # API clients receive an explicit authorization status; browser
-                # forms keep the established Persian UX without leaking internals.
                 if request.is_json or request.accept_mimetypes.best == "application/json":
                     abort(403)
                 flash("مجوز لازم برای این اقدام ثبت نشده است.", "error")
