@@ -27,12 +27,16 @@ jobs:
         run: python .github/step3-batch/decode_one.py .github/step3-batch/analytics_service.py.b64 specialist_clinic/src/services/analytics_service.py plain
       - name: Install patients file
         run: python .github/step3-batch/decode_one.py .github/step3-batch/patients.py.gz.b64 specialist_clinic/src/api/patients.py gzip
-      - name: Install detail template atomically
+      - name: Assemble detail payload
+        run: cat .github/step3-batch/detail.part-* > /tmp/detail.b64
+      - name: Decode detail payload
+        run: python .github/step3-batch/decode_one.py /tmp/detail.b64 /tmp/detail.html gzip
+      - name: Inspect decoded detail payload
         run: |
-          cat .github/step3-batch/detail.part-* > /tmp/detail.b64
-          python .github/step3-batch/decode_one.py /tmp/detail.b64 /tmp/detail.html gzip
-          test -s /tmp/detail.html
-          mv /tmp/detail.html specialist_clinic/src/templates/patients/detail.html
+          wc -c /tmp/detail.html
+          python -c "from pathlib import Path; p=Path('/tmp/detail.html'); assert p.stat().st_size > 1000; assert b'{% extends' in p.read_bytes()[:200]"
+      - name: Replace detail template
+        run: mv -f /tmp/detail.html specialist_clinic/src/templates/patients/detail.html
       - name: Install canonical test
         run: python .github/step3-batch/decode_one.py .github/step3-batch/test_canonical_consistency.py.gz.b64 specialist_clinic/tests/test_canonical_consistency.py gzip
       - name: Install card test
