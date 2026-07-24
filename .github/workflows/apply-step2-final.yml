@@ -14,9 +14,6 @@ concurrency:
 
 jobs:
   apply:
-    # This second push deliberately triggers the workflow after the definition
-    # already exists on the branch. The bot-authored product commit self-deletes it.
-    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -24,29 +21,33 @@ jobs:
           ref: ${{ github.ref_name }}
           fetch-depth: 0
 
-      - name: Reassemble and verify patch
+      - name: Reassemble and verify the reviewed patch
         shell: bash
         run: |
           set -euo pipefail
-          cat .github/step2-final/part-* > /tmp/step2-final.patch.gz.b64
-          echo '6f385ea6edb4ab680aa1410349f6291af2a81f112c3ee413b53c30bc999ebf44  /tmp/step2-final.patch.gz.b64' | sha256sum -c -
-          base64 --decode /tmp/step2-final.patch.gz.b64 | gzip --decompress > /tmp/step2-final.patch
-          echo '8b805d99b57ff894642272f307885abdfd97d86b5564018536f0829540606087  /tmp/step2-final.patch' | sha256sum -c -
+          cat .github/step2-final/part-* | tr -d '\r\n' \
+            > /tmp/step2-final.patch.gz.b64
+          base64 --decode /tmp/step2-final.patch.gz.b64 \
+            | gzip --decompress > /tmp/step2-final.patch
+          echo '8b805d99b57ff894642272f307885abdfd97d86b5564018536f0829540606087  /tmp/step2-final.patch' \
+            | sha256sum -c -
           git apply --check /tmp/step2-final.patch
 
-      - name: Apply and remove all transfer-only files
+      - name: Apply product changes and remove transfer files
         shell: bash
         run: |
           set -euo pipefail
           git apply /tmp/step2-final.patch
           rm -rf .github/step2-final .github/context-final
+          rm -f .github/context-final.patch.gz.b64
           rm -f .github/workflows/context-source-snapshot.yml
+          rm -f .github/workflows/apply-context-final.yml
           rm -f .github/workflows/apply-step2-final.yml
           git add -A
           git diff --cached --check
           python -m compileall -q specialist_clinic/src specialist_clinic/tests
 
-      - name: Commit clean product changes
+      - name: Commit the clean evaluation-context implementation
         shell: bash
         run: |
           set -euo pipefail
