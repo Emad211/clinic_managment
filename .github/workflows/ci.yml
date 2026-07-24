@@ -23,39 +23,59 @@ jobs:
           ref: agent-clinical-parallel-logic-consolidation
           fetch-depth: 0
 
-      - name: Decode reviewed primary files
+      - name: Decode reviewed payloads
         shell: bash
         run: |
           set -euo pipefail
-          tr -d '\r\n\t ' < .github/step3-batch/analytics_service.py.b64 \
-            | base64 --decode \
-            > specialist_clinic/src/services/analytics_service.py
-          tr -d '\r\n\t ' < .github/step3-batch/patients.py.gz.b64 \
-            | base64 --decode \
-            | gzip --decompress > specialist_clinic/src/api/patients.py
-          cat .github/step3-batch/detail.part-* \
-            | tr -d '\r\n\t ' \
-            | base64 --decode \
-            | gzip --decompress \
-            > specialist_clinic/src/templates/patients/detail.html
-          tr -d '\r\n\t ' < .github/step3-batch/test_canonical_consistency.py.gz.b64 \
-            | base64 --decode \
-            | gzip --decompress > specialist_clinic/tests/test_canonical_consistency.py
-          tr -d '\r\n\t ' < .github/step3-batch/test_patient_card.py.gz.b64 \
-            | base64 --decode \
-            | gzip --decompress > specialist_clinic/tests/test_patient_card.py
-          tr -d '\r\n\t ' < .github/step3-batch/test_parallel_clinical_logic_retired.py.gz.b64 \
-            | base64 --decode \
-            | gzip --decompress > specialist_clinic/tests/test_parallel_clinical_logic_retired.py
+          python - <<'PY'
+          import base64, gzip
+          from pathlib import Path
+
+          def decode(source, target, *, compressed):
+              raw = ''.join(Path(source).read_text(encoding='utf-8').split())
+              raw += '=' * (-len(raw) % 4)
+              data = base64.b64decode(raw, validate=False)
+              if compressed:
+                  data = gzip.decompress(data)
+              Path(target).write_bytes(data)
+              print(f'decoded {source} -> {target} ({len(data)} bytes)')
+
+          decode('.github/step3-batch/analytics_service.py.b64',
+                 'specialist_clinic/src/services/analytics_service.py',
+                 compressed=False)
+          decode('.github/step3-batch/patients.py.gz.b64',
+                 'specialist_clinic/src/api/patients.py',
+                 compressed=True)
+
+          parts = sorted(Path('.github/step3-batch').glob('detail.part-*'))
+          detail_raw = ''.join(''.join(path.read_text(encoding='utf-8').split()) for path in parts)
+          detail_raw += '=' * (-len(detail_raw) % 4)
+          Path('specialist_clinic/src/templates/patients/detail.html').write_bytes(
+              gzip.decompress(base64.b64decode(detail_raw, validate=False))
+          )
+
+          for source, target in (
+              ('.github/step3-batch/test_canonical_consistency.py.gz.b64',
+               'specialist_clinic/tests/test_canonical_consistency.py'),
+              ('.github/step3-batch/test_patient_card.py.gz.b64',
+               'specialist_clinic/tests/test_patient_card.py'),
+              ('.github/step3-batch/test_parallel_clinical_logic_retired.py.gz.b64',
+               'specialist_clinic/tests/test_parallel_clinical_logic_retired.py'),
+          ):
+              decode(source, target, compressed=True)
+
+          patch_parts = sorted(Path('.github/step3-full').glob('part-*'))
+          patch_raw = ''.join(''.join(path.read_text(encoding='utf-8').split()) for path in patch_parts)
+          patch_raw += '=' * (-len(patch_raw) % 4)
+          Path('/tmp/step3-second.patch').write_bytes(
+              gzip.decompress(base64.b64decode(patch_raw, validate=False))
+          )
+          PY
 
       - name: Apply remaining reviewed files
         shell: bash
         run: |
           set -euo pipefail
-          cat .github/step3-full/part-* | tr -d '\r\n\t ' \
-            > /tmp/step3-second.patch.gz.b64
-          base64 --decode /tmp/step3-second.patch.gz.b64 \
-            | gzip --decompress > /tmp/step3-second.patch
           git apply --check /tmp/step3-second.patch
           git apply /tmp/step3-second.patch
 
