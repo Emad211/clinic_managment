@@ -1,5 +1,8 @@
 # چک‌لیست انتشار Closed Clinical Care Loop
 
+این موارد فقط با عبور gate اجرایی مربوط به repository، SQLite guards، UI و
+recurrence تکمیل‌شده محسوب می‌شوند؛ بررسی دستی جایگزین تست نیست.
+
 - [ ] هر task بالینی در زمان ساخت، یک `CREATED/OPEN` root event دارد.
 - [ ] هیچ مسیر عمومی یا اداری `followup_tasks.status` را برای task بالینی تغییر نمی‌دهد.
 - [ ] ثبت `COMPLETED` بدون outcome متعلق به همان task در SQLite شکست می‌خورد.
