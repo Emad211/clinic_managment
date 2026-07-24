@@ -1,7 +1,6 @@
 name: Finalize Closed Clinical Care Loop
 
 on:
-  push:
   pull_request:
   workflow_dispatch:
 
@@ -9,12 +8,12 @@ permissions:
   contents: write
 
 concurrency:
-  group: finalize-step5-${{ github.head_ref || github.ref_name }}
+  group: finalize-step5-${{ github.event.pull_request.head.ref || github.ref_name }}
   cancel-in-progress: true
 
 jobs:
   finalize:
-    if: github.event_name == 'push' && github.ref_name == 'agent-clinical-closed-care-loop' && github.actor != 'github-actions[bot]'
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'agent-clinical-closed-care-loop' && github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -36,18 +35,20 @@ jobs:
           text = repo.read_text(encoding='utf-8')
           old = '        effective = _now_text(effective_at or recorded_at)\n'
           new = '        effective = _datetime_text(effective_at) or recorded\n'
-          assert old in text
-          repo.write_text(text.replace(old, new, 1), encoding='utf-8')
+          if old in text:
+              text = text.replace(old, new, 1)
+          assert new in text
+          repo.write_text(text, encoding='utf-8')
 
           test = Path('specialist_clinic/tests/test_clinical_engine_v2_followups.py')
           text = test.read_text(encoding='utf-8')
-          old = '''    db.execute(
+          old_test = '''    db.execute(
         """UPDATE followup_tasks
            SET status='done', resolved_at='2026-07-22 12:00:00'"""
     )
     db.commit()
 '''
-          new = '''    from src.adapters.sqlite.clinical_care_loop_repo import (
+          new_test = '''    from src.adapters.sqlite.clinical_care_loop_repo import (
         ClinicalCareLoopRepository,
     )
 
@@ -71,8 +72,10 @@ jobs:
         outcome_event_id=int(outcome["id"]),
     )
 '''
-          assert old in text
-          test.write_text(text.replace(old, new, 1), encoding='utf-8')
+          if old_test in text:
+              text = text.replace(old_test, new_test, 1)
+          assert 'outcome_type="LAB_COMPLETED"' in text
+          test.write_text(text, encoding='utf-8')
 
           template = Path('specialist_clinic/src/templates/followups/worklist.html')
           text = template.read_text(encoding='utf-8')
@@ -97,12 +100,13 @@ jobs:
           api.write_text(text, encoding='utf-8')
           PY
 
-      - name: Restore canonical CI before commit
+      - name: Restore canonical CI in product branch
         shell: bash
         run: |
           set -euo pipefail
           git fetch origin agent-clinical-data-conflict-completeness
-          git show origin/agent-clinical-data-conflict-completeness:.github/workflows/ci.yml > .github/workflows/ci.yml
+          git show origin/agent-clinical-data-conflict-completeness:.github/canonical-ci-step4.yml > .github/workflows/ci.yml
+          rm -f .github/workflows/apply-step5-core.yml
           python -m compileall -q specialist_clinic/src specialist_clinic/tests
           git diff --check
 
