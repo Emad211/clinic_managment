@@ -14,7 +14,7 @@ concurrency:
 
 jobs:
   finalize:
-    if: github.event_name == 'pull_request' && github.actor != 'github-actions[bot]'
+    if: github.event_name == 'push' && github.ref_name == 'agent-clinical-closed-care-loop' && github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -76,8 +76,6 @@ jobs:
 
           template = Path('specialist_clinic/src/templates/followups/worklist.html')
           text = template.read_text(encoding='utf-8')
-          # Accessibility source guard forbids inline style on any source line that
-          # also contains a button class. Keep layout styling on the wrapper line.
           text = text.replace(
               'style="align-self:flex-end;"><button class="btn',
               'style="align-self:flex-end;">\n                                                    <button class="btn',
