@@ -13,8 +13,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  apply-consolidation:
-    name: "apply complete clinical logic consolidation"
+  export-consolidation:
+    name: "export complete clinical logic consolidation bundle"
     if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
@@ -22,80 +22,12 @@ jobs:
         with:
           ref: agent-clinical-parallel-logic-consolidation
           fetch-depth: 0
-
-      - name: Install analytics file
-        run: python .github/step3-batch/decode_one.py .github/step3-batch/analytics_service.py.b64 specialist_clinic/src/services/analytics_service.py plain
-      - name: Install patients file
-        run: python .github/step3-batch/decode_one.py .github/step3-batch/patients.py.gz.b64 specialist_clinic/src/api/patients.py gzip
-      - name: Assemble detail payload
-        run: cat .github/step3-batch/detail.part-* > /tmp/detail.b64
-      - name: Upload raw detail payload
+      - name: Pack complete reviewed staging bundle
+        run: tar -czf /tmp/step3-transfer-bundle.tar.gz .github/step3-batch .github/step3-full
+      - name: Upload complete staging bundle
         uses: actions/upload-artifact@v4
         with:
-          name: step3-detail-payload
-          path: /tmp/detail.b64
+          name: step3-transfer-bundle
+          path: /tmp/step3-transfer-bundle.tar.gz
           if-no-files-found: error
           retention-days: 1
-      - name: Decode detail payload
-        run: python .github/step3-batch/decode_one.py /tmp/detail.b64 /tmp/detail.html gzip
-      - name: Inspect decoded detail payload
-        run: |
-          wc -c /tmp/detail.html
-          python -c "from pathlib import Path; p=Path('/tmp/detail.html'); assert p.stat().st_size > 1000; assert b'{% extends' in p.read_bytes()[:200]"
-      - name: Replace detail template
-        run: mv -f /tmp/detail.html specialist_clinic/src/templates/patients/detail.html
-      - name: Install canonical test
-        run: python .github/step3-batch/decode_one.py .github/step3-batch/test_canonical_consistency.py.gz.b64 specialist_clinic/tests/test_canonical_consistency.py gzip
-      - name: Install card test
-        run: python .github/step3-batch/decode_one.py .github/step3-batch/test_patient_card.py.gz.b64 specialist_clinic/tests/test_patient_card.py gzip
-      - name: Install retirement guard test
-        run: python .github/step3-batch/decode_one.py .github/step3-batch/test_parallel_clinical_logic_retired.py.gz.b64 specialist_clinic/tests/test_parallel_clinical_logic_retired.py gzip
-      - name: Install second patch
-        run: |
-          cat .github/step3-full/part-* > /tmp/second.b64
-          python .github/step3-batch/decode_one.py /tmp/second.b64 /tmp/second.patch gzip
-          git apply --check /tmp/second.patch
-          git apply /tmp/second.patch
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.13'
-          cache: pip
-          cache-dependency-path: specialist_clinic/requirements.txt
-
-      - name: Install focused test dependencies
-        working-directory: specialist_clinic
-        run: python -m pip install -r requirements.txt pytest
-
-      - name: Verify minimum safe consolidation gate
-        working-directory: specialist_clinic
-        env:
-          PYTEST_DISABLE_PLUGIN_AUTOLOAD: '1'
-          PYTHONIOENCODING: utf-8
-        run: >-
-          python -m pytest -q --tb=short
-          tests/test_parallel_clinical_logic_retired.py
-          tests/test_public_card_descriptive_only.py
-          tests/test_patient_card.py
-          tests/test_canonical_consistency.py
-          tests/test_patient_cockpit_service.py
-          tests/test_clinical_engine_v2_manager_ui.py
-          tests/test_visit_invites.py::TestFAutomaticEngagementRegression::test_high_reading_does_not_create_administrative_event
-          tests/test_visit_invites.py::TestFAutomaticEngagementRegression::test_high_reading_does_not_create_admin_worklist_or_sms
-
-      - name: Restore canonical CI and remove transfer files
-        run: |
-          cp .github/step3-batch/ci.yml /tmp/canonical-ci.yml
-          rm -rf .github/step3-batch .github/step3-full
-          rm -f .github/workflows/apply-step3-descriptive-batch.yml
-          mv /tmp/canonical-ci.yml .github/workflows/ci.yml
-          python -m compileall -q specialist_clinic/src specialist_clinic/tests
-          git add -A
-          git diff --cached --check
-
-      - name: Commit and push clean product tree
-        run: |
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git commit -m 'consolidate parallel clinical logic into governed v2'
-          git push origin HEAD:agent-clinical-parallel-logic-consolidation
