@@ -27,27 +27,32 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          base64 --decode .github/step3-batch/analytics_service.py.b64 \
+          tr -d '\r\n\t ' < .github/step3-batch/analytics_service.py.b64 \
+            | base64 --decode \
             > specialist_clinic/src/services/analytics_service.py
-          base64 --decode .github/step3-batch/patients.py.gz.b64 \
+          tr -d '\r\n\t ' < .github/step3-batch/patients.py.gz.b64 \
+            | base64 --decode \
             | gzip --decompress > specialist_clinic/src/api/patients.py
           cat .github/step3-batch/detail.part-* \
-            | tr -d '\r\n' \
+            | tr -d '\r\n\t ' \
             | base64 --decode \
             | gzip --decompress \
             > specialist_clinic/src/templates/patients/detail.html
-          base64 --decode .github/step3-batch/test_canonical_consistency.py.gz.b64 \
+          tr -d '\r\n\t ' < .github/step3-batch/test_canonical_consistency.py.gz.b64 \
+            | base64 --decode \
             | gzip --decompress > specialist_clinic/tests/test_canonical_consistency.py
-          base64 --decode .github/step3-batch/test_patient_card.py.gz.b64 \
+          tr -d '\r\n\t ' < .github/step3-batch/test_patient_card.py.gz.b64 \
+            | base64 --decode \
             | gzip --decompress > specialist_clinic/tests/test_patient_card.py
-          base64 --decode .github/step3-batch/test_parallel_clinical_logic_retired.py.gz.b64 \
+          tr -d '\r\n\t ' < .github/step3-batch/test_parallel_clinical_logic_retired.py.gz.b64 \
+            | base64 --decode \
             | gzip --decompress > specialist_clinic/tests/test_parallel_clinical_logic_retired.py
 
       - name: Apply remaining reviewed files
         shell: bash
         run: |
           set -euo pipefail
-          cat .github/step3-full/part-* | tr -d '\r\n' \
+          cat .github/step3-full/part-* | tr -d '\r\n\t ' \
             > /tmp/step3-second.patch.gz.b64
           base64 --decode /tmp/step3-second.patch.gz.b64 \
             | gzip --decompress > /tmp/step3-second.patch
