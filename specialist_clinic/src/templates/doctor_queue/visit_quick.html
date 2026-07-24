@@ -44,7 +44,7 @@
       <input type="hidden" name="pid" value="{{ pid }}"><input type="hidden" name="nid" value="{{ nid }}">
       <div class="grid grid-2">
         {% for i in entry_indicators %}
-        <div class="fld"><label>{{ i.label }}{% if i.target is not none %} <span class="muted">(هدف {% if i.direction=='low' %}&gt;{% else %}&lt;{% endif %}{{ i.target|fa_num }})</span>{% endif %}</label>
+        <div class="fld"><label>{{ i.label }}</label>
           <input type="number" step="any" name="{{ i.key }}" placeholder="{{ i.unit or '' }}"></div>
         {% else %}<div class="empty-mini" style="grid-column:1/-1;">بیماریِ ثبت‌شده‌ای برای شاخص‌های تخصصی نیست.</div>{% endfor %}
       </div>

@@ -20,12 +20,12 @@ def test_followups_live_inside_message_hub_not_as_second_sidebar_destination():
 def test_management_page_has_one_navigation_surface_and_no_operational_duplicates():
     page = template("manager/index.html")
     for endpoint in (
-        "manager.settings", "manager.clinical_engine",
-        "manager.protocols", "manager.users",
+        "manager.settings", "manager.clinical_engine", "manager.users",
     ):
         assert page.count(f"url_for('{endpoint}')") == 1
     assert "url_for('manager.diseases')" not in page
     assert "url_for('manager.engagement')" not in page
+    assert "url_for('manager.protocols')" not in page
     assert "پیگیری‌های باز" not in page
     assert "card kpi" not in page
 
@@ -35,7 +35,7 @@ def test_dashboard_exposes_only_one_followup_call_to_action():
     assert page.count("url_for('followups.worklist')") == 1
 
 
-def test_dashboard_is_summary_only_and_control_room_owns_patient_ranking():
+def test_dashboard_is_summary_only_and_worklist_owns_admin_ranking():
     dashboard = template("dashboard.html")
     control_room = template("control_room.html")
     route = (ROOT / "src" / "api" / "dashboard.py").read_text(encoding="utf-8")
@@ -43,7 +43,7 @@ def test_dashboard_is_summary_only_and_control_room_owns_patient_ranking():
     assert "بیمارانِ نیازمندِ توجه" not in dashboard
     assert "attention" not in dashboard
     assert 'class="card control-patient-list"' in control_room
-    assert "ControlRoomService().panel(show_value=False)['summary']" in route
+    assert 'ControlRoomService().panel(show_value=False)["summary"]' in route
     assert "r['hba1c'] > 8" not in route
 
 
@@ -141,7 +141,7 @@ def test_patient_record_has_one_summary_next_action_and_unified_timeline():
     page = template("patients/detail.html")
     assert page.count('class="patient-hero"') == 1
     assert page.count('class="patient-status-strip"') == 1
-    assert page.count("اقدام پیشنهادی بعدی") == 1
+    assert page.count("اولویت بعدی پرونده") == 1
     assert page.count('class="care-timeline"') == 1
     assert "وضعیت سلامت کلی" not in page
     assert "📅" not in page

@@ -15,7 +15,7 @@ APPOINTMENT_STATUS = {
 
 FOLLOWUP_REASON = {
     "refill": "تجدید نسخه",
-    "uncontrolled": "کنترل نامطلوب",
+    "uncontrolled": "پیگیری قدیمی",
     "lapsed": "وقفه در مراجعه",
     "visit_due": "ویزیت سررسیده",
     "manual": "پیگیری دستی",
@@ -89,8 +89,8 @@ class PatientCockpitService:
         if not has_data:
             return {
                 "tone": "info", "icon": "activity", "target": "cockpit",
-                "title": "ثبت اولین شاخص بالینی",
-                "detail": "برای ارزیابی کنترل بیماری، اندازه‌گیری پایه را ثبت کنید.",
+                "title": "ثبت اولین اندازه‌گیری",
+                "detail": "برای تکمیل روند دادهٔ پرونده، یک اندازه‌گیری پایه ثبت کنید.",
             }
         if scheduled:
             return {
@@ -101,8 +101,8 @@ class PatientCockpitService:
             }
         return {
             "tone": "ok", "icon": "check", "target": "appointment",
-            "title": "مورد فوری ثبت نشده",
-            "detail": "برای حفظ تداوم مراقبت می‌توانید نوبت بعدی را برنامه‌ریزی کنید.",
+            "title": "کار اداری باز ثبت نشده",
+            "detail": "در صورت نیاز می‌توانید نوبت بعدی را برنامه‌ریزی کنید.",
         }
 
     @staticmethod

@@ -4,8 +4,8 @@ Phase B — Doctor-initiated visit invites (#3 آزمایش+مشاوره, #7 ق�
 Covers the two new manager-editable engagement events
 (`lab_consult_invite`, `bp_glucose_invite`), the new
 `POST /doctor-queue/<invoice_id>/invite` route, the approval-queue guardrails,
-the no-real-send guarantee, AND a regression proof that the existing automatic
-engagement collector still fires (refill_due → sms; uncontrolled → worklist).
+the no-real-send guarantee, and regression proof that administrative collection
+continues for refill dates while high clinical readings never create outreach.
 
 Safety contract (mirrors test_doctor_queue.py / test_invoice_outreach.py):
   - All writes go to a FRESH temp specialist DB and COPIES/temp accounting DBs,
@@ -168,7 +168,7 @@ def _add_med(pid, drug_name, refill_due_date, is_active=1):
 
 
 def _add_vital(pid, vtype, value):
-    """Insert a vital reading (measured now) for the uncontrolled collector."""
+    """Insert an extreme reading to prove administrative collectors ignore it."""
     from src.adapters.sqlite.core import get_db
     db = get_db()
     db.execute(
@@ -526,70 +526,44 @@ class TestENoRealSend:
 
 
 # ===========================================================================
-# F — Regression: the existing automatic engagement collector still fires.
-#     refill_due → sms channel ; uncontrolled → worklist channel (NOT sms).
+# F — Administrative automation is independent of clinical interpretation.
 # ===========================================================================
 
 class TestFAutomaticEngagementRegression:
     def test_refill_due_collected_when_med_is_due(self, specialist_app):
-        """An active med with refill_due_date = today is DUE → collect_due_events
-        yields a 'refill_due' event, and its configured channel is 'sms'."""
-        app, spec_db, _ = specialist_app
         from src.common.utils import today_str
-        pid = _enroll("1110000301", "تجدیدِ‌دارو", phone_number="09120000301")
+        pid = _enroll("1110000301", "تجدید دارو", phone_number="09120000301")
         _add_med(pid, "متفورمین", refill_due_date=today_str())
 
         from src.services.engagement_service import EngagementService
-        events, cfg = EngagementService().collect_due_events(pid)
-        keys = {e["event_key"] for e in events}
-        assert "refill_due" in keys, (
-            f"refill_due must be collected for a med due today; got events {keys}")
-        assert cfg["refill_due"]["channel"] == "sms", (
-            f"refill_due must route to sms, got {cfg['refill_due']['channel']}")
+        events, config = EngagementService().collect_due_events(pid)
+        assert "refill_due" in {event["event_key"] for event in events}
+        assert config["refill_due"]["channel"] == "sms"
 
     def test_refill_not_collected_when_far_future(self, specialist_app):
-        """A med whose refill is well beyond the lead window is NOT due yet."""
-        app, spec_db, _ = specialist_app
-        pid = _enroll("1110000302", "دارویِ‌دور", phone_number="09120000302")
+        pid = _enroll("1110000302", "داروی دور", phone_number="09120000302")
         _add_med(pid, "آتورواستاتین", refill_due_date="2099-01-01")
+
         from src.services.engagement_service import EngagementService
         events, _ = EngagementService().collect_due_events(pid)
-        assert "refill_due" not in {e["event_key"] for e in events}, (
-            "refill_due must NOT fire for a refill far in the future")
+        assert "refill_due" not in {event["event_key"] for event in events}
 
-    def test_uncontrolled_collected_and_routes_to_worklist(self, specialist_app):
-        """A latest bp_systolic at/above the danger line makes the patient
-        'uncontrolled'; that event's channel is 'worklist' (NOT sms)."""
-        app, spec_db, _ = specialist_app
-        from src.adapters.sqlite.clinical_rules_repo import ClinicalRulesRepository
-        pid = _enroll("1110000303", "کنترل‌نشده", phone_number="09120000303")
-        # Use the live danger threshold (fallback 140) so the test tracks the seed.
-        sys_danger = (ClinicalRulesRepository().get("bp_systolic") or {}).get("danger") or 140
-        _add_vital(pid, "bp_systolic", float(sys_danger) + 10)
+    def test_high_reading_does_not_create_administrative_event(self, specialist_app):
+        pid = _enroll("1110000303", "بدون تفسیر", phone_number="09120000303")
+        _add_vital(pid, "bp_systolic", 250.0)
 
         from src.services.engagement_service import EngagementService
-        svc = EngagementService()
-        events, cfg = svc.collect_due_events(pid)
-        keys = {e["event_key"] for e in events}
-        assert "uncontrolled" in keys, (
-            f"uncontrolled must be collected for an out-of-range systolic; got {keys}")
-        assert cfg["uncontrolled"]["channel"] == "worklist", (
-            f"uncontrolled must route to worklist, got {cfg['uncontrolled']['channel']}")
+        events, config = EngagementService().collect_due_events(pid)
+        assert "uncontrolled" not in config
+        assert "uncontrolled" not in {event["event_key"] for event in events}
 
-    def test_uncontrolled_dispatch_goes_to_worklist_not_sms(self, specialist_app):
-        """dry_run dispatch of an uncontrolled patient counts as worklist, not sms/queued.
-        Proves the channel routing actually steers the dispatcher."""
-        app, spec_db, _ = specialist_app
-        from src.adapters.sqlite.clinical_rules_repo import ClinicalRulesRepository
-        pid = _enroll("1110000304", "کنترل‌نشده۲", phone_number="09120000304")
-        sys_danger = (ClinicalRulesRepository().get("bp_systolic") or {}).get("danger") or 140
-        _add_vital(pid, "bp_systolic", float(sys_danger) + 10)
+    def test_high_reading_does_not_create_admin_worklist_or_sms(self, specialist_app):
+        pid = _enroll("1110000304", "بدون پیام", phone_number="09120000304")
+        _add_vital(pid, "hba1c", 20.0)
+        _add_vital(pid, "bp_systolic", 250.0)
 
         from src.services.engagement_service import EngagementService
-        res = EngagementService().dispatch_patient(pid, dry_run=True)
-        assert res["worklist"] >= 1, (
-            f"uncontrolled must produce a worklist route, got {res}")
-        # The uncontrolled event itself must not be SMS-queued (it has no sms template
-        # and channel=worklist). queued counts only sms-channel enqueues.
-        assert res["queued"] == 0, (
-            f"uncontrolled (worklist channel) must not enqueue an SMS approval, got {res}")
+        result = EngagementService().dispatch_patient(pid, dry_run=True)
+        assert result["worklist"] == 0
+        assert result["queued"] == 0
+        assert result["sms"] == 0

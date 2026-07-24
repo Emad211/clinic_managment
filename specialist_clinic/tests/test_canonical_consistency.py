@@ -107,14 +107,12 @@ def test_lab_only_hba1c_agrees_across_current_consumers(canonical_app):
     from src.adapters.sqlite.vitals_repo import VitalsRepository
     from src.services.analytics_service import AnalyticsService
     from src.services.clinical_engine.fact_builder import FactBuilder
-    from src.services.vitals_service import VitalsService
 
     patient_id = _patient("CANON001")
     _lab(patient_id, "hba1c", 8.5, "2026-06-01 08:00:00")
 
     repository = VitalsRepository()
     latest = repository.latest_by_type(patient_id)
-    control = VitalsService(repo=repository).control_status(patient_id)
     analytics = AnalyticsService().patient_analytics(patient_id)
     snapshot = FactBuilder().build(
         patient_id,
@@ -123,14 +121,14 @@ def test_lab_only_hba1c_agrees_across_current_consumers(canonical_app):
 
     assert latest["hba1c"]["value"] == pytest.approx(8.5)
     assert latest["hba1c"]["source"] == "lab"
-    assert control["status"] == "uncontrolled"
     tile = next(
         item
         for item in analytics["indicators"]
         if item["key"] == "hba1c"
     )
     assert tile["latest"] == pytest.approx(8.5)
-    assert tile["level"] == "danger"
+    assert "level" not in tile
+    assert analytics["projection_policy"] == "DESCRIPTIVE_ONLY"
     assert analytics["charts"]["hba1c"]["values"] == [8.5]
     fact = next(
         item

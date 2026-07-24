@@ -4,7 +4,7 @@ from src.services.followup_engine import ClinicalV2FollowupService
 
 REASON_LABELS = {
     'refill': 'تجدید دارو',
-    'uncontrolled': 'کنترل‌نشده',
+    'uncontrolled': 'پیگیری قدیمی',
     'lapsed': 'بدون مراجعه اخیر',
     'visit_due': 'موعد ویزیت',
     'recall': 'دعوتِ بازگشت',

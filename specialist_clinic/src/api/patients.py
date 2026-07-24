@@ -9,7 +9,6 @@ from src.adapters.sqlite.record_repo import RecordRepository
 from src.adapters.sqlite.lab_catalog_repo import LabCatalogRepository
 from src.adapters.sqlite.drug_catalog_repo import DrugCatalogRepository
 from src.adapters.sqlite.sms_repo import SmsRepository
-from src.services.vitals_service import VitalsService, evaluate_reading
 from src.services.analytics_service import AnalyticsService
 from src.adapters.sqlite.wallet_repo import WalletRepository
 from src.services.activity_logger import log_activity
@@ -22,70 +21,105 @@ bp = Blueprint("patients", __name__, url_prefix="/patients")
 @bp.route("/")
 @login_required
 def list_patients():
-    """Patient list enriched with control status, conditions and latest key vitals;
-    quick filters + uncontrolled-first ordering (physician-first)."""
+    """Descriptive patient directory with condition and recency filters only.
+
+    The directory intentionally does not grade control, apply clinical thresholds or
+    prioritise patients by measurement values. Actionable clinical ordering belongs
+    to the governed Clinical Engine v2; administrative follow-up lives in the
+    worklist/control-room surfaces.
+    """
     from src.adapters.sqlite.core import get_db
+
     q = request.args.get("q", "").strip()
     flt = request.args.get("filter", "").strip()
     db = get_db()
-
     where = "p.is_active=1"
     params = []
     if q:
         like = f"%{q}%"
-        where += " AND (p.full_name LIKE ? OR COALESCE(p.national_id,'') LIKE ? OR COALESCE(p.phone_number,'') LIKE ?)"
-        params += [like, like, like]
+        where += (
+            " AND (p.full_name LIKE ? OR COALESCE(p.national_id,'') LIKE ? "
+            "OR COALESCE(p.phone_number,'') LIKE ?)"
+        )
+        params.extend((like, like, like))
+
     rows = db.execute(
         f"""
-        SELECT p.id, p.full_name, p.national_id, p.phone_number, p.accounting_patient_id,
-          (SELECT v.value FROM vital_readings v WHERE v.patient_link_id=p.id AND v.type='hba1c'       ORDER BY v.measured_at DESC LIMIT 1) AS hba1c,
-          (SELECT v.value FROM vital_readings v WHERE v.patient_link_id=p.id AND v.type='bp_systolic' ORDER BY v.measured_at DESC LIMIT 1) AS sys,
-          (SELECT v.value FROM vital_readings v WHERE v.patient_link_id=p.id AND v.type='fbs'         ORDER BY v.measured_at DESC LIMIT 1) AS fbs,
-          (SELECT MAX(v.measured_at) FROM vital_readings v WHERE v.patient_link_id=p.id) AS last_vital,
-          (SELECT GROUP_CONCAT(c.code) FROM patient_conditions pc JOIN conditions c ON c.id=pc.condition_id WHERE pc.patient_link_id=p.id AND pc.is_active=1) AS cond_codes,
-          (SELECT GROUP_CONCAT(c.name) FROM patient_conditions pc JOIN conditions c ON c.id=pc.condition_id WHERE pc.patient_link_id=p.id AND pc.is_active=1) AS cond_names
-        FROM patient_links p WHERE {where} ORDER BY p.id DESC LIMIT 500
-        """, params).fetchall()
-
-    def _lvl(v, warn, high):
-        if v is None:
-            return -1
-        return 2 if v >= high else (1 if v >= warn else 0)
-
-    def control_of(hba1c, sys, fbs):
-        levels = [_lvl(hba1c, 7, 8), _lvl(sys, 130, 140), _lvl(fbs, 130, 180)]
-        if max(levels) < 0:
-            return 'unknown'
-        worst = max(levels)
-        return {2: 'uncontrolled', 1: 'borderline', 0: 'controlled'}[worst]
+        SELECT p.id, p.full_name, p.national_id, p.phone_number,
+               p.accounting_patient_id,
+          (SELECT x.value FROM (
+               SELECT v.value, v.measured_at AS observed_at
+               FROM vital_readings v
+               WHERE v.patient_link_id=p.id AND v.type='hba1c'
+               UNION ALL
+               SELECT l.value, l.taken_at AS observed_at
+               FROM lab_results l
+               WHERE l.patient_link_id=p.id AND l.test_key='hba1c'
+           ) x ORDER BY x.observed_at DESC LIMIT 1) AS hba1c,
+          (SELECT v.value FROM vital_readings v
+           WHERE v.patient_link_id=p.id AND v.type='bp_systolic'
+           ORDER BY v.measured_at DESC LIMIT 1) AS sys,
+          (SELECT v.value FROM vital_readings v
+           WHERE v.patient_link_id=p.id AND v.type='fbs'
+           ORDER BY v.measured_at DESC LIMIT 1) AS fbs,
+          MAX(
+            COALESCE((SELECT MAX(v.measured_at) FROM vital_readings v
+                      WHERE v.patient_link_id=p.id), ''),
+            COALESCE((SELECT MAX(l.taken_at) FROM lab_results l
+                      WHERE l.patient_link_id=p.id), '')
+          ) AS last_observation,
+          (SELECT GROUP_CONCAT(c.code)
+           FROM patient_conditions pc JOIN conditions c ON c.id=pc.condition_id
+           WHERE pc.patient_link_id=p.id AND pc.is_active=1) AS cond_codes,
+          (SELECT GROUP_CONCAT(c.name)
+           FROM patient_conditions pc JOIN conditions c ON c.id=pc.condition_id
+           WHERE pc.patient_link_id=p.id AND pc.is_active=1) AS cond_names
+        FROM patient_links p
+        WHERE {where}
+        ORDER BY p.id DESC
+        LIMIT 500
+        """,
+        params,
+    ).fetchall()
 
     patients = []
-    for r in rows:
-        d = dict(r)
-        d['control'] = control_of(d['hba1c'], d['sys'], d['fbs'])
-        d['cond_list'] = [c for c in (d['cond_names'] or '').split(',') if c]
-        d['codes'] = set(c for c in (d['cond_codes'] or '').split(',') if c)
-        d['last_fa'] = format_jalali_date(d['last_vital']) if d['last_vital'] else None
-        patients.append(d)
-
-    counts = {
-        'all': len(patients),
-        'uncontrolled': sum(1 for p in patients if p['control'] == 'uncontrolled'),
-    }
+    for row in rows:
+        item = dict(row)
+        item["cond_list"] = [
+            value for value in (item.get("cond_names") or "").split(",") if value
+        ]
+        item["codes"] = {
+            value for value in (item.get("cond_codes") or "").split(",") if value
+        }
+        item["last_fa"] = (
+            format_jalali_date(item["last_observation"])
+            if item.get("last_observation")
+            else None
+        )
+        patients.append(item)
 
     catalog = PatientRepository().list_condition_catalog()
-    known_codes = {c['code'] for c in catalog if c.get('code')}
-    if flt == 'uncontrolled':
-        patients = [p for p in patients if p['control'] == 'uncontrolled']
-    elif flt in known_codes:
-        patients = [p for p in patients if flt in p['codes']]
+    known_codes = {item["code"] for item in catalog if item.get("code")}
+    if flt in known_codes:
+        patients = [item for item in patients if flt in item["codes"]]
+    else:
+        flt = ""
 
-    rank = {'uncontrolled': 0, 'borderline': 1, 'controlled': 2, 'unknown': 3}
-    patients.sort(key=lambda p: rank.get(p['control'], 3))
-
+    counts = {
+        "all": len(rows),
+        "with_observation": sum(
+            1 for item in rows if item["last_observation"]
+        ),
+    }
     return render_template(
-        "patients/list.html", patients=patients, q=q, active_page='patients',
-        counts=counts, active_filter=flt, condition_catalog=catalog,
+        "patients/list.html",
+        patients=patients,
+        q=q,
+        active_page="patients",
+        counts=counts,
+        active_filter=flt,
+        condition_catalog=catalog,
+        projection_policy="DESCRIPTIVE_ONLY",
     )
 
 
@@ -155,9 +189,8 @@ def detail(pid):
     from src.adapters.sqlite.core import get_db
     from src.services.patient_cockpit_service import PatientCockpitService
 
-    # Clinical analytics powers the cockpit (indicators, per-disease panels, risk, charts, med events)
+    # Descriptive analytics supplies measurements, dates and numeric deltas only.
     adata = AnalyticsService().patient_analytics(pid)
-    control = adata['control']
 
     # The patient surface has one clinical decision source: audited v2 output.
     # When v2 is unavailable we show an explicit unavailable state; v1 must
@@ -179,23 +212,9 @@ def detail(pid):
 
     # Trend charts for the key chronic vitals
     recent_vitals = vitals_repo.get_readings(pid, limit=30)
-    for r in recent_vitals:
-        r['level'] = evaluate_reading(r['type'], r['value'])
-        meta = indicator_labels.get(r['type']) or VITAL_TYPES.get(r['type'], {})
-        r['type_label'] = meta.get('label', r['type'])
-
-    # At-a-glance snapshot: latest reading per tracked indicator
-    snapshot = []
-    for vtype, reading in (control.get('latest') or {}).items():
-        meta = indicator_labels.get(vtype) or VITAL_TYPES.get(vtype, {})
-        snapshot.append({
-            'label': meta.get('label', vtype),
-            'unit': reading['unit'] or meta.get('unit', ''),
-            'value': reading['value'],
-            'level': evaluate_reading(vtype, reading['value']),
-            'order': meta.get('display_order', 100),
-        })
-    snapshot.sort(key=lambda s: s['order'])
+    for reading in recent_vitals:
+        meta = indicator_labels.get(reading['type']) or VITAL_TYPES.get(reading['type'], {})
+        reading['type_label'] = meta.get('label', reading['type'])
 
     labs = vitals_repo.get_labs(pid)
     appointments = AppointmentRepository().list_for_patient(pid)
@@ -214,7 +233,6 @@ def detail(pid):
     notes_exam = record_repo.list_notes(pid, 'exam')
     notes_lifestyle = record_repo.list_notes(pid, 'lifestyle')
     lab_catalog = lab_catalog_repo.all()
-    suggested_labs = lab_catalog_repo.for_conditions(condition_codes)
 
     # Medications remain descriptive; dosing recommendations belong to governed v2 output.
     drug_catalog = DrugCatalogRepository().all()
@@ -259,7 +277,6 @@ def detail(pid):
         medications=profile['medications'],
         allergies=profile['allergies'],
         visit_history=profile['visit_history'],
-        control=control,
         charts=adata['charts'],
         vital_types=VITAL_TYPES,
         recent_vitals=recent_vitals,
@@ -268,7 +285,6 @@ def detail(pid):
         followups=followups,
         condition_catalog=condition_catalog,
         entry_indicators=entry_indicators,
-        snapshot=snapshot,
         flag_groups=flag_groups,
         flags_by_section=flags_by_section,
         patient_flags=patient_flags,
@@ -280,7 +296,6 @@ def detail(pid):
         notes_exam=notes_exam,
         notes_lifestyle=notes_lifestyle,
         lab_catalog=lab_catalog,
-        suggested_labs=suggested_labs,
         drug_catalog=drug_catalog,
         medication_events=medication_events,
         wallet_balance=wallet_balance,
@@ -288,7 +303,6 @@ def detail(pid):
         indicators=adata['indicators'],
         by_category=adata['by_category'],
         med_events=adata['med_events'],
-        risk=adata['risk'],
         per_disease=adata['per_disease'],
         refill_due=adata['refill_due'],
         appt_summary=adata['appointments'],

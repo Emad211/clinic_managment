@@ -10,26 +10,49 @@ EDITABLE_FIELDS = ('label', 'category', 'channel', 'sms_template', 'lead_days',
                    'cooldown_days', 'priority', 'is_active')
 
 CHANNELS = {'sms': 'پیامک', 'worklist': 'ورک‌لیست (تماس)', 'both': 'هردو', 'off': 'خاموش'}
+RETIRED_CLINICAL_EVENTS = frozenset({
+    'uncontrolled', 'monitoring_due', 'screening_due', 'vaccine_due', 'red_flag',
+})
 
 class EngagementRepository:
 
     # ---- event config ----
     def active_events(self) -> list[dict]:
         db = get_db()
-        return [dict(r) for r in db.execute(
-            "SELECT * FROM engagement_events WHERE is_active=1 ORDER BY priority, id").fetchall()]
+        placeholders = ",".join("?" for _ in RETIRED_CLINICAL_EVENTS)
+        return [dict(row) for row in db.execute(
+            f"SELECT * FROM engagement_events WHERE is_active=1 "
+            f"AND event_key NOT IN ({placeholders}) ORDER BY priority, id",
+            tuple(sorted(RETIRED_CLINICAL_EVENTS)),
+        ).fetchall()]
 
     def all_events(self) -> list[dict]:
+        """Return only manager-editable administrative routing."""
         db = get_db()
-        return [dict(r) for r in db.execute(
-            "SELECT * FROM engagement_events ORDER BY priority, id").fetchall()]
+        placeholders = ",".join("?" for _ in RETIRED_CLINICAL_EVENTS)
+        return [dict(row) for row in db.execute(
+            f"SELECT * FROM engagement_events WHERE event_key NOT IN ({placeholders}) "
+            f"ORDER BY priority, id",
+            tuple(sorted(RETIRED_CLINICAL_EVENTS)),
+        ).fetchall()]
 
     def get_event(self, event_key: str) -> dict | None:
+        if event_key in RETIRED_CLINICAL_EVENTS:
+            return None
         db = get_db()
-        r = db.execute("SELECT * FROM engagement_events WHERE event_key=?", (event_key,)).fetchone()
-        return dict(r) if r else None
+        row = db.execute(
+            "SELECT * FROM engagement_events WHERE event_key=?",
+            (event_key,),
+        ).fetchone()
+        return dict(row) if row else None
 
     def update_event(self, event_id: int, fields: dict):
+        db = get_db()
+        existing = db.execute(
+            "SELECT event_key FROM engagement_events WHERE id=?", (event_id,)
+        ).fetchone()
+        if existing and existing["event_key"] in RETIRED_CLINICAL_EVENTS:
+            fields = {**fields, "is_active": 0, "channel": "off"}
         sets, params = [], []
         for f in EDITABLE_FIELDS:
             if f in fields:
@@ -38,7 +61,6 @@ class EngagementRepository:
         if not sets:
             return
         params.append(event_id)
-        db = get_db()
         db.execute(f"UPDATE engagement_events SET {', '.join(sets)} WHERE id=?", params)
         db.commit()
 

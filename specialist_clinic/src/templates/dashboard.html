@@ -5,11 +5,11 @@
 <div class="topbar dashboard-header">
     <div>
         <h1><svg class="icon icon-lg"><use href="#i-dashboard"></use></svg> داشبورد امروز</h1>
-        <p class="page-intro">خلاصه‌ی کارهای جاری درمانگاه؛ اولویت‌بندی بیماران و اقدام‌های جمعی در اتاق کنترل انجام می‌شود.</p>
+        <p class="page-intro">خلاصهٔ کارهای اداری درمانگاه؛ تفسیر بالینی فقط در Clinical Engine v2 انجام می‌شود.</p>
     </div>
     <div class="dashboard-header-actions">
         <a class="btn btn-ghost" href="{{ url_for('patients.enroll') }}"><svg class="icon"><use href="#i-plus"></use></svg> ثبت بیمار</a>
-        <a class="btn" href="{{ url_for('control_room.index') }}"><svg class="icon"><use href="#i-activity"></use></svg> ورود به اتاق کنترل</a>
+        <a class="btn" href="{{ url_for('control_room.index') }}"><svg class="icon"><use href="#i-activity"></use></svg> ورود به اتاق پیگیری</a>
     </div>
 </div>
 
@@ -18,7 +18,7 @@
     <div class="card kpi {% if stats.action_required %}kpi-warn{% else %}kpi-ok{% endif %}">
         <div class="ic"><svg class="icon"><use href="#i-activity"></use></svg></div>
         <div class="num">{{ stats.action_required|fa_num }}</div>
-        <div class="label">بیمار نیازمند اقدام</div>
+        <div class="label">پرونده دارای کار اداری</div>
     </div>
     <div class="card kpi kpi-info">
         <div class="ic"><svg class="icon"><use href="#i-bell"></use></svg></div>
@@ -30,10 +30,10 @@
         <div class="num">{{ stats.appointments_open|fa_num }}</div>
         <div class="label">نوبت پیش‌رو</div>
     </div>
-    <div class="card kpi {% if stats.control_rate >= 70 %}kpi-ok{% else %}kpi-warn{% endif %}">
-        <div class="ic"><svg class="icon"><use href="#i-trending-up"></use></svg></div>
-        <div class="num">{{ stats.control_rate|fa_num }}٪</div>
-        <div class="label">نرخ کنترل بیماری <span class="muted">({{ stats.controlled|fa_num }}/{{ stats.measured|fa_num }})</span></div>
+    <div class="card kpi kpi-info">
+        <div class="ic"><svg class="icon"><use href="#i-activity"></use></svg></div>
+        <div class="num">{{ stats.with_observation|fa_num }}</div>
+        <div class="label">پرونده دارای اندازه‌گیری ثبت‌شده</div>
     </div>
 </section>
 
@@ -81,12 +81,12 @@
 </section>
 
 <section class="dashboard-section" aria-labelledby="population-title">
-    <div class="section-title" id="population-title"><svg class="icon"><use href="#i-users"></use></svg> جمعیت تحت مراقبت <span class="section-sub">نمای پایش؛ اقدام روی گروه‌ها در اتاق کنترل انجام می‌شود</span></div>
+    <div class="section-title" id="population-title"><svg class="icon"><use href="#i-users"></use></svg> جمعیت تحت مراقبت <span class="section-sub">نمای اداری؛ اقدام روی گروه‌ها در اتاق پیگیری انجام می‌شود</span></div>
     <div class="dashboard-population-card card">
-        <div class="dashboard-insight"><span>بیماران مزمن فعال</span><strong>{{ stats.patients|fa_num }}</strong></div>
-        <div class="dashboard-insight"><span>بدون ثبت شاخص طی ۴ ماه</span><strong class="{% if stats.lapsed %}c-warn{% endif %}">{{ stats.lapsed|fa_num }}</strong></div>
-        <div class="dashboard-insight"><span>داروی نیازمند تجدید</span><strong class="{% if stats.refills_due %}c-warn{% endif %}">{{ stats.refills_due|fa_num }}</strong></div>
-        <div class="dashboard-insight"><span>کنترل‌نشده</span><strong class="{% if stats.uncontrolled %}c-danger{% endif %}">{{ stats.uncontrolled|fa_num }}</strong></div>
+        <div class="dashboard-insight"><span>بیماران فعال</span><strong>{{ stats.patients|fa_num }}</strong></div>
+        <div class="dashboard-insight"><span>بدون ثبت داده طی ۱۲۰ روز</span><strong>{{ stats.lapsed|fa_num }}</strong></div>
+        <div class="dashboard-insight"><span>داروی نیازمند تجدید</span><strong>{{ stats.refills_due|fa_num }}</strong></div>
+        <div class="dashboard-insight"><span>پرونده دارای پیگیری باز</span><strong>{{ stats.open_followup_patients|fa_num }}</strong></div>
     </div>
 </section>
 

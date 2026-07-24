@@ -5,11 +5,10 @@ Populates two tables (created in schema.sql by the data-model foundation phase):
                      display_order, is_active)
   - condition_lab_tests(condition_code, lab_test_key, display_order)
 
-These are clinical DEFAULTS — manager-editable and **needing physician review**.
-Reference ranges are typical adult Iranian-lab values for a starting set; they are
-not exhaustive and the engine's live thresholds still come from
-`clinical_indicators` (see CLAUDE.md threshold-sync rule). Seeded idempotently via
-INSERT OR IGNORE (keyed by the PK / composite key) so a re-run inserts nothing new.
+Reference ranges are descriptive laboratory metadata and are not treatment targets,
+alerts or executable rule thresholds. Clinical interpretation is performed only by
+Clinical Engine v2. Seeded idempotently via INSERT OR IGNORE (keyed by the PK /
+composite key) so a re-run inserts nothing new.
 
 Condition codes mirror the `conditions` seed in schema.sql:
   diabetes, hypertension, hyperlipidemia, ckd, thyroid.

@@ -15,7 +15,6 @@ SEGMENTS = {
     'all': 'همه بیماران',
     'diabetes': 'بیماران دیابتی',
     'hypertension': 'بیماران فشار خون',
-    'uncontrolled': 'بیماران کنترل‌نشده',
     'lapsed': 'بیماران بدون مراجعه اخیر',
     'refill_due': 'داروی رو به اتمام',
 }
@@ -37,21 +36,6 @@ def resolve_segment(segment: str) -> list[dict]:
                f"JOIN conditions c ON c.id=pc.condition_id "
                f"WHERE {where} AND c.code = ?")
         params = (code,)
-    elif segment == 'uncontrolled':
-        from src.adapters.sqlite.clinical_rules_repo import ClinicalRulesRepository
-        rules = ClinicalRulesRepository()
-        hba1c_danger = (rules.get('hba1c') or {}).get('danger') or 8
-        sys_danger = (rules.get('bp_systolic') or {}).get('danger') or 140
-        sql = f"""{base} WHERE {where} AND (
-            (SELECT x.value FROM (
-                SELECT value, measured_at ts FROM vital_readings WHERE patient_link_id=p.id AND type='hba1c'
-                UNION ALL SELECT value, taken_at ts FROM lab_results WHERE patient_link_id=p.id AND test_key='hba1c'
-             ) x ORDER BY x.ts DESC LIMIT 1) >= ?
-            OR
-            (SELECT v.value FROM vital_readings v WHERE v.patient_link_id=p.id AND v.type='bp_systolic'
-                ORDER BY v.measured_at DESC LIMIT 1) >= ?
-        )"""
-        params = (hba1c_danger, sys_danger)
     elif segment == 'lapsed':
         # no vital reading in the last 90 days
         sql = f"""{base} WHERE {where} AND NOT EXISTS (

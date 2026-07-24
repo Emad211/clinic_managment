@@ -50,7 +50,7 @@
     <aside class="patient-next-action tone-{{ next_action.tone }}" aria-labelledby="next-action-title">
         <div class="next-action-icon" aria-hidden="true"><svg class="icon"><use href="#i-{{ next_action.icon }}"></use></svg></div>
         <div class="next-action-copy">
-            <span>اقدام پیشنهادی بعدی</span>
+            <span>اولویت بعدی پرونده</span>
             <strong id="next-action-title">{{ next_action.title }}</strong>
             <small>{{ next_action.detail }}{% if next_action.date %} · {{ next_action.date|jalali_date }}{% endif %}</small>
         </div>
@@ -635,20 +635,6 @@
             </summary>
 
             <form method="post" action="{{ url_for('vitals.add_lab', pid=patient.id) }}" id="labForm" style="margin-top:var(--s3);">
-                {% if suggested_labs %}
-                <div class="muted text-xs" style="font-weight:700;margin-bottom:var(--s2);">آزمایش‌های پیشنهادی برای بیماری‌های این بیمار — برای افزودن کلیک کنید</div>
-                <div class="legend" id="labChips" style="margin-bottom:var(--s4);">
-                    {% for s in suggested_labs %}
-                    <span class="chip lab-chip" role="button" tabindex="0"
-                          data-key="{{ s.test_key }}" data-name="{{ s.name_fa }}"
-                          data-unit="{{ s.unit or '' }}"
-                          data-low="{{ s.ref_low if s.ref_low is not none else '' }}"
-                          data-high="{{ s.ref_high if s.ref_high is not none else '' }}">
-                        <svg class="icon icon-sm"><use href="#i-plus"></use></svg> {{ s.name_fa }}
-                    </span>
-                    {% endfor %}
-                </div>
-                {% endif %}
 
                 <div class="table-wrap">
                 <table id="labGrid">
@@ -705,14 +691,13 @@
         {% if recent_vitals %}
         <div class="table-wrap">
         <table>
-            <thead><tr><th>شاخص</th><th>مقدار</th><th>تاریخ</th><th>وضعیت</th><th></th></tr></thead>
+            <thead><tr><th>شاخص</th><th>مقدار</th><th>تاریخ</th><th></th></tr></thead>
             <tbody>
             {% for r in recent_vitals %}
                 <tr>
                     <td>{{ r.type_label }}</td>
                     <td><strong>{{ r.value|fa_num }}</strong> {{ r.unit or '' }}</td>
                     <td class="muted">{{ r.measured_at|jalali }}</td>
-                    <td>{% if r.level=='danger' %}<span class="badge badge-danger">خطر</span>{% elif r.level=='warn' %}<span class="badge badge-warn">هشدار</span>{% else %}<span class="badge badge-ok">نرمال</span>{% endif %}</td>
                     <td><form class="m-0" method="post" action="{{ url_for('vitals.delete_reading', pid=patient.id, reading_id=r.id) }}"><button class="btn btn-sm btn-danger btn-icon" type="submit" aria-label="حذف اندازه‌گیری" title="حذف اندازه‌گیری"><svg class="icon icon-sm"><use href="#i-trash"></use></svg></button></form></td>
                 </tr>
             {% endfor %}

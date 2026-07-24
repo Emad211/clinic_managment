@@ -157,7 +157,7 @@ CREATE TABLE IF NOT EXISTS followup_tasks (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     patient_link_id INTEGER NOT NULL,
     due_date TEXT,                  -- gregorian YYYY-MM-DD
-    reason TEXT,                    -- 'refill','uncontrolled','lapsed','visit_due','manual'
+    reason TEXT,                    -- 'refill','lapsed','visit_due','manual' or governed v2 task metadata
     detail TEXT,
     status TEXT NOT NULL DEFAULT 'open',  -- open, done, dismissed
     assigned_to TEXT,
@@ -178,16 +178,6 @@ CREATE TABLE IF NOT EXISTS followup_tasks (
     FOREIGN KEY (source_recommendation_event_id) REFERENCES clinical_recommendation_events(id)
 );
 
--- Care protocols (clinical decision support: periodic standard checks)
-CREATE TABLE IF NOT EXISTS care_protocols (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    condition_id INTEGER,
-    name TEXT NOT NULL,
-    interval_months INTEGER NOT NULL,
-    is_active INTEGER DEFAULT 1,
-    FOREIGN KEY (condition_id) REFERENCES conditions(id)
-);
-
 -- SMS templates
 CREATE TABLE IF NOT EXISTS sms_templates (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -202,7 +192,7 @@ CREATE TABLE IF NOT EXISTS sms_campaigns (
     name TEXT NOT NULL,
     template_id INTEGER,
     body TEXT,
-    segment TEXT,                   -- 'all','diabetes','hypertension','uncontrolled','lapsed','refill_due'
+    segment TEXT,                   -- descriptive/admin segments: all, condition, lapsed, refill_due
     campaign_type TEXT NOT NULL DEFAULT 'info',  -- 'info','wallet_credit','reminder'
     credit_amount INTEGER DEFAULT 0,             -- wallet credit granted per recipient (Toman)
     credit_expires_days INTEGER,                 -- optional credit expiry
@@ -280,12 +270,12 @@ CREATE TABLE IF NOT EXISTS engagement_events (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     event_key TEXT UNIQUE NOT NULL,
     label TEXT NOT NULL,
-    category TEXT NOT NULL DEFAULT 'clinical',   -- operational | clinical | marketing
+    category TEXT NOT NULL DEFAULT 'operational', -- operational | marketing
     channel TEXT NOT NULL DEFAULT 'worklist',    -- sms | worklist | both | off
     sms_template TEXT,                           -- {name} placeholder; used when channel includes sms
     lead_days INTEGER NOT NULL DEFAULT 0,        -- fire this many days before the due date
     cooldown_days INTEGER NOT NULL DEFAULT 30,   -- min days between repeats of this event per patient
-    source_action TEXT,                          -- rule action_type that feeds this event (NULL = time-based/manual)
+    source_action TEXT,                          -- retained audit metadata; governed v2 tasks use their own worklist path
     priority INTEGER NOT NULL DEFAULT 100,
     is_active INTEGER NOT NULL DEFAULT 1,
     notes TEXT
@@ -306,17 +296,12 @@ CREATE TABLE IF NOT EXISTS engagement_dispatch (
 CREATE INDEX IF NOT EXISTS idx_engagement_dispatch ON engagement_dispatch (patient_link_id, event_key);
 
 -- Seed the default event -> channel routing (manager-editable afterwards).
--- Routine outreach -> SMS; lapsed -> SMS + worklist; uncontrolled / red-flag -> worklist (phone call).
+-- Administrative outreach only. Clinical alerts and recommendations are projected by Clinical Engine v2.
 INSERT OR IGNORE INTO engagement_events
   (event_key, label, category, channel, sms_template, lead_days, cooldown_days, source_action, priority) VALUES
   ('appointment_reminder','یادآوری نوبت','operational','sms','سلام {name} عزیز، یادآوری نوبت شما در کلینیک تخصصی. لطفاً در زمان مقرر مراجعه فرمایید.',1,1,NULL,10),
   ('refill_due','یادآوری تجدید دارو','operational','sms','سلام {name} عزیز، داروی شما رو به اتمام است. جهت تمدید نسخه با کلینیک تماس بگیرید.',7,25,NULL,20),
-  ('monitoring_due','سررسید آزمایش پایش','clinical','sms','سلام {name} عزیز، زمان آزمایشِ پایشِ دوره‌ای شما فرارسیده است. لطفاً نوبت بگیرید.',0,60,'create_followup',30),
-  ('screening_due','سررسید غربالگری','clinical','sms','سلام {name} عزیز، زمان غربالگریِ دوره‌ای شما فرارسیده است. برای حفظ سلامتی نوبت بگیرید.',0,180,'schedule_screening',40),
-  ('vaccine_due','سررسید واکسن','clinical','sms','سلام {name} عزیز، یک واکسنِ توصیه‌شده برای شما سررسید شده است. لطفاً با کلینیک هماهنگ کنید.',0,180,'vaccine',50),
-  ('lapsed','بدون مراجعه اخیر','clinical','both','سلام {name} عزیز، مدتی است شما را در کلینیک ندیده‌ایم. برای ادامهٔ مراقبت نوبت بگیرید.',0,60,NULL,60),
-  ('uncontrolled','کنترل‌نشده','clinical','worklist',NULL,0,14,NULL,70),
-  ('red_flag','هشدار فوری بالینی','clinical','worklist',NULL,0,1,'redflag',80),
+  ('lapsed','بدون مراجعه اخیر','operational','both','سلام {name} عزیز، مدتی است شما را در کلینیک ندیده‌ایم. برای ادامهٔ مراقبت نوبت بگیرید.',0,60,NULL,60),
   ('visit_invite','دعوت به نوبت (پیامکی)','operational','sms','سلام {name} عزیز، برای ادامهٔ روند درمان لطفاً جهت تعیینِ نوبتِ ویزیت با کلینیک تماس بگیرید.',0,7,NULL,15),
   -- Phase 2: invoice-triggered outreach (thank-you after invoice close + procedure follow-up invites). Manager-editable; gated by the approval queue.
   ('thank_you','تشکر پس از مراجعه','operational','sms','سلام {name} عزیز، از مراجعه و اعتمادِ شما به کلینیک سپاسگزاریم. سلامت و تندرست باشید.',0,1,NULL,16),
@@ -326,6 +311,15 @@ INSERT OR IGNORE INTO engagement_events
   -- Manager-editable; approval-gated; deliberately generic wording (no clinical claims / no drug names).
   ('lab_consult_invite','دعوتِ آزمایش و مشاوره','operational','sms','سلام {name} عزیز، طبقِ توصیهٔ پزشک برای انجامِ آزمایش و مشاورهٔ پیگیری لطفاً جهتِ تعیینِ نوبت با کلینیک تماس بگیرید.',0,14,NULL,19),
   ('bp_glucose_invite','یادآوریِ قند و فشار','operational','sms','سلام {name} عزیز، برای اندازه‌گیریِ دوره‌ایِ قند و فشارِ خون لطفاً جهتِ هماهنگیِ نوبت با کلینیک تماس بگیرید.',0,14,NULL,19);
+
+-- Retire the pre-v2 threshold-driven worklist event on copied databases.
+UPDATE engagement_events
+SET is_active=0,
+    channel='off',
+    notes=COALESCE(notes,'') || '\nRetired: clinical interpretation moved to Clinical Engine v2.'
+WHERE event_key IN (
+    'uncontrolled','monitoring_due','screening_due','vaccine_due','red_flag'
+);
 
 -- Patient public-card access tokens (ADR-0004). Per-patient, unguessable, short-lived,
 -- revocable. The PUBLIC card route only ever READS via get_by_token; issue/revoke are
@@ -381,11 +375,6 @@ INSERT OR IGNORE INTO conditions (id, name, code, is_chronic, display_order, des
  (5, 'تیروئید', 'thyroid', 1, 50, 'پایش TSH و تنظیم درمان تیروئید.', 'i-stethoscope', 'ok');
 
 -- Seed care protocols (diabetes + hypertension standard periodic checks)
-INSERT OR IGNORE INTO care_protocols (id, condition_id, name, interval_months) VALUES (1, 1, 'آزمایش HbA1c', 3);
-INSERT OR IGNORE INTO care_protocols (id, condition_id, name, interval_months) VALUES (2, 1, 'معاینه فوندوس چشم', 12);
-INSERT OR IGNORE INTO care_protocols (id, condition_id, name, interval_months) VALUES (3, 1, 'آزمایش عملکرد کلیه', 12);
-INSERT OR IGNORE INTO care_protocols (id, condition_id, name, interval_months) VALUES (4, 2, 'کنترل فشار خون', 1);
-INSERT OR IGNORE INTO care_protocols (id, condition_id, name, interval_months) VALUES (5, 2, 'نوار قلب (ECG)', 12);
 
 -- Seed SMS templates
 INSERT OR IGNORE INTO sms_templates (id, name, body) VALUES (1, 'یادآوری نوبت', 'سلام {name} عزیز، یادآوری نوبت شما در کلینیک تخصصی. لطفاً در زمان مقرر مراجعه فرمایید.');
@@ -393,48 +382,40 @@ INSERT OR IGNORE INTO sms_templates (id, name, body) VALUES (2, 'یادآوری 
 INSERT OR IGNORE INTO sms_templates (id, name, body) VALUES (3, 'دعوت به چکاپ دوره‌ای', 'سلام {name} عزیز، زمان چکاپ دوره‌ای شما فرارسیده است. برای حفظ سلامتی نوبت بگیرید.');
 
 -- ============================================================================
--- Clinical decision rules engine (editable by the manager at /manager/rules)
--- Drives indicator metadata, red-flag thresholds, chart target lines,
--- per-disease dashboards, and the weighted risk score.
--- Source defaults: ADA Standards of Care (see docs/clinical_reference.md).
+-- Descriptive measurement catalog.
+-- Supplies labels, units, categories, disease applicability and display ordering.
+-- It MUST NOT contain or drive clinical thresholds, treatment targets, risk scores,
+-- alerts or recommendations; those belong exclusively to Clinical Engine v2 rules.
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS clinical_indicators (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    key TEXT UNIQUE NOT NULL,          -- vital_readings.type key
+    key TEXT UNIQUE NOT NULL,
     label TEXT NOT NULL,
     unit TEXT,
-    category TEXT NOT NULL DEFAULT 'other',  -- glycemic, bp, lipid, kidney, anthro, other
-    direction TEXT NOT NULL DEFAULT 'high',  -- 'high' = higher worse, 'low' = lower worse
-    warn REAL,                         -- borderline threshold (NULL = no flag)
-    danger REAL,                       -- red-flag threshold (NULL = no flag)
-    target REAL,                       -- goal value, drawn as chart reference line
-    goal_low REAL,                     -- optional goal range lower bound
-    goal_high REAL,                    -- optional goal range upper bound
-    conditions TEXT NOT NULL DEFAULT 'all',  -- comma list of condition codes, or 'all'
-    risk_weight INTEGER NOT NULL DEFAULT 1,  -- contribution to the weighted risk score
-    is_vital INTEGER NOT NULL DEFAULT 1,     -- show in vital entry / dashboard
+    category TEXT NOT NULL DEFAULT 'other',
+    conditions TEXT NOT NULL DEFAULT 'all',
+    is_vital INTEGER NOT NULL DEFAULT 1,
     display_order INTEGER NOT NULL DEFAULT 100,
     is_active INTEGER NOT NULL DEFAULT 1,
     notes TEXT
 );
 
--- Seed indicators (ADA-based defaults; manager may edit afterwards)
 INSERT OR IGNORE INTO clinical_indicators
-  (key, label, unit, category, direction, warn, danger, target, goal_low, goal_high, conditions, risk_weight, display_order, notes) VALUES
-  ('hba1c',        'HbA1c',              '%',          'glycemic', 'high', 7.0,  8.0,  7.0,  NULL, NULL, 'diabetes',                         3, 10, 'هدف اکثر بزرگسالان <۷٪؛ آسان‌گیرانه <۸٪'),
-  ('fbs',          'قند ناشتا (FBS)',    'mg/dL',      'glycemic', 'high', 130,  180,  130,  80,   130,  'diabetes',                         2, 20, 'هدف ناشتا ۸۰–۱۳۰'),
-  ('ppg',          'قند ۲ ساعت پس‌غذا',  'mg/dL',      'glycemic', 'high', 180,  250,  180,  NULL, NULL, 'diabetes',                         1, 25, 'اوج پس‌غذا <۱۸۰'),
-  ('bp_systolic',  'فشار سیستول',        'mmHg',       'bp',       'high', 130,  140,  130,  NULL, NULL, 'diabetes,hypertension',            2, 30, 'هدف <۱۳۰/۸۰'),
-  ('bp_diastolic', 'فشار دیاستول',       'mmHg',       'bp',       'high', 80,   90,   80,   NULL, NULL, 'diabetes,hypertension',            1, 40, 'هدف <۱۳۰/۸۰'),
-  ('pulse',        'ضربان قلب',          'bpm',        'bp',       'high', 100,  120,  NULL, 60,   100,  'all',                              0, 110,'اطلاعاتی'),
-  ('ldl',          'LDL کلسترول',        'mg/dL',      'lipid',    'high', 70,   100,  70,   NULL, NULL, 'diabetes,hypertension,hyperlipidemia', 2, 50, 'هدف فردی: <۷۰ پرخطر، <۵۵ ASCVD مستقر'),
-  ('hdl',          'HDL کلسترول',        'mg/dL',      'lipid',    'low',  40,   35,   NULL, 40,   NULL, 'all',                              1, 60, 'هرچه بالاتر بهتر'),
-  ('triglyceride', 'تری‌گلیسرید',        'mg/dL',      'lipid',    'high', 150,  500,  150,  NULL, NULL, 'diabetes,hypertension,hyperlipidemia', 1, 70, '≥۵۰۰ خطر پانکراتیت'),
-  ('egfr',         'eGFR (عملکرد کلیه)', 'mL/min',     'kidney',   'low',  60,   30,   NULL, 60,   NULL, 'diabetes,hypertension,ckd',        3, 80, 'هرچه بالاتر بهتر؛ <۳۰ پرخطر'),
-  ('uacr',         'UACR (آلبومین ادرار)','mg/g',      'kidney',   'high', 30,   300,  30,   NULL, NULL, 'diabetes,hypertension,ckd',        2, 90, '۳۰–۲۹۹ میکرو، ≥۳۰۰ ماکروآلبومینوری'),
-  ('weight',       'وزن',                'kg',         'anthro',   'high', NULL, NULL, NULL, NULL, NULL, 'all',                              0, 100,'پایش روند'),
-  ('bmi',          'BMI',                '',           'anthro',   'high', 25,   30,   NULL, NULL, 25,   'all',                              1, 105,'اضافه‌وزن ≥۲۵، چاقی ≥۳۰'),
-  ('tsh',          'TSH (تیروئید)',      'mIU/L',      'other',    'high', 4.5,  10,   2.5,  0.4,  4.0,  'thyroid',                          1, 115,'بالا=کم‌کاری؛ پایین (<۰.۴)=پرکاری');
+  (key, label, unit, category, conditions, display_order, notes) VALUES
+  ('hba1c',        'HbA1c',               '%',            'glycemic', 'diabetes',                              10, 'نمایش روند'),
+  ('fbs',          'قند ناشتا (FBS)',     'mg/dL',        'glycemic', 'diabetes',                              20, 'نمایش روند'),
+  ('ppg',          'قند ۲ ساعت پس‌غذا',   'mg/dL',        'glycemic', 'diabetes',                              25, 'نمایش روند'),
+  ('bp_systolic',  'فشار سیستول',         'mmHg',         'bp',       'diabetes,hypertension',                 30, 'نمایش روند'),
+  ('bp_diastolic', 'فشار دیاستول',        'mmHg',         'bp',       'diabetes,hypertension',                 40, 'نمایش روند'),
+  ('pulse',        'ضربان قلب',           'bpm',          'bp',       'all',                                  110, 'نمایش روند'),
+  ('ldl',          'LDL کلسترول',         'mg/dL',        'lipid',    'diabetes,hypertension,hyperlipidemia',  50, 'نمایش روند'),
+  ('hdl',          'HDL کلسترول',         'mg/dL',        'lipid',    'all',                                   60, 'نمایش روند'),
+  ('triglyceride', 'تری‌گلیسرید',         'mg/dL',        'lipid',    'diabetes,hypertension,hyperlipidemia',  70, 'نمایش روند'),
+  ('egfr',         'eGFR (عملکرد کلیه)',  'mL/min/1.73m²','kidney',   'diabetes,hypertension,ckd',             80, 'نمایش روند'),
+  ('uacr',         'UACR (آلبومین ادرار)','mg/g',         'kidney',   'diabetes,hypertension,ckd',             90, 'نمایش روند'),
+  ('weight',       'وزن',                 'kg',           'anthro',   'all',                                  100, 'نمایش روند'),
+  ('bmi',          'BMI',                 '',             'anthro',   'all',                                  105, 'نمایش روند'),
+  ('tsh',          'TSH (تیروئید)',       'mIU/L',        'other',    'thyroid',                              115, 'نمایش روند');
 
 -- ============================================================================
 -- Medication events: objective timeline of start / stop / dose changes.

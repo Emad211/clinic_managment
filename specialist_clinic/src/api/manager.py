@@ -3,7 +3,6 @@ from src.api.auth import login_required, manager_required
 from src.adapters.sqlite.core import get_db
 from src.adapters.sqlite.sms_repo import SmsRepository
 from src.services.auth_service import AuthService
-from src.services.protocol_service import ProtocolService
 from src.services.activity_logger import log_activity
 from src.adapters import accounting_bridge
 from src.common.network import get_network_info
@@ -227,8 +226,12 @@ def user_token(uid):
 @bp.route("/protocols")
 @manager_required
 def protocols():
-    summary = ProtocolService().summary()
-    return render_template("manager/protocols.html", summary=summary, active_page='manager')
+    """Retired deep-link for the pre-v2 periodic-care heuristic."""
+    flash(
+        "پایش‌های بالینی دوره‌ای فقط از بسته‌های govern‌شدهٔ Clinical Engine v2 منتشر می‌شوند.",
+        "warning",
+    )
+    return redirect(url_for("manager.clinical_engine"))
 
 
 @bp.route("/rules")
@@ -241,50 +244,32 @@ def rules():
 @bp.route("/rules/update", methods=["POST"])
 @manager_required
 def rules_update():
-    """Update one clinical indicator's editable fields."""
+    """Update descriptive observation-catalog metadata only."""
     from src.adapters.sqlite.clinical_rules_repo import ClinicalRulesRepository
+
     indicator_id = request.form.get("indicator_id", type=int)
     if not indicator_id:
         flash("شناسه نامعتبر")
         return redirect(url_for("manager.diseases"))
 
-    def num(field):
-        v = request.form.get(field, "").strip()
-        if v == "":
-            return None
-        try:
-            return float(v)
-        except ValueError:
-            return None
-
+    try:
+        display_order = int(request.form.get("display_order") or 100)
+    except ValueError:
+        display_order = 100
     fields = {
-        'label': request.form.get("label", "").strip(),
-        'unit': request.form.get("unit", "").strip(),
-        'direction': request.form.get("direction", "high"),
-        'warn': num("warn"), 'danger': num("danger"), 'target': num("target"),
-        'goal_low': num("goal_low"), 'goal_high': num("goal_high"),
-        'conditions': request.form.get("conditions", "all").strip() or "all",
-        'risk_weight': int(num("risk_weight") or 0),
-        'display_order': int(num("display_order") or 100),
-        'is_active': 1 if request.form.get("is_active") == "on" else 0,
+        "label": request.form.get("label", "").strip(),
+        "unit": request.form.get("unit", "").strip(),
+        "category": request.form.get("category", "other").strip() or "other",
+        "conditions": request.form.get("conditions", "all").strip() or "all",
+        "is_vital": 1 if request.form.get("is_vital") == "on" else 0,
+        "display_order": display_order,
+        "is_active": 1 if request.form.get("is_active") == "on" else 0,
     }
     ClinicalRulesRepository().update(indicator_id, fields)
-    log_activity("rules_update", f"ویرایش قاعده‌ی بالینی #{indicator_id}")
-    flash("قاعده به‌روزرسانی شد", "success")
-    # Return to wherever the edit came from (per-disease page or the all-indicators page)
+    log_activity("indicator_metadata_update", f"ویرایش فراداده شاخص #{indicator_id}")
+    flash("فرادادهٔ نمایشی شاخص به‌روزرسانی شد", "success")
     return redirect(request.referrer or url_for("manager.diseases"))
 
-
-_RULE_CAT_LABELS = {
-    'diagnosis': 'تشخیص و طبقه‌بندی', 'target': 'اهداف درمانی', 'medication': 'انتخاب دارو',
-    'drug_safety': 'ایمنی و منع دارو', 'insulin': 'انسولین', 'monitoring': 'پایش',
-    'screening': 'غربالگری عوارض', 'redflag': 'هشدارهای فوری', 'hypo': 'هیپوگلیسمی',
-    'lifestyle': 'سبک زندگی و آموزش', 'vaccination': 'واکسیناسیون',
-    'bp_rx': 'درمان فشار خون', 'lipid_rx': 'درمان چربی خون',
-}
-_RULE_CAT_ORDER = ['redflag', 'diagnosis', 'target', 'medication', 'bp_rx', 'lipid_rx',
-                   'insulin', 'drug_safety', 'monitoring', 'screening', 'hypo',
-                   'lifestyle', 'vaccination']
 
 
 @bp.route("/decision-rules")
@@ -304,7 +289,7 @@ def decision_rules_update():
 @bp.route("/diseases")
 @manager_required
 def diseases():
-    """Per-disease module hub — each chronic condition is its own protocol page."""
+    """Per-disease descriptive catalog hub; executable logic remains in v2."""
     from src.adapters.sqlite.clinical_rules_repo import ClinicalRulesRepository
     from src.adapters.sqlite.clinical_engine_rules_repo import (
         ClinicalEngineRulesRepository,
@@ -345,7 +330,7 @@ def _indicator_applies(ind: dict, code: str) -> bool:
 @bp.route("/diseases/<code>")
 @manager_required
 def disease_detail(code):
-    """One disease in one page: display indicators/targets + monitoring."""
+    """One disease page: descriptive measurement catalog and monitoring schedule."""
     from src.adapters.sqlite.clinical_rules_repo import ClinicalRulesRepository, CATEGORY_LABELS
     db = get_db()
     cond = db.execute("SELECT * FROM conditions WHERE code=?", (code,)).fetchone()
@@ -362,68 +347,53 @@ def disease_detail(code):
     ind_groups = [(cc, CATEGORY_LABELS.get(cc, cc), ig[cc])
                   for cc in ['glycemic', 'bp', 'lipid', 'kidney', 'anthro', 'other'] if cc in ig]
 
-    # Monitoring schedule (care protocols) for this condition
-    protocols = [dict(p) for p in db.execute(
-        "SELECT * FROM care_protocols WHERE condition_id=? AND is_active=1 ORDER BY interval_months",
-        (cond['id'],)).fetchall()]
-
     return render_template(
-        "manager/disease_detail.html", active_page='manager', cond=dict(cond),
-        ind_groups=ind_groups, protocols=protocols)
+        "manager/disease_detail.html",
+        active_page="manager",
+        cond=dict(cond),
+        ind_groups=ind_groups,
+    )
 
 
 @bp.route("/rules/add", methods=["POST"])
 @manager_required
 def rules_add():
-    """Add a brand-new clinical indicator (manager has a free hand)."""
+    """Add descriptive observation metadata; never a clinical threshold rule."""
     from src.adapters.sqlite.clinical_rules_repo import ClinicalRulesRepository
-
-    def num(field):
-        v = request.form.get(field, "").strip()
-        try:
-            return float(v) if v != "" else None
-        except ValueError:
-            return None
 
     key = request.form.get("key", "").strip().lower().replace(" ", "_")
     label = request.form.get("label", "").strip()
     if not key or not label:
         flash("کلید و عنوان الزامی است")
         return redirect(request.referrer or url_for("manager.diseases"))
+    try:
+        display_order = int(request.form.get("display_order") or 100)
+    except ValueError:
+        display_order = 100
     ClinicalRulesRepository().create({
-        'key': key, 'label': label, 'unit': request.form.get("unit", "").strip(),
-        'category': request.form.get("category", "other"),
-        'direction': request.form.get("direction", "high"),
-        'warn': num("warn"), 'danger': num("danger"), 'target': num("target"),
-        'conditions': request.form.get("conditions", "all").strip() or "all",
-        'risk_weight': int(num("risk_weight") or 1),
-        'display_order': int(num("display_order") or 100),
+        "key": key,
+        "label": label,
+        "unit": request.form.get("unit", "").strip(),
+        "category": request.form.get("category", "other"),
+        "conditions": request.form.get("conditions", "all").strip() or "all",
+        "is_vital": 1 if request.form.get("is_vital") == "on" else 0,
+        "display_order": display_order,
+        "is_active": 1,
     })
-    log_activity("rules_add", f"افزودن شاخص بالینی: {label}")
-    flash("شاخص جدید اضافه شد", "success")
+    log_activity("indicator_metadata_add", f"افزودن فراداده شاخص: {label}")
+    flash("شاخص نمایشی اضافه شد؛ هیچ آستانه یا هدف درمانی ایجاد نشد", "success")
     return redirect(request.referrer or url_for("manager.diseases"))
 
 
 @bp.route("/protocols/followup", methods=["POST"])
 @manager_required
 def protocol_followup():
-    """Create follow-up tasks for all patients due for a given protocol."""
-    from src.adapters.sqlite.followups_repo import FollowupRepository
-    protocol_id = request.form.get("protocol_id", type=int)
-    summary = ProtocolService().summary()
-    target = next((p for p in summary if p['id'] == protocol_id), None)
-    if not target:
-        flash("پروتکل یافت نشد")
-        return redirect(url_for("manager.protocols"))
-    repo = FollowupRepository()
-    created = 0
-    for pat in target['due_patients']:
-        if not repo.exists_open(pat['id'], 'visit_due'):
-            repo.create(pat['id'], reason='visit_due',
-                        detail=f"موعد: {target['name']}")
-            created += 1
-    flash(f"{created} پیگیری برای «{target['name']}» ساخته شد", "success")
-    return redirect(url_for("manager.protocols"))
+    """Fail closed for the retired pre-v2 care-protocol action."""
+    flash(
+        "ساخت پیگیری از پروتکل قدیمی متوقف شده است؛ از recommendation audit‌شدهٔ v2 استفاده کنید.",
+        "warning",
+    )
+    return redirect(url_for("manager.clinical_engine"))
 
 
 # ============================== Engagement engine ==============================

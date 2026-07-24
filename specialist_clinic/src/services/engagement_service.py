@@ -11,7 +11,10 @@ import hashlib
 import json
 
 from src.adapters.sqlite.core import get_db
-from src.adapters.sqlite.engagement_repo import EngagementRepository
+from src.adapters.sqlite.engagement_repo import (
+    EngagementRepository,
+    RETIRED_CLINICAL_EVENTS,
+)
 from src.adapters.sqlite.followups_repo import FollowupRepository
 from src.adapters.sqlite.sms_repo import SmsRepository
 from src.common.utils import (
@@ -29,7 +32,6 @@ DAILY_CAP_DEFAULT = 1
 
 REASON_BY_EVENT = {
     "lapsed": "lapsed",
-    "uncontrolled": "uncontrolled",
     "appointment_reminder": "visit_due",
     "refill_due": "refill",
 }
@@ -80,6 +82,7 @@ class EngagementService:
         config = {
             event["event_key"]: event
             for event in self.repo.active_events()
+            if event["event_key"] != "uncontrolled"
         }
         events: list[dict] = []
         month = iran_now().strftime("%Y-%m")
@@ -163,53 +166,9 @@ class EngagementService:
                     }
                 )
 
-        # This legacy descriptive worklist signal remains isolated from Clinical
-        # Engine output and never sends treatment advice. It will be retired when
-        # parallel clinical indicators are consolidated in the dedicated tranche.
-        if "uncontrolled" in config:
-            from src.adapters.sqlite.clinical_rules_repo import (
-                ClinicalRulesRepository,
-            )
-
-            rules = ClinicalRulesRepository()
-            hba1c_danger = (
-                (rules.get("hba1c") or {}).get("danger") or 8
-            )
-            systolic_danger = (
-                (rules.get("bp_systolic") or {}).get("danger") or 140
-            )
-            row = db.execute(
-                """SELECT 1 FROM patient_links patient
-                   WHERE patient.id=? AND (
-                       (
-                           SELECT vital.value FROM vital_readings vital
-                           WHERE vital.patient_link_id=patient.id
-                             AND vital.type='hba1c'
-                           ORDER BY vital.measured_at DESC LIMIT 1
-                       ) >= ?
-                       OR (
-                           SELECT vital.value FROM vital_readings vital
-                           WHERE vital.patient_link_id=patient.id
-                             AND vital.type='bp_systolic'
-                           ORDER BY vital.measured_at DESC LIMIT 1
-                       ) >= ?
-                   )""",
-                (
-                    patient_link_id,
-                    hba1c_danger,
-                    systolic_danger,
-                ),
-            ).fetchone()
-            if row:
-                events.append(
-                    {
-                        "event_key": "uncontrolled",
-                        "period_key": f"unctrl:{month}",
-                        "detail": (
-                            "آخرین شاخص‌ها خارج از محدودهٔ کنترل"
-                        ),
-                    }
-                )
+        # High/low measurements never create administrative outreach here.
+        # Actionable interpretation and any resulting clinical task must originate
+        # from an audited Clinical Engine v2 recommendation.
 
         return events, config
 
@@ -381,6 +340,9 @@ class EngagementService:
         approval = self.repo.get_approval(approval_id)
         if not approval or approval.get("status") != "pending":
             return {"ok": False, "reason": "not_pending"}
+        if approval.get("event_key") in RETIRED_CLINICAL_EVENTS:
+            self.repo.set_status(approval_id, "rejected", "system:logic-consolidation")
+            return {"ok": False, "reason": "retired_clinical_event"}
         if self._quiet_now() and not override:
             return {"ok": False, "reason": "quiet"}
         if self.repo.sms_count_today(

@@ -1,137 +1,32 @@
 {% extends "base.html" %}
 {% block title %}پروتکل {{ cond.name }}{% endblock %}
-{% set sevlabel = {'urgent':'فوری','warn':'هشدار','info':'اطلاعاتی'} %}
-{% set sevbadge = {'urgent':'badge-danger','warn':'badge-warn','info':'badge-info'} %}
 {% block content %}
 <div class="crumb"><a href="{{ url_for('manager.index') }}">مدیریت</a> / <a href="{{ url_for('manager.diseases') }}">پروتکل بیماری‌ها</a> / {{ cond.name }}</div>
-<div class="topbar">
-    <h1><svg class="icon icon-lg"><use href="#{{ cond.icon or 'i-activity' }}"></use></svg> پروتکل {{ cond.name }}</h1>
-    <a class="btn btn-ghost" href="{{ url_for('manager.diseases') }}"><svg class="icon"><use href="#i-arrow-left"></use></svg> همهٔ بیماری‌ها</a>
-</div>
-<p class="page-intro">
-    {% if cond.description %}{{ cond.description }} {% endif %}شاخص‌ها، اهداف نمایشی و برنامهٔ پایش این بیماری. قواعد تصمیم فقط در موتور بالینی v2 مدیریت می‌شوند.
-    هر تغییری اینجا بدهید بلافاصله روی پروندهٔ بیمارانِ مبتلا به {{ cond.name }} اعمال می‌شود. خروجی پیشنهادی است؛ تجویز با پزشک.
-</p>
+<div class="topbar"><h1><svg class="icon icon-lg"><use href="#{{ cond.icon or 'i-activity' }}"></use></svg> پروتکل {{ cond.name }}</h1><a class="btn btn-ghost" href="{{ url_for('manager.diseases') }}"><svg class="icon"><use href="#i-arrow-left"></use></svg> همهٔ بیماری‌ها</a></div>
+<p class="page-intro">{% if cond.description %}{{ cond.description }} {% endif %}این صفحه فقط نام، واحد، دسته و محل نمایش اندازه‌گیری‌ها را مدیریت می‌کند. آستانه، هدف درمانی، طبقه‌بندی خطر و توصیهٔ بالینی فقط در بسته‌های govern‌شدهٔ Clinical Engine v2 تعریف می‌شوند.</p>
+<div class="alert-banner alert-info"><svg class="icon"><use href="#i-shield"></use></svg><span>تغییر فرادادهٔ این صفحه هیچ بیمار را «کنترل‌شده»، «پرخطر» یا نیازمند درمان اعلام نمی‌کند.</span></div>
 
-<!-- ===== INDICATORS & TARGETS ===== -->
 <div class="card">
-    <div class="section-title"><svg class="icon"><use href="#i-sigma"></use></svg> شاخص‌ها و اهداف <span class="section-sub">آستانه‌ها، اهداف و خط مرجعِ نمودارها</span></div>
+    <div class="section-title"><svg class="icon"><use href="#i-sigma"></use></svg> فرادادهٔ شاخص‌ها <span class="section-sub">برای نمایش مقدار و روند؛ بدون تفسیر بالینی</span></div>
     {% for cat, cat_label, items in ind_groups %}
     <div class="muted text-xs" style="margin:var(--s3) 0 var(--s2);font-weight:700;">{{ cat_label }}</div>
     <div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(320px,1fr));">
         {% for ind in items %}
         <form method="post" action="{{ url_for('manager.rules_update') }}" class="rule-card"{% if not ind.is_active %} style="opacity:.55;"{% endif %}>
             <input type="hidden" name="indicator_id" value="{{ ind.id }}">
-            <div class="rule-head"><div style="flex:1;">
-                <input type="text" class="input-strong" name="label" value="{{ ind.label }}">
-                <div class="key">کلید: <span class="chip"><code>{{ ind.key }}</code></span></div>
-            </div></div>
-            <div class="fgrid c2">
-                <div class="fld"><label>واحد</label><input type="text" name="unit" value="{{ ind.unit or '' }}"></div>
-                <div class="fld"><label>جهت</label><select name="direction">
-                    <option value="high" {% if ind.direction=='high' %}selected{% endif %}>بالا = بد</option>
-                    <option value="low" {% if ind.direction=='low' %}selected{% endif %}>پایین = بد</option>
-                </select></div>
-            </div>
-            <div class="fgrid c3">
-                <div class="fld"><label class="c-warn">هشدار</label><input type="number" step="any" name="warn" value="{{ ind.warn if ind.warn is not none else '' }}"></div>
-                <div class="fld"><label class="c-danger">خطر</label><input type="number" step="any" name="danger" value="{{ ind.danger if ind.danger is not none else '' }}"></div>
-                <div class="fld"><label class="c-ok">هدف</label><input type="number" step="any" name="target" value="{{ ind.target if ind.target is not none else '' }}"></div>
-            </div>
-            <div class="fgrid c2">
-                <div class="fld"><label>محدودهٔ مطلوب — کف</label><input type="number" step="any" name="goal_low" value="{{ ind.goal_low if ind.goal_low is not none else '' }}"></div>
-                <div class="fld"><label>سقف</label><input type="number" step="any" name="goal_high" value="{{ ind.goal_high if ind.goal_high is not none else '' }}"></div>
-            </div>
-            <div class="fld"><label>بیماری‌های مرتبط</label><input type="text" name="conditions" value="{{ ind.conditions }}"></div>
-            <div class="fgrid c2">
-                <div class="fld"><label>وزن ریسک (۰ تا ۵)</label><input type="number" name="risk_weight" min="0" max="5" value="{{ ind.risk_weight }}"></div>
-                <div class="fld"><label>ترتیب نمایش</label><input type="number" name="display_order" value="{{ ind.display_order }}"></div>
-            </div>
-            <div class="rule-foot">
-                <label class="switch-row" style="margin:0;cursor:pointer;"><span class="switch"><input type="checkbox" name="is_active" {% if ind.is_active %}checked{% endif %}><span class="sl"></span></span> فعال</label>
-                <button class="btn btn-sm" type="submit"><svg class="icon icon-sm"><use href="#i-save"></use></svg> ذخیره</button>
-            </div>
+            <div class="rule-head"><div style="flex:1;"><input type="text" class="input-strong" name="label" value="{{ ind.label }}"><div class="key">کلید immutable: <span class="chip"><code>{{ ind.key }}</code></span></div></div></div>
+            <div class="fgrid c2"><div class="fld"><label>واحد</label><input type="text" name="unit" value="{{ ind.unit or '' }}"></div><div class="fld"><label>دستهٔ نمایشی</label><select name="category">{% for key,label in [('glycemic','قند خون'),('bp','فشار خون'),('lipid','چربی خون'),('kidney','کلیه'),('anthro','تن‌سنجی'),('other','سایر')] %}<option value="{{ key }}" {% if ind.category==key %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></div></div>
+            <div class="fld"><label>بیماری‌های مرتبط برای نمایش</label><input type="text" name="conditions" value="{{ ind.conditions or 'all' }}"></div>
+            <div class="fgrid c2"><div class="fld"><label>ترتیب نمایش</label><input type="number" name="display_order" value="{{ ind.display_order or 100 }}"></div><label class="switch-row"><span class="switch"><input type="checkbox" name="is_vital" {% if ind.is_vital %}checked{% endif %}><span class="sl"></span></span> قابل ثبت در فرم سریع</label></div>
+            <div class="rule-foot"><label class="switch-row"><span class="switch"><input type="checkbox" name="is_active" {% if ind.is_active %}checked{% endif %}><span class="sl"></span></span> فعال برای نمایش</label><button class="btn btn-sm" type="submit"><svg class="icon icon-sm"><use href="#i-save"></use></svg> ذخیره</button></div>
         </form>
         {% endfor %}
     </div>
-    {% else %}
-    <div class="empty"><svg class="icon"><use href="#i-sigma"></use></svg><div>شاخصی برای این بیماری ثبت نشده است.</div></div>
-    {% endfor %}
-    <details class="card card-soft" style="margin-top:var(--s4);">
-        <summary class="flex items-center gap-2" style="cursor:pointer;list-style:none;min-height:44px;">
-            <svg class="icon icon-sm"><use href="#i-plus"></use></svg><strong>افزودن شاخص به {{ cond.name }}</strong>
-        </summary>
-        <form method="post" action="{{ url_for('manager.rules_add') }}" style="margin-top:var(--s3);">
-            <input type="hidden" name="conditions" value="{{ cond.code }}">
-            <div class="grid grid-4">
-                <div class="fld"><label>کلید یکتا <span class="req">*</span></label><input type="text" name="key" placeholder="مثلاً tsh" required></div>
-                <div class="fld"><label>عنوان <span class="req">*</span></label><input type="text" name="label" required></div>
-                <div class="fld"><label>واحد</label><input type="text" name="unit"></div>
-                <div class="fld"><label>دسته</label><select name="category"><option value="glycemic">قند خون</option><option value="bp">فشار خون</option><option value="lipid">چربی خون</option><option value="kidney">کلیه</option><option value="anthro">تن‌سنجی</option><option value="other" selected>سایر</option></select></div>
-            </div>
-            <div class="grid grid-4" style="margin-top:var(--s3);">
-                <div class="fld"><label>جهت خطر</label><select name="direction"><option value="high">بالا = بد</option><option value="low">پایین = بد</option></select></div>
-                <div class="fld"><label>هشدار</label><input type="number" step="any" name="warn"></div>
-                <div class="fld"><label>خطر</label><input type="number" step="any" name="danger"></div>
-                <div class="fld"><label>هدف</label><input type="number" step="any" name="target"></div>
-            </div>
-            <input type="hidden" name="risk_weight" value="1"><input type="hidden" name="display_order" value="100">
-            <button class="btn btn-sm mt-3" type="submit"><svg class="icon icon-sm"><use href="#i-plus"></use></svg> افزودن شاخص</button>
-        </form>
+    {% else %}<div class="empty"><svg class="icon"><use href="#i-sigma"></use></svg><div>شاخصی برای این بیماری ثبت نشده است.</div></div>{% endfor %}
+
+    <details class="card card-soft" style="margin-top:var(--s4);"><summary class="flex items-center gap-2" style="cursor:pointer;list-style:none;min-height:44px;"><svg class="icon icon-sm"><use href="#i-plus"></use></svg><strong>افزودن شاخص به {{ cond.name }} (نمایشی)</strong></summary>
+        <form method="post" action="{{ url_for('manager.rules_add') }}" class="mt-3"><input type="hidden" name="conditions" value="{{ cond.code }}"><div class="grid grid-4"><div class="fld"><label>کلید یکتا <span class="req">*</span></label><input type="text" name="key" required></div><div class="fld"><label>عنوان <span class="req">*</span></label><input type="text" name="label" required></div><div class="fld"><label>واحد</label><input type="text" name="unit"></div><div class="fld"><label>دسته</label><select name="category"><option value="glycemic">قند خون</option><option value="bp">فشار خون</option><option value="lipid">چربی خون</option><option value="kidney">کلیه</option><option value="anthro">تن‌سنجی</option><option value="other" selected>سایر</option></select></div></div><div class="row mt-3"><label class="switch-row"><span class="switch"><input type="checkbox" name="is_vital" checked><span class="sl"></span></span> قابل ثبت در فرم سریع</label><input type="hidden" name="display_order" value="100"><button class="btn btn-sm" type="submit"><svg class="icon icon-sm"><use href="#i-plus"></use></svg> افزودن شاخص</button></div></form>
     </details>
 </div>
 
-<!-- ===== DECISION RULES ===== -->
-{% if false %}{# Retired v1 editor retained only as inert template history. #}
-<div class="card">
-    <div class="section-title"><svg class="icon"><use href="#i-clipboard"></use></svg> قواعد تصمیم
-        <span class="section-sub">{{ rules_active|fa_num }} از {{ rules_total|fa_num }} فعال — شاملِ قواعدِ مشترکِ بین‌بیماری</span></div>
-    {% for cat, cat_label, rules in rule_groups %}
-    <div class="muted text-xs" style="margin:var(--s4) 0 var(--s2);font-weight:700;">{{ cat_label }} · {{ rules|length|fa_num }}</div>
-    {% for r in rules %}
-    <div id="rule-{{ r.id }}" class="rule-card" style="margin-bottom:var(--s3);{% if not r.is_active %}opacity:.55;{% endif %}border-right:3px solid {% if r.severity=='urgent' %}var(--danger){% elif r.severity=='warn' %}var(--warn){% else %}var(--info){% endif %};">
-        <form method="post" action="{{ url_for('manager.decision_rules_update') }}">
-            <input type="hidden" name="rule_id" value="{{ r.id }}">
-            <div class="rule-head"><div style="flex:1;">
-                <strong>{{ r.title }}</strong>
-                <span class="badge badge-muted text-xs">{{ r.rule_code }}</span>
-                <span class="badge {{ sevbadge[r.severity] }} text-xs">{{ sevlabel[r.severity] }}</span>
-                {% if r.condition_code=='all' %}<span class="badge badge-info text-xs">مشترک</span>{% endif %}
-                {% if r.evidence_level %}<span class="badge badge-violet text-xs">شواهد {{ r.evidence_level }}</span>{% endif %}
-                <div class="key" style="margin-top:var(--s2);"><b>اگر:</b> {{ r.human_if or '—' }}</div>
-            </div></div>
-            <div class="fld"><label>توصیه (Then)</label><textarea name="recommendation" rows="2">{{ r.recommendation or '' }}</textarea></div>
-            {% if r.dosage_titration is not none %}<div class="fld"><label>دوز/تیتراسیون</label><textarea name="dosage_titration" rows="2">{{ r.dosage_titration or '' }}</textarea></div>{% else %}<input type="hidden" name="dosage_titration" value="">{% endif %}
-            <div class="fgrid c2">
-                <div class="fld"><label>پایش</label><input type="text" name="monitoring" value="{{ r.monitoring or '' }}"></div>
-                <div class="fld"><label>منع/هشدار</label><input type="text" name="contraindications" value="{{ r.contraindications or '' }}"></div>
-            </div>
-            <div class="fgrid c3">
-                <div class="fld"><label>سطح شواهد</label><select name="evidence_level">{% for ev in ['','A','B','C','E'] %}<option value="{{ ev }}" {% if r.evidence_level==ev %}selected{% endif %}>{{ ev or '—' }}</option>{% endfor %}</select></div>
-                <div class="fld"><label>شدت</label><select name="severity">{% for sv in ['info','warn','urgent'] %}<option value="{{ sv }}" {% if r.severity==sv %}selected{% endif %}>{{ sevlabel[sv] }}</option>{% endfor %}</select></div>
-                <div class="fld"><label>اولویت</label><input type="number" name="priority" value="{{ r.priority }}"></div>
-            </div>
-            <div class="rule-foot">
-                <label class="switch-row" style="margin:0;cursor:pointer;"><span class="switch"><input type="checkbox" name="is_active" {% if r.is_active %}checked{% endif %}><span class="sl"></span></span> فعال</label>
-                <button class="btn btn-sm" type="submit"><svg class="icon icon-sm"><use href="#i-save"></use></svg> ذخیره</button>
-            </div>
-        </form>
-    </div>
-    {% endfor %}
-    {% else %}
-    <div class="empty"><svg class="icon"><use href="#i-clipboard"></use></svg><div>قاعده‌ای برای این بیماری نیست.</div></div>
-    {% endfor %}
-</div>
-{% endif %}
-
-<!-- ===== MONITORING SCHEDULE ===== -->
-{% if protocols %}
-<div class="card">
-    <div class="section-title"><svg class="icon"><use href="#i-calendar"></use></svg> برنامهٔ پایش <span class="section-sub">چک‌های دوره‌ای استاندارد</span></div>
-    <div class="table-wrap"><table>
-        <thead><tr><th>عنوان</th><th>فاصله</th></tr></thead>
-        <tbody>{% for p in protocols %}<tr><td>{{ p.name }}</td><td class="nums">هر {{ p.interval_months|fa_num }} ماه</td></tr>{% endfor %}</tbody>
-    </table></div>
-</div>
-{% endif %}
 {% endblock %}

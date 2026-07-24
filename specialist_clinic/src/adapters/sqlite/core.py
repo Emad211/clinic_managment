@@ -299,6 +299,35 @@ def _run_migrations(db):
         "AND clinical_semantic_key IS NOT NULL"
     )
     db.commit()
+    # Pre-v2 periodic-care heuristics and threshold-derived engagement are retired.
+    # Data in this project is seed/demo; copied databases are cut over fail-closed.
+    db.execute("DROP TABLE IF EXISTS care_protocols")
+    db.execute(
+        """UPDATE engagement_events
+           SET is_active=0, channel='off'
+           WHERE event_key IN (
+               'uncontrolled','monitoring_due','screening_due','vaccine_due','red_flag'
+           )"""
+    )
+    db.execute(
+        """UPDATE engagement_events
+           SET category='operational'
+           WHERE event_key IN (
+               'appointment_reminder','refill_due','lapsed','visit_invite',
+               'thank_you','ear_wash_invite','wound_care_invite',
+               'lab_consult_invite','bp_glucose_invite'
+           )"""
+    )
+    db.execute(
+        """UPDATE engagement_approvals
+           SET status='rejected', decided_by='system:logic-consolidation',
+               decided_at=datetime('now','+3 hours','+30 minutes'),
+               last_error='Retired clinical interpretation event'
+           WHERE status='pending' AND event_key IN (
+               'uncontrolled','monitoring_due','screening_due','vaccine_due','red_flag'
+           )"""
+    )
+    db.commit()
     _ensure_column(db, "engagement_events", "event_type", "TEXT")
     _ensure_column(db, "engagement_events", "is_custom", "INTEGER DEFAULT 0")
     _ensure_column(db, "engagement_approvals", "sms_message_id", "INTEGER")
@@ -328,6 +357,10 @@ def _run_migrations(db):
     )
     ensure_clinical_flag_history_storage(db)
     _ensure_clinical_engine_v2_storage(db)
+    from src.adapters.sqlite.descriptive_indicator_catalog_schema import (
+        ensure_descriptive_indicator_catalog,
+    )
+    ensure_descriptive_indicator_catalog(db)
     # Seed the lab-test and drug catalogs (idempotent; wrapped so a missing seed
     # module or any failure never breaks startup).
     try:
