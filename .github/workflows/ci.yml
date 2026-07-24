@@ -14,7 +14,7 @@ concurrency:
 
 jobs:
   apply-consolidation:
-    name: "apply descriptive consolidation"
+    name: "apply complete clinical logic consolidation"
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -22,34 +22,93 @@ jobs:
           ref: agent-clinical-parallel-logic-consolidation
           fetch-depth: 0
 
-      - name: Decode reviewed first batch
+      - name: Decode and verify reviewed primary files
         shell: bash
         run: |
           set -euo pipefail
-          base64 --decode .github/step3-batch/analytics_service.py.b64 > specialist_clinic/src/services/analytics_service.py
-          base64 --decode .github/step3-batch/patients.py.gz.b64 | gzip --decompress > specialist_clinic/src/api/patients.py
-          cat .github/step3-batch/detail.part-* | tr -d '\r\n' | base64 --decode | gzip --decompress > specialist_clinic/src/templates/patients/detail.html
-          base64 --decode .github/step3-batch/test_canonical_consistency.py.gz.b64 | gzip --decompress > specialist_clinic/tests/test_canonical_consistency.py
-          base64 --decode .github/step3-batch/test_patient_card.py.gz.b64 | gzip --decompress > specialist_clinic/tests/test_patient_card.py
-          base64 --decode .github/step3-batch/test_parallel_clinical_logic_retired.py.gz.b64 | gzip --decompress > specialist_clinic/tests/test_parallel_clinical_logic_retired.py
+          base64 --decode .github/step3-batch/analytics_service.py.b64 \
+            > specialist_clinic/src/services/analytics_service.py
+          base64 --decode .github/step3-batch/patients.py.gz.b64 \
+            | gzip --decompress > specialist_clinic/src/api/patients.py
+          cat .github/step3-batch/detail.part-* \
+            | tr -d '\r\n' \
+            | base64 --decode \
+            | gzip --decompress \
+            > specialist_clinic/src/templates/patients/detail.html
+          base64 --decode .github/step3-batch/test_canonical_consistency.py.gz.b64 \
+            | gzip --decompress > specialist_clinic/tests/test_canonical_consistency.py
+          base64 --decode .github/step3-batch/test_patient_card.py.gz.b64 \
+            | gzip --decompress > specialist_clinic/tests/test_patient_card.py
+          base64 --decode .github/step3-batch/test_parallel_clinical_logic_retired.py.gz.b64 \
+            | gzip --decompress > specialist_clinic/tests/test_parallel_clinical_logic_retired.py
 
-      - name: Compile and prepare clean tree
+          cat > /tmp/primary-sha256 <<'EOF'
+          aec96a1d667516bfede86dbebc174dd0064d664a0a59493d9f78c61374a3c907  specialist_clinic/src/services/analytics_service.py
+          1c31a9c7ff65ad89fb0481c86a3446c9f2bc431913c3b077eae21ac03322e732  specialist_clinic/src/api/patients.py
+          3adb43acbb2d910a0bada6e35eacf1b62113fd92d947b2a7bc2f809433fb5b0d  specialist_clinic/src/templates/patients/detail.html
+          b2378aaebde83eebaf8e9ca2bdb8033c9720b9171f2c586d3d69a02f4bdd828a  specialist_clinic/tests/test_canonical_consistency.py
+          2d09463873d9c1f2238be2229eedd2159fe206044863a9633ac59deec3c12746  specialist_clinic/tests/test_patient_card.py
+          a6f3b32e4bcefc4e82752102442f5379b0d31151cfae5f7091b3dddf02fa1949  specialist_clinic/tests/test_parallel_clinical_logic_retired.py
+          EOF
+          sha256sum --check /tmp/primary-sha256
+
+      - name: Reassemble and apply the remaining reviewed files
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat .github/step3-full/part-* | tr -d '\r\n' \
+            > /tmp/step3-second.patch.gz.b64
+          base64 --decode /tmp/step3-second.patch.gz.b64 \
+            | gzip --decompress > /tmp/step3-second.patch
+          echo 'e50781821a5a8051cc95bde287f690a7b4817a5e57744a0c27c442451b327d7c  /tmp/step3-second.patch' \
+            | sha256sum --check
+          git apply --check /tmp/step3-second.patch
+          git apply /tmp/step3-second.patch
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: specialist_clinic/requirements.txt
+
+      - name: Install focused test dependencies
+        working-directory: specialist_clinic
+        run: python -m pip install -r requirements.txt pytest
+
+      - name: Verify the minimum safe consolidation gate
+        working-directory: specialist_clinic
+        env:
+          PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
+          PYTHONIOENCODING: utf-8
+        run: >-
+          python -m pytest -q --tb=short
+          tests/test_parallel_clinical_logic_retired.py
+          tests/test_public_card_descriptive_only.py
+          tests/test_patient_card.py
+          tests/test_canonical_consistency.py
+          tests/test_patient_cockpit_service.py
+          tests/test_clinical_engine_v2_manager_ui.py
+          tests/test_visit_invites.py::TestFAutomaticEngagementRegression::test_high_reading_does_not_create_administrative_event
+          tests/test_visit_invites.py::TestFAutomaticEngagementRegression::test_high_reading_does_not_create_admin_worklist_or_sms
+
+      - name: Restore canonical CI and remove all transfer files
         shell: bash
         run: |
           set -euo pipefail
           cp .github/step3-batch/ci.yml /tmp/canonical-ci.yml
-          rm -rf .github/step3-batch
+          rm -rf .github/step3-batch .github/step3-full
           rm -f .github/workflows/apply-step3-descriptive-batch.yml
           mv /tmp/canonical-ci.yml .github/workflows/ci.yml
           python -m compileall -q specialist_clinic/src specialist_clinic/tests
           git add -A
           git diff --cached --check
 
-      - name: Commit and push
+      - name: Commit and push the clean product tree
         shell: bash
         run: |
           set -euo pipefail
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git commit -m 'make patient analytics descriptive-only'
+          git commit -m 'consolidate parallel clinical logic into governed v2'
           git push origin HEAD:agent-clinical-parallel-logic-consolidation
