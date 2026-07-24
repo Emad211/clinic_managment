@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from collections import Counter
+from dataclasses import replace
 from datetime import datetime
 import hashlib
 import json
@@ -17,7 +18,12 @@ from src.adapters.sqlite.clinical_engine_rules_repo import (
     ClinicalEngineRulesRepository,
 )
 from src.common.utils import IRAN_TZ
-from src.domain.clinical_engine import FactSnapshot, RunStatus
+from src.domain.clinical_engine import (
+    ClinicalEvaluationContext,
+    FactSnapshot,
+    RunStatus,
+    longitudinal_context,
+)
 from src.domain.clinical_engine.release import CURRENT_ENGINE_VERSION
 from src.services.clinical_engine.compiler import RuleCompiler
 from src.services.clinical_engine.composer import (
@@ -25,14 +31,12 @@ from src.services.clinical_engine.composer import (
     recommendation_payload,
 )
 from src.services.clinical_engine.conflicts import ConflictResolver
-from src.services.clinical_engine.evaluator import (
-    RuleEvaluator,
-    evaluation_payload,
-)
+from src.services.clinical_engine.evaluator import evaluation_payload
 from src.services.clinical_engine.reconciled_adapter import (
     ReconciledFactBundleAdapter,
 )
 from src.services.clinical_engine.safety import SafetyKernel
+from src.services.clinical_engine.scope_evaluator import ContextualRuleEvaluator
 
 
 ENGINE_VERSION = CURRENT_ENGINE_VERSION
@@ -131,6 +135,9 @@ def snapshot_payload(
     *,
     include_hash: bool = True,
 ) -> dict:
+    context = snapshot.evaluation_context
+    if context is None:
+        raise ValueError("fact snapshot requires an evaluation context")
     payload = {
         "schema_version": snapshot.schema_version,
         "patient_link_id": snapshot.patient_link_id,
@@ -138,7 +145,9 @@ def snapshot_payload(
             snapshot.clinical_data_revision
         ),
         "as_of_at": _iso(snapshot.as_of_at),
-        "encounter_key": snapshot.encounter_key,
+        "encounter_key": context.encounter_key,
+        "evaluation_context": context.payload(),
+        "context_hash": context.content_hash,
         "facts": [
             _fact_payload(fact, assessed_at=snapshot.as_of_at)
             for fact in snapshot.facts
@@ -160,9 +169,17 @@ class FactBuilder:
         *,
         as_of_at: datetime,
         encounter_key: str | None = None,
+        evaluation_context: ClinicalEvaluationContext | None = None,
     ) -> FactSnapshot:
         if not isinstance(as_of_at, datetime):
             raise TypeError("as_of_at must be a datetime")
+        context = evaluation_context or longitudinal_context(
+            patient_link_id, as_of_at=as_of_at
+        )
+        if int(context.patient_link_id) != int(patient_link_id):
+            raise ValueError("evaluation context does not belong to patient")
+        if encounter_key is not None and encounter_key != context.encounter_key:
+            raise ValueError("encounter_key disagrees with evaluation context")
         bundle = self.repository.load_bundle(patient_link_id)
         revision = int(
             bundle["patient"].get("clinical_data_revision") or 0
@@ -174,7 +191,8 @@ class FactBuilder:
             as_of_at=as_of_at,
             facts=facts,
             content_hash="",
-            encounter_key=encounter_key,
+            encounter_key=context.encounter_key,
+            evaluation_context=context,
             clinical_data_revision=revision,
         )
         body = snapshot_payload(provisional, include_hash=False)
@@ -187,7 +205,8 @@ class FactBuilder:
             as_of_at=as_of_at,
             facts=facts,
             content_hash=digest,
-            encounter_key=encounter_key,
+            encounter_key=context.encounter_key,
+            evaluation_context=context,
             clinical_data_revision=revision,
         )
 
@@ -206,6 +225,7 @@ class ShadowFactCapture:
         safety=None,
         composer=None,
         conflicts=None,
+        context_service=None,
         ruleset_code=DEFAULT_RULESET_CODE,
     ):
         self.repository = repository or ClinicalEngineFactRepository()
@@ -215,10 +235,11 @@ class ShadowFactCapture:
         self.audit = audit or ClinicalEngineAuditRepository()
         self.rules = rules or ClinicalEngineRulesRepository()
         self.compiler = compiler or RuleCompiler()
-        self.evaluator = evaluator or RuleEvaluator()
+        self.evaluator = evaluator or ContextualRuleEvaluator()
         self.safety = safety or SafetyKernel(self.evaluator)
         self.composer = composer or RecommendationComposer()
         self.conflicts = conflicts or ConflictResolver()
+        self.context_service = context_service
         self.ruleset_code = ruleset_code
 
     def _ruleset(self, ruleset_id: int | None):
@@ -270,6 +291,7 @@ class ShadowFactCapture:
         *,
         as_of_at: datetime,
         encounter_key: str | None = None,
+        evaluation_context: ClinicalEvaluationContext | None = None,
         created_by: str | None = None,
         ruleset_id: int | None = None,
     ) -> str | None:
@@ -282,15 +304,41 @@ class ShadowFactCapture:
         ):
             return None
 
+        context = evaluation_context
+        if context is None:
+            context = (
+                self.context_service.longitudinal(
+                    patient_link_id, assessed_at=as_of_at
+                )
+                if self.context_service is not None
+                else longitudinal_context(patient_link_id, as_of_at=as_of_at)
+            )
         snapshot = self.builder.build(
             patient_link_id,
             as_of_at=as_of_at,
             encounter_key=encounter_key,
+            evaluation_context=context,
         )
+        if snapshot.evaluation_context is None:
+            # Custom builders used by audit/failure tests must still enter the same
+            # canonical context contract. Production FactBuilder already supplies it.
+            snapshot = replace(
+                snapshot,
+                encounter_key=context.encounter_key,
+                evaluation_context=context,
+                content_hash="",
+            )
+            digest = hashlib.sha256(
+                canonical_json(
+                    snapshot_payload(snapshot, include_hash=False)
+                ).encode("utf-8")
+            ).hexdigest()
+            snapshot = replace(snapshot, content_hash=digest)
         ruleset = self._ruleset(ruleset_id)
         run_id = self.audit.start_run(
             patient_link_id=patient_link_id,
-            encounter_key=encounter_key,
+            encounter_key=context.encounter_key,
+            evaluation_context=context,
             as_of_at=as_of_at.isoformat(
                 sep=" ", timespec="seconds"
             ),
@@ -309,6 +357,7 @@ class ShadowFactCapture:
                     "clinical_data_revision": (
                         snapshot.clinical_data_revision
                     ),
+                    "context_hash": context.content_hash,
                     "evaluated_rules": 0,
                     "recommendations": 0,
                 },
@@ -436,6 +485,7 @@ class ShadowFactCapture:
                     "clinical_data_revision": (
                         snapshot.clinical_data_revision
                     ),
+                    "context_hash": context.content_hash,
                     "evaluated_rules": sum(counts.values()),
                     "recommendations": recommendation_count,
                     "redflag_active": bool(

@@ -25,7 +25,7 @@ class ClinicalFollowupRepository(FollowupRepository):
     def _assert_current_source(self, db, task: dict) -> None:
         context = db.execute(
             """SELECT r.engine_version, r.ruleset_id, r.fact_snapshot_json,
-                      r.run_status, p.clinical_data_revision,
+                      r.context_hash, r.run_status, p.clinical_data_revision,
                       EXISTS(
                           SELECT 1 FROM clinical_recommendation_events e
                           WHERE e.id=? AND e.run_id=r.run_id
@@ -59,6 +59,7 @@ class ClinicalFollowupRepository(FollowupRepository):
             clinical_data_revision=int(
                 task["source_clinical_data_revision"]
             ),
+            context_hash=str(task["clinical_context_hash"]),
             error_code="STALE_CLINICAL_TASK_SOURCE",
             activation=self.activation,
         )
@@ -69,12 +70,14 @@ class ClinicalFollowupRepository(FollowupRepository):
             """SELECT id FROM followup_tasks
                WHERE clinical_task_key=?
                   OR (patient_link_id=? AND clinical_semantic_key=?
+                      AND clinical_context_hash=?
                       AND source_engine='clinical_v2' AND status='open')
                ORDER BY id LIMIT 1""",
             (
                 task["clinical_task_key"],
                 task["patient_link_id"],
                 task["clinical_semantic_key"],
+                task["clinical_context_hash"],
             ),
         ).fetchone()
 
@@ -95,9 +98,9 @@ class ClinicalFollowupRepository(FollowupRepository):
                    (patient_link_id, reason, detail, due_date, fulfillment,
                     source_rule, source_event, source_engine, source_run_id,
                     source_recommendation_event_id, clinical_semantic_key,
-                    clinical_task_key)
+                    clinical_context_hash, clinical_task_key)
                    VALUES (?, ?, ?, ?, 'in_person', ?, 'clinical_due',
-                           'clinical_v2', ?, ?, ?, ?)""",
+                           'clinical_v2', ?, ?, ?, ?, ?)""",
                 (
                     task["patient_link_id"],
                     task["reason"],
@@ -107,6 +110,7 @@ class ClinicalFollowupRepository(FollowupRepository):
                     task["source_run_id"],
                     task["source_recommendation_event_id"],
                     task["clinical_semantic_key"],
+                    task["clinical_context_hash"],
                     task["clinical_task_key"],
                 ),
             )

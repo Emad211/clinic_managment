@@ -189,6 +189,7 @@ class ClinicalV2FollowupService:
                     "semantic_key": semantic_key,
                     "due_period": due_period,
                     "evidence_fact_ids": evidence_ids,
+                    "context_hash": contract.context_hash,
                 },
                 ensure_ascii=False,
                 sort_keys=True,
@@ -218,6 +219,7 @@ class ClinicalV2FollowupService:
                     "source_clinical_data_revision": (
                         contract.clinical_data_revision
                     ),
+                    "clinical_context_hash": contract.context_hash,
                 }
             )
         return {"enabled": True, "tasks": tasks, "issues": issues}

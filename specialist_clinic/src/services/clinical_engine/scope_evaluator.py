@@ -271,43 +271,70 @@ class ContextualRuleEvaluator(PredicateRuleEvaluator):
 
         required_conditions = set(scope.get("condition_codes") or ())
         if required_conditions:
-            condition_fact, condition_issue = _usable_single(
-                snapshot, "condition.codes"
-            )
-            if condition_issue:
-                children.append(self._unknown("scope-condition", condition_issue))
-            elif condition_fact.status is FactStatus.ABSENT:
+            # A confirmed specific problem can establish positive applicability even
+            # when the aggregate problem list has not yet been reconciled completely.
+            # Completeness is still required before absence can be inferred.
+            specific = [
+                fact
+                for code in sorted(required_conditions)
+                for fact in snapshot.facts
+                if fact.key == f"condition.{code}"
+                and fact.status is FactStatus.PRESENT
+                and bool(fact.value)
+                and fact.verification is VerificationStatus.CONFIRMED
+            ]
+            if specific:
+                matched = specific[0]
                 children.append(self._match(
                     "scope-condition",
-                    False,
-                    actual=[],
+                    True,
+                    actual=matched.key.removeprefix("condition."),
                     expected=sorted(required_conditions),
                     message_true="تشخیص لازم در پرونده موجود است.",
                     message_false="تشخیص لازم برای این قاعده در پرونده موجود نیست.",
                     reason="CONDITION_OUT_OF_SCOPE",
-                    fact=condition_fact,
-                ))
-            elif not isinstance(condition_fact.value, (list, tuple, set, frozenset)):
-                children.append(self._error(
-                    "scope-condition",
-                    _issue(
-                        "condition.codes",
-                        "INVALID_SCOPE_DATA_TYPE",
-                        "فهرست تشخیص‌ها ساختار معتبر ندارد.",
-                    ),
+                    fact=matched,
                 ))
             else:
-                actual_conditions = {str(item) for item in condition_fact.value}
-                children.append(self._match(
-                    "scope-condition",
-                    bool(required_conditions & actual_conditions),
-                    actual=sorted(actual_conditions),
-                    expected=sorted(required_conditions),
-                    message_true="تشخیص لازم در پرونده موجود است.",
-                    message_false="تشخیص لازم برای این قاعده در پرونده موجود نیست.",
-                    reason="CONDITION_OUT_OF_SCOPE",
-                    fact=condition_fact,
-                ))
+                condition_fact, condition_issue = _usable_single(
+                    snapshot, "condition.codes"
+                )
+                if condition_issue:
+                    children.append(self._unknown("scope-condition", condition_issue))
+                elif condition_fact.status is FactStatus.ABSENT:
+                    children.append(self._match(
+                        "scope-condition",
+                        False,
+                        actual=[],
+                        expected=sorted(required_conditions),
+                        message_true="تشخیص لازم در پرونده موجود است.",
+                        message_false="تشخیص لازم برای این قاعده در پرونده موجود نیست.",
+                        reason="CONDITION_OUT_OF_SCOPE",
+                        fact=condition_fact,
+                    ))
+                elif not isinstance(
+                    condition_fact.value, (list, tuple, set, frozenset)
+                ):
+                    children.append(self._error(
+                        "scope-condition",
+                        _issue(
+                            "condition.codes",
+                            "INVALID_SCOPE_DATA_TYPE",
+                            "فهرست تشخیص‌ها ساختار معتبر ندارد.",
+                        ),
+                    ))
+                else:
+                    actual_conditions = {str(item) for item in condition_fact.value}
+                    children.append(self._match(
+                        "scope-condition",
+                        bool(required_conditions & actual_conditions),
+                        actual=sorted(actual_conditions),
+                        expected=sorted(required_conditions),
+                        message_true="تشخیص لازم در پرونده موجود است.",
+                        message_false="تشخیص لازم برای این قاعده در پرونده موجود نیست.",
+                        reason="CONDITION_OUT_OF_SCOPE",
+                        fact=condition_fact,
+                    ))
 
         states = [child.state for child in children]
         if PredicateState.ERROR in states:

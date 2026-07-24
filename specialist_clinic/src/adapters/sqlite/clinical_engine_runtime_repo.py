@@ -49,16 +49,22 @@ class ClinicalEngineRuntimeRepository:
         engine_version: str,
         ruleset_id: int | None,
         clinical_data_revision: int,
-        context_hash: str,
+        context_hash: str | None = None,
     ) -> dict | None:
+        params: list[Any] = [patient_link_id, engine_version]
+        context_clause = ""
+        if context_hash is not None:
+            context_clause = " AND context_hash=?"
+            params.append(str(context_hash))
         rows = self._db().execute(
-            """SELECT * FROM clinical_engine_runs
-               WHERE patient_link_id=? AND engine_version=? AND context_hash=?
+            f"""SELECT * FROM clinical_engine_runs
+               WHERE patient_link_id=? AND engine_version=?{context_clause}
                  AND run_status IN
                      ('COMPLETED','COMPLETED_WITH_ERRORS','SAFETY_FAILED')
                ORDER BY started_at DESC, rowid DESC""",
-            (patient_link_id, engine_version, context_hash),
+            tuple(params),
         ).fetchall()
+        matches = []
         for row in rows:
             if not same_optional_int(row["ruleset_id"], ruleset_id):
                 continue
@@ -66,10 +72,19 @@ class ClinicalEngineRuntimeRepository:
                 clinical_data_revision
             ):
                 continue
-            if snapshot_context_hash(row["fact_snapshot_json"]) != context_hash:
+            row_context_hash = str(row["context_hash"] or "").strip()
+            if snapshot_context_hash(row["fact_snapshot_json"]) != row_context_hash:
                 continue
-            return self.decoded_presentable_run(str(row["run_id"]))
-        return None
+            if context_hash is not None and row_context_hash != str(context_hash):
+                continue
+            matches.append(row)
+        if not matches:
+            return None
+        if context_hash is None and len({str(row["context_hash"]) for row in matches}) != 1:
+            # A context-free read is retained only for low-level compatibility and
+            # fails closed as soon as more than one clinical context is possible.
+            return None
+        return self.decoded_presentable_run(str(matches[0]["run_id"]))
 
     def decoded_presentable_run(self, run_id: str) -> dict | None:
         db = self._db()

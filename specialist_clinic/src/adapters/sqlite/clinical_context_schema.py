@@ -44,8 +44,22 @@ def _ensure_column(
             raise
 
 
-def ensure_clinical_context_storage(db: sqlite3.Connection) -> None:
-    """Install encounter history and bind every new engine run to one context hash."""
+def ensure_clinical_context_storage(db: sqlite3.Connection) -> bool:
+    """Install encounter history when all referenced v2 tables are available.
+
+    Very old copied databases are upgraded in phases by ``core``. Returning ``False``
+    defers this layer without leaving half-created encounter tables or caching an
+    incomplete migration; the next full application bootstrap installs it.
+    """
+    required = {"patient_links", "appointments", "users", "clinical_engine_runs"}
+    existing = {
+        str(row["name"])
+        for row in db.execute(
+            "SELECT name FROM sqlite_master WHERE type='table'"
+        ).fetchall()
+    }
+    if not required <= existing:
+        return False
     db.executescript(
         """
         CREATE TABLE IF NOT EXISTS clinical_encounters (
@@ -275,7 +289,32 @@ def ensure_clinical_context_storage(db: sqlite3.Connection) -> None:
           OR length(trim(NEW.context_key))<3
           OR NOT json_valid(NEW.context_json)
           OR json_type(NEW.context_json)<>'object'
+          OR NOT json_valid(NEW.fact_snapshot_json)
+          OR json_type(NEW.fact_snapshot_json)<>'object'
           OR NEW.evaluation_mode NOT IN ('ENCOUNTER','LONGITUDINAL')
+          OR CAST(json_extract(NEW.context_json, '$.patient_link_id') AS INTEGER)
+               <> NEW.patient_link_id
+          OR COALESCE(json_extract(NEW.context_json, '$.context_key'), '')
+               <> NEW.context_key
+          OR COALESCE(json_extract(NEW.context_json, '$.evaluation_mode'), '')
+               <> NEW.evaluation_mode
+          OR COALESCE(json_extract(NEW.context_json, '$.content_hash'), '')
+               <> NEW.context_hash
+          OR COALESCE(json_extract(NEW.context_json, '$.encounter_key'), '')
+               <> COALESCE(NEW.encounter_key, '')
+          OR COALESCE(CAST(json_extract(NEW.context_json, '$.encounter_event_id')
+                           AS INTEGER), -1)
+               <> COALESCE(NEW.encounter_event_id, -1)
+          OR CAST(json_extract(NEW.fact_snapshot_json, '$.patient_link_id') AS INTEGER)
+               <> NEW.patient_link_id
+          OR COALESCE(json_extract(NEW.fact_snapshot_json, '$.context_hash'), '')
+               <> NEW.context_hash
+          OR COALESCE(json_extract(NEW.fact_snapshot_json,
+                                   '$.evaluation_context.content_hash'), '')
+               <> NEW.context_hash
+          OR COALESCE(json_extract(NEW.fact_snapshot_json,
+                                   '$.evaluation_context.context_key'), '')
+               <> NEW.context_key
           OR (
                NEW.evaluation_mode='LONGITUDINAL'
                AND (NEW.encounter_key IS NOT NULL OR NEW.encounter_event_id IS NOT NULL)
@@ -348,3 +387,4 @@ def ensure_clinical_context_storage(db: sqlite3.Connection) -> None:
             + ", ".join(missing_triggers)
         )
     db.commit()
+    return True

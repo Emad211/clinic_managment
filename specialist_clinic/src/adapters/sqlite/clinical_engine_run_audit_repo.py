@@ -69,7 +69,25 @@ class RunAuditRepositoryMixin:
             evaluation_context,
             encounter_key,
         )
-        snapshot_json = json_text(fact_snapshot)
+        if not isinstance(fact_snapshot, Mapping):
+            raise TypeError("fact_snapshot must be a mapping")
+        normalized_snapshot = dict(fact_snapshot)
+        snapshot_patient = normalized_snapshot.get("patient_link_id")
+        if snapshot_patient is not None and int(snapshot_patient) != int(patient_link_id):
+            raise ValueError("fact snapshot does not belong to patient")
+        stored_context_hash = normalized_snapshot.get("context_hash")
+        if stored_context_hash is not None and str(stored_context_hash) != context.content_hash:
+            raise ValueError("fact snapshot context hash disagrees with run context")
+        stored_context = normalized_snapshot.get("evaluation_context")
+        if stored_context is not None:
+            parsed = context_from_payload(stored_context)
+            if parsed.content_hash != context.content_hash:
+                raise ValueError("fact snapshot context disagrees with run context")
+        normalized_snapshot["patient_link_id"] = int(patient_link_id)
+        normalized_snapshot["encounter_key"] = context.encounter_key
+        normalized_snapshot["evaluation_context"] = context.payload()
+        normalized_snapshot["context_hash"] = context.content_hash
+        snapshot_json = json_text(normalized_snapshot)
         snapshot_hash = hashlib.sha256(
             snapshot_json.encode("utf-8")
         ).hexdigest()

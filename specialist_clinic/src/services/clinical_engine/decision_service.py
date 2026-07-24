@@ -14,6 +14,7 @@ from src.domain.clinical_engine import ClinicalDecision
 from src.services.clinical_engine.runtime import (
     ClinicalEngineRuntimeError,
     ClinicalEngineRuntimeService,
+    ClinicalEngineRuntimeStale,
 )
 
 
@@ -74,15 +75,41 @@ class ClinicalDecisionService:
         reason_code: str | None = None,
         reason_text: str | None = None,
     ) -> dict:
-        try:
-            contract = self.runtime.contract(patient_link_id)
-        except ClinicalEngineRuntimeError as exc:
+        recommendation = self.runtime_repo.recommendation_context(
+            recommendation_event_id,
+            patient_link_id=patient_link_id,
+        )
+        if (
+            not recommendation
+            or not recommendation["payload"].get("suggestion_only", False)
+            or not recommendation.get("context")
+        ):
             raise ClinicalDecisionValidationError(
-                "clinical runtime is not available for this patient"
+                "recommendation is unavailable, contextless or belongs to another patient"
+            )
+        try:
+            evaluation_context = self.runtime.context_service.from_payload(
+                recommendation["context"]
+            )
+            contract = self.runtime.contract(
+                patient_link_id,
+                evaluation_context=evaluation_context,
+            )
+        except (
+            ClinicalEngineRuntimeError,
+            ClinicalEngineRuntimeStale,
+            ValueError,
+        ) as exc:
+            raise ClinicalDecisionValidationError(
+                "clinical runtime context is no longer available for this recommendation"
             ) from exc
         if contract is None or contract.mode not in {"on_selected", "on"}:
             raise ClinicalDecisionValidationError(
                 "clinical runtime decisions are not enabled for this patient"
+            )
+        if recommendation.get("context_hash") != contract.context_hash:
+            raise ClinicalDecisionValidationError(
+                "recommendation belongs to another clinical context"
             )
 
         try:
@@ -114,16 +141,6 @@ class ClinicalDecisionService:
                 "reason_code is required for dismissal"
             )
 
-        context = self.runtime_repo.recommendation_context(
-            recommendation_event_id,
-            patient_link_id=patient_link_id,
-        )
-        if not context or not context["payload"].get(
-            "suggestion_only", False
-        ):
-            raise ClinicalDecisionValidationError(
-                "recommendation is unavailable or does not belong to this patient"
-            )
         try:
             return self.action_repo.append_current_decision(
                 recommendation_event_id=recommendation_event_id,
@@ -136,6 +153,7 @@ class ClinicalDecisionService:
                 engine_version=contract.engine_version,
                 ruleset_id=contract.ruleset_id,
                 clinical_data_revision=contract.clinical_data_revision,
+                context_hash=contract.context_hash,
                 reason_code=normalized_reason,
                 reason_text=text,
             )
@@ -146,7 +164,7 @@ class ClinicalDecisionService:
                 ) from exc
             if str(exc) == "STALE_RECOMMENDATION":
                 raise ClinicalDecisionValidationError(
-                    "patient data or rollout state changed after this recommendation; "
-                    "reload and review the current run"
+                    "patient data, context or rollout state changed after this "
+                    "recommendation; reload and review the current run"
                 ) from exc
             raise

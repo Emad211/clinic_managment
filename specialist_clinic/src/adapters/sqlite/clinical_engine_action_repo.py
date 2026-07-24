@@ -65,8 +65,11 @@ class ClinicalEngineActionRepository:
         engine_version: str,
         ruleset_id: int | None,
         clinical_data_revision: int,
-        context_hash: str,
-    ) -> None:
+        context_hash: str | None,
+    ) -> str:
+        expected_context_hash = str(
+            context_hash or context["context_hash"] or ""
+        ).strip()
         assert_current_rollout_contract(
             db,
             context=context,
@@ -75,10 +78,11 @@ class ClinicalEngineActionRepository:
             engine_version=engine_version,
             ruleset_id=ruleset_id,
             clinical_data_revision=clinical_data_revision,
-            context_hash=context_hash,
+            context_hash=expected_context_hash,
             error_code="STALE_RECOMMENDATION",
             activation=self.activation,
         )
+        return expected_context_hash
 
     def append_presentation_once(
         self,
@@ -89,7 +93,7 @@ class ClinicalEngineActionRepository:
         engine_version: str,
         ruleset_id: int | None,
         clinical_data_revision: int,
-        context_hash: str,
+        context_hash: str | None = None,
     ) -> int:
         db = self._db()
         db.execute("BEGIN IMMEDIATE")
@@ -97,7 +101,7 @@ class ClinicalEngineActionRepository:
             context, patient_revision = self._context(
                 db, recommendation_event_id, patient_link_id
             )
-            self._assert_current(
+            effective_context_hash = self._assert_current(
                 db,
                 context=context,
                 patient_revision=patient_revision,
@@ -110,7 +114,7 @@ class ClinicalEngineActionRepository:
             payload = json.dumps(
                 {
                     "source_event_id": recommendation_event_id,
-                    "context_hash": context_hash,
+                    "context_hash": effective_context_hash,
                 },
                 ensure_ascii=False,
                 sort_keys=True,
@@ -172,7 +176,7 @@ class ClinicalEngineActionRepository:
         engine_version: str,
         ruleset_id: int | None,
         clinical_data_revision: int,
-        context_hash: str,
+        context_hash: str | None = None,
         reason_code: str | None = None,
         reason_text: str | None = None,
     ) -> dict:

@@ -26,9 +26,12 @@ from src.adapters.sqlite.clinical_reconciliation_schema import (
 from src.adapters.sqlite.clinical_flag_history_schema import (
     ensure_clinical_flag_history_storage,
 )
+from src.adapters.sqlite.clinical_context_schema import (
+    ensure_clinical_context_storage,
+)
 
 
-_SCHEMA_VERSION = 4
+_SCHEMA_VERSION = 5
 _MIGRATION_LOCK = threading.Lock()
 _VERIFIED_DATABASES: set[tuple[str, int]] = set()
 _CLINICAL_SOURCE_TABLES = (
@@ -87,6 +90,13 @@ def _column_names(db: sqlite3.Connection, table: str) -> set[str]:
         str(row["name"])
         for row in db.execute(f"PRAGMA table_info({table})").fetchall()
     }
+
+
+def _table_exists(db: sqlite3.Connection, table: str) -> bool:
+    return db.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
+        (table,),
+    ).fetchone() is not None
 
 
 def _ensure_column(
@@ -261,6 +271,26 @@ def ensure_runtime_schema(db: sqlite3.Connection | None = None) -> None:
             "INTEGER NOT NULL DEFAULT 0",
         )
         ensure_clinical_reconciliation_storage(db)
+        context_ready = ensure_clinical_context_storage(db)
+        if _table_exists(db, "followup_tasks"):
+            _ensure_column(
+                db,
+                "followup_tasks",
+                "clinical_context_hash",
+                "TEXT",
+            )
+            db.execute(
+                "DROP INDEX IF EXISTS idx_followup_open_clinical_semantic"
+            )
+            db.execute(
+                "CREATE UNIQUE INDEX IF NOT EXISTS "
+                "idx_followup_open_clinical_semantic_context "
+                "ON followup_tasks(patient_link_id, clinical_semantic_key, "
+                "clinical_context_hash) "
+                "WHERE source_engine='clinical_v2' AND status='open' "
+                "AND clinical_semantic_key IS NOT NULL "
+                "AND clinical_context_hash IS NOT NULL"
+            )
 
         # Demographic fields are part of the canonical fact snapshot. Updating
         # the revision itself does not recurse because it is not in UPDATE OF.
@@ -315,8 +345,8 @@ def ensure_runtime_schema(db: sqlite3.Connection | None = None) -> None:
                 + ", ".join(missing)
             )
 
-        if cache_key is None:
+        if cache_key is None and context_ready:
             _mark_memory_connection_ready(db)
         db.commit()
-        if cache_key is not None:
+        if cache_key is not None and context_ready:
             _VERIFIED_DATABASES.add(cache_key)

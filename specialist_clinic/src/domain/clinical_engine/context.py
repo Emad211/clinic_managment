@@ -192,6 +192,13 @@ class ClinicalEvaluationContext:
             raise ClinicalContextError("clinical context hash does not match content")
 
     def identity_payload(self) -> dict[str, Any]:
+        """Return the stable applicability identity used for ``content_hash``.
+
+        Assessment timestamps belong to the audited run and full context payload, but
+        they do not change which clinical setting the rule is being evaluated in.
+        Excluding them prevents an otherwise unchanged longitudinal review or encounter
+        from becoming stale solely at midnight.
+        """
         return {
             "schema_version": self.schema_version,
             "patient_link_id": int(self.patient_link_id),
@@ -199,9 +206,6 @@ class ClinicalEvaluationContext:
             "evaluation_mode": self.evaluation_mode.value,
             "care_setting": self.care_setting.value,
             "encounter_type": self.encounter_type.value,
-            "assessment_date": self.assessment_date,
-            "effective_at": iso_local(self.effective_at),
-            "recorded_at": iso_local(self.recorded_at),
             "source": self.source,
             "encounter_key": self.encounter_key,
             "encounter_event_id": self.encounter_event_id,
@@ -215,7 +219,13 @@ class ClinicalEvaluationContext:
         }
 
     def payload(self) -> dict[str, Any]:
-        return {**self.identity_payload(), "content_hash": self.content_hash}
+        return {
+            **self.identity_payload(),
+            "assessment_date": self.assessment_date,
+            "effective_at": iso_local(self.effective_at),
+            "recorded_at": iso_local(self.recorded_at),
+            "content_hash": self.content_hash,
+        }
 
 
 def make_context(**kwargs) -> ClinicalEvaluationContext:
@@ -249,7 +259,7 @@ def longitudinal_context(
     assessment_date = recorded.date().isoformat()
     return make_context(
         patient_link_id=int(patient_link_id),
-        context_key=f"longitudinal:{int(patient_link_id)}:{assessment_date}",
+        context_key=f"longitudinal:{int(patient_link_id)}",
         evaluation_mode=EvaluationMode.LONGITUDINAL,
         care_setting=CareSetting(care_setting),
         encounter_type=EncounterType.LONGITUDINAL_REVIEW,
