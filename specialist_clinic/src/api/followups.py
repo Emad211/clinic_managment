@@ -1,12 +1,14 @@
 from datetime import datetime
+import sqlite3
 
 from flask import Blueprint, flash, g, redirect, render_template, request, url_for
 
 from src.adapters.sqlite.core import get_db
 from src.adapters.sqlite.engagement_repo import EngagementRepository
 from src.adapters.sqlite.followups_repo import FollowupRepository
-from src.api.auth import login_required, manager_required
+from src.api.auth import login_required
 from src.common.utils import iran_now, jalali_to_gregorian_str
+from src.security.permissions import Permission, has_permission, permission_required
 from src.services.activity_logger import log_activity
 from src.services.appointment_service import AppointmentService
 from src.services.clinical_care_loop_service import (
@@ -40,7 +42,7 @@ def _observed_at(raw: str | None):
 
 
 @bp.route("/")
-@login_required
+@permission_required(Permission.CLINICAL_TASK_VIEW)
 def worklist():
     reason = request.args.get("reason") or None
     q = (request.args.get("q") or "").strip()
@@ -110,7 +112,7 @@ def worklist():
 
 
 @bp.route("/generate", methods=["POST"])
-@login_required
+@permission_required(Permission.CLINICAL_TASK_TRANSITION)
 def generate():
     """Synchronize due worklist routes through the canonical engagement engine."""
     result = FollowupService().generate()
@@ -150,7 +152,7 @@ def resolve(task_id):
 
 
 @bp.post("/<int:task_id>/clinical/outcome")
-@manager_required
+@permission_required(Permission.CLINICAL_OUTCOME_RECORD)
 def clinical_outcome(task_id: int):
     try:
         event = ClinicalCareLoopService().record_outcome(
@@ -166,7 +168,12 @@ def clinical_outcome(task_id: int):
             source_system="clinician",
             note=request.form.get("note"),
         )
-    except (LookupError, ClinicalCareLoopValidationError, ValueError) as exc:
+    except (
+        LookupError,
+        ClinicalCareLoopValidationError,
+        ValueError,
+        sqlite3.IntegrityError,
+    ) as exc:
         flash(f"ثبت outcome انجام نشد: {exc}", "error")
     else:
         log_activity(
@@ -182,7 +189,7 @@ def clinical_outcome(task_id: int):
 
 
 @bp.post("/<int:task_id>/clinical/transition")
-@manager_required
+@permission_required(Permission.CLINICAL_TASK_TRANSITION)
 def clinical_transition(task_id: int):
     due = request.form.get("due_at")
     if due:
@@ -205,7 +212,12 @@ def clinical_transition(task_id: int):
         )
     except ClinicalCareLoopConflict:
         flash("وضعیت پیگیری هم‌زمان تغییر کرده است؛ صفحه را تازه کنید.", "error")
-    except (LookupError, ClinicalCareLoopValidationError, ValueError) as exc:
+    except (
+        LookupError,
+        ClinicalCareLoopValidationError,
+        ValueError,
+        sqlite3.IntegrityError,
+    ) as exc:
         flash(f"تغییر lifecycle ثبت نشد: {exc}", "error")
     else:
         log_activity(
@@ -250,8 +262,8 @@ def patient_to_visit(pid):
         for task_id in task_ids
         if available[task_id].get("source_engine") == "clinical_v2"
     ]
-    if clinical_ids and g.user["role"] != "manager":
-        flash("زمان‌بندی پیگیری بالینی فقط برای مدیر مجاز است.", "error")
+    if clinical_ids and not has_permission(Permission.CLINICAL_TASK_TRANSITION):
+        flash("مجوز زمان‌بندی پیگیری بالینی ثبت نشده است.", "error")
         return redirect(request.referrer or url_for("followups.worklist"))
 
     appointment_id = AppointmentService().schedule(
