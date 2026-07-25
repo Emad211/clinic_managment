@@ -5,9 +5,14 @@ def replace_once(path: str, old: str, new: str) -> None:
     target = Path(path)
     text = target.read_text(encoding="utf-8")
     if old in text:
+        print(f"applying regression patch: {path} :: {old.splitlines()[0].strip()}")
         text = text.replace(old, new, 1)
     elif new not in text:
-        raise AssertionError(f"regression patch point missing in {path}")
+        raise AssertionError(
+            f"regression patch point missing in {path}: {old[:180]!r}"
+        )
+    else:
+        print(f"regression patch already present: {path}")
     target.write_text(text, encoding="utf-8")
 
 
