@@ -68,28 +68,55 @@ jobs:
 
       - name: Run step 6 targeted safety gate
         id: specialist
+        continue-on-error: true
         working-directory: specialist_clinic
         env:
           PYTEST_DISABLE_PLUGIN_AUTOLOAD: '1'
           PYTHONIOENCODING: utf-8
-        run: >-
-          python -m pytest -q --tb=short
-          --junitxml=pytest-step6.xml
-          tests/test_operational_security_release_gate.py
-          tests/test_operational_security_hardening.py
-          tests/test_backup_and_logging.py
-          tests/test_clinical_closed_care_loop.py
-          tests/test_clinical_engine_v2_action_contract.py
-          tests/test_clinical_engine_v2_activation.py
-          tests/test_clinical_engine_v2_decisions.py
-          tests/test_clinical_engine_v2_followups.py
-          tests/test_clinical_engine_v2_manager_ui.py
-          tests/test_clinical_engine_v2_readonly_ui.py
-          tests/test_clinical_engine_v2_runtime_freshness.py
-          tests/test_clinical_reconciliation_engine_identity.py
-          tests/test_end_to_end_loops.py
-          tests/test_patient_mutation_ownership.py
-          tests/test_ui_information_architecture.py
+        shell: bash
+        run: |
+          set -o pipefail
+          python -m pytest -q --tb=short \
+            --junitxml=pytest-step6.xml \
+            tests/test_operational_security_release_gate.py \
+            tests/test_operational_security_hardening.py \
+            tests/test_backup_and_logging.py \
+            tests/test_clinical_closed_care_loop.py \
+            tests/test_clinical_engine_v2_action_contract.py \
+            tests/test_clinical_engine_v2_activation.py \
+            tests/test_clinical_engine_v2_decisions.py \
+            tests/test_clinical_engine_v2_followups.py \
+            tests/test_clinical_engine_v2_manager_ui.py \
+            tests/test_clinical_engine_v2_readonly_ui.py \
+            tests/test_clinical_engine_v2_runtime_freshness.py \
+            tests/test_clinical_reconciliation_engine_identity.py \
+            tests/test_end_to_end_loops.py \
+            tests/test_patient_mutation_ownership.py \
+            tests/test_ui_information_architecture.py \
+            2>&1 | tee /tmp/step6-specialist.log
+
+      - name: Report specialist failure details
+        if: steps.specialist.outcome == 'failure'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+        shell: bash
+        run: |
+          tail -n 120 /tmp/step6-specialist.log > /tmp/step6-tail.txt
+          {
+            echo "Step 6 specialist gate failed · run ${RUN_ID}"
+            echo
+            echo '```text'
+            cat /tmp/step6-tail.txt
+            echo '```'
+          } > /tmp/step6-comment.txt
+          gh api --method POST repos/${REPOSITORY}/issues/34/comments \
+            --raw-field body="$(cat /tmp/step6-comment.txt)"
+
+      - name: Stop after specialist failure
+        if: steps.specialist.outcome == 'failure'
+        run: exit 1
 
       - name: Run accounting regression suite
         id: accounting
