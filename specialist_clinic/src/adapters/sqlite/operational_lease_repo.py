@@ -72,21 +72,23 @@ class OperationalLeaseRepository:
             if row and datetime.fromisoformat(row["expires_at"]) > current:
                 db.rollback()
                 return None
+            # Lease rows are never deleted on normal release. Keeping the row makes
+            # the fencing token monotonic across clean releases and process restarts.
             token = int(row["fencing_token"] or 0) + 1 if row else 1
+            values = (
+                owner,
+                token,
+                _text(current),
+                _text(current),
+                _text(expiry),
+            )
             if row:
                 db.execute(
                     """UPDATE operational_leases
                        SET owner_id=?, fencing_token=?, acquired_at=?,
                            heartbeat_at=?, expires_at=?
                        WHERE lease_name=?""",
-                    (
-                        owner,
-                        token,
-                        _text(current),
-                        _text(current),
-                        _text(expiry),
-                        name,
-                    ),
+                    (*values, name),
                 )
             else:
                 db.execute(
@@ -94,14 +96,7 @@ class OperationalLeaseRepository:
                        (lease_name, owner_id, fencing_token, acquired_at,
                         heartbeat_at, expires_at)
                        VALUES (?, ?, ?, ?, ?, ?)""",
-                    (
-                        name,
-                        owner,
-                        token,
-                        _text(current),
-                        _text(current),
-                        _text(expiry),
-                    ),
+                    (name, *values),
                 )
             db.commit()
             return Lease(
@@ -123,6 +118,8 @@ class OperationalLeaseRepository:
         ttl_seconds: int,
         now: datetime | None = None,
     ) -> Lease:
+        if not 10 <= int(ttl_seconds) <= 86400:
+            raise ValueError("lease ttl must be between 10 seconds and one day")
         current = _local_naive(now)
         expiry = current + timedelta(seconds=int(ttl_seconds))
         db = self._db()
@@ -152,18 +149,48 @@ class OperationalLeaseRepository:
             expires_at=_text(expiry),
         )
 
-    def release(self, lease: Lease) -> bool:
+    def release(self, lease: Lease, *, now: datetime | None = None) -> bool:
+        """Expire the lease without deleting its monotonic fencing-token row."""
+        current = _local_naive(now)
         db = self._db()
         with db:
             cursor = db.execute(
-                """DELETE FROM operational_leases
+                """UPDATE operational_leases
+                   SET heartbeat_at=?, expires_at=?
                    WHERE lease_name=? AND owner_id=? AND fencing_token=?""",
-                (lease.lease_name, lease.owner_id, lease.fencing_token),
+                (
+                    _text(current),
+                    _text(current),
+                    lease.lease_name,
+                    lease.owner_id,
+                    lease.fencing_token,
+                ),
             )
         return cursor.rowcount == 1
 
+    def assert_current(
+        self,
+        lease: Lease,
+        *,
+        now: datetime | None = None,
+    ) -> None:
+        current = _text(_local_naive(now))
+        row = self._db().execute(
+            """SELECT 1 FROM operational_leases
+               WHERE lease_name=? AND owner_id=? AND fencing_token=?
+                 AND datetime(expires_at)>datetime(?)""",
+            (
+                lease.lease_name,
+                lease.owner_id,
+                lease.fencing_token,
+                current,
+            ),
+        ).fetchone()
+        if not row:
+            raise LeaseLost("operational lease is no longer current")
+
     def begin_job(self, job_key: str, lease: Lease) -> bool:
-        """Return False when the exact idempotency key has already completed."""
+        """Return False when the exact idempotency key already completed."""
         key = str(job_key or "").strip()
         if len(key) < 3:
             raise ValueError("job_key is required")
@@ -235,19 +262,30 @@ class OperationalLeaseRepository:
     ) -> None:
         db = self._db()
         status = "COMPLETED" if succeeded else "FAILED"
+        current = _text(_local_naive())
         with db:
             cursor = db.execute(
                 """UPDATE operational_job_runs
                    SET status=?, completed_at=?, error_code=?
                    WHERE job_key=? AND owner_id=? AND fencing_token=?
-                     AND status='RUNNING'""",
+                     AND status='RUNNING'
+                     AND EXISTS (
+                         SELECT 1 FROM operational_leases lease
+                         WHERE lease.lease_name=operational_job_runs.lease_name
+                           AND lease.owner_id=?
+                           AND lease.fencing_token=?
+                           AND datetime(lease.expires_at)>datetime(?)
+                     )""",
                 (
                     status,
-                    _text(_local_naive()),
+                    current,
                     None if succeeded else str(error_code or "job_failed")[:120],
                     str(job_key),
                     lease.owner_id,
                     lease.fencing_token,
+                    lease.owner_id,
+                    lease.fencing_token,
+                    current,
                 ),
             )
             if cursor.rowcount != 1:
