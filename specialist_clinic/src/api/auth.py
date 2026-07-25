@@ -12,6 +12,9 @@ from flask import (
     url_for,
 )
 
+from src.adapters.sqlite.clinical_care_loop_strict_guards import (
+    ensure_strict_clinical_care_loop_guards,
+)
 from src.adapters.sqlite.security_permission_repo import (
     SecurityPermissionConflict,
     SecurityPermissionRepository,
@@ -31,10 +34,11 @@ bp = Blueprint("auth", __name__, url_prefix="/auth")
 
 
 @bp.record
-def install_permission_storage(state):
+def install_security_storage(state):
     # ``record`` is deliberate: test suites and desktop relaunches can construct more
     # than one app from the imported Blueprint object.
     with state.app.app_context():
+        ensure_strict_clinical_care_loop_guards()
         ensure_security_permission_storage()
 
 
