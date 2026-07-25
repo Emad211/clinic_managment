@@ -72,8 +72,8 @@ class OperationalLeaseRepository:
             if row and datetime.fromisoformat(row["expires_at"]) > current:
                 db.rollback()
                 return None
-            # Lease rows are never deleted on normal release. Keeping the row makes
-            # the fencing token monotonic across clean releases and process restarts.
+            # Keep the row after release so fencing tokens remain monotonic across
+            # process restarts and clean handoffs.
             token = int(row["fencing_token"] or 0) + 1 if row else 1
             values = (
                 owner,
@@ -150,23 +150,38 @@ class OperationalLeaseRepository:
         )
 
     def release(self, lease: Lease, *, now: datetime | None = None) -> bool:
-        """Expire the lease without deleting its monotonic fencing-token row."""
+        """Expire the lease while preserving its monotonic fencing-token row."""
         current = _local_naive(now)
         db = self._db()
-        with db:
+        db.execute("BEGIN IMMEDIATE")
+        try:
+            row = db.execute(
+                """SELECT heartbeat_at FROM operational_leases
+                   WHERE lease_name=? AND owner_id=? AND fencing_token=?""",
+                (lease.lease_name, lease.owner_id, lease.fencing_token),
+            ).fetchone()
+            if not row:
+                db.rollback()
+                return False
+            heartbeat = datetime.fromisoformat(row["heartbeat_at"])
+            expiry = current
+            if expiry <= heartbeat:
+                expiry = heartbeat + timedelta(seconds=1)
             cursor = db.execute(
-                """UPDATE operational_leases
-                   SET heartbeat_at=?, expires_at=?
+                """UPDATE operational_leases SET expires_at=?
                    WHERE lease_name=? AND owner_id=? AND fencing_token=?""",
                 (
-                    _text(current),
-                    _text(current),
+                    _text(expiry),
                     lease.lease_name,
                     lease.owner_id,
                     lease.fencing_token,
                 ),
             )
-        return cursor.rowcount == 1
+            db.commit()
+            return cursor.rowcount == 1
+        except Exception:
+            db.rollback()
+            raise
 
     def assert_current(
         self,
