@@ -98,7 +98,7 @@ replace_once(
 )
 
 # Keep the UI acceptance test diagnostic limited to the exact synthetic controls,
-# but include their audited outcomes and missing facts.
+# but include their audited data issues and root trace reason.
 replace_once(
     "specialist_clinic/tests/test_clinical_engine_v2_manager_ui.py",
     '''    html = compared.get_data(as_text=True)
@@ -118,9 +118,10 @@ replace_once(
             control_evaluations[national_id] = {
                 item.get("rule_code"): {
                     "outcome": item.get("outcome"),
-                    "missing_facts": item.get("missing_facts"),
-                    "error_code": item.get("error_code"),
-                    "suppression": item.get("suppression"),
+                    "data_issues": item.get("data_issues"),
+                    "error": item.get("error"),
+                    "trace_reason": (item.get("trace") or {}).get("reason_code"),
+                    "trace_state": (item.get("trace") or {}).get("state"),
                 }
                 for item in (run.get("evaluations") or [])
                 if item.get("rule_code") in {"T2-REDFLAG-BP", "T2-SAFE-MET-STOP"}
@@ -130,9 +131,6 @@ replace_once(
         "failed_checks": [
             key for key, value in (diagnostic_report.get("checks") or {}).items()
             if not value
-        ],
-        "failure_codes": [
-            item.get("code") for item in (diagnostic_report.get("failures") or [])
         ],
         "positive_control_evaluations": control_evaluations,
     }
