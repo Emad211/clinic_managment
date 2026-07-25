@@ -6,14 +6,11 @@ def replace_once(path: str, old: str, new: str) -> None:
     target = Path(path)
     text = target.read_text(encoding="utf-8")
     if old in text:
-        print(f"applying regression patch: {path} :: {old.splitlines()[0].strip()}")
         text = text.replace(old, new, 1)
     elif new not in text:
         raise AssertionError(
             f"regression patch point missing in {path}: {old[:180]!r}"
         )
-    else:
-        print(f"regression patch already present: {path}")
     target.write_text(text, encoding="utf-8")
 
 
@@ -97,31 +94,37 @@ replace_once(
     '''    html = compared.get_data(as_text=True)
     with manager_ui_app.app_context():
         diagnostic_report = ClinicalEngineActivationRepository().get_json("last_report")
-        from src.adapters.sqlite.clinical_engine_audit_repo import ClinicalEngineAuditRepository
-        audit = ClinicalEngineAuditRepository()
-        control_evaluations = {}
-        for row in diagnostic_report.get("patients") or []:
-            national_id = row.get("national_id")
-            if national_id not in {"TEST0008", "TEST0010"}:
-                continue
-            run = audit.decoded_run(row.get("v2_run_id")) or {}
-            control_evaluations[national_id] = {
-                item.get("rule_code"): {
-                    "outcome": item.get("outcome"),
-                    "issues": [
-                        (issue.get("fact_key"), issue.get("issue"))
-                        for issue in (item.get("data_issues") or [])
-                    ],
+        from src.adapters.sqlite.clinical_reconciliation_repo import ClinicalReconciliationRepository
+        from src.adapters.sqlite.core import get_db
+        db = get_db()
+        projections = {}
+        for national_id in ("TEST0008", "TEST0010"):
+            patient = db.execute(
+                "SELECT id FROM patient_links WHERE national_id=?", (national_id,)
+            ).fetchone()
+            projections[national_id] = {}
+            for collection_key in ("conditions", "medications"):
+                projection = ClinicalReconciliationRepository().projection(
+                    int(patient["id"]), collection_key, as_of_at="2026-07-22 08:00:00"
+                )
+                event = projection.reconciliation_event or {}
+                projections[national_id][collection_key] = {
+                    "state": projection.state,
+                    "verification": projection.verification.value,
+                    "warnings": list(projection.warnings),
+                    "current_hash": projection.content_hash[:12],
+                    "event_hash": str(event.get("content_hash") or "")[:12],
+                    "current_count": projection.item_count,
+                    "event_count": event.get("item_count"),
+                    "current_conflict": projection.conflict_snapshot_hash[:12],
+                    "event_conflict": str(event.get("conflict_snapshot_hash") or "")[:12],
                 }
-                for item in (run.get("evaluations") or [])
-                if item.get("rule_code") in {"T2-REDFLAG-BP", "T2-SAFE-MET-STOP"}
-            }
     diagnostic = {
         "failed_checks": [
             key for key, value in (diagnostic_report.get("checks") or {}).items()
             if not value
         ],
-        "controls": control_evaluations,
+        "projections": projections,
     }
     assert "آزمون هر ۱۰ بیمار با موفقیت انجام شد" in html, diagnostic
 ''',
