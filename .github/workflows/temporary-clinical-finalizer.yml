@@ -16,10 +16,9 @@ concurrency:
 jobs:
   finalize-step6:
     if: >-
-      github.event.issue.pull_request &&
-      github.event.issue.number == 34 &&
+      github.event.issue.number == 36 &&
       github.event.comment.user.login == 'Emad211' &&
-      github.event.comment.body == '/finalize-step6-20260725'
+      github.event.comment.body == '/finalize-step6-clean-20260725'
     runs-on: ubuntu-latest
     steps:
       - name: Report gate start
@@ -28,7 +27,7 @@ jobs:
           REPOSITORY: ${{ github.repository }}
           RUN_ID: ${{ github.run_id }}
         run: >-
-          gh api --method POST repos/${REPOSITORY}/issues/34/comments
+          gh api --method POST repos/${REPOSITORY}/issues/36/comments
           -f body="Step 6 targeted gate started · run ${RUN_ID}"
 
       - uses: actions/checkout@v4
@@ -48,15 +47,20 @@ jobs:
           set -o pipefail
           {
             set -euo pipefail
-            python .github/finalize_step6_product.py
-            python .github/finalize_step6_migration_order.py
-            git show 599ce4d52ce725c38e3b85a436e23764f6a30a36:.github/workflows/ci.yml > .github/workflows/ci.yml
-            rm -f \
-              .github/finalize_step6_product.py \
-              .github/finalize_step6_migration_order.py \
-              .github/step6-gate-result.json \
-              .github/canonical-ci-step6.yml \
-              .github/workflows/trigger-step6.yml
+            if [[ -f .github/finalize_step6_product.py ]]; then
+              python .github/finalize_step6_product.py
+              python .github/finalize_step6_migration_order.py
+              git show 599ce4d52ce725c38e3b85a436e23764f6a30a36:.github/workflows/ci.yml > .github/workflows/ci.yml
+              rm -f \
+                .github/finalize_step6_product.py \
+                .github/finalize_step6_migration_order.py \
+                .github/finalize_step6_regressions.py \
+                .github/step6-gate-result.json \
+                .github/canonical-ci-step6.yml \
+                .github/workflows/trigger-step6.yml
+            else
+              echo "step 6 product tree already finalized; validating existing head"
+            fi
             python -m compileall -q specialist_clinic/src specialist_clinic/tests
             git diff --check
           } 2>&1 | tee /tmp/step6-apply.log
@@ -69,16 +73,15 @@ jobs:
           RUN_ID: ${{ github.run_id }}
         shell: bash
         run: |
-          tail -n 100 /tmp/step6-apply.log > /tmp/step6-apply-tail.txt
           {
             echo "Step 6 deterministic finalizer failed · run ${RUN_ID}"
             echo
             echo '```text'
-            cat /tmp/step6-apply-tail.txt
+            tail -n 120 /tmp/step6-apply.log
             echo '```'
-          } > /tmp/step6-apply-comment.txt
-          gh api --method POST repos/${REPOSITORY}/issues/34/comments \
-            --raw-field body="$(cat /tmp/step6-apply-comment.txt)"
+          } > /tmp/body.txt
+          gh api --method POST repos/${REPOSITORY}/issues/36/comments \
+            --raw-field body="$(cat /tmp/body.txt)"
 
       - name: Stop after finalizer failure
         if: steps.apply.outcome == 'failure'
@@ -132,16 +135,15 @@ jobs:
           RUN_ID: ${{ github.run_id }}
         shell: bash
         run: |
-          tail -n 120 /tmp/step6-specialist.log > /tmp/step6-tail.txt
           {
             echo "Step 6 specialist gate failed · run ${RUN_ID}"
             echo
             echo '```text'
-            cat /tmp/step6-tail.txt
+            tail -n 140 /tmp/step6-specialist.log
             echo '```'
-          } > /tmp/step6-comment.txt
-          gh api --method POST repos/${REPOSITORY}/issues/34/comments \
-            --raw-field body="$(cat /tmp/step6-comment.txt)"
+          } > /tmp/body.txt
+          gh api --method POST repos/${REPOSITORY}/issues/36/comments \
+            --raw-field body="$(cat /tmp/body.txt)"
 
       - name: Stop after specialist failure
         if: steps.specialist.outcome == 'failure'
@@ -162,6 +164,10 @@ jobs:
           set -euo pipefail
           git add -A
           git diff --cached --check
+          if git diff --cached --quiet; then
+            echo "tested product tree already published"
+            exit 0
+          fi
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git commit -m 'complete clinical operational security hardening'
@@ -182,4 +188,4 @@ jobs:
           PUBLISH: ${{ steps.publish.outcome }}
         run: |
           body="Step 6 targeted gate finished · run ${RUN_ID}\n\napply=${APPLY}\ninstall=${INSTALL}\nspecialist=${SPECIALIST}\naccounting=${ACCOUNTING}\npublish=${PUBLISH}"
-          gh api --method POST repos/${REPOSITORY}/issues/34/comments -f body="$body"
+          gh api --method POST repos/${REPOSITORY}/issues/36/comments -f body="$body"
