@@ -94,6 +94,32 @@ class ClinicalEngineActivationRepository:
             return default
 
     def put_json(self, name: str, value: Any) -> None:
+        # Activation becomes visible only after the immutable history it relies on
+        # has been checkpointed. The repository augments and re-hashes the seal so
+        # callers cannot accidentally omit the audit binding.
+        if name == "seal":
+            if not isinstance(value, dict):
+                raise ValueError("activation seal must be an object")
+            from src.services.clinical_audit_integrity import (
+                ClinicalAuditIntegrityService,
+            )
+
+            actor = str(value.get("activated_by") or "").strip()
+            checkpoint = ClinicalAuditIntegrityService().seal(
+                created_by=actor or "activation-seal",
+            )
+            body = {
+                key: item
+                for key, item in value.items()
+                if key != "seal_hash"
+            }
+            body.update(
+                {
+                    "audit_checkpoint_id": int(checkpoint["id"]),
+                    "audit_checkpoint_hash": checkpoint["checkpoint_hash"],
+                }
+            )
+            value = {**body, "seal_hash": content_hash(body)}
         payload = canonical_json(value)
         with get_db() as db:
             db.execute(
@@ -146,6 +172,25 @@ class ClinicalEngineActivationRepository:
         ).fetchone()
         return dict(row) if row else None
 
+    @staticmethod
+    def _audit_checkpoint_valid(seal: dict) -> bool:
+        checkpoint_id = seal.get("audit_checkpoint_id")
+        checkpoint_hash = seal.get("audit_checkpoint_hash")
+        if checkpoint_id is None or not checkpoint_hash:
+            return False
+        try:
+            from src.services.clinical_audit_integrity import (
+                ClinicalAuditIntegrityService,
+            )
+
+            verification = ClinicalAuditIntegrityService().verify_checkpoint(
+                int(checkpoint_id),
+                expected_hash=str(checkpoint_hash),
+            )
+            return verification.ok
+        except Exception:
+            return False
+
     def valid_seal(self, mode: str) -> bool:
         seal = self.get_json("seal")
         if (
@@ -161,6 +206,8 @@ class ClinicalEngineActivationRepository:
             if key != "seal_hash"
         }
         if not supplied or supplied != content_hash(body):
+            return False
+        if not self._audit_checkpoint_valid(seal):
             return False
         report = self.get_json("last_report")
         if (
