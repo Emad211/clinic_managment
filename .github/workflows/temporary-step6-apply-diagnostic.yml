@@ -1,4 +1,4 @@
-name: Temporary Step 6 Apply Diagnostic
+name: Temporary Step 6 Control Diagnostic
 
 on:
   issue_comment:
@@ -11,10 +11,9 @@ permissions:
 jobs:
   diagnose:
     if: >-
-      github.event.issue.pull_request &&
-      github.event.issue.number == 34 &&
+      github.event.issue.number == 36 &&
       github.event.comment.user.login == 'Emad211' &&
-      github.event.comment.body == '/diagnose-step6-apply-20260725'
+      github.event.comment.body == '/diagnose-step6-controls-20260725'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -22,32 +21,52 @@ jobs:
           ref: agent-clinical-operational-security
           fetch-depth: 0
 
-      - name: Run deterministic finalizer and capture traceback
-        id: apply
+      - name: Apply deterministic product tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          python .github/finalize_step6_product.py
+          python .github/finalize_step6_migration_order.py
+          python -m compileall -q specialist_clinic/src specialist_clinic/tests
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: pip
+          cache-dependency-path: specialist_clinic/requirements.txt
+
+      - name: Install specialist dependencies
+        working-directory: specialist_clinic
+        run: python -m pip install -r requirements.txt pytest
+
+      - name: Run exact positive-control path
+        id: controls
         continue-on-error: true
+        working-directory: specialist_clinic
+        env:
+          PYTEST_DISABLE_PLUGIN_AUTOLOAD: '1'
+          PYTHONIOENCODING: utf-8
         shell: bash
         run: |
           set -o pipefail
-          {
-            set -euo pipefail
-            python .github/finalize_step6_product.py
-            python .github/finalize_step6_migration_order.py
-          } 2>&1 | tee /tmp/step6-apply.log
+          python -m pytest -q --tb=short \
+            tests/test_clinical_engine_v2_manager_ui.py::test_guided_package_prepare_then_clinical_review_and_freeze \
+            2>&1 | tee /tmp/step6-controls.log
 
-      - name: Publish exact traceback to issue 36
+      - name: Publish exact outcome to issue 36
         if: always()
         env:
           GH_TOKEN: ${{ github.token }}
           REPOSITORY: ${{ github.repository }}
-          OUTCOME: ${{ steps.apply.outcome }}
+          OUTCOME: ${{ steps.controls.outcome }}
           RUN_ID: ${{ github.run_id }}
         shell: bash
         run: |
           {
-            echo "Step 6 apply diagnostic · run ${RUN_ID} · outcome=${OUTCOME}"
+            echo "Step 6 positive-control diagnostic · run ${RUN_ID} · outcome=${OUTCOME}"
             echo
             echo '```text'
-            tail -n 120 /tmp/step6-apply.log
+            tail -n 120 /tmp/step6-controls.log
             echo '```'
           } > /tmp/body.txt
           gh api --method POST repos/${REPOSITORY}/issues/36/comments \
