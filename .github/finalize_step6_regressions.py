@@ -126,6 +126,7 @@ replace_once(
         ],
         "projections": projections,
     }
-    assert "آزمون هر ۱۰ بیمار با موفقیت انجام شد" in html, diagnostic
+    if "آزمون هر ۱۰ بیمار با موفقیت انجام شد" not in html:
+        raise AssertionError(diagnostic)
 ''',
 )
