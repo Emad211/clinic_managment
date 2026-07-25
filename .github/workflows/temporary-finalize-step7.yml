@@ -47,6 +47,7 @@ jobs:
           target.write_text(text, encoding='utf-8')
           PY
           python .github/finalize_step7.py
+          python .github/fix_step7_regressions.py
           python -m compileall -q specialist_clinic/src specialist_clinic/tests specialist_clinic/run_step7_review.py
           git diff --check
 
