@@ -20,7 +20,7 @@ from src.adapters.sqlite.core import get_db
 from src.common.utils import iran_now
 
 
-SCOPE_VERSION = "1.0"
+SCOPE_VERSION = "1.1-validation-release"
 CRITICAL_TABLES = (
     "clinical_rule_versions",
     "clinical_rulesets",
@@ -34,6 +34,8 @@ CRITICAL_TABLES = (
     "clinical_data_conflict_events",
     "clinical_task_events",
     "clinical_outcome_events",
+    "clinical_validation_reports",
+    "clinical_validation_attestations",
     "security_permission_events",
 )
 

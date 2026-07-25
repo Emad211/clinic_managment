@@ -79,11 +79,48 @@ def install_sealed_rollout(
            FROM clinical_rulesets WHERE id=?""",
         (ruleset_id,),
     ).fetchone()
+    from src.services.clinical_engine.validation_service import ClinicalValidationService
+
+    validation_service = ClinicalValidationService()
+    validation_report = validation_service.run_current(created_by="pytest-validator")
+    try:
+        validation_service.attest_current(
+            role="clinical",
+            reviewer="pytest-validation-clinician",
+            note="Clinical current-run contract reviewed.",
+            report_hash=validation_report["report_hash"],
+        )
+    except ValueError as exc:
+        if "UNIQUE" not in str(exc):
+            raise
+    try:
+        validation_service.attest_current(
+            role="technical",
+            reviewer="pytest-validation-engineer",
+            note="Technical current-run contract reviewed.",
+            report_hash=validation_report["report_hash"],
+        )
+    except ValueError as exc:
+        if "UNIQUE" not in str(exc):
+            raise
+    validation_evidence = validation_service.current_release_evidence()
+    assert validation_evidence
+
     report = {
         "schema_version": "1.1",
         "engine_version": CURRENT_ENGINE_VERSION,
         "as_of_at": _FIXED_AT,
         "cohort": [],
+        "validation": {
+            "status": "PASS",
+            "engine_version": CURRENT_ENGINE_VERSION,
+            "ruleset_code": RULESET_CODE,
+            "package_version": CURRENT_BUNDLED_PACKAGE_VERSION,
+            "validation_report_id": validation_evidence["validation_report_id"],
+            "validation_report_hash": validation_evidence["validation_report_hash"],
+            "package_hash": validation_evidence["package_hash"],
+            "case_bundle_hash": validation_evidence["case_bundle_hash"],
+        },
         "ruleset": dict(ruleset),
         "patients": [],
         "failures": [],
@@ -111,6 +148,10 @@ def install_sealed_rollout(
         "engine_version": CURRENT_ENGINE_VERSION,
         "ruleset_id": ruleset_id,
         "report_hash": report["report_hash"],
+        "validation_report_id": validation_evidence["validation_report_id"],
+        "validation_report_hash": validation_evidence["validation_report_hash"],
+        "validation_package_hash": validation_evidence["package_hash"],
+        "validation_case_bundle_hash": validation_evidence["case_bundle_hash"],
         "activated_by": "pytest",
         "activated_at": _FIXED_AT,
     }

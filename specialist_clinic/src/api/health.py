@@ -15,6 +15,9 @@ from src.adapters.sqlite.core import get_db
 from src.adapters.sqlite.operational_lease_schema import (
     ensure_operational_lease_storage,
 )
+from src.adapters.sqlite.clinical_validation_schema import (
+    ensure_clinical_validation_storage,
+)
 from src.adapters.sqlite.security_permission_schema import (
     ensure_security_permission_storage,
 )
@@ -40,6 +43,8 @@ _REQUIRED_TABLES = frozenset(
         "operational_leases",
         "operational_job_runs",
         "clinical_audit_checkpoints",
+        "clinical_validation_reports",
+        "clinical_validation_attestations",
     }
 )
 
@@ -48,6 +53,7 @@ def _readiness_checks() -> dict[str, bool]:
     db = get_db()
     ensure_security_permission_storage(db)
     ensure_operational_lease_storage(db)
+    ensure_clinical_validation_storage(db)
     ensure_clinical_audit_integrity_storage(db)
 
     quick = db.execute("PRAGMA quick_check").fetchone()

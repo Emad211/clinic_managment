@@ -43,6 +43,7 @@ def report_core(report: dict[str, Any]) -> dict[str, Any]:
             "package_version",
             "package_hash",
             "case_bundle_hash",
+            "status",
             "case_count",
             "categories",
             "missing_categories",
@@ -221,7 +222,7 @@ class ClinicalValidationReportRepository:
         ).fetchall()
         return {str(row["role"]): dict(row) for row in rows}
 
-    def latest_passing(
+    def latest_for_identity(
         self,
         *,
         engine_version: str,
@@ -231,7 +232,7 @@ class ClinicalValidationReportRepository:
     ) -> dict | None:
         sql = """SELECT * FROM clinical_validation_reports
                  WHERE engine_version=? AND ruleset_code=?
-                   AND package_version=? AND status='PASS'"""
+                   AND package_version=?"""
         params: list[Any] = [
             engine_version,
             ruleset_code,
@@ -242,6 +243,27 @@ class ClinicalValidationReportRepository:
             params.append(package_hash)
         sql += " ORDER BY id DESC LIMIT 1"
         return self._decode(self._db().execute(sql, params).fetchone())
+
+    def latest_passing(
+        self,
+        *,
+        engine_version: str,
+        ruleset_code: str,
+        package_version: str,
+        package_hash: str | None = None,
+    ) -> dict | None:
+        """Return PASS only when the newest exact-identity report is PASS.
+
+        A newer BLOCKED report invalidates every older PASS. Release qualification may
+        never search backwards through history for a convenient successful result.
+        """
+        latest = self.latest_for_identity(
+            engine_version=engine_version,
+            ruleset_code=ruleset_code,
+            package_version=package_version,
+            package_hash=package_hash,
+        )
+        return latest if latest and latest["status"] == "PASS" else None
 
     def release_evidence(
         self,
@@ -272,6 +294,7 @@ class ClinicalValidationReportRepository:
         return {
             "validation_report_id": int(report["id"]),
             "validation_report_hash": report["report_hash"],
+            "package_version": report["package_version"],
             "package_hash": report["package_hash"],
             "case_bundle_hash": report["case_bundle_hash"],
             "attestations": attestations,

@@ -44,6 +44,21 @@ def activation_app(tmp_path):
         (CURRENT_BUNDLED_PACKAGE_VERSION,),
     )
     db.commit()
+    from src.services.clinical_engine.validation_service import ClinicalValidationService
+    validation = ClinicalValidationService()
+    validation_report = validation.run_current(created_by="pytest-validator")
+    validation.attest_current(
+        role="clinical",
+        reviewer="pytest-validation-clinician",
+        note="Clinical golden cases reviewed for activation tests.",
+        report_hash=validation_report["report_hash"],
+    )
+    validation.attest_current(
+        role="technical",
+        reviewer="pytest-validation-engineer",
+        note="Determinism, hashes and metrics reviewed for activation tests.",
+        report_hash=validation_report["report_hash"],
+    )
     yield app, db
     context.pop()
     core._initialized = False

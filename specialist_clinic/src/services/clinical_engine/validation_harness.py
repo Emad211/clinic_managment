@@ -250,7 +250,10 @@ def _result_payload(run) -> dict[str, Any]:
             "suppression_reason": (
                 result.suppression.reason_code if result.suppression else None
             ),
-            "recommendation_present": bool(result.recommendation),
+            "recommendation_present": bool(
+                result.outcome is RuleOutcome.FIRED
+                and getattr(item.compiled.definition, "recommendation", None)
+            ),
             "fact_ids": list(result.predicate.fact_ids),
             "fact_keys": list(result.predicate.fact_keys),
             "trace_hash": content_hash(
@@ -451,8 +454,10 @@ class GoldenCaseValidationHarness:
             "totals": totals,
             "cases": rows,
         }
+        report_body["status"] = (
+            "PASS" if all(checks.values()) else "BLOCKED"
+        )
         return {
             **report_body,
-            "status": "PASS" if all(checks.values()) else "BLOCKED",
             "report_hash": content_hash(report_body),
         }

@@ -31,6 +31,8 @@ def clinical_engine():
     from src.services.clinical_engine.demo_cohort import DemoCohortService
     projection["package"] = ClinicalRulePackageService().projection()
     projection["cohort"] = DemoCohortService().summary()
+    from src.services.clinical_engine.validation_service import ClinicalValidationService
+    projection["validation"] = ClinicalValidationService().dashboard()
     requested_step = request.args.get("step", type=int)
     return render_template(
         "manager/clinical_engine.html", engine=projection,
@@ -83,6 +85,11 @@ def clinical_engine_action(action):
         elif action == "compare":
             if not service.rules.active_ruleset("general-outpatient"):
                 raise ActivationGateError("ابتدا بستهٔ قواعد v2 باید وارد، بازبینی و فریز شود")
+            from src.services.clinical_engine.validation_service import ClinicalValidationService
+            if not ClinicalValidationService().current_release_evidence():
+                raise ActivationGateError(
+                    "ابتدا اعتبارسنجی golden-case و دو تأیید مستقل بالینی و فنی را کامل کنید"
+                )
             from src.services.clinical_engine.demo_cohort import DemoCohortService
             cohort_service = DemoCohortService()
             cohort = cohort_service.ensure(actor=actor)
@@ -140,6 +147,78 @@ def clinical_engine_action(action):
     except (ActivationGateError, ValueError, LookupError) as exc:
         flash(f"عملیات انجام نشد: {exc}", "error")
     return redirect(url_for("manager.clinical_engine") + "#engine-actions")
+
+
+@bp.get("/clinical-engine/validation")
+@login_required
+def clinical_validation():
+    if not any(
+        has_permission(permission)
+        for permission in (
+            Permission.RULE_REVIEW_CLINICAL,
+            Permission.RULE_REVIEW_TECHNICAL,
+            Permission.RULE_ACTIVATE,
+        )
+    ):
+        flash("مجوز مشاهدهٔ مرکز اعتبارسنجی ثبت نشده است.", "error")
+        return redirect(url_for("dashboard.index"))
+    from src.services.clinical_engine.validation_service import ClinicalValidationService
+
+    return render_template(
+        "manager/clinical_validation.html",
+        validation=ClinicalValidationService().dashboard(),
+        active_page="clinical_engine",
+    )
+
+
+@bp.post("/clinical-engine/validation/<action>")
+@login_required
+def clinical_validation_action(action):
+    from src.services.clinical_engine.validation_service import (
+        ClinicalValidationError,
+        ClinicalValidationService,
+    )
+
+    service = ClinicalValidationService()
+    actor = str(g.user["username"] or "manager").strip()
+    reviewer = (
+        request.form.get("reviewer") or g.user["full_name"] or actor
+    ).strip()
+    note = request.form.get("note", "").strip()
+    try:
+        if action == "run":
+            if not has_permission(Permission.RULE_REVIEW_TECHNICAL):
+                raise ClinicalValidationError("مجوز اجرای اعتبارسنجی فنی ثبت نشده است")
+            stored = service.run_current(created_by=actor)
+            flash(
+                "اعتبارسنجی با وضعیت " + stored["status"] + " ثبت شد.",
+                "success" if stored["status"] == "PASS" else "warning",
+            )
+        elif action == "attest":
+            role = request.form.get("role", "").strip().lower()
+            required = (
+                Permission.RULE_REVIEW_CLINICAL
+                if role == "clinical"
+                else Permission.RULE_REVIEW_TECHNICAL
+            )
+            if not has_permission(required):
+                raise ClinicalValidationError("مجوز تأیید این نقش ثبت نشده است")
+            if request.form.get("attestation") != "yes":
+                raise ClinicalValidationError("تأیید آگاهانهٔ مسئولیت الزامی است")
+            service.attest_current(
+                role=role,
+                reviewer=reviewer,
+                note=note,
+                report_hash=request.form.get("report_hash", ""),
+            )
+            flash("تأیید مستقل به آخرین گزارش PASS متصل شد.", "success")
+        else:
+            raise ClinicalValidationError("عملیات اعتبارسنجی ناشناخته است")
+    except (ClinicalValidationError, ValueError, LookupError) as exc:
+        flash(f"عملیات انجام نشد: {exc}", "error")
+    return redirect(
+        url_for("manager.clinical_validation") + "#validation-workspace"
+    )
 
 
 @bp.route("/settings", methods=["GET", "POST"])

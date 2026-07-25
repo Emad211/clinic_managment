@@ -15,6 +15,25 @@
     </div>
 </section>
 
+<section class="engine-validation-jump" aria-label="اعتبارسنجی نهایی موتور">
+    <div>
+        <span class="engine-kicker">گام ۷ · دروازهٔ انتشار</span>
+        <strong>Golden-case validation و دو تأیید مستقل</strong>
+        <small>
+            {% if engine.validation.release_ready %}
+            زنجیرهٔ اعتبارسنجی نسخهٔ جاری آمادهٔ استفاده در گزارش فعال‌سازی است.
+            {% elif engine.validation.report %}
+            جدیدترین اجرا {{ engine.validation.report.status }} است و {{ engine.validation.blockers|length|fa_num }} مانع باقی مانده است.
+            {% else %}
+            پیش از آزمون ۱۰ بیمار، بستهٔ کیس‌ها را اجرا و تأییدهای بالینی و فنی را ثبت کنید.
+            {% endif %}
+        </small>
+    </div>
+    <a class="btn btn-primary" href="{{ url_for('manager.clinical_validation') }}">
+        مشاهدهٔ مرکز اعتبارسنجی
+    </a>
+</section>
+
 {% set package = engine.package %}
 {% set approval_count = (1 if engine.approvals.clinical else 0) + (1 if engine.approvals.technical else 0) %}
 {% set current_step = 1 if package.state == 'missing' else 2 if package.state == 'review' else 3 if not engine.report_ok else 4 if approval_count < 2 else 5 if not engine.seal_valid else 6 if not engine.verification else 7 if engine.effective_mode != 'on' else 8 %}

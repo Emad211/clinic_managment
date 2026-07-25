@@ -23,6 +23,7 @@ from src.common.utils import iran_now
 from src.domain.clinical_engine.release import CURRENT_ENGINE_VERSION
 from src.services.activity_logger import log_activity
 from src.services.clinical_engine.fact_builder import ShadowFactCapture
+from src.services.clinical_engine.validation_service import ClinicalValidationService
 
 
 DEMO_IDS = tuple(f"TEST{i:04d}" for i in range(1, 11))
@@ -100,6 +101,7 @@ class ClinicalEngineActivationService:
             "selected_rollout_verification"
         )
         ruleset = self.rules.active_ruleset("general-outpatient")
+        validation = ClinicalValidationService().dashboard()
         report_ok = valid_report(report)
         selected_valid = self.state.valid_seal("on_selected")
         global_valid = self.state.valid_seal("on")
@@ -188,6 +190,7 @@ class ClinicalEngineActivationService:
             "seal_valid": selected_valid or global_valid,
             "verification": verification,
             "ruleset": ruleset,
+            "validation": validation,
             "last_rollback": self.state.get_json("last_rollback"),
             "blockers": blockers,
             "stages": stages,
@@ -232,6 +235,7 @@ class ClinicalEngineActivationService:
         rows: list[dict] = []
         failures: list[dict] = []
         ruleset = self.rules.active_ruleset("general-outpatient")
+        validation_evidence = ClinicalValidationService().current_release_evidence()
 
         for national_id in DEMO_IDS:
             patient = found.get(national_id)
@@ -335,6 +339,7 @@ class ClinicalEngineActivationService:
                 if self.enforce_positive_controls
                 else True
             ),
+            "validation_release_ready": bool(validation_evidence),
         }
         report_body = {
             "schema_version": "1.1",
@@ -343,6 +348,29 @@ class ClinicalEngineActivationService:
                 sep=" ", timespec="seconds"
             ),
             "cohort": list(DEMO_IDS),
+            "validation": (
+                {
+                    "status": "PASS",
+                    "engine_version": CURRENT_ENGINE_VERSION,
+                    "ruleset_code": "general-outpatient",
+                    "package_version": validation_evidence.get("package_version"),
+                    "validation_report_id": validation_evidence["validation_report_id"],
+                    "validation_report_hash": validation_evidence["validation_report_hash"],
+                    "package_hash": validation_evidence["package_hash"],
+                    "case_bundle_hash": validation_evidence["case_bundle_hash"],
+                }
+                if validation_evidence
+                else {
+                    "status": "BLOCKED",
+                    "engine_version": CURRENT_ENGINE_VERSION,
+                    "ruleset_code": "general-outpatient",
+                    "package_version": None,
+                    "validation_report_id": None,
+                    "validation_report_hash": None,
+                    "package_hash": None,
+                    "case_bundle_hash": None,
+                }
+            ),
             "ruleset": (
                 {
                     key: ruleset[key]
@@ -526,11 +554,16 @@ class ClinicalEngineActivationService:
         actor = activated_by.strip()
         if not actor:
             raise ActivationGateError("activated_by is required")
+        validation = report.get("validation") or {}
         body = {
             "mode": mode,
             "engine_version": CURRENT_ENGINE_VERSION,
             "ruleset_id": int(current["id"]),
             "report_hash": report["report_hash"],
+            "validation_report_id": int(validation.get("validation_report_id") or 0),
+            "validation_report_hash": validation.get("validation_report_hash"),
+            "validation_package_hash": validation.get("package_hash"),
+            "validation_case_bundle_hash": validation.get("case_bundle_hash"),
             "activated_by": actor,
             "activated_at": iran_now().isoformat(
                 sep=" ", timespec="seconds"

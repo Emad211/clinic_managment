@@ -94,6 +94,28 @@ def test_guided_package_prepare_then_clinical_review_and_freeze(manager_ui_app):
         assert package["status"] == "SILENT"
         assert ClinicalEngineFactRepository().get_mode() == "off"
 
+    validation_run = client.post(
+        "/manager/clinical-engine/validation/run", follow_redirects=True,
+    )
+    assert "اعتبارسنجی با وضعیت PASS" in validation_run.get_data(as_text=True)
+    with manager_ui_app.app_context():
+        from src.services.clinical_engine.validation_service import ClinicalValidationService
+        validation_report = ClinicalValidationService().dashboard()["report"]
+    client.post(
+        "/manager/clinical-engine/validation/attest",
+        data={"role": "clinical", "reviewer": "doctor-a",
+              "note": "Clinical validation reviewed.",
+              "report_hash": validation_report["report_hash"],
+              "attestation": "yes"},
+    )
+    client.post(
+        "/manager/clinical-engine/validation/attest",
+        data={"role": "technical", "reviewer": "engineer-b",
+              "note": "Technical validation reviewed.",
+              "report_hash": validation_report["report_hash"],
+              "attestation": "yes"},
+    )
+
     cohort = client.post(
         "/manager/clinical-engine/prepare-demo-cohort", follow_redirects=True,
     )

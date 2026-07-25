@@ -373,12 +373,16 @@ def _run_migrations(db):
     from src.adapters.sqlite.operational_lease_schema import (
         ensure_operational_lease_storage,
     )
+    from src.adapters.sqlite.clinical_validation_schema import (
+        ensure_clinical_validation_storage,
+    )
     from src.adapters.sqlite.clinical_audit_integrity_schema import (
         ensure_clinical_audit_integrity_storage,
     )
     ensure_strict_clinical_care_loop_guards(db)
     ensure_security_permission_storage(db)
     ensure_operational_lease_storage(db)
+    ensure_clinical_validation_storage(db)
     ensure_clinical_audit_integrity_storage(db)
     _ensure_clinical_engine_v2_storage(db)
     from src.adapters.sqlite.descriptive_indicator_catalog_schema import (

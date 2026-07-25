@@ -91,18 +91,33 @@ class ClinicalValidationService:
         )
 
     def dashboard(self) -> dict:
-        report = self.repository.latest_passing(
+        latest = self.repository.latest_for_identity(
             engine_version=CURRENT_ENGINE_VERSION,
             ruleset_code=RULESET_CODE,
             package_version=CURRENT_BUNDLED_PACKAGE_VERSION,
         )
         attestations = (
-            self.repository.attestations(int(report["id"])) if report else {}
+            self.repository.attestations(int(latest["id"]))
+            if latest and latest["status"] == "PASS"
+            else {}
         )
+        evidence = self.current_release_evidence()
+        blockers: list[str] = []
+        if not latest:
+            blockers.append("هنوز گزارش اعتبارسنجی برای نسخهٔ جاری ساخته نشده است.")
+        elif latest["status"] != "PASS":
+            blockers.append("جدیدترین اجرای اعتبارسنجی مسدود است؛ PASS قدیمی قابل استفاده نیست.")
+        if latest and latest["status"] == "PASS" and "CLINICAL" not in attestations:
+            blockers.append("تأیید مستقل مسئول بالینی ثبت نشده است.")
+        if latest and latest["status"] == "PASS" and "TECHNICAL" not in attestations:
+            blockers.append("تأیید مستقل بازبین فنی ثبت نشده است.")
         return {
-            "report": report,
+            "report": latest,
             "attestations": attestations,
-            "release_evidence": self.current_release_evidence(),
+            "release_evidence": evidence,
+            "release_ready": bool(evidence),
+            "blockers": blockers,
             "package_version": CURRENT_BUNDLED_PACKAGE_VERSION,
             "engine_version": CURRENT_ENGINE_VERSION,
+            "ruleset_code": RULESET_CODE,
         }
