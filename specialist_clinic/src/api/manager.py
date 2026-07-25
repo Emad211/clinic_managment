@@ -1,5 +1,6 @@
 from flask import Blueprint, render_template, request, redirect, url_for, flash, g
 from src.api.auth import login_required, manager_required
+from src.security.permissions import Permission, has_permission
 from src.adapters.sqlite.core import get_db
 from src.adapters.sqlite.sms_repo import SmsRepository
 from src.services.auth_service import AuthService
@@ -23,7 +24,7 @@ def index():
 
 
 @bp.route("/clinical-engine")
-@manager_required
+@login_required
 def clinical_engine():
     projection = ClinicalEngineActivationService().dashboard()
     from src.services.clinical_engine.package_service import ClinicalRulePackageService
@@ -38,9 +39,23 @@ def clinical_engine():
 
 
 @bp.route("/clinical-engine/<action>", methods=["POST"])
-@manager_required
+@login_required
 def clinical_engine_action(action):
-    """One guarded manager seam; the service remains the sole policy owner."""
+    """One permission-governed seam; the service remains the policy owner."""
+    if action in {
+        "activate-selected", "verify-selected", "promote-ruleset",
+        "activate-global", "rollback", "reset-workflow",
+    }:
+        required = Permission.RULE_ACTIVATE
+    elif action == "approve" and request.form.get("role") == "technical":
+        required = Permission.RULE_REVIEW_TECHNICAL
+    elif action in {"prepare-rules", "compare", "prepare-demo-cohort"}:
+        required = Permission.RULE_REVIEW_TECHNICAL
+    else:
+        required = Permission.RULE_REVIEW_CLINICAL
+    if not has_permission(required):
+        flash("مجوز governشدهٔ لازم برای این عملیات ثبت نشده است.", "error")
+        return redirect(url_for("manager.clinical_engine") + "#engine-actions")
     service = ClinicalEngineActivationService()
     actor = str(g.user["username"] or "manager")
     reviewer = (request.form.get("reviewer") or g.user["full_name"] or actor).strip()

@@ -1,8 +1,4 @@
-"""Endpoint-level permission policy for clinical mutations not yet decorator-migrated.
-
-This central boundary prevents coarse role checks or forgotten legacy decorators from
-becoming authorization bypasses while routes are migrated incrementally.
-"""
+"""Central permission policy for clinical and governed operations."""
 from __future__ import annotations
 
 from flask import abort, flash, g, redirect, request, url_for
@@ -28,8 +24,13 @@ _ENDPOINT_PERMISSIONS = {
     "patients.save_flags": Permission.CLINICAL_DATA_RECORD,
     "patients.clinical_v2_decision": Permission.CLINICAL_DECISION_RECORD,
     "patients.generate_followups": Permission.CLINICAL_TASK_TRANSITION,
-    "manager.clinical_engine": Permission.RULE_REVIEW_CLINICAL,
 }
+
+_RULE_VIEW_PERMISSIONS = (
+    Permission.RULE_REVIEW_CLINICAL,
+    Permission.RULE_REVIEW_TECHNICAL,
+    Permission.RULE_ACTIVATE,
+)
 
 
 def _manager_action_permission() -> Permission:
@@ -57,7 +58,22 @@ def required_permission() -> Permission | None:
     return _ENDPOINT_PERMISSIONS.get(endpoint)
 
 
+def _denied():
+    if request.is_json or request.accept_mimetypes.best == "application/json":
+        abort(403)
+    flash("مجوز governشدهٔ لازم برای این عملیات ثبت نشده است.", "error")
+    return redirect(request.referrer or url_for("dashboard.index"))
+
+
 def enforce_route_permission():
+    endpoint = str(request.endpoint or "")
+    if endpoint == "manager.clinical_engine":
+        if getattr(g, "user", None) is None:
+            return redirect(url_for("auth.login"))
+        if any(has_permission(permission) for permission in _RULE_VIEW_PERMISSIONS):
+            return None
+        return _denied()
+
     permission = required_permission()
     if permission is None:
         return None
@@ -65,10 +81,7 @@ def enforce_route_permission():
         return redirect(url_for("auth.login"))
     if has_permission(permission):
         return None
-    if request.is_json or request.accept_mimetypes.best == "application/json":
-        abort(403)
-    flash("مجوز governشدهٔ لازم برای این عملیات ثبت نشده است.", "error")
-    return redirect(request.referrer or url_for("dashboard.index"))
+    return _denied()
 
 
 __all__ = ["enforce_route_permission", "required_permission"]

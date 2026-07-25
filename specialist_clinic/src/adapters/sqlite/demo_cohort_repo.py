@@ -224,8 +224,10 @@ class DemoCohortRepository:
             db.execute(
                 """INSERT INTO patient_conditions
                    (patient_link_id, condition_id, stage, onset_date, notes,
-                    diagnosed_at)
-                   VALUES (?, ?, ?, ?, ?, ?)""",
+                    diagnosed_at, source_system, source_record_id,
+                    source_assertion, verification, recorded_by)
+                   VALUES (?, ?, ?, ?, ?, ?, 'system', ?, 'PRESENT',
+                           'CONFIRMED', ?)""",
                 (
                     patient_id,
                     condition_id,
@@ -233,6 +235,8 @@ class DemoCohortRepository:
                     condition.get("onset"),
                     condition.get("notes"),
                     condition.get("onset") or now,
+                    f"demo-condition:{patient_id}:{condition['code']}",
+                    actor,
                 ),
             )
 
@@ -319,7 +323,7 @@ class DemoCohortRepository:
             ],
         )
 
-        for medication in patient["meds"]:
+        for medication_index, medication in enumerate(patient["meds"], start=1):
             key = (
                 _clean(medication["name"]),
                 _clean(medication["drug_class"]),
@@ -339,8 +343,10 @@ class DemoCohortRepository:
                 """INSERT INTO patient_medications
                    (patient_link_id, drug_name, dose, schedule, start_date,
                     refill_due_date, is_active, end_date, notes, drug_class,
-                    drug_catalog_id)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    drug_catalog_id, source_system, source_record_id,
+                    source_assertion, verification, recorded_by)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'system', ?,
+                           'PRESENT', 'CONFIRMED', ?)""",
                 (
                     patient_id,
                     catalog["generic_fa"],
@@ -353,6 +359,8 @@ class DemoCohortRepository:
                     medication.get("notes"),
                     catalog["drug_class_key"],
                     int(catalog["id"]),
+                    f"demo-medication:{patient_id}:{medication_index}",
+                    actor,
                 ),
             )
             medication_id = int(cursor.lastrowid)

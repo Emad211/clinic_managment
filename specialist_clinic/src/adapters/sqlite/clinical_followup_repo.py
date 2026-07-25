@@ -81,8 +81,6 @@ class ClinicalFollowupRepository(FollowupRepository):
                      OR (
                          root.patient_link_id=?
                          AND root.clinical_semantic_key=?
-                         AND root.clinical_context_hash=?
-                         AND COALESCE(root.clinical_due_period,'')=COALESCE(?, '')
                          AND EXISTS (
                              SELECT 1 FROM clinical_task_events head
                              WHERE head.task_id=root.id
@@ -102,8 +100,6 @@ class ClinicalFollowupRepository(FollowupRepository):
                 task["clinical_task_key"],
                 task["patient_link_id"],
                 task["clinical_semantic_key"],
-                task["clinical_context_hash"],
-                task.get("due_period"),
             ),
         ).fetchone()
 

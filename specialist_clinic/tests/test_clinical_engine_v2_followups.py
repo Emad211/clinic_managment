@@ -297,11 +297,22 @@ def test_closed_task_can_recur_in_a_new_due_period(followup_app):
         },
     )
     assert service.generate_patient(patient_id)["created"] == 1
-    db.execute(
-        """UPDATE followup_tasks
-           SET status='done', resolved_at='2026-07-22 12:00:00'"""
+    from src.services.clinical_care_loop_service import ClinicalCareLoopService
+
+    first_task = db.execute(
+        "SELECT id FROM followup_tasks ORDER BY id LIMIT 1"
+    ).fetchone()
+    care_loop = ClinicalCareLoopService()
+    current = care_loop.current(int(first_task["id"]))
+    care_loop.transition(
+        int(first_task["id"]),
+        transition="not_done",
+        expected_current_event_id=int(current["current_event_id"]),
+        actor_username="pytest-clinician",
+        actor_user_id=None,
+        disposition_code="NO_LONGER_NEEDED",
+        note="First due period closed before recurrence.",
     )
-    db.commit()
     _run(
         patient_id,
         fact_ids=("lab:32",),

@@ -23,6 +23,12 @@ from src.adapters.sqlite.security_permission_repo import (
 from src.adapters.sqlite.security_permission_schema import (
     ensure_security_permission_storage,
 )
+from src.adapters.sqlite.operational_lease_schema import (
+    ensure_operational_lease_storage,
+)
+from src.adapters.sqlite.clinical_audit_integrity_schema import (
+    ensure_clinical_audit_integrity_storage,
+)
 from src.security.csrf import rotate_csrf_token
 from src.security.permissions import Permission, permission_required
 from src.security.route_policy import enforce_route_permission
@@ -40,6 +46,8 @@ def install_security_storage(state):
     with state.app.app_context():
         ensure_strict_clinical_care_loop_guards()
         ensure_security_permission_storage()
+        ensure_operational_lease_storage()
+        ensure_clinical_audit_integrity_storage()
 
 
 @bp.before_app_request
@@ -89,17 +97,15 @@ def login():
     return render_template("auth/login.html")
 
 
-@bp.route("/logout")
+@bp.post("/logout")
+@login_required
 def logout():
-    # This compatibility GET only clears the current session and performs no
-    # persistent/clinical mutation. Shared navigation can migrate to POST separately.
-    if g.user:
-        log_activity(
-            "logout",
-            f'خروج {g.user["username"]}',
-            user_id=g.user["id"],
-            username=g.user["username"],
-        )
+    log_activity(
+        "logout",
+        f'خروج {g.user["username"]}',
+        user_id=g.user["id"],
+        username=g.user["username"],
+    )
     session.clear()
     return redirect(url_for("auth.login"))
 

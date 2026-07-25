@@ -20,9 +20,21 @@ ALLOWED_ORIGINS = (
 
 
 def _origin_allowed(origin: str) -> bool:
-    if not origin:
-        return False
-    return any(origin == allowed or origin.startswith(allowed) for allowed in ALLOWED_ORIGINS)
+    value = str(origin or "").strip().rstrip("/")
+    if value == "https://ep.tamin.ir":
+        return True
+    return (
+        value in {"http://localhost", "http://127.0.0.1"}
+        or value.startswith("http://localhost:")
+        or value.startswith("http://127.0.0.1:")
+    )
+
+
+def _origin_rejected():
+    origin = request.headers.get("Origin", "")
+    if origin and not _origin_allowed(origin):
+        return jsonify({"ok": False, "error": "origin_forbidden"}), 403
+    return None
 
 
 def _user_from_request():
@@ -49,6 +61,9 @@ def _cors(response):
 def pending():
     if request.method == "OPTIONS":
         return "", 204
+    rejected = _origin_rejected()
+    if rejected:
+        return rejected
     if not current_app.config.get("TESTING") and not allow(
         f"ext:{request.remote_addr or '?'}",
         limit=60,
@@ -89,6 +104,9 @@ def pending():
 def captured():
     if request.method == "OPTIONS":
         return "", 204
+    rejected = _origin_rejected()
+    if rejected:
+        return rejected
     if not current_app.config.get("TESTING") and not allow(
         f"ext:{request.remote_addr or '?'}",
         limit=60,

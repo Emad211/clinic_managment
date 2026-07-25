@@ -611,6 +611,7 @@ class ClinicalEngineActivationService:
             ruleset_id,
             promoted_by=promoted_by,
         )
+        self.activate("on_selected", activated_by=promoted_by)
         log_activity(
             "clinical_v2_promote_ruleset",
             f"Promoted ruleset #{ruleset_id} to ACTIVE",

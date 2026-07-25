@@ -147,6 +147,12 @@ class Scheduler:
                 callback=self._run_clinical_followups,
             ):
                 self._last_followup_day = today
+            self._run_once(
+                job_name="clinical-audit-checkpoint",
+                period_key=today,
+                lease=lease,
+                callback=self._seal_clinical_audit,
+            )
 
             period = self._bucket(now)
             self._run_once(
@@ -200,6 +206,21 @@ class Scheduler:
                 "no unsafe task was created for those cases",
                 len(result["issues"]),
             )
+        return True
+
+    def _seal_clinical_audit(self):
+        from src.services.clinical_audit_integrity import (
+            ClinicalAuditIntegrityService,
+        )
+
+        checkpoint = ClinicalAuditIntegrityService().seal(
+            created_by=f"scheduler:{self.owner_id}"
+        )
+        logger.info(
+            "[scheduler] clinical audit checkpoint id=%s hash=%s",
+            checkpoint["id"],
+            checkpoint["checkpoint_hash"][:12],
+        )
         return True
 
     def _run_engagement(self):

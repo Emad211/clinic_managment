@@ -127,6 +127,10 @@ def ensure_clinical_care_loop_storage(
     if "followup_tasks" not in tables:
         return
 
+    # Context identity is owned by the encounter tranche, but copied pre-v2 or
+    # partially migrated databases may reach the closed-care-loop installer first.
+    # Install the prerequisite here as well so this migration is independently safe.
+    _ensure_column(db, "followup_tasks", "clinical_context_hash", "TEXT")
     _ensure_column(db, "followup_tasks", "clinical_due_period", "TEXT")
     _ensure_column(
         db,

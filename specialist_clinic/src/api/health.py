@@ -86,7 +86,7 @@ def _readiness_checks() -> dict[str, bool]:
                  WHERE lease.lease_name=job.lease_name
                    AND lease.owner_id=job.owner_id
                    AND lease.fencing_token=job.fencing_token
-                   AND datetime(lease.expires_at)>datetime('now')
+                   AND datetime(lease.expires_at)>datetime('now','+3 hours','+30 minutes')
              )
            LIMIT 1"""
     ).fetchone()

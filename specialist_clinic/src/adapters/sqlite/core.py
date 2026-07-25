@@ -364,6 +364,22 @@ def _run_migrations(db):
     )
     ensure_clinical_reconciliation_storage(db)
     ensure_clinical_data_conflict_storage(db)
+    from src.adapters.sqlite.clinical_care_loop_strict_guards import (
+        ensure_strict_clinical_care_loop_guards,
+    )
+    from src.adapters.sqlite.security_permission_schema import (
+        ensure_security_permission_storage,
+    )
+    from src.adapters.sqlite.operational_lease_schema import (
+        ensure_operational_lease_storage,
+    )
+    from src.adapters.sqlite.clinical_audit_integrity_schema import (
+        ensure_clinical_audit_integrity_storage,
+    )
+    ensure_strict_clinical_care_loop_guards(db)
+    ensure_security_permission_storage(db)
+    ensure_operational_lease_storage(db)
+    ensure_clinical_audit_integrity_storage(db)
     _ensure_clinical_engine_v2_storage(db)
     from src.adapters.sqlite.descriptive_indicator_catalog_schema import (
         ensure_descriptive_indicator_catalog,
@@ -394,19 +410,45 @@ def _run_migrations(db):
 
 
 def _ensure_default_admin(db):
-    """Create a default manager account (admin/admin) if no users exist."""
-    try:
-        row = db.execute("SELECT COUNT(*) AS c FROM users").fetchone()
-        if row and row['c'] == 0:
-            import bcrypt
-            pw = bcrypt.hashpw('admin'.encode('utf-8'), bcrypt.gensalt())
-            db.execute(
-                "INSERT INTO users (username, password_hash, role, full_name, is_active) VALUES (?, ?, ?, ?, 1)",
-                ('admin', pw, 'manager', 'مدیر سیستم'),
-            )
-            db.commit()
-    except Exception:
-        pass
+    """Create the first manager without permitting default credentials in production."""
+    row = db.execute("SELECT COUNT(*) AS c FROM users").fetchone()
+    if not row or int(row["c"] or 0) != 0:
+        return
+
+    production = bool(current_app.config.get("PRODUCTION")) and not bool(
+        current_app.config.get("TESTING", False)
+    )
+    username = str(
+        current_app.config.get("BOOTSTRAP_ADMIN_USERNAME")
+        or os.getenv("CLINIC_BOOTSTRAP_ADMIN_USERNAME")
+        or "admin"
+    ).strip()
+    password = str(
+        current_app.config.get("BOOTSTRAP_ADMIN_PASSWORD")
+        or os.getenv("CLINIC_BOOTSTRAP_ADMIN_PASSWORD")
+        or ""
+    )
+    if not username:
+        raise RuntimeError("BOOTSTRAP_ADMIN_USERNAME cannot be empty")
+    if production and (len(password) < 12 or password == "admin"):
+        raise RuntimeError(
+            "Production bootstrap requires CLINIC_BOOTSTRAP_ADMIN_PASSWORD "
+            "with at least 12 characters; admin/admin is forbidden."
+        )
+    if not password:
+        # Development/test compatibility only. Production is rejected above.
+        password = "admin"
+
+    import bcrypt
+
+    password_hash = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt())
+    db.execute(
+        "INSERT INTO users "
+        "(username, password_hash, role, full_name, is_active) "
+        "VALUES (?, ?, 'manager', ?, 1)",
+        (username, password_hash, "مدیر سیستم"),
+    )
+    db.commit()
 
 
 def get_db():
@@ -425,12 +467,16 @@ def get_db():
             except Exception:
                 pass
 
-        db = g._database = sqlite3.connect(db_path)
+        db = g._database = sqlite3.connect(db_path, timeout=10)
         db.row_factory = sqlite3.Row
         db.execute("PRAGMA foreign_keys = ON")
         # Tolerate brief write contention between the request thread and the background
         # scheduler (e.g. the read-only invoice-sync consumer writing its ledger).
-        db.execute("PRAGMA busy_timeout = 3000")
+        db.execute("PRAGMA busy_timeout = 10000")
+        if db_path != ":memory:":
+            db.execute("PRAGMA journal_mode = WAL")
+            db.execute("PRAGMA synchronous = NORMAL")
+            db.execute("PRAGMA wal_autocheckpoint = 1000")
 
         # Initialize schema once per process if users table is missing.
         try:

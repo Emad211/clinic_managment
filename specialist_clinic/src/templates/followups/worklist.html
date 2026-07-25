@@ -100,7 +100,7 @@
                                             <button class="btn btn-sm btn-ghost" type="submit"><svg class="icon icon-sm"><use href="#i-x"></use></svg> رد</button>
                                         </form>
                                     </div>
-                                {% elif g.user and g.user['role'] == 'manager' %}
+                                {% elif permissions.get('clinical.task.transition') or permissions.get('clinical.outcome.record') %}
                                     <details>
                                         <summary class="btn btn-sm btn-ghost">ثبت lifecycle / نتیجه</summary>
                                         <div class="card card-soft" style="min-width:340px;margin-top:var(--s2);">
@@ -150,21 +150,24 @@
                                                 <input type="hidden" name="expected_current_event_id" value="{{ t.current_event_id }}">
                                                 <input type="hidden" name="transition" value="assign">
                                                 <div class="fld"><label>واگذاری به</label><input name="assigned_to" required></div>
-                                                <div class="fld" style="align-self:flex-end;"><button class="btn btn-sm" type="submit">ثبت واگذاری</button></div>
+                                                <div class="fld" style="align-self:flex-end;">
+                                                    <button class="btn btn-sm" type="submit">ثبت واگذاری</button></div>
                                             </form>
                                             <form method="post" action="{{ url_for('followups.clinical_transition', task_id=t.id) }}" class="row" style="margin-top:var(--s2);">
                                                 <input type="hidden" name="expected_current_event_id" value="{{ t.current_event_id }}">
                                                 <input type="hidden" name="transition" value="defer">
                                                 <div class="fld"><label>سررسید جدید</label><input class="jdate" name="due_at" required></div>
                                                 <div class="fld"><label>علت تعویق</label><input name="note" required></div>
-                                                <div class="fld" style="align-self:flex-end;"><button class="btn btn-sm btn-ghost" type="submit">تعویق</button></div>
+                                                <div class="fld" style="align-self:flex-end;">
+                                                    <button class="btn btn-sm btn-ghost" type="submit">تعویق</button></div>
                                             </form>
                                             <form method="post" action="{{ url_for('followups.clinical_transition', task_id=t.id) }}" class="row" style="margin-top:var(--s2);">
                                                 <input type="hidden" name="expected_current_event_id" value="{{ t.current_event_id }}">
                                                 <input type="hidden" name="transition" value="not_done">
                                                 <div class="fld"><label>علت انجام‌نشدن</label><select name="disposition_code" required>{% for key, label in disposition_labels.items() %}<option value="{{ key }}">{{ label }}</option>{% endfor %}</select></div>
                                                 <div class="fld"><label>توضیح</label><input name="note"></div>
-                                                <div class="fld" style="align-self:flex-end;"><button class="btn btn-sm btn-ghost" type="submit">ثبت انجام‌نشدن</button></div>
+                                                <div class="fld" style="align-self:flex-end;">
+                                                    <button class="btn btn-sm btn-ghost" type="submit">ثبت انجام‌نشدن</button></div>
                                             </form>
                                         </div>
                                     </details>
@@ -208,7 +211,8 @@
                 <div class="row">
                     <div class="fld"><label>تاریخ ویزیت</label><input type="text" class="jdate" name="scheduled_date" placeholder="انتخاب تاریخ" required></div>
                     <div class="fld"><label>ساعت</label><input type="time" class="time-input" name="scheduled_time" value="09:00" step="900" lang="fa-IR" required></div>
-                    <div class="fld" style="align-self:flex-end;"><button class="btn btn-ok" type="submit"><svg class="icon icon-sm"><use href="#i-calendar"></use></svg> ثبت ویزیت</button></div>
+                    <div class="fld" style="align-self:flex-end;">
+                                                    <button class="btn btn-ok" type="submit"><svg class="icon icon-sm"><use href="#i-calendar"></use></svg> ثبت ویزیت</button></div>
                 </div>
             </form>
         </details>
