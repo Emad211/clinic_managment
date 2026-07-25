@@ -11,6 +11,9 @@ from src.adapters.sqlite.clinical_audit_integrity_schema import (
 from src.adapters.sqlite.clinical_engine_activation_repo import (
     ClinicalEngineActivationRepository,
 )
+from src.adapters.sqlite.clinical_validation_schema import (
+    ensure_clinical_validation_storage,
+)
 from src.adapters.sqlite.core import get_db
 from src.adapters.sqlite.operational_lease_schema import (
     ensure_operational_lease_storage,
@@ -36,6 +39,8 @@ _REQUIRED_TABLES = frozenset(
         "clinical_task_events",
         "clinical_outcome_events",
         "clinical_data_conflict_events",
+        "clinical_validation_reports",
+        "clinical_validation_attestations",
         "security_permission_events",
         "operational_leases",
         "operational_job_runs",
@@ -48,6 +53,7 @@ def _readiness_checks() -> dict[str, bool]:
     db = get_db()
     ensure_security_permission_storage(db)
     ensure_operational_lease_storage(db)
+    ensure_clinical_validation_storage(db)
     ensure_clinical_audit_integrity_storage(db)
 
     quick = db.execute("PRAGMA quick_check").fetchone()
