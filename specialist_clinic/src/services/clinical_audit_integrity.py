@@ -16,11 +16,14 @@ from typing import Any, Mapping
 from src.adapters.sqlite.clinical_audit_integrity_schema import (
     ensure_clinical_audit_integrity_storage,
 )
+from src.adapters.sqlite.clinical_validation_schema import (
+    ensure_clinical_validation_storage,
+)
 from src.adapters.sqlite.core import get_db
 from src.common.utils import iran_now
 
 
-SCOPE_VERSION = "1.0"
+SCOPE_VERSION = "1.1-validation-release"
 CRITICAL_TABLES = (
     "clinical_rule_versions",
     "clinical_rulesets",
@@ -34,6 +37,8 @@ CRITICAL_TABLES = (
     "clinical_data_conflict_events",
     "clinical_task_events",
     "clinical_outcome_events",
+    "clinical_validation_reports",
+    "clinical_validation_attestations",
     "security_permission_events",
 )
 
@@ -83,6 +88,7 @@ class ClinicalAuditIntegrityService:
 
     def _db(self):
         db = self._connection or get_db()
+        ensure_clinical_validation_storage(db)
         ensure_clinical_audit_integrity_storage(db)
         return db
 
