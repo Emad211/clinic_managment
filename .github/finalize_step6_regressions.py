@@ -14,6 +14,8 @@ def replace_once(path: str, old: str, new: str) -> None:
     target.write_text(text, encoding="utf-8")
 
 
+# An existing open task blocks duplicate semantic work independent of a later run's
+# evidence, context or due date. Recurrence is allowed only after a terminal event.
 followup = Path("specialist_clinic/src/adapters/sqlite/clinical_followup_repo.py")
 text = followup.read_text(encoding="utf-8")
 query_pattern = re.compile(
@@ -42,6 +44,8 @@ if query_count != 1 or params_count != 1:
         )
 followup.write_text(text, encoding="utf-8")
 
+# The recurrence regression must close the first task through the append-only event
+# lifecycle. Mutating followup_tasks.status is a retired pre-step-5 shortcut.
 replace_once(
     "specialist_clinic/tests/test_clinical_engine_v2_followups.py",
     '''    db.execute(
@@ -69,6 +73,8 @@ replace_once(
 ''',
 )
 
+# SILENT -> ACTIVE mutates governed ruleset state. Reissue the selected seal so the
+# unchanged package/report and the newly ACTIVE ruleset bind to a fresh checkpoint.
 replace_once(
     "specialist_clinic/src/services/clinical_engine/activation.py",
     '''        self.rules.promote_silent_ruleset(
@@ -86,47 +92,91 @@ replace_once(
 ''',
 )
 
+# Synthetic controls must carry stable source provenance before their immutable
+# reconciliation event is recorded. A later generic provenance backfill must be a
+# no-op, otherwise candidate-set hashes would truthfully invalidate the review.
 replace_once(
-    "specialist_clinic/tests/test_clinical_engine_v2_manager_ui.py",
-    '''    html = compared.get_data(as_text=True)
-    assert "آزمون هر ۱۰ بیمار با موفقیت انجام شد" in html
+    "specialist_clinic/src/adapters/sqlite/demo_cohort_repo.py",
+    '''                """INSERT INTO patient_conditions
+                   (patient_link_id, condition_id, stage, onset_date, notes,
+                    diagnosed_at)
+                   VALUES (?, ?, ?, ?, ?, ?)""",
+                (
+                    patient_id,
+                    condition_id,
+                    condition.get("stage"),
+                    condition.get("onset"),
+                    condition.get("notes"),
+                    condition.get("onset") or now,
+                ),
 ''',
-    '''    html = compared.get_data(as_text=True)
-    with manager_ui_app.app_context():
-        diagnostic_report = ClinicalEngineActivationRepository().get_json("last_report")
-        from src.adapters.sqlite.clinical_reconciliation_repo import ClinicalReconciliationRepository
-        from src.adapters.sqlite.core import get_db
-        db = get_db()
-        projections = {}
-        for national_id in ("TEST0008", "TEST0010"):
-            patient = db.execute(
-                "SELECT id FROM patient_links WHERE national_id=?", (national_id,)
-            ).fetchone()
-            projections[national_id] = {}
-            for collection_key in ("conditions", "medications"):
-                projection = ClinicalReconciliationRepository().projection(
-                    int(patient["id"]), collection_key, as_of_at="2026-07-22 08:00:00"
-                )
-                event = projection.reconciliation_event or {}
-                projections[national_id][collection_key] = {
-                    "state": projection.state,
-                    "verification": projection.verification.value,
-                    "warnings": list(projection.warnings),
-                    "current_hash": projection.content_hash[:12],
-                    "event_hash": str(event.get("content_hash") or "")[:12],
-                    "current_count": projection.item_count,
-                    "event_count": event.get("item_count"),
-                    "current_conflict": projection.conflict_snapshot_hash[:12],
-                    "event_conflict": str(event.get("conflict_snapshot_hash") or "")[:12],
-                }
-    diagnostic = {
-        "failed_checks": [
-            key for key, value in (diagnostic_report.get("checks") or {}).items()
-            if not value
-        ],
-        "projections": projections,
-    }
-    if "آزمون هر ۱۰ بیمار با موفقیت انجام شد" not in html:
-        raise AssertionError(diagnostic)
+    '''                """INSERT INTO patient_conditions
+                   (patient_link_id, condition_id, stage, onset_date, notes,
+                    diagnosed_at, source_system, source_record_id,
+                    source_assertion, verification, recorded_by)
+                   VALUES (?, ?, ?, ?, ?, ?, 'system', ?, 'PRESENT',
+                           'CONFIRMED', ?)""",
+                (
+                    patient_id,
+                    condition_id,
+                    condition.get("stage"),
+                    condition.get("onset"),
+                    condition.get("notes"),
+                    condition.get("onset") or now,
+                    f"demo-condition:{patient_id}:{condition['code']}",
+                    actor,
+                ),
+''',
+)
+replace_once(
+    "specialist_clinic/src/adapters/sqlite/demo_cohort_repo.py",
+    '''        for medication in patient["meds"]:
+''',
+    '''        for medication_index, medication in enumerate(patient["meds"], start=1):
+''',
+)
+replace_once(
+    "specialist_clinic/src/adapters/sqlite/demo_cohort_repo.py",
+    '''                """INSERT INTO patient_medications
+                   (patient_link_id, drug_name, dose, schedule, start_date,
+                    refill_due_date, is_active, end_date, notes, drug_class,
+                    drug_catalog_id)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    patient_id,
+                    catalog["generic_fa"],
+                    final_dose,
+                    medication["schedule"],
+                    medication["start"],
+                    "2026-10-22",
+                    0 if medication["stop"] else 1,
+                    medication["stop"],
+                    medication.get("notes"),
+                    catalog["drug_class_key"],
+                    int(catalog["id"]),
+                ),
+''',
+    '''                """INSERT INTO patient_medications
+                   (patient_link_id, drug_name, dose, schedule, start_date,
+                    refill_due_date, is_active, end_date, notes, drug_class,
+                    drug_catalog_id, source_system, source_record_id,
+                    source_assertion, verification, recorded_by)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'system', ?,
+                           'PRESENT', 'CONFIRMED', ?)""",
+                (
+                    patient_id,
+                    catalog["generic_fa"],
+                    final_dose,
+                    medication["schedule"],
+                    medication["start"],
+                    "2026-10-22",
+                    0 if medication["stop"] else 1,
+                    medication["stop"],
+                    medication.get("notes"),
+                    catalog["drug_class_key"],
+                    int(catalog["id"]),
+                    f"demo-medication:{patient_id}:{medication_index}",
+                    actor,
+                ),
 ''',
 )
