@@ -1,0 +1,217 @@
+{
+  "schema_version": "1.0",
+  "package_version": "2026.1-draft.2",
+  "description": "Technical golden cases for the immutable baseline package. Clinical approval remains a separate gate.",
+  "cases": [
+    {
+      "case_id": "GC-POS-001",
+      "title": "Severe systolic pressure and low eGFR while taking metformin",
+      "categories": ["positive", "contraindication", "suppression"],
+      "as_of_at": "2026-07-21 12:00:00",
+      "context": {
+        "evaluation_mode": "ENCOUNTER",
+        "care_setting": "specialty_clinic",
+        "encounter_type": "office_visit"
+      },
+      "facts": [
+        {"key": "condition.codes", "value": ["diabetes"], "fact_id": "pos-condition"},
+        {"key": "demographic.age_years", "value": 58, "fact_id": "pos-age"},
+        {"key": "observation.bp_systolic", "value": 185, "unit": "mm[Hg]", "fact_id": "pos-sbp"},
+        {"key": "observation.bp_diastolic", "value": 92, "unit": "mm[Hg]", "fact_id": "pos-dbp"},
+        {"key": "medication.classes", "value": ["metformin"], "fact_id": "pos-medications"},
+        {"key": "observation.egfr", "value": 24, "unit": "mL/min/{1.73_m2}", "fact_id": "pos-egfr"}
+      ],
+      "expected": {
+        "outcomes": {
+          "T2-REDFLAG-BP": "FIRED",
+          "T2-SAFE-MET-STOP": "FIRED"
+        },
+        "redflag_rule_codes": ["T2-REDFLAG-BP"]
+      }
+    },
+    {
+      "case_id": "GC-NEG-001",
+      "title": "Adult diabetic below both pressure thresholds and not taking metformin",
+      "categories": ["negative"],
+      "as_of_at": "2026-07-21 12:00:00",
+      "context": {
+        "evaluation_mode": "ENCOUNTER",
+        "care_setting": "primary_care",
+        "encounter_type": "followup"
+      },
+      "facts": [
+        {"key": "condition.codes", "value": ["diabetes"], "fact_id": "neg-condition"},
+        {"key": "demographic.age_years", "value": 58, "fact_id": "neg-age"},
+        {"key": "observation.bp_systolic", "value": 179, "unit": "mm[Hg]", "fact_id": "neg-sbp"},
+        {"key": "observation.bp_diastolic", "value": 109, "unit": "mm[Hg]", "fact_id": "neg-dbp"},
+        {"key": "medication.classes", "value": [], "fact_id": "neg-medications"}
+      ],
+      "expected": {
+        "outcomes": {
+          "T2-REDFLAG-BP": "NOT_FIRED",
+          "T2-SAFE-MET-STOP": "NOT_APPLICABLE"
+        },
+        "redflag_rule_codes": [],
+        "forbidden_missing_facts": {
+          "T2-SAFE-MET-STOP": ["observation.egfr"]
+        }
+      }
+    },
+    {
+      "case_id": "GC-BORDER-001",
+      "title": "Exact severe-pressure threshold with eGFR exactly at non-firing boundary",
+      "categories": ["borderline"],
+      "as_of_at": "2026-07-21 12:00:00",
+      "context": {
+        "evaluation_mode": "ENCOUNTER",
+        "care_setting": "specialty_clinic",
+        "encounter_type": "office_visit"
+      },
+      "facts": [
+        {"key": "condition.codes", "value": ["diabetes"], "fact_id": "border-condition"},
+        {"key": "demographic.age_years", "value": 40, "fact_id": "border-age"},
+        {"key": "observation.bp_systolic", "value": 180, "unit": "mm[Hg]", "fact_id": "border-sbp"},
+        {"key": "observation.bp_diastolic", "value": 80, "unit": "mm[Hg]", "fact_id": "border-dbp"},
+        {"key": "medication.classes", "value": ["metformin"], "fact_id": "border-medications"},
+        {"key": "observation.egfr", "value": 30, "unit": "mL/min/{1.73_m2}", "fact_id": "border-egfr"}
+      ],
+      "expected": {
+        "outcomes": {
+          "T2-REDFLAG-BP": "FIRED",
+          "T2-SAFE-MET-STOP": "NOT_FIRED"
+        },
+        "redflag_rule_codes": ["T2-REDFLAG-BP"]
+      }
+    },
+    {
+      "case_id": "GC-MISSING-001",
+      "title": "Adult status cannot be established",
+      "categories": ["missing-data"],
+      "as_of_at": "2026-07-21 12:00:00",
+      "context": {
+        "evaluation_mode": "ENCOUNTER",
+        "care_setting": "specialty_clinic",
+        "encounter_type": "office_visit"
+      },
+      "facts": [
+        {"key": "condition.codes", "value": ["diabetes"], "fact_id": "missing-condition"},
+        {"key": "observation.bp_systolic", "value": 190, "unit": "mm[Hg]", "fact_id": "missing-sbp"},
+        {"key": "medication.classes", "value": ["metformin"], "fact_id": "missing-medications"},
+        {"key": "observation.egfr", "value": 20, "unit": "mL/min/{1.73_m2}", "fact_id": "missing-egfr"}
+      ],
+      "expected": {
+        "outcomes": {
+          "T2-REDFLAG-BP": "NEEDS_DATA",
+          "T2-SAFE-MET-STOP": "NEEDS_DATA"
+        },
+        "required_missing_facts": {
+          "T2-REDFLAG-BP": ["demographic.age_years"],
+          "T2-SAFE-MET-STOP": ["demographic.age_years"]
+        }
+      }
+    },
+    {
+      "case_id": "GC-CONFLICT-001",
+      "title": "Conflicting diagnosis collection must not establish diabetes eligibility",
+      "categories": ["conflict"],
+      "as_of_at": "2026-07-21 12:00:00",
+      "context": {
+        "evaluation_mode": "ENCOUNTER",
+        "care_setting": "specialty_clinic",
+        "encounter_type": "office_visit"
+      },
+      "facts": [
+        {"key": "condition.codes", "value": null, "status": "UNKNOWN", "verification": "UNVERIFIED", "conflict": "PRESENT", "fact_id": "conflict-condition"},
+        {"key": "demographic.age_years", "value": 63, "fact_id": "conflict-age"},
+        {"key": "observation.bp_systolic", "value": 190, "unit": "mm[Hg]", "fact_id": "conflict-sbp"},
+        {"key": "medication.classes", "value": ["metformin"], "fact_id": "conflict-medications"},
+        {"key": "observation.egfr", "value": 20, "unit": "mL/min/{1.73_m2}", "fact_id": "conflict-egfr"}
+      ],
+      "expected": {
+        "outcomes": {
+          "T2-REDFLAG-BP": "NEEDS_DATA",
+          "T2-SAFE-MET-STOP": "NEEDS_DATA"
+        },
+        "required_missing_facts": {
+          "T2-REDFLAG-BP": ["condition.codes"],
+          "T2-SAFE-MET-STOP": ["condition.codes"]
+        }
+      }
+    },
+    {
+      "case_id": "GC-HISTORY-001",
+      "title": "Pressure observations outside the one-day historical window are not current",
+      "categories": ["historical-as-of"],
+      "as_of_at": "2026-07-21 12:00:00",
+      "context": {
+        "evaluation_mode": "ENCOUNTER",
+        "care_setting": "specialty_clinic",
+        "encounter_type": "followup"
+      },
+      "facts": [
+        {"key": "condition.codes", "value": ["diabetes"], "fact_id": "history-condition"},
+        {"key": "demographic.age_years", "value": 58, "fact_id": "history-age"},
+        {"key": "observation.bp_systolic", "value": 190, "unit": "mm[Hg]", "effective_days_before": 2, "recorded_days_before": 2, "fact_id": "history-sbp"},
+        {"key": "observation.bp_diastolic", "value": 120, "unit": "mm[Hg]", "effective_days_before": 2, "recorded_days_before": 2, "fact_id": "history-dbp"},
+        {"key": "medication.classes", "value": [], "fact_id": "history-medications"}
+      ],
+      "expected": {
+        "outcomes": {
+          "T2-REDFLAG-BP": "NEEDS_DATA",
+          "T2-SAFE-MET-STOP": "NOT_APPLICABLE"
+        },
+        "forbidden_missing_facts": {
+          "T2-SAFE-MET-STOP": ["observation.egfr"]
+        }
+      }
+    },
+    {
+      "case_id": "GC-SCOPE-001",
+      "title": "Non-diabetic patient is outside both rule populations",
+      "categories": ["negative"],
+      "as_of_at": "2026-07-21 12:00:00",
+      "context": {
+        "evaluation_mode": "ENCOUNTER",
+        "care_setting": "primary_care",
+        "encounter_type": "office_visit"
+      },
+      "facts": [
+        {"key": "condition.codes", "value": ["hypertension"], "fact_id": "scope-condition"},
+        {"key": "demographic.age_years", "value": 58, "fact_id": "scope-age"},
+        {"key": "observation.bp_systolic", "value": 190, "unit": "mm[Hg]", "fact_id": "scope-sbp"},
+        {"key": "medication.classes", "value": ["metformin"], "fact_id": "scope-medications"},
+        {"key": "observation.egfr", "value": 20, "unit": "mL/min/{1.73_m2}", "fact_id": "scope-egfr"}
+      ],
+      "expected": {
+        "outcomes": {
+          "T2-REDFLAG-BP": "NOT_APPLICABLE",
+          "T2-SAFE-MET-STOP": "NOT_APPLICABLE"
+        }
+      }
+    },
+    {
+      "case_id": "GC-MINOR-001",
+      "title": "Minor is outside adult package scope",
+      "categories": ["negative"],
+      "as_of_at": "2026-07-21 12:00:00",
+      "context": {
+        "evaluation_mode": "ENCOUNTER",
+        "care_setting": "specialty_clinic",
+        "encounter_type": "office_visit"
+      },
+      "facts": [
+        {"key": "condition.codes", "value": ["diabetes"], "fact_id": "minor-condition"},
+        {"key": "demographic.age_years", "value": 17, "fact_id": "minor-age"},
+        {"key": "observation.bp_systolic", "value": 190, "unit": "mm[Hg]", "fact_id": "minor-sbp"},
+        {"key": "medication.classes", "value": ["metformin"], "fact_id": "minor-medications"},
+        {"key": "observation.egfr", "value": 20, "unit": "mL/min/{1.73_m2}", "fact_id": "minor-egfr"}
+      ],
+      "expected": {
+        "outcomes": {
+          "T2-REDFLAG-BP": "NOT_APPLICABLE",
+          "T2-SAFE-MET-STOP": "NOT_APPLICABLE"
+        }
+      }
+    }
+  ]
+}
