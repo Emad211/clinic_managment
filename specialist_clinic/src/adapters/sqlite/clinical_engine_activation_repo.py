@@ -7,6 +7,7 @@ from typing import Any
 
 from src.adapters.sqlite.core import get_db
 from src.domain.clinical_engine.release import (
+    CURRENT_BUNDLED_PACKAGE_VERSION,
     CURRENT_ENGINE_VERSION,
     RULESET_CODE,
     is_current_package_version,
@@ -40,6 +41,7 @@ def report_core(report: dict) -> dict:
         "as_of_at": report.get("as_of_at"),
         "cohort": report.get("cohort"),
         "ruleset": report.get("ruleset"),
+        "validation": report.get("validation"),
         "patients": [
             {
                 key: value
@@ -62,6 +64,21 @@ def _current_report_ruleset(report: Any) -> bool:
     )
 
 
+def _current_report_validation(report: Any) -> bool:
+    validation = report.get("validation") if isinstance(report, dict) else None
+    return bool(
+        isinstance(validation, dict)
+        and validation.get("status") == "PASS"
+        and validation.get("engine_version") == CURRENT_ENGINE_VERSION
+        and validation.get("ruleset_code") == RULESET_CODE
+        and validation.get("package_version") == CURRENT_BUNDLED_PACKAGE_VERSION
+        and validation.get("validation_report_id") is not None
+        and validation.get("validation_report_hash")
+        and validation.get("package_hash")
+        and validation.get("case_bundle_hash")
+    )
+
+
 def valid_report(report: Any) -> bool:
     return bool(
         isinstance(report, dict)
@@ -70,6 +87,7 @@ def valid_report(report: Any) -> bool:
         and report.get("checks")
         and all(report["checks"].values())
         and _current_report_ruleset(report)
+        and _current_report_validation(report)
         and report.get("report_hash")
         == content_hash(report_core(report))
     )
@@ -183,11 +201,31 @@ class ClinicalEngineActivationRepository:
                 ClinicalAuditIntegrityService,
             )
 
-            verification = ClinicalAuditIntegrityService().verify_checkpoint(
+            service = ClinicalAuditIntegrityService()
+            verification = service.verify_checkpoint(
                 int(checkpoint_id),
                 expected_hash=str(checkpoint_hash),
             )
-            return verification.ok
+            latest = service.verify_latest(require_checkpoint=True)
+            return verification.ok and latest.ok
+        except Exception:
+            return False
+
+    @staticmethod
+    def _validation_release_valid(seal: dict) -> bool:
+        try:
+            from src.adapters.sqlite.clinical_validation_repo import (
+                ClinicalValidationReportRepository,
+            )
+
+            return ClinicalValidationReportRepository().verify_release_reference(
+                report_id=int(seal.get("validation_report_id") or 0),
+                report_hash=str(seal.get("validation_report_hash") or ""),
+                engine_version=CURRENT_ENGINE_VERSION,
+                ruleset_code=RULESET_CODE,
+                package_version=CURRENT_BUNDLED_PACKAGE_VERSION,
+                package_hash=str(seal.get("validation_package_hash") or ""),
+            )
         except Exception:
             return False
 
@@ -209,10 +247,22 @@ class ClinicalEngineActivationRepository:
             return False
         if not self._audit_checkpoint_valid(seal):
             return False
+        if not self._validation_release_valid(seal):
+            return False
         report = self.get_json("last_report")
         if (
             not valid_report(report)
             or report["report_hash"] != seal.get("report_hash")
+        ):
+            return False
+        validation = report["validation"]
+        if (
+            int(validation["validation_report_id"])
+            != int(seal.get("validation_report_id") or 0)
+            or validation["validation_report_hash"]
+            != seal.get("validation_report_hash")
+            or validation["package_hash"]
+            != seal.get("validation_package_hash")
         ):
             return False
         for role in ("clinical", "technical"):
