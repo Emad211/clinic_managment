@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import hashlib
+import hmac
 import json
 import os
 from pathlib import Path
@@ -84,7 +85,7 @@ class BackupIntegrityService:
         if int(payload["size_bytes"]) != actual_size:
             raise BackupVerificationError("backup size does not match manifest")
         actual_hash = file_sha256(database)
-        if not hashlib.compare_digest(
+        if not hmac.compare_digest(
             actual_hash,
             str(payload["sha256"]).strip().lower(),
         ):
@@ -119,7 +120,9 @@ class BackupIntegrityService:
         staging = destination.with_suffix(destination.suffix + ".restore.tmp")
         try:
             shutil.copy2(verified.database_path, staging)
-            if file_sha256(staging) != verified.sha256:
+            if not hmac.compare_digest(
+                file_sha256(staging), verified.sha256
+            ):
                 raise BackupVerificationError("restore staging hash mismatch")
             integrity = sqlite_integrity(staging)
             if integrity.lower() != "ok":
