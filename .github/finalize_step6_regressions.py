@@ -17,9 +17,6 @@ def replace_once(path: str, old: str, new: str) -> None:
     target.write_text(text, encoding="utf-8")
 
 
-# An existing open task blocks duplicate semantic work even when a later run has
-# new evidence, a new due date or another evaluation context. Recurrence is allowed
-# only after the current task reaches a terminal event.
 followup = Path("specialist_clinic/src/adapters/sqlite/clinical_followup_repo.py")
 text = followup.read_text(encoding="utf-8")
 query_pattern = re.compile(
@@ -48,8 +45,6 @@ if query_count != 1 or params_count != 1:
         )
 followup.write_text(text, encoding="utf-8")
 
-# The recurrence regression must close the first task through the append-only event
-# lifecycle. Mutating followup_tasks.status is a retired pre-step-5 shortcut.
 replace_once(
     "specialist_clinic/tests/test_clinical_engine_v2_followups.py",
     '''    db.execute(
@@ -77,9 +72,6 @@ replace_once(
 ''',
 )
 
-# SILENT -> ACTIVE is a governed mutation covered by the audit checkpoint. Reissue
-# the selected-rollout seal after promotion so the unchanged package/report and the
-# newly ACTIVE ruleset are bound to a fresh checkpoint before global activation.
 replace_once(
     "specialist_clinic/src/services/clinical_engine/activation.py",
     '''        self.rules.promote_silent_ruleset(
@@ -97,8 +89,6 @@ replace_once(
 ''',
 )
 
-# Keep the UI acceptance test diagnostic limited to the exact synthetic controls,
-# but include their audited data issues and root trace reason.
 replace_once(
     "specialist_clinic/tests/test_clinical_engine_v2_manager_ui.py",
     '''    html = compared.get_data(as_text=True)
@@ -118,21 +108,20 @@ replace_once(
             control_evaluations[national_id] = {
                 item.get("rule_code"): {
                     "outcome": item.get("outcome"),
-                    "data_issues": item.get("data_issues"),
-                    "error": item.get("error"),
-                    "trace_reason": (item.get("trace") or {}).get("reason_code"),
-                    "trace_state": (item.get("trace") or {}).get("state"),
+                    "issues": [
+                        (issue.get("fact_key"), issue.get("issue"))
+                        for issue in (item.get("data_issues") or [])
+                    ],
                 }
                 for item in (run.get("evaluations") or [])
                 if item.get("rule_code") in {"T2-REDFLAG-BP", "T2-SAFE-MET-STOP"}
             }
     diagnostic = {
-        "status": diagnostic_report.get("status"),
         "failed_checks": [
             key for key, value in (diagnostic_report.get("checks") or {}).items()
             if not value
         ],
-        "positive_control_evaluations": control_evaluations,
+        "controls": control_evaluations,
     }
     assert "آزمون هر ۱۰ بیمار با موفقیت انجام شد" in html, diagnostic
 ''',
