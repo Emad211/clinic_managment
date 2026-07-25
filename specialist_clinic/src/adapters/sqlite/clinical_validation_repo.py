@@ -15,7 +15,7 @@ from src.adapters.sqlite.core import get_db
 from src.common.utils import iran_now
 
 
-class ClinicalValidationError(RuntimeError):
+class ClinicalValidationError(ValueError):
     pass
 
 
