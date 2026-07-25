@@ -4,3 +4,106 @@
 {% endif %}{% endfor %}
 </div>
 {% if engine.report.patients %}<div class="table-wrap mt-3"><table class="engine-table"><thead><tr><th>بیمار نمونه</th><th>اجرای موتور</th><th>پیشنهادها</th><th>خطا</th></tr></thead><tbody>{% for patient in engine.report.patients %}<tr><td>{{ patient.national_id }}</td><td>{{ 'موفق' if patient.v2_run_status == 'COMPLETED' else 'ناموفق' }}</td><td>{{ patient.v2_recommendations|fa_num }}</td><td>{{ patient.v2_errors|fa_num }}</td></tr>{% endfor %}</tbody></table></div>{% endif %}
+
+{% set report = engine.report or {} %}
+{% set validation = report.validation or {} %}
+{% set vchecks = validation.checks or {} %}
+{% set totals = validation.totals or {} %}
+<section class="validation-console" aria-labelledby="validation-console-title">
+<style>
+.validation-console{margin-top:18px;text-align:right;direction:rtl}.validation-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;padding:20px;border:1px solid var(--line);border-radius:16px;background:linear-gradient(135deg,rgba(6,182,212,.12),var(--panel) 48%,var(--bg2))}.validation-head h3{margin:0;font-size:18px}.validation-head p{margin:7px 0 0;color:var(--muted);line-height:1.8}.validation-status{display:inline-flex;align-items:center;gap:8px;min-height:38px;padding:6px 13px;border:1px solid var(--line);border-radius:999px;font-weight:800;white-space:nowrap}.validation-status.pass{color:var(--ok-fg);border-color:rgba(34,197,94,.35);background:var(--ok-soft)}.validation-status.blocked{color:var(--danger-fg);border-color:rgba(239,68,68,.35);background:var(--danger-soft)}.validation-kpis{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;margin:12px 0}.validation-kpi{padding:14px;border:1px solid var(--line);border-radius:12px;background:var(--bg2)}.validation-kpi span{display:block;color:var(--muted);font-size:11px}.validation-kpi strong{display:block;margin-top:4px;font-size:20px}.validation-grid{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(280px,.6fr);gap:12px}.validation-card{padding:16px;border:1px solid var(--line);border-radius:14px;background:var(--panel)}.validation-card h4{margin:0 0 12px;font-size:14px}.validation-checks{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.validation-check{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:9px 11px;border:1px solid var(--line);border-radius:10px;background:var(--bg2);font-size:12px}.validation-check b{font-size:10px}.validation-check.pass b{color:var(--ok-fg)}.validation-check.fail b{color:var(--danger-fg)}.validation-hashes{display:grid;gap:8px}.validation-hash{padding:9px;border:1px solid var(--line);border-radius:9px;background:var(--bg2)}.validation-hash span{display:block;color:var(--muted);font-size:10px}.validation-hash code{display:block;margin-top:4px;direction:ltr;text-align:left;overflow-wrap:anywhere;font-size:10px;color:var(--info-fg)}.validation-toolbar{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:14px 0 9px}.validation-search{width:min(100%,360px);min-height:40px}.validation-table-wrap{overflow:auto;border:1px solid var(--line);border-radius:12px}.validation-table{width:100%;min-width:820px;border-collapse:collapse}.validation-table th,.validation-table td{padding:11px 12px;border-bottom:1px solid var(--line-soft);text-align:right;vertical-align:top}.validation-table th{position:sticky;top:0;background:var(--panel2);color:var(--muted);font-size:11px;z-index:1}.validation-table tr:last-child td{border-bottom:0}.validation-case-title{font-weight:700}.validation-case-id{display:block;margin-top:3px;color:var(--muted);direction:ltr;text-align:right;font-size:10px}.validation-tags{display:flex;flex-wrap:wrap;gap:4px}.validation-tag{padding:2px 7px;border-radius:999px;background:var(--primary-soft);color:var(--primary);font-size:9px}.validation-outcomes{display:grid;gap:4px}.validation-outcome{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:4px 7px;border-radius:7px;background:var(--bg2);font-size:10px}.validation-outcome code{direction:ltr}.validation-failures{margin:5px 0 0;padding-right:17px;color:var(--danger-fg);font-size:10px}.validation-attestations{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:12px}.validation-attestation{padding:12px;border:1px solid var(--line);border-radius:11px;background:var(--bg2)}.validation-attestation.ok{border-color:rgba(34,197,94,.28)}.validation-attestation span{color:var(--muted);font-size:10px}.validation-attestation strong{display:block;margin-top:4px}.validation-empty{padding:18px;border:1px dashed var(--line-strong);border-radius:12px;color:var(--muted);text-align:center}.validation-sr{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}@media(max-width:1000px){.validation-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.validation-grid{grid-template-columns:1fr}.validation-attestations{grid-template-columns:1fr}}@media(max-width:620px){.validation-head{flex-direction:column}.validation-kpis{grid-template-columns:1fr 1fr}.validation-checks{grid-template-columns:1fr}.validation-toolbar{align-items:stretch;flex-direction:column}.validation-search{width:100%}}
+</style>
+<div class="validation-head">
+    <div>
+        <h3 id="validation-console-title">اعتبارسنجی Golden Case و دروازهٔ انتشار</h3>
+        <p>نتیجهٔ هر کیس، بازپخش قطعی، خطاهای نوع اول و دوم، provenance و دو تأیید مستقل به همین گزارش فعال‌سازی متصل‌اند.</p>
+    </div>
+    <span class="validation-status {{ 'pass' if validation.status == 'PASS' else 'blocked' }}">
+        {{ 'آمادهٔ تأیید انسانی' if validation.status == 'PASS' else 'انتشار مسدود' }}
+    </span>
+</div>
+{% if validation %}
+<div class="validation-kpis" aria-label="خلاصه اعتبارسنجی">
+    <div class="validation-kpi"><span>تعداد کیس</span><strong>{{ validation.case_count|fa_num }}</strong></div>
+    <div class="validation-kpi"><span>False Positive</span><strong>{{ (totals.false_positive or 0)|fa_num }}</strong></div>
+    <div class="validation-kpi"><span>False Negative</span><strong>{{ (totals.false_negative or 0)|fa_num }}</strong></div>
+    <div class="validation-kpi"><span>خطای اجرا</span><strong>{{ (totals.error or 0)|fa_num }}</strong></div>
+    <div class="validation-kpi"><span>تطابق Ruleset</span><strong>{{ 'بله' if validation.ruleset_identity_match else 'خیر' }}</strong></div>
+</div>
+<div class="validation-grid">
+    <div class="validation-card">
+        <h4>گیت‌های قطعی</h4>
+        <div class="validation-checks">
+        {% for key, passed in vchecks.items() %}
+            <div class="validation-check {{ 'pass' if passed else 'fail' }}">
+                <span>{{ {
+                    'all_cases_pass':'تمام کیس‌ها مطابق انتظار',
+                    'deterministic_replay':'بازپخش قطعی',
+                    'required_case_categories':'پوشش دسته‌های اجباری',
+                    'zero_false_positive':'بدون False Positive',
+                    'zero_false_negative':'بدون False Negative',
+                    'zero_errors':'بدون خطای قاعده',
+                    'every_rule_has_positive_case':'کنترل مثبت برای هر قاعده',
+                    'every_rule_has_negative_case':'کنترل منفی برای هر قاعده'
+                }.get(key,key) }}</span>
+                <b>{{ 'PASS' if passed else 'FAIL' }}</b>
+            </div>
+        {% endfor %}
+        </div>
+    </div>
+    <div class="validation-card">
+        <h4>هویت غیرقابل‌تغییر</h4>
+        <div class="validation-hashes">
+            <div class="validation-hash"><span>Validation report</span><code>{{ validation.validation_report_hash }}</code></div>
+            <div class="validation-hash"><span>Rule package</span><code>{{ validation.package_hash }}</code></div>
+            <div class="validation-hash"><span>Case bundle</span><code>{{ validation.case_bundle_hash }}</code></div>
+            <div class="validation-hash"><span>Rule identity</span><code>{{ validation.rule_identity_hash }}</code></div>
+        </div>
+    </div>
+</div>
+<div class="validation-attestations" aria-label="تأییدهای انتشار">
+    {% for role, title in [('clinical','تأیید بالینی'),('technical','تأیید فنی')] %}
+    {% set approval = engine.approvals[role] %}
+    <div class="validation-attestation {{ 'ok' if approval and approval.validation_attestation_hash else '' }}">
+        <span>{{ title }}</span>
+        <strong>{{ approval.reviewer if approval and approval.validation_attestation_hash else 'هنوز ثبت نشده' }}</strong>
+        {% if approval and approval.validation_attestation_hash %}<code>{{ approval.validation_attestation_hash[:16] }}…</code>{% endif %}
+    </div>
+    {% endfor %}
+</div>
+<div class="validation-toolbar">
+    <div><strong>ماتریس کیس‌ها</strong><div class="text-xs text-muted">برای جست‌وجو، شناسه، عنوان، دسته یا outcome را وارد کنید.</div></div>
+    <label><span class="validation-sr">جست‌وجوی کیس</span><input id="validation-case-search" class="validation-search" type="search" placeholder="مثلاً conflict، GC-POS یا FIRED"></label>
+</div>
+<div class="validation-table-wrap">
+<table class="validation-table" id="validation-case-table">
+    <thead><tr><th>کیس</th><th>دسته‌ها</th><th>نتیجهٔ قواعد</th><th>وضعیت</th><th>Hash نتیجه</th></tr></thead>
+    <tbody>
+    {% for case in validation.cases or [] %}
+        <tr data-validation-row data-search="{{ (case.case_id ~ ' ' ~ case.title ~ ' ' ~ (case.categories|join(' ')) ~ ' ' ~ (case.actual.evaluations|string))|lower }}">
+            <td><span class="validation-case-title">{{ case.title }}</span><code class="validation-case-id">{{ case.case_id }}</code></td>
+            <td><div class="validation-tags">{% for category in case.categories %}<span class="validation-tag">{{ category }}</span>{% endfor %}</div></td>
+            <td><div class="validation-outcomes">{% for code, outcome in case.actual.evaluations.items() %}<div class="validation-outcome"><code>{{ code }}</code><b>{{ outcome.outcome }}</b></div>{% endfor %}</div></td>
+            <td><span class="status-pill {{ 'is-ok' if case.passed else 'is-danger' }}">{{ 'PASS' if case.passed else 'FAIL' }}</span>{% if case.failures %}<ul class="validation-failures">{% for failure in case.failures %}<li>{{ failure }}</li>{% endfor %}</ul>{% endif %}</td>
+            <td><code dir="ltr">{{ case.result_hash[:16] }}…</code></td>
+        </tr>
+    {% endfor %}
+    </tbody>
+</table>
+</div>
+<script>
+(function(){
+ const input=document.getElementById('validation-case-search');
+ if(!input) return;
+ input.addEventListener('input',function(){
+   const query=this.value.trim().toLowerCase();
+   document.querySelectorAll('[data-validation-row]').forEach(function(row){
+     row.hidden=query && !(row.dataset.search||'').includes(query);
+   });
+ });
+})();
+</script>
+{% else %}
+<div class="validation-empty">هنوز گزارش Golden Case به گزارش فعال‌سازی متصل نشده است.</div>
+{% endif %}
+</section>
