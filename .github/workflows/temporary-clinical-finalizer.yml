@@ -6,6 +6,8 @@ on:
 
 permissions:
   contents: write
+  issues: write
+  pull-requests: write
 
 concurrency:
   group: temporary-clinical-finalizer
@@ -20,6 +22,15 @@ jobs:
       github.event.comment.body == '/finalize-step6-20260725'
     runs-on: ubuntu-latest
     steps:
+      - name: Report gate start
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+        run: >-
+          gh api --method POST repos/${REPOSITORY}/issues/34/comments
+          -f body="Step 6 targeted gate started · run ${RUN_ID}"
+
       - uses: actions/checkout@v4
         with:
           ref: agent-clinical-operational-security
@@ -30,6 +41,7 @@ jobs:
         run: echo "START_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
 
       - name: Apply deterministic product finalizer
+        id: apply
         shell: bash
         run: |
           set -euo pipefail
@@ -50,10 +62,12 @@ jobs:
           cache-dependency-path: specialist_clinic/requirements.txt
 
       - name: Install specialist dependencies
+        id: install
         working-directory: specialist_clinic
         run: python -m pip install -r requirements.txt pytest
 
       - name: Run step 6 targeted safety gate
+        id: specialist
         working-directory: specialist_clinic
         env:
           PYTEST_DISABLE_PLUGIN_AUTOLOAD: '1'
@@ -78,6 +92,7 @@ jobs:
           tests/test_ui_information_architecture.py
 
       - name: Run accounting regression suite
+        id: accounting
         working-directory: webapp
         env:
           PYTEST_DISABLE_PLUGIN_AUTOLOAD: '1'
@@ -85,6 +100,7 @@ jobs:
         run: python -m pytest tests -q --tb=short --junitxml=pytest-accounting-step6.xml
 
       - name: Commit exact tested product tree
+        id: publish
         shell: bash
         run: |
           set -euo pipefail
@@ -96,3 +112,18 @@ jobs:
           git push \
             --force-with-lease=refs/heads/agent-clinical-operational-security:${START_SHA} \
             origin HEAD:refs/heads/agent-clinical-operational-security
+
+      - name: Report gate result
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+          APPLY: ${{ steps.apply.outcome }}
+          INSTALL: ${{ steps.install.outcome }}
+          SPECIALIST: ${{ steps.specialist.outcome }}
+          ACCOUNTING: ${{ steps.accounting.outcome }}
+          PUBLISH: ${{ steps.publish.outcome }}
+        run: |
+          body="Step 6 targeted gate finished · run ${RUN_ID}\n\napply=${APPLY}\ninstall=${INSTALL}\nspecialist=${SPECIALIST}\naccounting=${ACCOUNTING}\npublish=${PUBLISH}"
+          gh api --method POST repos/${REPOSITORY}/issues/34/comments -f body="$body"
