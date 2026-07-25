@@ -15,3 +15,7 @@ if old in text:
 elif new not in text:
     raise AssertionError("clinical_context_hash prerequisite insertion point missing")
 path.write_text(text, encoding="utf-8")
+
+regressions = Path(".github/finalize_step6_regressions.py")
+exec(compile(regressions.read_text(encoding="utf-8"), str(regressions), "exec"))
+regressions.unlink()
