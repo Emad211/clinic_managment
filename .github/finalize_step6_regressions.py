@@ -1,4 +1,5 @@
 from pathlib import Path
+import re
 
 
 def replace_once(path: str, old: str, new: str) -> None:
@@ -19,30 +20,33 @@ def replace_once(path: str, old: str, new: str) -> None:
 # An existing open task blocks duplicate semantic work even when a later run has
 # new evidence, a new due date or another evaluation context. Recurrence is allowed
 # only after the current task reaches a terminal event.
-replace_once(
-    "specialist_clinic/src/adapters/sqlite/clinical_followup_repo.py",
-    '''                          root.patient_link_id=?
-                          AND root.clinical_semantic_key=?
-                          AND root.clinical_context_hash=?
-                          AND COALESCE(root.clinical_due_period,'')=COALESCE(?, '')
-                          AND EXISTS (
-''',
-    '''                          root.patient_link_id=?
-                          AND root.clinical_semantic_key=?
-                          AND EXISTS (
-''',
+followup = Path("specialist_clinic/src/adapters/sqlite/clinical_followup_repo.py")
+text = followup.read_text(encoding="utf-8")
+query_pattern = re.compile(
+    r"(?P<prefix>\s+root\.patient_link_id=\?\n"
+    r"\s+AND root\.clinical_semantic_key=\?)\n"
+    r"\s+AND root\.clinical_context_hash=\?\n"
+    r"\s+AND COALESCE\(root\.clinical_due_period,''\)=COALESCE\(\?, ''\)"
 )
-replace_once(
-    "specialist_clinic/src/adapters/sqlite/clinical_followup_repo.py",
-    '''                task["patient_link_id"],
-                task["clinical_semantic_key"],
-                task["clinical_context_hash"],
-                task.get("due_period"),
-''',
-    '''                task["patient_link_id"],
-                task["clinical_semantic_key"],
-''',
+text, query_count = query_pattern.subn(r"\g<prefix>", text, count=1)
+params_pattern = re.compile(
+    r'(?P<prefix>\s+task\["patient_link_id"\],\n'
+    r'\s+task\["clinical_semantic_key"\],)\n'
+    r'\s+task\["clinical_context_hash"\],\n'
+    r'\s+task\.get\("due_period"\),'
 )
+text, params_count = params_pattern.subn(r"\g<prefix>", text, count=1)
+if query_count != 1 or params_count != 1:
+    already = (
+        "AND root.clinical_semantic_key=?\n"
+        "                          AND EXISTS (" in text
+        and 'task["clinical_semantic_key"],\n            )' in text
+    )
+    if not already:
+        raise AssertionError(
+            f"semantic-task dedupe patch failed query={query_count} params={params_count}"
+        )
+followup.write_text(text, encoding="utf-8")
 
 # SILENT -> ACTIVE is a governed mutation covered by the audit checkpoint. Reissue
 # the selected-rollout seal after promotion so the unchanged package/report and the
