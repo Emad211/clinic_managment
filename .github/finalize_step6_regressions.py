@@ -97,8 +97,8 @@ replace_once(
 ''',
 )
 
-# Keep the UI acceptance test diagnostic compact and limited to the exact positive
-# controls; this is synthetic release evidence and contains no real patient data.
+# Keep the UI acceptance test diagnostic limited to the exact synthetic controls,
+# but include their audited outcomes and missing facts.
 replace_once(
     "specialist_clinic/tests/test_clinical_engine_v2_manager_ui.py",
     '''    html = compared.get_data(as_text=True)
@@ -107,6 +107,24 @@ replace_once(
     '''    html = compared.get_data(as_text=True)
     with manager_ui_app.app_context():
         diagnostic_report = ClinicalEngineActivationRepository().get_json("last_report")
+        from src.adapters.sqlite.clinical_engine_audit_repo import ClinicalEngineAuditRepository
+        audit = ClinicalEngineAuditRepository()
+        control_evaluations = {}
+        for row in diagnostic_report.get("patients") or []:
+            national_id = row.get("national_id")
+            if national_id not in {"TEST0008", "TEST0010"}:
+                continue
+            run = audit.decoded_run(row.get("v2_run_id")) or {}
+            control_evaluations[national_id] = {
+                item.get("rule_code"): {
+                    "outcome": item.get("outcome"),
+                    "missing_facts": item.get("missing_facts"),
+                    "error_code": item.get("error_code"),
+                    "suppression": item.get("suppression"),
+                }
+                for item in (run.get("evaluations") or [])
+                if item.get("rule_code") in {"T2-REDFLAG-BP", "T2-SAFE-MET-STOP"}
+            }
     diagnostic = {
         "status": diagnostic_report.get("status"),
         "failed_checks": [
@@ -116,15 +134,7 @@ replace_once(
         "failure_codes": [
             item.get("code") for item in (diagnostic_report.get("failures") or [])
         ],
-        "positive_controls": {
-            row.get("national_id"): {
-                "run_status": row.get("v2_run_status"),
-                "rule_codes": row.get("v2_rule_codes"),
-                "errors": row.get("v2_errors"),
-            }
-            for row in (diagnostic_report.get("patients") or [])
-            if row.get("national_id") in {"TEST0008", "TEST0010"}
-        },
+        "positive_control_evaluations": control_evaluations,
     }
     assert "آزمون هر ۱۰ بیمار با موفقیت انجام شد" in html, diagnostic
 ''',
