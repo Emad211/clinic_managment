@@ -1,7 +1,7 @@
 """Targeted operational/security release gate for Clinical Engine infrastructure."""
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import timedelta
 import json
 from pathlib import Path
 import re
@@ -23,6 +23,7 @@ from src.adapters.sqlite.security_permission_repo import (
     SecurityPermissionRepository,
     SecurityPermissionValidationError,
 )
+from src.common.utils import iran_now
 from src.security.permissions import Permission, resolved_permissions
 from src.services.backup_integrity import (
     BackupIntegrityService,
@@ -171,7 +172,7 @@ def test_permission_overrides_are_append_only_and_fail_closed(secure_app):
 
 def test_lease_is_exclusive_monotonic_and_fenced(secure_app):
     repo = OperationalLeaseRepository()
-    start = datetime(2026, 7, 25, 10, 0, 0)
+    start = iran_now().replace(tzinfo=None, microsecond=0)
     first = repo.acquire(
         "scheduler:test",
         owner_id="worker:first",
