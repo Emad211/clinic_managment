@@ -1,0 +1,617 @@
+from __future__ import annotations
+
+from pathlib import Path
+
+
+def replace_once(path: str, old: str, new: str) -> None:
+    target = Path(path)
+    text = target.read_text(encoding="utf-8")
+    if old in text:
+        text = text.replace(old, new, 1)
+    elif new not in text:
+        raise AssertionError(f"required pattern missing in {path}: {old[:120]!r}")
+    target.write_text(text, encoding="utf-8")
+
+
+# Canonical SQLite operational boundary.
+replace_once(
+    "specialist_clinic/src/adapters/sqlite/core.py",
+    "db = g._database = sqlite3.connect(db_path)",
+    "db = g._database = sqlite3.connect(db_path, timeout=10)",
+)
+replace_once(
+    "specialist_clinic/src/adapters/sqlite/core.py",
+    'db.execute("PRAGMA busy_timeout = 3000")',
+    '''db.execute("PRAGMA busy_timeout = 10000")
+        if db_path != ":memory:":
+            db.execute("PRAGMA journal_mode = WAL")
+            db.execute("PRAGMA synchronous = NORMAL")
+            db.execute("PRAGMA wal_autocheckpoint = 1000")''',
+)
+replace_once(
+    "specialist_clinic/src/adapters/sqlite/core.py",
+    '''    ensure_clinical_reconciliation_storage(db)
+    ensure_clinical_data_conflict_storage(db)
+    _ensure_clinical_engine_v2_storage(db)
+''',
+    '''    ensure_clinical_reconciliation_storage(db)
+    ensure_clinical_data_conflict_storage(db)
+    from src.adapters.sqlite.clinical_care_loop_strict_guards import (
+        ensure_strict_clinical_care_loop_guards,
+    )
+    from src.adapters.sqlite.security_permission_schema import (
+        ensure_security_permission_storage,
+    )
+    from src.adapters.sqlite.operational_lease_schema import (
+        ensure_operational_lease_storage,
+    )
+    from src.adapters.sqlite.clinical_audit_integrity_schema import (
+        ensure_clinical_audit_integrity_storage,
+    )
+    ensure_strict_clinical_care_loop_guards(db)
+    ensure_security_permission_storage(db)
+    ensure_operational_lease_storage(db)
+    ensure_clinical_audit_integrity_storage(db)
+    _ensure_clinical_engine_v2_storage(db)
+''',
+)
+
+core = Path("specialist_clinic/src/adapters/sqlite/core.py")
+text = core.read_text(encoding="utf-8")
+start = text.index("def _ensure_default_admin(db):")
+end = text.index("\ndef get_db():", start)
+admin_section = '''def _ensure_default_admin(db):
+    """Create the first manager without permitting default credentials in production."""
+    row = db.execute("SELECT COUNT(*) AS c FROM users").fetchone()
+    if not row or int(row["c"] or 0) != 0:
+        return
+
+    production = bool(current_app.config.get("PRODUCTION")) and not bool(
+        current_app.config.get("TESTING", False)
+    )
+    username = str(
+        current_app.config.get("BOOTSTRAP_ADMIN_USERNAME")
+        or os.getenv("CLINIC_BOOTSTRAP_ADMIN_USERNAME")
+        or "admin"
+    ).strip()
+    password = str(
+        current_app.config.get("BOOTSTRAP_ADMIN_PASSWORD")
+        or os.getenv("CLINIC_BOOTSTRAP_ADMIN_PASSWORD")
+        or ""
+    )
+    if not username:
+        raise RuntimeError("BOOTSTRAP_ADMIN_USERNAME cannot be empty")
+    if production and (len(password) < 12 or password == "admin"):
+        raise RuntimeError(
+            "Production bootstrap requires CLINIC_BOOTSTRAP_ADMIN_PASSWORD "
+            "with at least 12 characters; admin/admin is forbidden."
+        )
+    if not password:
+        # Development/test compatibility only. Production is rejected above.
+        password = "admin"
+
+    import bcrypt
+
+    password_hash = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt())
+    db.execute(
+        "INSERT INTO users "
+        "(username, password_hash, role, full_name, is_active) "
+        "VALUES (?, ?, 'manager', ?, 1)",
+        (username, password_hash, "مدیر سیستم"),
+    )
+    db.commit()
+
+
+'''
+core.write_text(text[:start] + admin_section + text[end + 1 :], encoding="utf-8")
+
+# Leased scheduler plus daily immutable-audit checkpoint.
+replace_once(
+    "specialist_clinic/src/services/scheduler.py",
+    '''            if self._run_once(
+                job_name="clinical-followups",
+                period_key=today,
+                lease=lease,
+                callback=self._run_clinical_followups,
+            ):
+                self._last_followup_day = today
+
+            period = self._bucket(now)
+''',
+    '''            if self._run_once(
+                job_name="clinical-followups",
+                period_key=today,
+                lease=lease,
+                callback=self._run_clinical_followups,
+            ):
+                self._last_followup_day = today
+            self._run_once(
+                job_name="clinical-audit-checkpoint",
+                period_key=today,
+                lease=lease,
+                callback=self._seal_clinical_audit,
+            )
+
+            period = self._bucket(now)
+''',
+)
+replace_once(
+    "specialist_clinic/src/services/scheduler.py",
+    '''    def _run_engagement(self):
+''',
+    '''    def _seal_clinical_audit(self):
+        from src.services.clinical_audit_integrity import (
+            ClinicalAuditIntegrityService,
+        )
+
+        checkpoint = ClinicalAuditIntegrityService().seal(
+            created_by=f"scheduler:{self.owner_id}"
+        )
+        logger.info(
+            "[scheduler] clinical audit checkpoint id=%s hash=%s",
+            checkpoint["id"],
+            checkpoint["checkpoint_hash"][:12],
+        )
+        return True
+
+    def _run_engagement(self):
+''',
+)
+replace_once(
+    "specialist_clinic/src/api/health.py",
+    "datetime(lease.expires_at)>datetime('now')",
+    "datetime(lease.expires_at)>datetime('now','+3 hours','+30 minutes')",
+)
+
+# Operational schemas are installed at application construction and logout is POST-only.
+auth = Path("specialist_clinic/src/api/auth.py")
+text = auth.read_text(encoding="utf-8")
+text = text.replace(
+    '''from src.adapters.sqlite.security_permission_schema import (
+    ensure_security_permission_storage,
+)
+''',
+    '''from src.adapters.sqlite.security_permission_schema import (
+    ensure_security_permission_storage,
+)
+from src.adapters.sqlite.operational_lease_schema import (
+    ensure_operational_lease_storage,
+)
+from src.adapters.sqlite.clinical_audit_integrity_schema import (
+    ensure_clinical_audit_integrity_storage,
+)
+''',
+    1,
+)
+text = text.replace(
+    '''        ensure_strict_clinical_care_loop_guards()
+        ensure_security_permission_storage()
+''',
+    '''        ensure_strict_clinical_care_loop_guards()
+        ensure_security_permission_storage()
+        ensure_operational_lease_storage()
+        ensure_clinical_audit_integrity_storage()
+''',
+    1,
+)
+old_logout = '''@bp.route("/logout")
+def logout():
+    # This compatibility GET only clears the current session and performs no
+    # persistent/clinical mutation. Shared navigation can migrate to POST separately.
+    if g.user:
+        log_activity(
+            "logout",
+            f'خروج {g.user["username"]}',
+            user_id=g.user["id"],
+            username=g.user["username"],
+        )
+    session.clear()
+    return redirect(url_for("auth.login"))
+'''
+new_logout = '''@bp.post("/logout")
+@login_required
+def logout():
+    log_activity(
+        "logout",
+        f'خروج {g.user["username"]}',
+        user_id=g.user["id"],
+        username=g.user["username"],
+    )
+    session.clear()
+    return redirect(url_for("auth.login"))
+'''
+if old_logout in text:
+    text = text.replace(old_logout, new_logout, 1)
+elif new_logout not in text:
+    raise AssertionError("logout route was not migrated to POST")
+auth.write_text(text, encoding="utf-8")
+
+# Stable permission policy; roles are only default grant bundles.
+Path("specialist_clinic/src/security/route_policy.py").write_text(
+    '''"""Central permission policy for clinical and governed operations."""
+from __future__ import annotations
+
+from flask import abort, flash, g, redirect, request, url_for
+
+from src.security.permissions import Permission, has_permission
+
+
+_ENDPOINT_PERMISSIONS = {
+    "patients.list_patients": Permission.PATIENT_VIEW,
+    "patients.detail": Permission.PATIENT_VIEW,
+    "patients.analytics": Permission.PATIENT_VIEW,
+    "patients.enroll": Permission.PATIENT_EDIT,
+    "patients.enroll_accounting": Permission.PATIENT_EDIT,
+    "patients.enroll_manual": Permission.PATIENT_EDIT,
+    "patients.wallet_adjust": Permission.PATIENT_EDIT,
+    "patients.add_condition": Permission.CLINICAL_DATA_RECORD,
+    "patients.remove_condition": Permission.CLINICAL_DATA_RECORD,
+    "patients.add_medication": Permission.CLINICAL_DATA_RECORD,
+    "patients.stop_medication": Permission.CLINICAL_DATA_RECORD,
+    "patients.change_dose": Permission.CLINICAL_DATA_RECORD,
+    "patients.add_allergy": Permission.CLINICAL_DATA_RECORD,
+    "patients.delete_allergy": Permission.CLINICAL_DATA_RECORD,
+    "patients.save_flags": Permission.CLINICAL_DATA_RECORD,
+    "patients.clinical_v2_decision": Permission.CLINICAL_DECISION_RECORD,
+    "patients.generate_followups": Permission.CLINICAL_TASK_TRANSITION,
+}
+
+_RULE_VIEW_PERMISSIONS = (
+    Permission.RULE_REVIEW_CLINICAL,
+    Permission.RULE_REVIEW_TECHNICAL,
+    Permission.RULE_ACTIVATE,
+)
+
+
+def _manager_action_permission() -> Permission:
+    action = str(request.view_args.get("action") or "").strip()
+    if action in {
+        "activate-selected",
+        "verify-selected",
+        "promote-ruleset",
+        "activate-global",
+        "rollback",
+        "reset-workflow",
+    }:
+        return Permission.RULE_ACTIVATE
+    if action == "approve" and request.form.get("role") == "technical":
+        return Permission.RULE_REVIEW_TECHNICAL
+    if action in {"prepare-rules", "compare", "prepare-demo-cohort"}:
+        return Permission.RULE_REVIEW_TECHNICAL
+    return Permission.RULE_REVIEW_CLINICAL
+
+
+def required_permission() -> Permission | None:
+    endpoint = str(request.endpoint or "")
+    if endpoint == "manager.clinical_engine_action":
+        return _manager_action_permission()
+    return _ENDPOINT_PERMISSIONS.get(endpoint)
+
+
+def _denied():
+    if request.is_json or request.accept_mimetypes.best == "application/json":
+        abort(403)
+    flash("مجوز governشدهٔ لازم برای این عملیات ثبت نشده است.", "error")
+    return redirect(request.referrer or url_for("dashboard.index"))
+
+
+def enforce_route_permission():
+    endpoint = str(request.endpoint or "")
+    if endpoint == "manager.clinical_engine":
+        if getattr(g, "user", None) is None:
+            return redirect(url_for("auth.login"))
+        if any(has_permission(permission) for permission in _RULE_VIEW_PERMISSIONS):
+            return None
+        return _denied()
+
+    permission = required_permission()
+    if permission is None:
+        return None
+    if getattr(g, "user", None) is None:
+        return redirect(url_for("auth.login"))
+    if has_permission(permission):
+        return None
+    return _denied()
+
+
+__all__ = ["enforce_route_permission", "required_permission"]
+''',
+    encoding="utf-8",
+)
+
+manager = Path("specialist_clinic/src/api/manager.py")
+text = manager.read_text(encoding="utf-8")
+text = text.replace(
+    "from src.api.auth import login_required, manager_required\n",
+    "from src.api.auth import login_required, manager_required\n"
+    "from src.security.permissions import Permission, has_permission\n",
+    1,
+)
+text = text.replace(
+    '''@bp.route("/clinical-engine")
+@manager_required
+def clinical_engine():
+''',
+    '''@bp.route("/clinical-engine")
+@login_required
+def clinical_engine():
+''',
+    1,
+)
+text = text.replace(
+    '''@bp.route("/clinical-engine/<action>", methods=["POST"])
+@manager_required
+def clinical_engine_action(action):
+    """One guarded manager seam; the service remains the sole policy owner."""
+    service = ClinicalEngineActivationService()
+''',
+    '''@bp.route("/clinical-engine/<action>", methods=["POST"])
+@login_required
+def clinical_engine_action(action):
+    """One permission-governed seam; the service remains the policy owner."""
+    if action in {
+        "activate-selected", "verify-selected", "promote-ruleset",
+        "activate-global", "rollback", "reset-workflow",
+    }:
+        required = Permission.RULE_ACTIVATE
+    elif action == "approve" and request.form.get("role") == "technical":
+        required = Permission.RULE_REVIEW_TECHNICAL
+    elif action in {"prepare-rules", "compare", "prepare-demo-cohort"}:
+        required = Permission.RULE_REVIEW_TECHNICAL
+    else:
+        required = Permission.RULE_REVIEW_CLINICAL
+    if not has_permission(required):
+        flash("مجوز governشدهٔ لازم برای این عملیات ثبت نشده است.", "error")
+        return redirect(url_for("manager.clinical_engine") + "#engine-actions")
+    service = ClinicalEngineActivationService()
+''',
+    1,
+)
+manager.write_text(text, encoding="utf-8")
+
+# Exact origin matching for the extension bridge.
+ext = Path("specialist_clinic/src/api/ext.py")
+text = ext.read_text(encoding="utf-8")
+text = text.replace(
+    '''def _origin_allowed(origin: str) -> bool:
+    if not origin:
+        return False
+    return any(origin == allowed or origin.startswith(allowed) for allowed in ALLOWED_ORIGINS)
+''',
+    '''def _origin_allowed(origin: str) -> bool:
+    value = str(origin or "").strip().rstrip("/")
+    if value == "https://ep.tamin.ir":
+        return True
+    return (
+        value in {"http://localhost", "http://127.0.0.1"}
+        or value.startswith("http://localhost:")
+        or value.startswith("http://127.0.0.1:")
+    )
+
+
+def _origin_rejected():
+    origin = request.headers.get("Origin", "")
+    if origin and not _origin_allowed(origin):
+        return jsonify({"ok": False, "error": "origin_forbidden"}), 403
+    return None
+''',
+    1,
+)
+text = text.replace(
+    '''    if request.method == "OPTIONS":
+        return "", 204
+    if not current_app.config.get("TESTING") and not allow(
+''',
+    '''    if request.method == "OPTIONS":
+        return "", 204
+    rejected = _origin_rejected()
+    if rejected:
+        return rejected
+    if not current_app.config.get("TESTING") and not allow(
+''',
+    2,
+)
+ext.write_text(text, encoding="utf-8")
+
+# Permission-aware navigation and CSRF-protected logout form.
+base = Path("specialist_clinic/src/templates/base.html")
+text = base.read_text(encoding="utf-8")
+old_nav = '''            {% if g.user['role']=='manager' %}
+            <div class="nav-section">سیستم</div>
+            <a class="nav-item {% if active_page=='clinical_engine' %}active{% endif %}" href="{{ url_for('manager.clinical_engine') }}"{% if active_page=='clinical_engine' %} aria-current="page"{% endif %}><svg class="icon"><use href="#i-shield"></use></svg> موتور بالینی</a>
+            <a class="nav-item {% if active_page=='manager' %}active{% endif %}" href="{{ url_for('manager.index') }}"{% if active_page=='manager' %} aria-current="page"{% endif %}><svg class="icon"><use href="#i-settings"></use></svg> تنظیمات سیستم</a>
+            {% endif %}
+'''
+new_nav = '''            {% if permissions.get('rule.review.clinical') or permissions.get('rule.review.technical') or permissions.get('rule.activate') or permissions.get('security.grant.manage') %}
+            <div class="nav-section">سیستم</div>
+            {% if permissions.get('rule.review.clinical') or permissions.get('rule.review.technical') or permissions.get('rule.activate') %}
+            <a class="nav-item {% if active_page=='clinical_engine' %}active{% endif %}" href="{{ url_for('manager.clinical_engine') }}"{% if active_page=='clinical_engine' %} aria-current="page"{% endif %}><svg class="icon"><use href="#i-shield"></use></svg> موتور بالینی</a>
+            {% endif %}
+            {% if permissions.get('security.grant.manage') %}
+            <a class="nav-item {% if active_page=='manager' %}active{% endif %}" href="{{ url_for('manager.index') }}"{% if active_page=='manager' %} aria-current="page"{% endif %}><svg class="icon"><use href="#i-settings"></use></svg> تنظیمات سیستم</a>
+            {% endif %}
+            {% endif %}
+'''
+if old_nav in text:
+    text = text.replace(old_nav, new_nav, 1)
+elif new_nav not in text:
+    raise AssertionError("permission-aware system navigation missing")
+text = text.replace(
+    '''            <a class="nav-item sidebar-logout" href="{{ url_for('auth.logout') }}"><svg class="icon"><use href="#i-log-out"></use></svg> خروج</a>
+''',
+    '''            <form method="post" action="{{ url_for('auth.logout') }}" style="margin:0;">
+                <button type="submit" class="nav-item sidebar-logout" style="width:100%;border:0;background:transparent;text-align:right;cursor:pointer;"><svg class="icon"><use href="#i-log-out"></use></svg> خروج</button>
+            </form>
+''',
+    1,
+)
+base.write_text(text, encoding="utf-8")
+
+worklist = Path("specialist_clinic/src/templates/followups/worklist.html")
+text = worklist.read_text(encoding="utf-8")
+text = text.replace(
+    "{% elif g.user and g.user['role'] == 'manager' %}",
+    "{% elif permissions.get('clinical.task.transition') or permissions.get('clinical.outcome.record') %}",
+)
+text = text.replace(
+    'style="align-self:flex-end;"><button class="btn',
+    'style="align-self:flex-end;">\n                                                    <button class="btn',
+)
+worklist.write_text(text, encoding="utf-8")
+
+# Focused tests for the exact release wiring.
+Path("specialist_clinic/tests/test_operational_security_release_gate.py").write_text(
+    r'''from __future__ import annotations
+
+import bcrypt
+import re
+
+import pytest
+
+
+_TOKEN = re.compile(r'name="_csrf_token" value="([^"]+)"')
+
+
+def _token(response) -> str:
+    match = _TOKEN.search(response.get_data(as_text=True))
+    assert match
+    return match.group(1)
+
+
+@pytest.fixture()
+def release_app(tmp_path):
+    from src.adapters.sqlite import core
+    from src.app import create_app
+
+    core._initialized = False
+    app = create_app(
+        {
+            "TESTING": True,
+            "CSRF_PROTECTION_ENABLED": True,
+            "DATABASE_PATH": str(tmp_path / "release.db"),
+            "BACKUP_FOLDER": str(tmp_path / "backups"),
+            "SECRET_KEY": "release-gate-secret",
+        }
+    )
+    context = app.app_context()
+    context.push()
+    yield app
+    context.pop()
+    core._initialized = False
+
+
+def _login(client, username="admin", password="admin"):
+    page = client.get("/auth/login")
+    response = client.post(
+        "/auth/login",
+        data={
+            "username": username,
+            "password": password,
+            "_csrf_token": _token(page),
+        },
+    )
+    assert response.status_code in {302, 303}
+
+
+def test_file_database_uses_wal_and_installs_operational_storage(release_app):
+    from src.adapters.sqlite.core import get_db
+
+    db = get_db()
+    assert db.execute("PRAGMA journal_mode").fetchone()[0].lower() == "wal"
+    assert int(db.execute("PRAGMA busy_timeout").fetchone()[0]) == 10000
+    tables = {
+        row["name"]
+        for row in db.execute("SELECT name FROM sqlite_master WHERE type='table'")
+    }
+    assert {
+        "security_permission_events",
+        "operational_leases",
+        "operational_job_runs",
+        "clinical_audit_checkpoints",
+    } <= tables
+
+
+def test_production_rejects_default_bootstrap_password(tmp_path):
+    from src.adapters.sqlite import core
+    from src.app import create_app
+
+    core._initialized = False
+    with pytest.raises(RuntimeError, match="BOOTSTRAP_ADMIN_PASSWORD"):
+        create_app(
+            {
+                "PRODUCTION": True,
+                "SECRET_KEY": "x" * 64,
+                "DATABASE_PATH": str(tmp_path / "production.db"),
+                "BACKUP_FOLDER": str(tmp_path / "backups"),
+            }
+        )
+    core._initialized = False
+
+
+def test_logout_is_post_only_and_csrf_protected(release_app):
+    client = release_app.test_client()
+    _login(client)
+    assert client.get("/auth/logout").status_code == 405
+    assert client.post("/auth/logout").status_code == 400
+    page = client.get("/followups/")
+    response = client.post(
+        "/auth/logout", data={"_csrf_token": _token(page)}
+    )
+    assert response.status_code in {302, 303}
+
+
+def test_technical_reviewer_can_open_engine_without_manager_role(release_app):
+    from src.adapters.sqlite.core import get_db
+    from src.adapters.sqlite.security_permission_repo import SecurityPermissionRepository
+    from src.security.permissions import Permission
+
+    db = get_db()
+    password = bcrypt.hashpw(b"review-pass", bcrypt.gensalt())
+    cursor = db.execute(
+        "INSERT INTO users (username,password_hash,role,full_name,is_active) "
+        "VALUES (?,?,?,?,1)",
+        ("technical-reviewer", password, "staff", "Technical Reviewer"),
+    )
+    user_id = int(cursor.lastrowid)
+    admin = db.execute(
+        "SELECT id,username FROM users WHERE username='admin'"
+    ).fetchone()
+    db.commit()
+    SecurityPermissionRepository().record(
+        user_id=user_id,
+        permission=Permission.RULE_REVIEW_TECHNICAL,
+        effect="GRANTED",
+        actor_username=admin["username"],
+        actor_user_id=int(admin["id"]),
+        reason="Independent technical rule review",
+        expected_current_event_id=None,
+    )
+
+    client = release_app.test_client()
+    _login(client, "technical-reviewer", "review-pass")
+    assert client.get("/manager/clinical-engine").status_code == 200
+    assert client.get("/manager/settings").status_code in {302, 303, 403}
+
+
+def test_extension_origin_matching_rejects_prefix_confusion():
+    from src.api.ext import _origin_allowed
+
+    assert _origin_allowed("https://ep.tamin.ir")
+    assert _origin_allowed("http://localhost:8090")
+    assert not _origin_allowed("https://ep.tamin.ir.evil.example")
+    assert not _origin_allowed("https://evil.example")
+
+
+def test_scheduler_can_create_a_daily_audit_checkpoint(release_app):
+    from src.services.scheduler import Scheduler
+    from src.services.clinical_audit_integrity import ClinicalAuditIntegrityService
+
+    scheduler = Scheduler()
+    scheduler.init_app(release_app)
+    assert scheduler._seal_clinical_audit() is True
+    assert ClinicalAuditIntegrityService().verify_latest(
+        require_checkpoint=True
+    ).ok
+''',
+    encoding="utf-8",
+)
