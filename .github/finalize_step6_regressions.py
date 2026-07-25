@@ -48,6 +48,35 @@ if query_count != 1 or params_count != 1:
         )
 followup.write_text(text, encoding="utf-8")
 
+# The recurrence regression must close the first task through the append-only event
+# lifecycle. Mutating followup_tasks.status is a retired pre-step-5 shortcut.
+replace_once(
+    "specialist_clinic/tests/test_clinical_engine_v2_followups.py",
+    '''    db.execute(
+        """UPDATE followup_tasks
+           SET status='done', resolved_at='2026-07-22 12:00:00'"""
+    )
+    db.commit()
+''',
+    '''    from src.services.clinical_care_loop_service import ClinicalCareLoopService
+
+    first_task = db.execute(
+        "SELECT id FROM followup_tasks ORDER BY id LIMIT 1"
+    ).fetchone()
+    care_loop = ClinicalCareLoopService()
+    current = care_loop.current(int(first_task["id"]))
+    care_loop.transition(
+        int(first_task["id"]),
+        transition="not_done",
+        expected_current_event_id=int(current["current_event_id"]),
+        actor_username="pytest-clinician",
+        actor_user_id=None,
+        disposition_code="NO_LONGER_NEEDED",
+        note="First due period closed before recurrence.",
+    )
+''',
+)
+
 # SILENT -> ACTIVE is a governed mutation covered by the audit checkpoint. Reissue
 # the selected-rollout seal after promotion so the unchanged package/report and the
 # newly ACTIVE ruleset are bound to a fresh checkpoint before global activation.
@@ -68,8 +97,8 @@ replace_once(
 ''',
 )
 
-# Keep the UI acceptance test diagnostic: a future blocked report must expose its
-# exact failed checks instead of only printing a huge HTML representation.
+# Keep the UI acceptance test diagnostic compact: report only status, failed checks
+# and failure codes rather than a truncated full report representation.
 replace_once(
     "specialist_clinic/tests/test_clinical_engine_v2_manager_ui.py",
     '''    html = compared.get_data(as_text=True)
@@ -78,6 +107,16 @@ replace_once(
     '''    html = compared.get_data(as_text=True)
     with manager_ui_app.app_context():
         diagnostic_report = ClinicalEngineActivationRepository().get_json("last_report")
-    assert "آزمون هر ۱۰ بیمار با موفقیت انجام شد" in html, diagnostic_report
+    diagnostic = {
+        "status": diagnostic_report.get("status"),
+        "failed_checks": [
+            key for key, value in (diagnostic_report.get("checks") or {}).items()
+            if not value
+        ],
+        "failure_codes": [
+            item.get("code") for item in (diagnostic_report.get("failures") or [])
+        ],
+    }
+    assert "آزمون هر ۱۰ بیمار با موفقیت انجام شد" in html, diagnostic
 ''',
 )
