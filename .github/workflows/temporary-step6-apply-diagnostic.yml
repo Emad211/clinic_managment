@@ -1,4 +1,4 @@
-name: Temporary Step 6 Control Diagnostic
+name: Temporary Reconciliation Projection Diagnostic
 
 on:
   issue_comment:
@@ -11,9 +11,9 @@ permissions:
 jobs:
   diagnose:
     if: >-
-      github.event.issue.number == 36 &&
+      github.event.issue.number == 37 &&
       github.event.comment.user.login == 'Emad211' &&
-      github.event.comment.body == '/diagnose-step6-controls-20260725'
+      github.event.comment.body == '/diagnose-reconciliation-projection-20260725'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -39,7 +39,7 @@ jobs:
         working-directory: specialist_clinic
         run: python -m pip install -r requirements.txt pytest
 
-      - name: Run exact positive-control path
+      - name: Run exact projection path
         id: controls
         continue-on-error: true
         working-directory: specialist_clinic
@@ -51,9 +51,9 @@ jobs:
           set -o pipefail
           python -m pytest -q --tb=short \
             tests/test_clinical_engine_v2_manager_ui.py::test_guided_package_prepare_then_clinical_review_and_freeze \
-            2>&1 | tee /tmp/step6-controls.log
+            2>&1 | tee /tmp/projection.log
 
-      - name: Publish exact outcome to issue 36
+      - name: Publish exact outcome to issue 37
         if: always()
         env:
           GH_TOKEN: ${{ github.token }}
@@ -63,11 +63,11 @@ jobs:
         shell: bash
         run: |
           {
-            echo "Step 6 positive-control diagnostic · run ${RUN_ID} · outcome=${OUTCOME}"
+            echo "Reconciliation projection diagnostic · run ${RUN_ID} · outcome=${OUTCOME}"
             echo
             echo '```text'
-            tail -n 120 /tmp/step6-controls.log
+            tail -n 120 /tmp/projection.log
             echo '```'
           } > /tmp/body.txt
-          gh api --method POST repos/${REPOSITORY}/issues/36/comments \
+          gh api --method POST repos/${REPOSITORY}/issues/37/comments \
             --raw-field body="$(cat /tmp/body.txt)"
