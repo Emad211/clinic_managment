@@ -16,7 +16,7 @@ concurrency:
 jobs:
   finalize-step6:
     if: >-
-      github.event.issue.number == 36 &&
+      github.event.issue.number == 37 &&
       github.event.comment.user.login == 'Emad211' &&
       github.event.comment.body == '/finalize-step6-clean-20260725'
     runs-on: ubuntu-latest
@@ -27,7 +27,7 @@ jobs:
           REPOSITORY: ${{ github.repository }}
           RUN_ID: ${{ github.run_id }}
         run: >-
-          gh api --method POST repos/${REPOSITORY}/issues/36/comments
+          gh api --method POST repos/${REPOSITORY}/issues/37/comments
           -f body="Step 6 targeted gate started · run ${RUN_ID}"
 
       - uses: actions/checkout@v4
@@ -80,7 +80,7 @@ jobs:
             tail -n 120 /tmp/step6-apply.log
             echo '```'
           } > /tmp/body.txt
-          gh api --method POST repos/${REPOSITORY}/issues/36/comments \
+          gh api --method POST repos/${REPOSITORY}/issues/37/comments \
             --raw-field body="$(cat /tmp/body.txt)"
 
       - name: Stop after finalizer failure
@@ -142,7 +142,7 @@ jobs:
             tail -n 140 /tmp/step6-specialist.log
             echo '```'
           } > /tmp/body.txt
-          gh api --method POST repos/${REPOSITORY}/issues/36/comments \
+          gh api --method POST repos/${REPOSITORY}/issues/37/comments \
             --raw-field body="$(cat /tmp/body.txt)"
 
       - name: Stop after specialist failure
@@ -188,4 +188,4 @@ jobs:
           PUBLISH: ${{ steps.publish.outcome }}
         run: |
           body="Step 6 targeted gate finished · run ${RUN_ID}\n\napply=${APPLY}\ninstall=${INSTALL}\nspecialist=${SPECIALIST}\naccounting=${ACCOUNTING}\npublish=${PUBLISH}"
-          gh api --method POST repos/${REPOSITORY}/issues/36/comments -f body="$body"
+          gh api --method POST repos/${REPOSITORY}/issues/37/comments -f body="$body"
