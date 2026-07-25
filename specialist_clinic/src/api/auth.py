@@ -22,6 +22,7 @@ from src.adapters.sqlite.security_permission_schema import (
 )
 from src.security.csrf import rotate_csrf_token
 from src.security.permissions import Permission, permission_required
+from src.security.route_policy import enforce_route_permission
 from src.services.activity_logger import log_activity
 from src.services.auth_service import AuthService
 
@@ -35,6 +36,11 @@ def install_permission_storage(state):
     # than one app from the imported Blueprint object.
     with state.app.app_context():
         ensure_security_permission_storage()
+
+
+@bp.before_app_request
+def enforce_effective_route_permissions():
+    return enforce_route_permission()
 
 
 def login_required(view):
@@ -81,9 +87,8 @@ def login():
 
 @bp.route("/logout")
 def logout():
-    # Converted to POST after the shared navigation template is migrated. Until then
-    # this compatibility GET is deliberately limited to clearing the current session;
-    # it performs no clinical or persistent database mutation.
+    # This compatibility GET only clears the current session and performs no
+    # persistent/clinical mutation. Shared navigation can migrate to POST separately.
     if g.user:
         log_activity(
             "logout",
