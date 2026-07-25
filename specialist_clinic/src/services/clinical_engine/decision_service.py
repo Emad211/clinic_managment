@@ -1,13 +1,20 @@
 """Clinician decisions as append-only events; never execute clinical actions."""
-
 from __future__ import annotations
 
-from src.adapters.sqlite.clinical_engine_audit_repo import ClinicalEngineAuditRepository
-from src.adapters.sqlite.clinical_engine_fact_repo import ClinicalEngineFactRepository
-from src.domain.clinical_engine import (
-    ClinicalDecision,
-    RecommendationEventType,
-    RunStatus,
+from src.adapters.sqlite.clinical_engine_action_repo import (
+    ClinicalEngineActionRepository,
+)
+from src.adapters.sqlite.clinical_engine_fact_repo import (
+    ClinicalEngineFactRepository,
+)
+from src.adapters.sqlite.clinical_engine_runtime_repo import (
+    ClinicalEngineRuntimeRepository,
+)
+from src.domain.clinical_engine import ClinicalDecision
+from src.services.clinical_engine.runtime import (
+    ClinicalEngineRuntimeError,
+    ClinicalEngineRuntimeService,
+    ClinicalEngineRuntimeStale,
 )
 
 
@@ -37,9 +44,24 @@ class ClinicalDecisionConflict(RuntimeError):
 class ClinicalDecisionService:
     """Validate and append review state without prescribing or mutating care."""
 
-    def __init__(self, *, audit=None, facts=None):
-        self.audit = audit or ClinicalEngineAuditRepository()
+    def __init__(
+        self,
+        *,
+        facts=None,
+        runtime=None,
+        runtime_repo=None,
+        action_repo=None,
+    ):
         self.facts = facts or ClinicalEngineFactRepository()
+        self.runtime_repo = runtime_repo or ClinicalEngineRuntimeRepository()
+        self.action_repo = action_repo or ClinicalEngineActionRepository(
+            runtime_repo=self.runtime_repo
+        )
+        self.runtime = runtime or ClinicalEngineRuntimeService(
+            facts=self.facts,
+            runtime_repo=self.runtime_repo,
+            action_repo=self.action_repo,
+        )
 
     def record(
         self,
@@ -53,44 +75,85 @@ class ClinicalDecisionService:
         reason_code: str | None = None,
         reason_text: str | None = None,
     ) -> dict:
-        mode = self.facts.get_mode()
-        if mode not in {"on_selected", "on"} or (
-            mode == "on_selected" and not self.facts.is_selected_patient(patient_link_id)
+        recommendation = self.runtime_repo.recommendation_context(
+            recommendation_event_id,
+            patient_link_id=patient_link_id,
+        )
+        if (
+            not recommendation
+            or not recommendation["payload"].get("suggestion_only", False)
+            or not recommendation.get("context")
         ):
-            raise ClinicalDecisionValidationError("v2 decisions are not enabled for this patient")
+            raise ClinicalDecisionValidationError(
+                "recommendation is unavailable, contextless or belongs to another patient"
+            )
+        try:
+            evaluation_context = self.runtime.context_service.from_payload(
+                recommendation["context"]
+            )
+            contract = self.runtime.contract(
+                patient_link_id,
+                evaluation_context=evaluation_context,
+            )
+        except (
+            ClinicalEngineRuntimeError,
+            ClinicalEngineRuntimeStale,
+            ValueError,
+        ) as exc:
+            raise ClinicalDecisionValidationError(
+                "clinical runtime context is no longer available for this recommendation"
+            ) from exc
+        if contract is None or contract.mode not in {"on_selected", "on"}:
+            raise ClinicalDecisionValidationError(
+                "clinical runtime decisions are not enabled for this patient"
+            )
+        if recommendation.get("context_hash") != contract.context_hash:
+            raise ClinicalDecisionValidationError(
+                "recommendation belongs to another clinical context"
+            )
+
         try:
             normalized_decision = ClinicalDecision(str(decision).upper())
         except ValueError as exc:
             raise ClinicalDecisionValidationError("invalid decision") from exc
         if normalized_decision not in _ALLOWED_DECISIONS:
-            raise ClinicalDecisionValidationError("CORRECTED is reserved for imported audit repair")
+            raise ClinicalDecisionValidationError(
+                "only ACCEPTED, DISMISSED and DEFERRED are allowed"
+            )
         actor = (actor_username or "").strip()
         if not actor:
-            raise ClinicalDecisionValidationError("actor_username is required")
+            raise ClinicalDecisionValidationError(
+                "actor_username is required"
+            )
         normalized_reason = (reason_code or "").strip().upper() or None
         if normalized_reason and normalized_reason not in _REASON_CODES:
             raise ClinicalDecisionValidationError("invalid reason_code")
         text = (reason_text or "").strip() or None
         if text and len(text) > 500:
-            raise ClinicalDecisionValidationError("reason_text is too long")
-        if normalized_decision is ClinicalDecision.DISMISSED and not normalized_reason:
-            raise ClinicalDecisionValidationError("reason_code is required for dismissal")
-
-        context = self.audit.recommendation_context(
-            recommendation_event_id, patient_link_id=patient_link_id
-        )
-        if not context or not context["payload"].get("suggestion_only", False):
             raise ClinicalDecisionValidationError(
-                "recommendation is unavailable or does not belong to this patient"
+                "reason_text is too long"
             )
+        if (
+            normalized_decision is ClinicalDecision.DISMISSED
+            and not normalized_reason
+        ):
+            raise ClinicalDecisionValidationError(
+                "reason_code is required for dismissal"
+            )
+
         try:
-            return self.audit.append_current_decision(
+            return self.action_repo.append_current_decision(
                 recommendation_event_id=recommendation_event_id,
                 patient_link_id=patient_link_id,
                 decision=normalized_decision,
                 actor_user_id=actor_user_id,
                 actor_username=actor,
                 expected_current_event_id=expected_current_event_id,
+                mode=contract.mode,
+                engine_version=contract.engine_version,
+                ruleset_id=contract.ruleset_id,
+                clinical_data_revision=contract.clinical_data_revision,
+                context_hash=contract.context_hash,
                 reason_code=normalized_reason,
                 reason_text=text,
             )
@@ -99,72 +162,9 @@ class ClinicalDecisionService:
                 raise ClinicalDecisionConflict(
                     "recommendation decision changed; reload before recording another decision"
                 ) from exc
+            if str(exc) == "STALE_RECOMMENDATION":
+                raise ClinicalDecisionValidationError(
+                    "patient data, context or rollout state changed after this "
+                    "recommendation; reload and review the current run"
+                ) from exc
             raise
-
-
-class LegacyDecisionImporter:
-    """Idempotently retain the last observable v1 state with an honesty warning."""
-
-    DISCLAIMER = "فقط آخرین وضعیت legacy وارد شد؛ تاریخچهٔ بازنویسی‌شده غیرقابل بازیابی است."
-
-    def __init__(self, audit=None):
-        self.audit = audit or ClinicalEngineAuditRepository()
-
-    def import_once(self) -> int:
-        imported = 0
-        for legacy in self.audit.unimported_legacy_decisions():
-            key = f"legacy-state:{legacy['id']}"
-            event = self.audit.recommendation_by_key(key)
-            if not event:
-                run_id = self.audit.start_run(
-                    patient_link_id=int(legacy["patient_link_id"]),
-                    as_of_at=legacy.get("acted_at") or legacy.get("created_at") or "legacy-unknown",
-                    engine_version="legacy-state-import-v1",
-                    fact_snapshot={
-                        "legacy_state_only": True,
-                        "suggestion_log_id": int(legacy["id"]),
-                        "disclaimer_fa": self.DISCLAIMER,
-                    },
-                    created_by="legacy-importer",
-                )
-                event_id = self.audit.append_recommendation_event(
-                    run_id=run_id,
-                    recommendation_key=key,
-                    action_type="legacy_state_only",
-                    event_type=RecommendationEventType.CREATED,
-                    payload={
-                        "suggestion_only": True,
-                        "legacy_state_only": True,
-                        "rule_code": legacy.get("rule_code"),
-                        "text_fa": legacy.get("suggestion_text"),
-                        "disclaimer_fa": self.DISCLAIMER,
-                    },
-                )
-                self.audit.complete_run(
-                    run_id,
-                    status=RunStatus.COMPLETED,
-                    summary={"legacy_state_only": True, "imported_rows": 1},
-                )
-            else:
-                event_id = int(event["id"])
-            status = str(legacy["status"]).lower()
-            decision = (
-                ClinicalDecision.ACCEPTED
-                if status == "accepted"
-                else ClinicalDecision.DISMISSED
-            )
-            note = (legacy.get("note") or "").strip()
-            reason_text = f"{note} — {self.DISCLAIMER}" if note else self.DISCLAIMER
-            self.audit.append_current_decision(
-                recommendation_event_id=event_id,
-                patient_link_id=int(legacy["patient_link_id"]),
-                decision=decision,
-                actor_user_id=None,
-                actor_username=legacy.get("acted_by") or "legacy-unknown",
-                expected_current_event_id=None,
-                reason_code="OTHER",
-                reason_text=reason_text,
-                legacy_source_suggestion_log_id=int(legacy["id"]),
-            )
-            imported += 1
-        return imported

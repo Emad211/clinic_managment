@@ -10,7 +10,6 @@
     "rule_code": {"type": "string", "pattern": "^[A-Z0-9][A-Z0-9._-]+$"},
     "version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:-[A-Za-z0-9.-]+)?$"},
     "title": {"type": "string", "minLength": 1},
-    "legacy_rule_id": {"type": ["integer", "null"], "minimum": 1},
     "phase": {"enum": ["PREFLIGHT", "SAFETY", "ROUTINE"]},
     "action_type": {"enum": ["redflag", "safety_alert", "suggest_med", "flag_risk", "set_target", "classify", "create_followup", "schedule_screening", "vaccine", "educate"]},
     "severity": {"enum": ["INFO", "WARN", "URGENT", "CRITICAL"]},

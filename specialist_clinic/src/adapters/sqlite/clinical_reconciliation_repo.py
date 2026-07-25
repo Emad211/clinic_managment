@@ -1,0 +1,354 @@
+"""Persistence boundary for append-only reviewed clinical collections."""
+from __future__ import annotations
+
+from datetime import datetime
+import json
+import sqlite3
+from typing import Any
+
+from src.adapters.sqlite.core import get_db
+from src.adapters.sqlite.clinical_data_conflict_schema import (
+    ensure_clinical_data_conflict_storage,
+)
+from src.common.utils import iran_now, parse_datetime
+from src.domain.clinical_engine.reconciliation import (
+    COLLECTION_KEYS,
+    project_collection,
+)
+
+
+_SOURCE_SQL = {
+    "conditions": """SELECT pc.*, c.code AS condition_code,
+                                c.name AS condition_name
+                       FROM patient_conditions pc
+                       JOIN conditions c ON c.id=pc.condition_id
+                       WHERE pc.patient_link_id=? ORDER BY pc.id""",
+    "medications": """SELECT * FROM patient_medications
+                       WHERE patient_link_id=? ORDER BY id""",
+    "allergies": """SELECT allergy.*, catalog.concept_key AS allergy_concept_key,
+                             catalog.display_name AS allergy_concept_name
+                      FROM allergies allergy
+                      LEFT JOIN allergy_catalog catalog
+                        ON catalog.id=allergy.allergy_concept_id
+                      WHERE allergy.patient_link_id=? ORDER BY allergy.id""",
+}
+
+
+class ClinicalReconciliationRepository:
+    def __init__(self, db: sqlite3.Connection | None = None):
+        self._connection = db
+
+    def _db(self) -> sqlite3.Connection:
+        db = self._connection or get_db()
+        ensure_clinical_data_conflict_storage(db)
+        return db
+
+    @staticmethod
+    def _as_of(value: datetime | str | None) -> datetime:
+        parsed = parse_datetime(value)
+        if parsed is None:
+            return iran_now().replace(tzinfo=None)
+        return (
+            parsed.replace(tzinfo=None)
+            if parsed.tzinfo is not None
+            else parsed
+        )
+
+    @staticmethod
+    def _source_rows_db(
+        db: sqlite3.Connection,
+        patient_link_id: int,
+        collection_key: str,
+    ) -> list[dict[str, Any]]:
+        if collection_key not in COLLECTION_KEYS:
+            raise ValueError(
+                f"unsupported reconciliation collection: {collection_key}"
+            )
+        return [
+            dict(row)
+            for row in db.execute(
+                _SOURCE_SQL[collection_key],
+                (patient_link_id,),
+            ).fetchall()
+        ]
+
+    @staticmethod
+    def _medication_events_db(
+        db: sqlite3.Connection,
+        patient_link_id: int,
+    ) -> list[dict[str, Any]]:
+        return [
+            dict(row)
+            for row in db.execute(
+                """SELECT * FROM medication_events
+                   WHERE patient_link_id=?
+                   ORDER BY event_date, created_at, id""",
+                (patient_link_id,),
+            ).fetchall()
+        ]
+
+    @staticmethod
+    def _reconciliation_events_db(
+        db: sqlite3.Connection,
+        patient_link_id: int,
+    ) -> list[dict[str, Any]]:
+        return [
+            dict(row)
+            for row in db.execute(
+                """SELECT * FROM clinical_reconciliation_events
+                   WHERE patient_link_id=?
+                   ORDER BY reconciled_at, id""",
+                (patient_link_id,),
+            ).fetchall()
+        ]
+
+    @staticmethod
+    def _conflict_events_db(
+        db: sqlite3.Connection,
+        patient_link_id: int,
+    ) -> list[dict[str, Any]]:
+        return [
+            dict(row)
+            for row in db.execute(
+                """SELECT * FROM clinical_data_conflict_events
+                   WHERE patient_link_id=?
+                   ORDER BY recorded_at, id""",
+                (patient_link_id,),
+            ).fetchall()
+        ]
+
+    @classmethod
+    def _source_bundle_db(
+        cls,
+        db: sqlite3.Connection,
+        patient_link_id: int,
+    ) -> dict[str, Any]:
+        patient = db.execute(
+            "SELECT id FROM patient_links WHERE id=?",
+            (patient_link_id,),
+        ).fetchone()
+        if not patient:
+            raise LookupError(
+                f"patient_link_id {patient_link_id} was not found"
+            )
+        return {
+            collection_key: cls._source_rows_db(
+                db,
+                patient_link_id,
+                collection_key,
+            )
+            for collection_key in COLLECTION_KEYS
+        } | {
+            "medication_events": cls._medication_events_db(
+                db,
+                patient_link_id,
+            ),
+            "reconciliations": cls._reconciliation_events_db(
+                db,
+                patient_link_id,
+            ),
+            "conflicts": cls._conflict_events_db(
+                db,
+                patient_link_id,
+            ),
+        }
+
+    def source_bundle(self, patient_link_id: int) -> dict[str, Any]:
+        return self._source_bundle_db(self._db(), patient_link_id)
+
+    @staticmethod
+    def _projection_from_bundle(
+        bundle: dict[str, Any],
+        collection_key: str,
+        *,
+        as_of_at: datetime,
+    ):
+        return project_collection(
+            collection_key,
+            bundle[collection_key],
+            bundle["reconciliations"],
+            as_of_at=as_of_at,
+            medication_events=(
+                bundle["medication_events"]
+                if collection_key == "medications"
+                else ()
+            ),
+            conflict_events=bundle.get("conflicts", ()),
+        )
+
+    def projection(
+        self,
+        patient_link_id: int,
+        collection_key: str,
+        *,
+        as_of_at: datetime | str | None = None,
+    ):
+        if collection_key not in COLLECTION_KEYS:
+            raise ValueError(
+                f"unsupported reconciliation collection: {collection_key}"
+            )
+        as_of = self._as_of(as_of_at)
+        bundle = self.source_bundle(patient_link_id)
+        return self._projection_from_bundle(
+            bundle,
+            collection_key,
+            as_of_at=as_of,
+        )
+
+    def patient_projections(
+        self,
+        patient_link_id: int,
+        *,
+        as_of_at: datetime | str | None = None,
+    ) -> dict[str, Any]:
+        """Project all three collections from one bounded patient read bundle."""
+        as_of = self._as_of(as_of_at)
+        bundle = self.source_bundle(patient_link_id)
+        return {
+            key: self._projection_from_bundle(
+                bundle,
+                key,
+                as_of_at=as_of,
+            )
+            for key in COLLECTION_KEYS
+        }
+
+    @classmethod
+    def record_in_transaction(
+        cls,
+        db: sqlite3.Connection,
+        *,
+        patient_link_id: int,
+        collection_key: str,
+        completeness: str,
+        actor_username: str,
+        actor_user_id: int | None = None,
+        source: str = "clinician",
+        patient_confirmed: bool = False,
+        reconciled_at: datetime | str | None = None,
+        note: str | None = None,
+    ) -> dict[str, Any]:
+        if collection_key not in COLLECTION_KEYS:
+            raise ValueError("collection_key is not reconcilable")
+        if completeness not in {"complete", "partial"}:
+            raise ValueError(
+                "completeness must be complete or partial"
+            )
+        if source not in {
+            "clinician",
+            "patient",
+            "caregiver",
+            "imported",
+            "system",
+        }:
+            raise ValueError("invalid reconciliation source")
+        actor = (actor_username or "").strip()
+        if not actor:
+            raise ValueError("actor_username is required")
+        clean_note = (note or "").strip()
+        if completeness == "partial" and not clean_note:
+            raise ValueError(
+                "partial reconciliation requires a note"
+            )
+
+        as_of = cls._as_of(reconciled_at)
+        bundle = cls._source_bundle_db(db, patient_link_id)
+        projection = cls._projection_from_bundle(
+            bundle,
+            collection_key,
+            as_of_at=as_of,
+        )
+        if completeness == "complete" and projection.unresolved_conflict_count:
+            raise ValueError(
+                "unresolved clinical conflicts must be resolved or recorded as partial"
+            )
+
+        prior = db.execute(
+            """SELECT id FROM clinical_reconciliation_events
+               WHERE patient_link_id=? AND collection_key=?
+                 AND reconciled_at<=?
+               ORDER BY reconciled_at DESC, id DESC LIMIT 1""",
+            (
+                patient_link_id,
+                collection_key,
+                as_of.isoformat(sep=" ", timespec="seconds"),
+            ),
+        ).fetchone()
+        cursor = db.execute(
+            """INSERT INTO clinical_reconciliation_events
+               (patient_link_id, collection_key, completeness, item_count,
+                content_hash, conflict_snapshot_hash, conflict_count,
+                unresolved_conflict_count, mapping_complete, reviewed_sources_json,
+                source, patient_confirmed, actor_user_id, actor_username,
+                reconciled_at, note, supersedes_event_id)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                patient_link_id,
+                collection_key,
+                completeness,
+                projection.item_count,
+                projection.content_hash,
+                projection.conflict_snapshot_hash,
+                projection.conflict_count,
+                projection.unresolved_conflict_count,
+                int(bool(projection.mapping_complete)),
+                json.dumps(
+                    sorted(
+                        {
+                            str(candidate.get("source_system"))
+                            for group in projection.conflicts
+                            for candidate in group.get("candidates", [])
+                            if candidate.get("source_system")
+                        }
+                    ),
+                    ensure_ascii=False,
+                    separators=(",", ":"),
+                ),
+                source,
+                int(bool(patient_confirmed)),
+                actor_user_id,
+                actor,
+                as_of.isoformat(sep=" ", timespec="seconds"),
+                clean_note or None,
+                int(prior["id"]) if prior else None,
+            ),
+        )
+        row = db.execute(
+            "SELECT * FROM clinical_reconciliation_events WHERE id=?",
+            (cursor.lastrowid,),
+        ).fetchone()
+        return dict(row)
+
+    def record(
+        self,
+        *,
+        patient_link_id: int,
+        collection_key: str,
+        completeness: str,
+        actor_username: str,
+        actor_user_id: int | None = None,
+        source: str = "clinician",
+        patient_confirmed: bool = False,
+        reconciled_at: datetime | str | None = None,
+        note: str | None = None,
+    ) -> dict[str, Any]:
+        db = self._db()
+        db.execute("BEGIN IMMEDIATE")
+        try:
+            event = self.record_in_transaction(
+                db,
+                patient_link_id=patient_link_id,
+                collection_key=collection_key,
+                completeness=completeness,
+                actor_username=actor_username,
+                actor_user_id=actor_user_id,
+                source=source,
+                patient_confirmed=patient_confirmed,
+                reconciled_at=reconciled_at,
+                note=note,
+            )
+            db.commit()
+            return event
+        except Exception:
+            db.rollback()
+            raise

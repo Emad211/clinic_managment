@@ -1,0 +1,190 @@
+{% extends "base.html" %}
+{% block title %}مرور فهرست‌های بالینی{% endblock %}
+
+{% block head %}
+<style>
+.reconcile-hero{display:flex;align-items:flex-start;justify-content:space-between;gap:var(--s4);margin-bottom:var(--s5)}
+.reconcile-hero h1{margin:.35rem 0}.reconcile-hero p{max-width:760px;margin:0;color:var(--muted)}
+.reconcile-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--s4);align-items:start}
+.reconcile-card{display:grid;gap:var(--s4);scroll-margin-top:1rem}
+.reconcile-state{display:flex;align-items:center;justify-content:space-between;gap:var(--s3);padding:var(--s3);border:1px solid var(--border);border-radius:var(--radius);background:var(--surface-2)}
+.reconcile-state strong{display:block}.reconcile-state small{display:block;color:var(--muted);margin-top:.25rem}
+.reconcile-items{display:grid;gap:.5rem;margin:0;padding:0;list-style:none}
+.reconcile-items li{padding:.65rem .75rem;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface-2)}
+.reconcile-empty{padding:var(--s3);border:1px dashed var(--border);border-radius:var(--radius);color:var(--muted)}
+.reconcile-form{display:grid;gap:var(--s3);padding-top:var(--s3);border-top:1px solid var(--border)}
+.reconcile-choice{display:grid;grid-template-columns:1fr 1fr;gap:.5rem}
+.reconcile-choice label,.reconcile-check{display:flex;align-items:flex-start;gap:.55rem;padding:.7rem;border:1px solid var(--border);border-radius:var(--radius-sm);cursor:pointer}
+.reconcile-choice input,.reconcile-check input{margin-top:.2rem}
+.reconcile-meta{display:flex;flex-wrap:wrap;gap:.5rem;color:var(--muted);font-size:.85rem}
+.reconcile-map-warning{font-size:.85rem;color:var(--warn)}
+.conflict-stack{display:grid;gap:var(--s3)}
+.conflict-card{display:grid;gap:.65rem;padding:var(--s3);border:1px solid var(--danger);border-radius:var(--radius);background:var(--surface-2)}
+.conflict-head{display:flex;justify-content:space-between;gap:var(--s2);align-items:flex-start}
+.conflict-candidates{display:grid;gap:.45rem}
+.conflict-candidate{display:flex;gap:.55rem;align-items:flex-start;padding:.55rem;border:1px solid var(--border);border-radius:var(--radius-sm)}
+.conflict-candidate small{display:block;color:var(--muted)}
+.conflict-form{display:grid;gap:.55rem;padding-top:.55rem;border-top:1px dashed var(--border)}
+@media(max-width:1050px){.reconcile-grid{grid-template-columns:1fr}.reconcile-hero{display:grid}}
+</style>
+{% endblock %}
+
+{% macro review_card(key, title, icon, items) %}
+{% set state = reconciliation[key] %}
+<section class="card reconcile-card" id="{{ key }}" aria-labelledby="{{ key }}-title">
+    <div class="section-title">
+        <div>
+            <span class="section-icon"><svg class="icon"><use href="#i-{{ icon }}"></use></svg></span>
+            <div><h2 id="{{ key }}-title">{{ title }}</h2><p>{{ state.item_count|fa_num }} مورد فعال در این snapshot</p></div>
+        </div>
+    </div>
+
+    <div class="reconcile-state" role="status">
+        <div>
+            <strong>{{ state.state_fa }}</strong>
+            <small>{{ state.detail }}</small>
+        </div>
+        <span class="badge badge-{{ state.tone }}">{{ state.state_fa }}</span>
+    </div>
+
+    {% if state.reconciled_at %}
+    <div class="reconcile-meta">
+        <span>آخرین مرور: {{ state.reconciled_at|jalali }}</span>
+        {% if state.actor_username %}<span>· {{ state.actor_username }}</span>{% endif %}
+        {% if state.patient_confirmed %}<span>· تأیید بیمار ثبت شده</span>{% endif %}
+    </div>
+    {% endif %}
+
+    {% if not state.mapping_complete %}
+    <div class="reconcile-map-warning">برخی اقلام کد یا کلاس استاندارد قابل استفاده ندارند؛ ثبت مرور، این نقص را پنهان نمی‌کند.</div>
+    {% endif %}
+
+    {% if state.conflicts %}
+    <div class="conflict-stack" aria-label="تعارض‌های دادهٔ بالینی">
+        {% for group in state.conflicts %}
+        {% if group.requires_resolution or group.state != 'clear' %}
+        <article class="conflict-card">
+            <div class="conflict-head">
+                <div>
+                    <b>{{ group.concept_key }}</b>
+                    <small>{{ group.reasons|join(' · ') if group.reasons else 'resolution ثبت‌شده' }}</small>
+                </div>
+                <span class="badge badge-{{ group.tone }}">{{ group.state_fa }}</span>
+            </div>
+            <div class="conflict-candidates">
+                {% for candidate in group.candidates %}
+                <label class="conflict-candidate">
+                    {% if g.user and g.user.role == 'manager' %}
+                    <input type="checkbox" name="candidate-preview" disabled>
+                    {% endif %}
+                    <span>
+                        <b>{{ candidate.item.code or candidate.item.name or candidate.item.substance or group.concept_key }}</b>
+                        <small>
+                            {{ candidate.assertion_fa }} · {{ candidate.source_system }} / {{ candidate.source_record_id }}
+                            {% if candidate.verification %} · {{ candidate.verification }}{% endif %}
+                        </small>
+                        <small>
+                            {% if candidate.item.stage %}مرحله: {{ candidate.item.stage }}{% endif %}
+                            {% if candidate.item.dose %}دوز: {{ candidate.item.dose }}{% endif %}
+                            {% if candidate.item.schedule %} · {{ candidate.item.schedule }}{% endif %}
+                            {% if candidate.item.reaction %}واکنش: {{ candidate.item.reaction }}{% endif %}
+                            {% if candidate.item.severity %} · شدت: {{ candidate.item.severity }}{% endif %}
+                        </small>
+                    </span>
+                </label>
+                {% endfor %}
+            </div>
+            {% if g.user and g.user.role == 'manager' %}
+            <form class="conflict-form" method="post" action="{{ url_for('clinical_reconciliation.resolve_conflict', pid=patient.id, collection_key=key) }}">
+                <input type="hidden" name="conflict_group_key" value="{{ group.group_key }}">
+                <input type="hidden" name="expected_candidate_set_hash" value="{{ group.candidate_set_hash }}">
+                <input type="hidden" name="expected_current_event_id" value="{{ group.current_event_id or '' }}">
+                <label class="fld"><span>روش resolution</span>
+                    <select name="resolution_method" required>
+                        <option value="">انتخاب کنید</option>
+                        <option value="SELECT_CANDIDATE">انتخاب یک candidate</option>
+                        <option value="MERGE_CANDIDATES">ادغام candidateهای مکمل</option>
+                        <option value="CONFIRMED_ABSENT">تأیید نبود مورد</option>
+                        <option value="MARK_UNKNOWN">ثبت وضعیت نامشخص</option>
+                    </select>
+                </label>
+                <fieldset>
+                    <legend>candidateهای منتخب (برای انتخاب/ادغام)</legend>
+                    <div class="conflict-candidates">
+                    {% for candidate in group.candidates %}
+                        <label class="conflict-candidate"><input type="checkbox" name="candidate_keys" value="{{ candidate.candidate_key }}"><span>{{ candidate.source_system }} · {{ candidate.assertion_fa }} · {{ candidate.item.code or candidate.item.name or candidate.item.substance or group.concept_key }}</span></label>
+                    {% endfor %}
+                    </div>
+                </fieldset>
+                <label class="fld"><span>یادداشت resolution</span><textarea name="note" rows="2" placeholder="منبع بررسی‌شده و دلیل تصمیم را ثبت کنید."></textarea></label>
+                <button class="btn btn-primary btn-sm" type="submit">ثبت resolution append-only</button>
+            </form>
+            {% endif %}
+        </article>
+        {% endif %}
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    {% if items %}
+    <ul class="reconcile-items">
+        {% for item in items %}
+        <li>
+            {% if key == 'conditions' %}
+                <b>{{ item.condition_name }}</b>
+                {% if item.stage %}<small> · مرحله {{ item.stage }}</small>{% endif %}
+            {% elif key == 'medications' %}
+                <b>{{ item.drug_name }}</b>
+                <small>{% if item.dose %}{{ item.dose }}{% endif %}{% if item.schedule %} · {{ item.schedule }}{% endif %}</small>
+                {% if not item.drug_catalog_id %}<span class="badge badge-warn">بدون concept ID</span>{% endif %}
+            {% else %}
+                <b>{{ item.substance }}</b>
+                <small>{% if item.reaction %}{{ item.reaction }}{% endif %}{% if item.severity %} · {{ item.severity }}{% endif %}</small>
+            {% endif %}
+        </li>
+        {% endfor %}
+    </ul>
+    {% else %}
+    <div class="reconcile-empty">هیچ مورد فعالی ثبت نشده است. این عبارت فقط پس از «مرور کامل» به معنای نبود صریح مورد خواهد بود.</div>
+    {% endif %}
+
+    {% if g.user and g.user.role == 'manager' %}
+    <form class="reconcile-form" method="post" action="{{ url_for('clinical_reconciliation.review', pid=patient.id, collection_key=key) }}">
+        <input type="hidden" name="return_to" value="workspace">
+        <fieldset>
+            <legend>نتیجهٔ مرور</legend>
+            <div class="reconcile-choice">
+                <label><input type="radio" name="completeness" value="complete" required><span><b>مرور کامل</b><small>تمام اقلام و نبود احتمالی مورد بررسی شد.</small></span></label>
+                <label><input type="radio" name="completeness" value="partial" required><span><b>مرور ناقص</b><small>بخشی از منبع یا اطلاعات هنوز در دسترس نیست.</small></span></label>
+            </div>
+        </fieldset>
+        <label class="fld"><span>یادداشت مرور</span><textarea name="note" rows="3" placeholder="برای مرور ناقص، بخش باقی‌مانده یا منبع دریافت‌نشده را دقیق بنویسید."></textarea></label>
+        <label class="reconcile-check"><input type="checkbox" name="patient_confirmed" value="yes"><span>این فهرست با خود بیمار یا مراقب او نیز تطبیق داده شد.</span></label>
+        <label class="reconcile-check"><input type="checkbox" name="attested" value="yes" required><span>تمام اقلام نمایش‌داده‌شده و وضعیت نبود مورد را بررسی کردم و می‌دانم هر تغییر بعدی این مرور را منسوخ می‌کند.</span></label>
+        <button class="btn btn-primary" type="submit"><svg class="icon"><use href="#i-check"></use></svg> ثبت رویداد مرور</button>
+    </form>
+    {% else %}
+    <div class="alert-banner alert-warn"><svg class="icon"><use href="#i-shield"></use></svg><span>مشاهده برای کارکنان مجاز است؛ ثبت attestation بالینی در نقش فعلی شما مجاز نیست.</span></div>
+    {% endif %}
+</section>
+{% endmacro %}
+
+{% block content %}
+<div class="crumb"><a href="{{ url_for('patients.detail', pid=patient.id) }}">{{ patient.full_name }}</a> / مرور فهرست‌های بالینی</div>
+<header class="reconcile-hero">
+    <div>
+        <span class="badge badge-info">قرارداد دادهٔ موتور بالینی</span>
+        <h1>مرور فهرست‌های بالینی</h1>
+        <p>وجود چند ردیف در پرونده به‌تنهایی ثابت نمی‌کند که فهرست کامل است. این صفحه میان «هنوز مرور نشده»، «مرور ناقص»، «مرور کامل» و «نبود صریح» تفاوت می‌گذارد.</p>
+    </div>
+    <a class="btn btn-ghost" href="{{ url_for('patients.detail', pid=patient.id) }}#record"><svg class="icon"><use href="#i-chevron-left"></use></svg> بازگشت به پرونده</a>
+</header>
+
+<div class="alert-banner alert-info"><svg class="icon"><use href="#i-info"></use></svg><span>ثبت مرور هیچ دارو، تشخیص یا حساسیتی را ایجاد یا حذف نمی‌کند؛ فقط کیفیت و کامل‌بودن snapshot فعلی را به‌صورت append-only ثبت می‌کند.</span></div>
+
+<div class="reconcile-grid">
+    {{ review_card('conditions', 'تشخیص‌ها و problem list', 'clipboard', conditions) }}
+    {{ review_card('medications', 'داروهای فعال', 'pill', medications) }}
+    {{ review_card('allergies', 'حساسیت‌های فعال', 'alert', allergies) }}
+</div>
+{% endblock %}

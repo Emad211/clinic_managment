@@ -4,9 +4,6 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='css/clinical-engine-v2.css') }}">
 {% endblock %}
 
-{% set lvlclass = {'danger':'c-danger','warn':'c-warn','ok':'c-ok','none':'muted'} %}
-{% set lvlcolor = {'danger':'var(--danger-fg)','warn':'var(--warn-fg)','ok':'var(--ok-fg)','none':'var(--muted)'} %}
-{% set riskpos = {'ok':12,'low':38,'medium':66,'high':90} %}
 
 {% block content %}
 {% set v2_action_count = namespace(value=0) %}
@@ -35,29 +32,25 @@
         <a class="btn btn-ghost btn-sm" href="{{ url_for('patients.card_admin', pid=patient.id) }}"><svg class="icon icon-sm"><use href="#i-bell"></use></svg> تنظیم یادآوری</a>
     </div>
 
-    <div class="patient-status-strip" aria-label="خلاصه وضعیت بیمار">
+    <div class="patient-status-strip" aria-label="خلاصهٔ اداری پرونده">
         <div class="patient-status-item">
-            <span>کنترل کلی</span>
-            <strong class="{% if control.status=='controlled' %}c-ok{% elif control.status=='borderline' %}c-warn{% elif control.status=='uncontrolled' %}c-danger{% endif %}">
-                {% if control.status=='controlled' %}کنترل‌شده{% elif control.status=='borderline' %}مرزی{% elif control.status=='uncontrolled' %}کنترل‌نشده{% else %}بدون داده{% endif %}
-            </strong>
+            <span>پیگیری باز</span><strong>{{ followups|length|fa_num }}</strong>
         </div>
         <div class="patient-status-item">
-            <span>ریسک بالینی</span>
-            <strong class="{% if risk.level=='high' %}c-danger{% elif risk.level in ['medium','low'] %}c-warn{% else %}c-ok{% endif %}">{{ risk.label or 'نامشخص' }}</strong>
+            <span>موعد تجدید نسخه</span><strong>{{ refill_due|fa_num }}</strong>
         </div>
         <div class="patient-status-item">
-            <span>پیگیری باز</span><strong class="{% if followups %}c-warn{% endif %}">{{ followups|length|fa_num }}</strong>
+            <span>نوبت ثبت‌شده</span><strong>{{ appt_summary.upcoming|length|fa_num }}</strong>
         </div>
         <div class="patient-status-item">
-            <span>نیازمند تجدید نسخه</span><strong class="{% if refill_due %}c-warn{% endif %}">{{ refill_due|fa_num }}</strong>
+            <span>ویزیت ثبت‌شده</span><strong>{{ visits_count|fa_num }}</strong>
         </div>
     </div>
 
     <aside class="patient-next-action tone-{{ next_action.tone }}" aria-labelledby="next-action-title">
         <div class="next-action-icon" aria-hidden="true"><svg class="icon"><use href="#i-{{ next_action.icon }}"></use></svg></div>
         <div class="next-action-copy">
-            <span>اقدام پیشنهادی بعدی</span>
+            <span>اولویت بعدی پرونده</span>
             <strong id="next-action-title">{{ next_action.title }}</strong>
             <small>{{ next_action.detail }}{% if next_action.date %} · {{ next_action.date|jalali_date }}{% endif %}</small>
         </div>
@@ -97,26 +90,22 @@
 
     {# ---- KEY VITALS — grouped per disease (one block per condition) ---- #}
     <div class="card">
-        <div class="section-title"><svg class="icon"><use href="#i-activity"></use></svg> شاخص‌های کلیدی <span class="section-sub">به تفکیک بیماری · آخرین مقدار · روند · هدف</span></div>
+        <div class="section-title"><svg class="icon"><use href="#i-activity"></use></svg> شاخص‌های کلیدی <span class="section-sub">به تفکیک بیماری · آخرین مقدار و تغییر عددی</span></div>
         {% if per_disease %}
         {% for d in per_disease %}
         <div class="disease-block{% if not loop.first %} divider-dashed{% endif %}"{% if not loop.first %} style="margin-top:var(--s4);padding-top:var(--s4);"{% endif %}>
             <div class="flex items-center wrap gap-2" style="margin-bottom:var(--s3);">
                 <span style="font-weight:700;">{{ d.condition_name }}</span>
-                <span class="badge {{ 'badge-danger' if d.status=='danger' else 'badge-warn' if d.status=='warn' else 'badge-ok' if d.status=='ok' else 'badge-muted' }}">
-                    {% if d.status=='danger' %}کنترل‌نشده{% elif d.status=='warn' %}مرزی{% elif d.status=='ok' %}کنترل‌شده{% else %}بدون داده{% endif %}
-                </span>
-                <span class="badge {{ 'badge-danger' if d.risk_level=='high' else 'badge-warn' if d.risk_level in ['medium','low'] else 'badge-ok' }}">ریسک: {{ d.risk_label }}</span>
             </div>
             {% if d.indicators %}
             <div class="vital-row">
                 {% for i in d.indicators %}
-                <div class="vital-stat lvl-{{ i.level }}">
+                <div class="vital-stat">
                     <div class="vs-label">{{ i.label }}</div>
                     <div class="vs-val">{{ i.latest|fa_num }} <small>{{ i.unit }}</small></div>
                     <div class="vs-meta">
-                        {% if i.target is not none %}<span>هدف {% if i.direction=='low' %}&gt;{% else %}&lt;{% endif %}{{ i.target|fa_num }}</span>{% endif %}
-                        {% if i.delta is not none and i.delta != 0 %}{% set improved = (i.delta > 0) if i.direction=='low' else (i.delta < 0) %}<span class="vs-delta {{ 'c-ok' if improved else 'c-danger' }}">{% if i.delta > 0 %}▲{% else %}▼{% endif %}{{ (i.delta if i.delta>0 else 0-i.delta)|fa_num }}</span>{% endif %}
+                        {% if i.delta is not none and i.delta != 0 %}<span class="vs-delta">{% if i.delta > 0 %}▲{% else %}▼{% endif %}{{ (i.delta if i.delta>0 else 0-i.delta)|fa_num }} نسبت به ثبت قبل</span>{% endif %}
+                        {% if i.last_date %}<span>{{ i.last_date }}</span>{% endif %}
                     </div>
                     <div class="vs-spark"><canvas class="vs-spark-c" data-key="{{ i.key }}" id="vs-{{ d.condition_code }}-{{ i.key }}"></canvas></div>
                 </div>
@@ -129,12 +118,6 @@
         {% endfor %}
         {% else %}
         <div class="empty-mini">بیماری مزمنی ثبت نشده — در تب «پرونده» تشخیص بیماری را اضافه کنید تا شاخص‌های همان بیماری اینجا بیایند.</div>
-        {% endif %}
-
-        {% if risk.behavior_notes %}
-        <div class="legend" style="margin-top:var(--s3);">
-            {% for n in risk.behavior_notes %}<span class="chip"><span class="dot dot-warn"></span> {{ n }}</span>{% endfor %}
-        </div>
         {% endif %}
     </div>
 
@@ -159,9 +142,7 @@
             <div class="grid grid-4">
                 {% for i in entry_indicators %}
                 <div class="fld">
-                    <label>{{ i.label }}
-                        {% if i.target is not none %}<span class="muted">(هدف {% if i.direction=='low' %}&gt;{% else %}&lt;{% endif %}{{ i.target|fa_num }})</span>{% endif %}
-                    </label>
+                    <label>{{ i.label }}</label>
                     <input type="number" step="any" name="{{ i.key }}" placeholder="{{ i.unit or '' }}">
                 </div>
                 {% else %}
@@ -211,19 +192,13 @@
         <div class="section-title"><svg class="icon"><use href="#i-stethoscope"></use></svg> {{ group.label }} <span class="section-sub">{{ live|length|fa_num }} شاخص</span></div>
         <div class="tiles">
             {% for i in live %}
-            <div class="tile lvl-{{ i.level }}">
+            <div class="tile">
                 <div class="t-label">{{ i.label }}</div>
-                <div class="t-val" style="color:{{ lvlcolor.get(i.level,'var(--text)') }};">{{ i.latest|fa_num }} <small>{{ i.unit }}</small></div>
+                <div class="t-val">{{ i.latest|fa_num }} <small>{{ i.unit }}</small></div>
                 {% if i.delta is not none and i.delta != 0 %}
-                    {% set improved = (i.delta > 0) if i.direction=='low' else (i.delta < 0) %}
-                    <div class="t-delta {{ 'c-ok' if improved else 'c-danger' }}">{% if i.delta > 0 %}▲{% else %}▼{% endif %} {{ (i.delta if i.delta>0 else 0-i.delta)|fa_num }} <span class="muted" style="font-weight:400;">نسبت به قبل</span></div>
+                    <div class="t-delta">{% if i.delta > 0 %}▲{% else %}▼{% endif %} {{ (i.delta if i.delta>0 else 0-i.delta)|fa_num }} <span class="muted" style="font-weight:400;">نسبت به ثبت قبل</span></div>
                 {% endif %}
-                <div class="t-meta">
-                    {% if i.target is not none %}هدف {% if i.direction=='low' %}&gt;{% else %}&lt;{% endif %}{{ i.target|fa_num }}{% endif %}
-                    {% if i.goal_low is not none and i.goal_high is not none %} · مطلوب {{ i.goal_low|fa_num }}–{{ i.goal_high|fa_num }}{% endif %}
-                    · {{ i.count|fa_num }} ثبت
-                </div>
-                {% if i.bar_pct %}<div class="t-bar"><span style="width:{{ i.bar_pct }}%;background:{{ lvlcolor.get(i.level,'var(--primary)') }};"></span></div>{% endif %}
+                <div class="t-meta">{{ i.count|fa_num }} ثبت{% if i.last_date %} · آخرین ثبت {{ i.last_date }}{% endif %}</div>
             </div>
             {% endfor %}
         </div>
@@ -307,21 +282,6 @@
 <section class="tab-pane" id="pane-meds" aria-labelledby="tab-meds" data-pane="meds" role="tabpanel" hidden>
     {# embedded drug catalog for the meds-cascade script (filtered by class → drug → doses) #}
     <script type="application/json" id="drugCatalogData">{{ drug_catalog|tojson }}</script>
-
-    {# ---- DOSE TOOLS (insulin calc for diabetics + per-disease dose guidance) ---- #}
-    {% if is_diabetic or dose_guidance %}
-    <div class="card">
-        <div class="section-title"><svg class="icon"><use href="#i-syringe"></use></svg> ابزارهای دوز <span class="section-sub">مرجع شروع و تیتراسیون — پیشنهاد، تأیید با پزشک</span></div>
-        <div class="row" style="flex-wrap:wrap;gap:var(--s2);">
-            {% if is_diabetic %}
-            <button type="button" class="btn btn-sm" data-modal-open="insulinModal"><svg class="icon icon-sm"><use href="#i-sigma"></use></svg> ماشین‌حساب انسولین</button>
-            {% endif %}
-            {% for dg in dose_guidance %}
-            <button type="button" class="btn btn-sm btn-ghost" data-modal-open="doseModal-{{ dg.condition_code }}"><svg class="icon icon-sm"><use href="#i-pill"></use></svg> پیشنهاد دوزِ {{ dg.condition_name }}</button>
-            {% endfor %}
-        </div>
-    </div>
-    {% endif %}
 
     {# ---- CURRENT MEDICATIONS ---- #}
     <div class="card">
@@ -439,47 +399,6 @@
     </div>
 
     {# ============ MODALS (lightweight overlays toggled by the meds IIFE) ============ #}
-    {% if is_diabetic %}
-    <div class="med-modal" data-modal="insulinModal" hidden role="dialog" aria-modal="true">
-        <div class="med-modal-backdrop" data-modal-close></div>
-        <div class="card med-modal-card">
-            <div class="section-title"><svg class="icon"><use href="#i-syringe"></use></svg> ماشین‌حساب انسولین
-                <span class="section-sub">مرجع شروع و تیتراسیون — تأیید با پزشک</span>
-                <button type="button" class="btn btn-sm btn-ghost btn-icon med-modal-x ms-auto" data-modal-close aria-label="بستن پنجره" title="بستن"><svg class="icon icon-sm"><use href="#i-x"></use></svg></button>
-            </div>
-            <div class="grid grid-2" style="align-items:flex-end;">
-                <div class="fld"><label>وزن (kg)</label><input type="number" id="insWeight" value=""></div>
-                <div class="fld"><label>دوز فعلی basal (واحد)</label><input type="number" id="insBasal"></div>
-                <div class="fld"><label>FPG فعلی (mg/dL)</label><input type="number" id="insFpg"></div>
-                <div class="fld"><label>FPG هدف</label><input type="number" id="insTarget" value="120"></div>
-            </div>
-            <button class="btn btn-sm mt-3" id="insBtn"><svg class="icon icon-sm"><use href="#i-sigma"></use></svg> محاسبه</button>
-            <div id="insResult" style="margin-top:var(--s3);"></div>
-        </div>
-    </div>
-    {% endif %}
-
-    {% for dg in dose_guidance %}
-    <div class="med-modal" data-modal="doseModal-{{ dg.condition_code }}" hidden role="dialog" aria-modal="true">
-        <div class="med-modal-backdrop" data-modal-close></div>
-        <div class="card med-modal-card">
-            <div class="section-title"><svg class="icon"><use href="#i-pill"></use></svg> پیشنهاد دوزِ {{ dg.condition_name }}
-                <span class="section-sub">مرجع تیتراسیون — تأیید با پزشک</span>
-                <button type="button" class="btn btn-sm btn-ghost btn-icon med-modal-x ms-auto" data-modal-close aria-label="بستن پنجره" title="بستن"><svg class="icon icon-sm"><use href="#i-x"></use></svg></button>
-            </div>
-            <div class="fld" style="max-width:260px;margin-bottom:var(--s3);">
-                <label>دوزِ فعلی (اطلاعاتی)</label>
-                <input type="text" readonly placeholder="دوزِ فعلی بیمار را اینجا یادداشت کنید">
-            </div>
-            {% for it in dg['items'] %}
-            <div class="med-card">
-                <strong style="font-size:14px;">{{ it.title }}</strong>
-                {% if it.titration %}<div class="muted text-sm" style="margin-top:var(--s1);white-space:pre-wrap;">{{ it.titration }}</div>{% endif %}
-            </div>
-            {% else %}<div class="empty-mini">راهنمای دوزی ثبت نشده</div>{% endfor %}
-        </div>
-    </div>
-    {% endfor %}
 </section>
 
 <!-- ============================================================= -->
@@ -487,33 +406,50 @@
 <!-- ============================================================= -->
 <section class="tab-pane" id="pane-record" aria-labelledby="tab-record" data-pane="record" role="tabpanel" hidden>
 
-    {# ============ reusable flag-field renderer (pf = patient_flags, passed in: macros don't see render context) ============ #}
-    {% macro flag_field(f, pf) %}
-        {% if f.flag_type == 'bool' %}
-        <label class="switch-row">
-            <span class="switch"><input type="checkbox" name="{{ f.flag_key }}" {% if pf.get(f.flag_key) %}checked{% endif %}><span class="sl"></span></span>
-            <span class="text-sm">{{ f.label }}</span>
-        </label>
-        {% elif f.flag_type == 'enum' %}
-        <div class="fld">
+    {# Typed four-state flag renderer. Each field carries optimistic concurrency
+       metadata so a stale form cannot overwrite a newer clinical answer. #}
+    {% macro flag_field(f, states) %}
+        {% set current = states.get(f.flag_key) or {} %}
+        <div class="fld clinical-flag-field" data-flag-key="{{ f.flag_key }}">
+            <input type="hidden" name="flag__{{ f.flag_key }}__event_id" value="{{ current.event_id or '' }}">
+            <input type="hidden" name="flag__{{ f.flag_key }}__definition_hash" value="{{ f.definition_hash }}">
             <label>{{ f.label }}</label>
-            <select name="{{ f.flag_key }}">
-                <option value="">—</option>
-                {% for o in f.option_list %}<option value="{{ o.value }}" {% if pf.get(f.flag_key)==o.value %}selected{% endif %}>{{ o.label }}</option>{% endfor %}
+            {% if f.flag_type == 'bool' %}
+            <select name="flag__{{ f.flag_key }}__state" required>
+                <option value="">— انتخاب وضعیت —</option>
+                <option value="PRESENT_TRUE" {% if current.state=='PRESENT' and current.value is sameas true %}selected{% endif %}>بله</option>
+                <option value="PRESENT_FALSE" {% if current.state=='PRESENT' and current.value is sameas false %}selected{% endif %}>خیر</option>
+                <option value="UNKNOWN" {% if current.state=='UNKNOWN' %}selected{% endif %}>نامشخص</option>
+                <option value="NOT_ASKED" {% if current.event_id and current.state=='NOT_ASKED' %}selected{% endif %}>پرسیده‌نشده</option>
             </select>
+            {% else %}
+            <select name="flag__{{ f.flag_key }}__state" required>
+                <option value="">— انتخاب وضعیت —</option>
+                <option value="PRESENT" {% if current.state=='PRESENT' %}selected{% endif %}>مقدار مشخص است</option>
+                <option value="UNKNOWN" {% if current.state=='UNKNOWN' %}selected{% endif %}>نامشخص</option>
+                <option value="NOT_ASKED" {% if current.event_id and current.state=='NOT_ASKED' %}selected{% endif %}>پرسیده‌نشده</option>
+            </select>
+            {% if f.flag_type == 'enum' %}
+            <select name="flag__{{ f.flag_key }}__value" aria-label="مقدار {{ f.label }}">
+                <option value="">— انتخاب مقدار —</option>
+                {% for o in f.option_list %}<option value="{{ o.value }}" {% if current.state=='PRESENT' and current.value==o.value %}selected{% endif %}>{{ o.label }}</option>{% endfor %}
+            </select>
+            {% elif f.flag_type == 'date' %}
+            <input type="text" class="jdate" name="flag__{{ f.flag_key }}__value"
+                   value="{% if current.state=='PRESENT' and current.value %}{{ current.value|jalali_date }}{% endif %}"
+                   placeholder="انتخاب تاریخ">
+            {% else %}
+            <input type="text" name="flag__{{ f.flag_key }}__value"
+                   value="{% if current.state=='PRESENT' %}{{ current.value or '' }}{% endif %}">
+            {% endif %}
+            {% endif %}
+            {% if current.warnings %}
+            <div class="text-xs" style="color:var(--warn);margin-top:var(--s1);">نیازمند مرور مجدد</div>
+            {% endif %}
+            {% if current.recorded_at and current.event_id %}
+            <div class="muted text-xs">آخرین ثبت: {{ current.recorded_at|jalali }}</div>
+            {% endif %}
         </div>
-        {% elif f.flag_type == 'date' %}
-        <div class="fld">
-            <label>{{ f.label }}</label>
-            <input type="text" class="jdate" name="{{ f.flag_key }}"
-                   placeholder="{% if pf.get(f.flag_key) %}ثبت‌شده: {{ pf.get(f.flag_key)|jalali_date }}{% else %}انتخاب تاریخ{% endif %}">
-        </div>
-        {% else %}
-        <div class="fld">
-            <label>{{ f.label }}</label>
-            <input type="text" name="{{ f.flag_key }}" value="{{ pf.get(f.flag_key) or '' }}">
-        </div>
-        {% endif %}
     {% endmacro %}
 
     {# ============ reusable clinical-note block (pid passed in: macros don't see render context) ============ #}
@@ -611,6 +547,7 @@
                 </div>
             </div>
             <form method="post" action="{{ url_for('patients.save_flags', pid=patient.id) }}">
+                <input type="hidden" name="flag_section" value="comorbidity">
                 <input type="hidden" name="flag_keys" value="{{ comorb_flags|map(attribute='flag_key')|join(',') }}">
                 {% if comorb_detail_flags %}
                 <fieldset class="condition-group">
@@ -639,6 +576,7 @@
         <div class="section-title"><svg class="icon"><use href="#i-activity"></use></svg> سبک زندگی</div>
         {% if flags_by_section.lifestyle %}
         <form method="post" action="{{ url_for('patients.save_flags', pid=patient.id) }}" style="margin-bottom:var(--s4);">
+            <input type="hidden" name="flag_section" value="lifestyle">
             <input type="hidden" name="flag_keys" value="{{ flags_by_section.lifestyle|map(attribute='flag_key')|join(',') }}">
             <div class="grid grid-3">
                 {% for f in flags_by_section.lifestyle %}{{ flag_field(f, patient_flags) }}{% endfor %}
@@ -672,6 +610,7 @@
         <div class="section-title"><svg class="icon"><use href="#i-stethoscope"></use></svg> علائم و معاینات</div>
         {% if flags_by_section.exam %}
         <form method="post" action="{{ url_for('patients.save_flags', pid=patient.id) }}" style="margin-bottom:var(--s4);">
+            <input type="hidden" name="flag_section" value="exam">
             <input type="hidden" name="flag_keys" value="{{ flags_by_section.exam|map(attribute='flag_key')|join(',') }}">
             <div class="grid grid-3">
                 {% for f in flags_by_section.exam %}{{ flag_field(f, patient_flags) }}{% endfor %}
@@ -696,20 +635,6 @@
             </summary>
 
             <form method="post" action="{{ url_for('vitals.add_lab', pid=patient.id) }}" id="labForm" style="margin-top:var(--s3);">
-                {% if suggested_labs %}
-                <div class="muted text-xs" style="font-weight:700;margin-bottom:var(--s2);">آزمایش‌های پیشنهادی برای بیماری‌های این بیمار — برای افزودن کلیک کنید</div>
-                <div class="legend" id="labChips" style="margin-bottom:var(--s4);">
-                    {% for s in suggested_labs %}
-                    <span class="chip lab-chip" role="button" tabindex="0"
-                          data-key="{{ s.test_key }}" data-name="{{ s.name_fa }}"
-                          data-unit="{{ s.unit or '' }}"
-                          data-low="{{ s.ref_low if s.ref_low is not none else '' }}"
-                          data-high="{{ s.ref_high if s.ref_high is not none else '' }}">
-                        <svg class="icon icon-sm"><use href="#i-plus"></use></svg> {{ s.name_fa }}
-                    </span>
-                    {% endfor %}
-                </div>
-                {% endif %}
 
                 <div class="table-wrap">
                 <table id="labGrid">
@@ -766,14 +691,13 @@
         {% if recent_vitals %}
         <div class="table-wrap">
         <table>
-            <thead><tr><th>شاخص</th><th>مقدار</th><th>تاریخ</th><th>وضعیت</th><th></th></tr></thead>
+            <thead><tr><th>شاخص</th><th>مقدار</th><th>تاریخ</th><th></th></tr></thead>
             <tbody>
             {% for r in recent_vitals %}
                 <tr>
                     <td>{{ r.type_label }}</td>
                     <td><strong>{{ r.value|fa_num }}</strong> {{ r.unit or '' }}</td>
                     <td class="muted">{{ r.measured_at|jalali }}</td>
-                    <td>{% if r.level=='danger' %}<span class="badge badge-danger">خطر</span>{% elif r.level=='warn' %}<span class="badge badge-warn">هشدار</span>{% else %}<span class="badge badge-ok">نرمال</span>{% endif %}</td>
                     <td><form class="m-0" method="post" action="{{ url_for('vitals.delete_reading', pid=patient.id, reading_id=r.id) }}"><button class="btn btn-sm btn-danger btn-icon" type="submit" aria-label="حذف اندازه‌گیری" title="حذف اندازه‌گیری"><svg class="icon icon-sm"><use href="#i-trash"></use></svg></button></form></td>
                 </tr>
             {% endfor %}
@@ -808,7 +732,6 @@ const chartData = {{ charts|tojson }};
 const medEvents = {{ med_events|tojson }};
 const medsData  = {{ medications|tojson }};
 const classMap  = {{ drug_class_map|tojson }};
-const targets   = {{ targets|tojson }};
 const meUrl = "{{ url_for('patients.medication_effect', pid=patient.id) }}";
 const TH = window.CLINIC_THEME || {};
 const evColor = { start:(TH.ok||'#4ade80'), stop:(TH.danger||'#f87171'), dose_change:(TH.warn||'#fbbf24') };
@@ -916,11 +839,6 @@ function initTrends(){
             if(state.type==='bar'){ ds.type='bar'; ds.backgroundColor=color[k]; }
             return ds;
         });
-        if(sel.length===1 && series[sel[0]].target!=null){
-            let d=pts(sel[0]); if(min) d=d.filter(p=>p.t>=min);
-            if(d.length){ const tg=series[sel[0]].target;
-                datasets.push({label:'هدف',type:'line',data:[{x:d[0].t,y:tg},{x:d[d.length-1].t,y:tg}],
-                    borderColor:'#94a3b8',borderDash:[6,4],pointRadius:0,borderWidth:1,yAxisID:'y'}); } }
         const TICK=TH.tick||'#92a2c0', GRID=TH.grid||'rgba(255,255,255,.05)', TXT=TH.text||'#cbd5e1';
         const ax=u=>({ticks:{color:TICK,font:{size:10}},grid:{color:GRID},title:{display:!!u,text:u,color:TICK,font:{size:10}}});
         const scales={ x:{type:'linear',ticks:{color:TICK,font:{size:10},maxRotation:0,callback:v=>faDate(v)},grid:{color:GRID}},
@@ -1021,44 +939,19 @@ function initTrends(){
             if(j.pre==null||j.post==null){
                 box.innerHTML=`<div class="chip"><span class="dot dot-warn"></span> داده‌ی کافی برای مقایسه نیست — ${faDigit(j.n_pre)} ثبت قبل، ${faDigit(j.n_post)} ثبت بعد.</div>`; return;
             }
-            const good = j.improved===true, bad = j.improved===false;
-            const col = good?(TH.ok||'#4ade80'):(bad?(TH.danger||'#f87171'):(TH.tick||'#92a2c0'));
+            const col = TH.tick||'#92a2c0';
             const arrow = j.delta>0?'▲':(j.delta<0?'▼':'•');
             box.innerHTML=`
               <div style="display:flex;gap:14px;flex-wrap:wrap;">
                 <div class="mini" style="flex:1;min-width:120px;"><div class="m-num">${faDigit(j.pre)} <span class="muted" style="font-size:11px;">${j.unit}</span></div><div class="m-lbl">قبل از ${j.drug_name}</div></div>
                 <div class="mini" style="flex:1;min-width:120px;"><div class="m-num">${faDigit(j.post)} <span class="muted" style="font-size:11px;">${j.unit}</span></div><div class="m-lbl">بعد</div></div>
-                <div class="mini" style="flex:1;min-width:120px;"><div class="m-num" style="color:${col};">${arrow} ${faDigit(Math.abs(j.delta))}</div><div class="m-lbl">${good?'بهبود':(bad?'بدتر شدن':'تغییر')}</div></div>
+                <div class="mini" style="flex:1;min-width:120px;"><div class="m-num" style="color:${col};">${arrow} ${faDigit(Math.abs(j.delta))}</div><div class="m-lbl">تغییر عددی</div></div>
               </div>
               <div class="muted" style="font-size:11.5px;margin-top:8px;">شروع دارو: ${j.start_fa} · پنجره ±${faDigit(j.window_days)} روز · ${faDigit(j.n_pre)} نمونه قبل / ${faDigit(j.n_post)} نمونه بعد</div>`;
         }catch(e){ box.innerHTML='<div class="empty-mini">خطا در محاسبه.</div>'; }
     });
 })();
 
-/* ===== insulin titration calculator (ADA §6.4) — reference only ===== */
-(function(){
-    const btn=document.getElementById('insBtn'); if(!btn) return;
-    const fa=s=>String(s).replace(/[0-9]/g,d=>'۰۱۲۳۴۵۶۷۸۹'[d]);
-    btn.addEventListener('click', ()=>{
-        const w=+document.getElementById('insWeight').value||0;
-        const basal=+document.getElementById('insBasal').value||0;
-        const fpg=+document.getElementById('insFpg').value||0;
-        const tgt=+document.getElementById('insTarget').value||120;
-        let h='';
-        const lo=Math.round(0.1*w), hi=Math.round(0.2*w);
-        const ic=n=>`<svg class="icon icon-sm"><use href="#i-${n}"></use></svg>`;
-        h+=`<div class="mini" style="margin-bottom:8px;">${ic('check')} شروع انسولین پایه: <b>۱۰ واحد/روز</b>${w?` یا <b>${fa(lo)}–${fa(hi)}</b> واحد (۰.۱–۰.۲ U/kg)`:''}</div>`;
-        h+=`<div class="mini" style="margin-bottom:8px;">${ic('trending-up')} تیتر: <b>+۲ واحد هر ۳ روز</b> (یا ۱۰–۱۵٪ دوبار در هفته) تا FPG به هدف ${fa(tgt)} برسد بدون هیپوگلیسمی</div>`;
-        if(fpg && basal){
-            if(fpg>tgt) h+=`<div class="mini" style="margin-bottom:8px;">FPG فعلی (${fa(fpg)}) بالاتر از هدف → گام بعدی پیشنهادی: <b>${fa(basal+2)}</b> واحد</div>`;
-            else h+=`<div class="mini" style="margin-bottom:8px;">FPG در محدودهٔ هدف؛ دوز فعلی (${fa(basal)} واحد) حفظ شود</div>`;
-        }
-        const bolus = basal? Math.round(0.1*basal):4;
-        h+=`<div class="mini" style="margin-bottom:8px;">${ic('syringe')} بولوس پراندیال: شروع <b>${fa(bolus)}</b> واحد (۴ واحد یا ۱۰٪ basal)؛ اگر A1c<۸٪، basal را ۱۰٪ کم کنید</div>`;
-        if(basal) h+=`<div class="mini">${ic('alert')} در هیپوگلیسمیِ بدون‌علت: کاهش ۱۰–۲۰٪ → <b>${fa(Math.round(0.8*basal))}–${fa(Math.round(0.9*basal))}</b> واحد</div>`;
-        document.getElementById('insResult').innerHTML=h;
-    });
-})();
 </script>
 
 <script>

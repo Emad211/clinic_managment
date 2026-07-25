@@ -61,7 +61,39 @@
       "additionalProperties": false
     },
     "derived_from": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
-    "warnings": {"type": "array", "items": {"enum": ["UNIT_UNMAPPED", "UNIT_CONVERTED", "SOURCE_UNAVAILABLE", "LEGACY_APPROXIMATION", "DUPLICATE", "OUTLIER"]}, "uniqueItems": true}
+    "warnings": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "UNIT_UNMAPPED",
+          "UNIT_CONVERTED",
+          "SOURCE_UNAVAILABLE",
+          "LEGACY_APPROXIMATION",
+          "DUPLICATE",
+          "OUTLIER",
+          "PATIENT_REPORTED",
+          "DEVICE_REPORTED",
+          "UNMAPPED_SOURCE",
+          "UNRECONCILED_COLLECTION",
+          "PARTIAL_RECONCILIATION",
+          "COLLECTION_CHANGED_AFTER_RECONCILIATION",
+          "CANONICAL_MAPPING_INCOMPLETE",
+          "UNMAPPED_MEDICATION_CONCEPT",
+          "UNMAPPED_ALLERGY_CONCEPT",
+          "UNRESOLVED_CLINICAL_CONFLICT",
+          "STALE_CONFLICT_RESOLUTION",
+          "CLINICAL_CONFLICT_RESOLVED_UNKNOWN",
+          "INVALID_CONFLICT_RESOLUTION_PAYLOAD",
+          "INVALID_CONFLICT_RESOLUTION_METHOD",
+          "SOURCE_ASSERTION_UNKNOWN",
+          "HISTORICAL_DOSE_APPROXIMATION",
+          "HISTORICAL_INTERVAL_APPROXIMATION",
+          "FLAG_DEFINITION_CHANGED_REVIEW_REQUIRED",
+          "FLAG_EVENT_VALUE_INVALID"
+        ]
+      },
+      "uniqueItems": true
+    }
   },
   "allOf": [{
     "if": {"properties": {"status": {"const": "PRESENT"}}, "required": ["status"]},

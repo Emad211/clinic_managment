@@ -1,9 +1,9 @@
 from flask import Blueprint, render_template, request, redirect, url_for, flash, g
 from src.api.auth import login_required, manager_required
+from src.security.permissions import Permission, has_permission
 from src.adapters.sqlite.core import get_db
 from src.adapters.sqlite.sms_repo import SmsRepository
 from src.services.auth_service import AuthService
-from src.services.protocol_service import ProtocolService
 from src.services.activity_logger import log_activity
 from src.adapters import accounting_bridge
 from src.common.network import get_network_info
@@ -24,13 +24,15 @@ def index():
 
 
 @bp.route("/clinical-engine")
-@manager_required
+@login_required
 def clinical_engine():
     projection = ClinicalEngineActivationService().dashboard()
     from src.services.clinical_engine.package_service import ClinicalRulePackageService
     from src.services.clinical_engine.demo_cohort import DemoCohortService
     projection["package"] = ClinicalRulePackageService().projection()
     projection["cohort"] = DemoCohortService().summary()
+    from src.services.clinical_engine.validation_service import ClinicalValidationService
+    projection["validation"] = ClinicalValidationService().dashboard()
     requested_step = request.args.get("step", type=int)
     return render_template(
         "manager/clinical_engine.html", engine=projection,
@@ -39,9 +41,23 @@ def clinical_engine():
 
 
 @bp.route("/clinical-engine/<action>", methods=["POST"])
-@manager_required
+@login_required
 def clinical_engine_action(action):
-    """One guarded manager seam; the service remains the sole policy owner."""
+    """One permission-governed seam; the service remains the policy owner."""
+    if action in {
+        "activate-selected", "verify-selected", "promote-ruleset",
+        "activate-global", "rollback", "reset-workflow",
+    }:
+        required = Permission.RULE_ACTIVATE
+    elif action == "approve" and request.form.get("role") == "technical":
+        required = Permission.RULE_REVIEW_TECHNICAL
+    elif action in {"prepare-rules", "compare", "prepare-demo-cohort"}:
+        required = Permission.RULE_REVIEW_TECHNICAL
+    else:
+        required = Permission.RULE_REVIEW_CLINICAL
+    if not has_permission(required):
+        flash("مجوز governشدهٔ لازم برای این عملیات ثبت نشده است.", "error")
+        return redirect(url_for("manager.clinical_engine") + "#engine-actions")
     service = ClinicalEngineActivationService()
     actor = str(g.user["username"] or "manager")
     reviewer = (request.form.get("reviewer") or g.user["full_name"] or actor).strip()
@@ -69,6 +85,11 @@ def clinical_engine_action(action):
         elif action == "compare":
             if not service.rules.active_ruleset("general-outpatient"):
                 raise ActivationGateError("ابتدا بستهٔ قواعد v2 باید وارد، بازبینی و فریز شود")
+            from src.services.clinical_engine.validation_service import ClinicalValidationService
+            if not ClinicalValidationService().current_release_evidence():
+                raise ActivationGateError(
+                    "ابتدا اعتبارسنجی golden-case و دو تأیید مستقل بالینی و فنی را کامل کنید"
+                )
             from src.services.clinical_engine.demo_cohort import DemoCohortService
             cohort_service = DemoCohortService()
             cohort = cohort_service.ensure(actor=actor)
@@ -126,6 +147,78 @@ def clinical_engine_action(action):
     except (ActivationGateError, ValueError, LookupError) as exc:
         flash(f"عملیات انجام نشد: {exc}", "error")
     return redirect(url_for("manager.clinical_engine") + "#engine-actions")
+
+
+@bp.get("/clinical-engine/validation")
+@login_required
+def clinical_validation():
+    if not any(
+        has_permission(permission)
+        for permission in (
+            Permission.RULE_REVIEW_CLINICAL,
+            Permission.RULE_REVIEW_TECHNICAL,
+            Permission.RULE_ACTIVATE,
+        )
+    ):
+        flash("مجوز مشاهدهٔ مرکز اعتبارسنجی ثبت نشده است.", "error")
+        return redirect(url_for("dashboard.index"))
+    from src.services.clinical_engine.validation_service import ClinicalValidationService
+
+    return render_template(
+        "manager/clinical_validation.html",
+        validation=ClinicalValidationService().dashboard(),
+        active_page="clinical_engine",
+    )
+
+
+@bp.post("/clinical-engine/validation/<action>")
+@login_required
+def clinical_validation_action(action):
+    from src.services.clinical_engine.validation_service import (
+        ClinicalValidationError,
+        ClinicalValidationService,
+    )
+
+    service = ClinicalValidationService()
+    actor = str(g.user["username"] or "manager").strip()
+    reviewer = (
+        request.form.get("reviewer") or g.user["full_name"] or actor
+    ).strip()
+    note = request.form.get("note", "").strip()
+    try:
+        if action == "run":
+            if not has_permission(Permission.RULE_REVIEW_TECHNICAL):
+                raise ClinicalValidationError("مجوز اجرای اعتبارسنجی فنی ثبت نشده است")
+            stored = service.run_current(created_by=actor)
+            flash(
+                "اعتبارسنجی با وضعیت " + stored["status"] + " ثبت شد.",
+                "success" if stored["status"] == "PASS" else "warning",
+            )
+        elif action == "attest":
+            role = request.form.get("role", "").strip().lower()
+            required = (
+                Permission.RULE_REVIEW_CLINICAL
+                if role == "clinical"
+                else Permission.RULE_REVIEW_TECHNICAL
+            )
+            if not has_permission(required):
+                raise ClinicalValidationError("مجوز تأیید این نقش ثبت نشده است")
+            if request.form.get("attestation") != "yes":
+                raise ClinicalValidationError("تأیید آگاهانهٔ مسئولیت الزامی است")
+            service.attest_current(
+                role=role,
+                reviewer=reviewer,
+                note=note,
+                report_hash=request.form.get("report_hash", ""),
+            )
+            flash("تأیید مستقل به آخرین گزارش PASS متصل شد.", "success")
+        else:
+            raise ClinicalValidationError("عملیات اعتبارسنجی ناشناخته است")
+    except (ClinicalValidationError, ValueError, LookupError) as exc:
+        flash(f"عملیات انجام نشد: {exc}", "error")
+    return redirect(
+        url_for("manager.clinical_validation") + "#validation-workspace"
+    )
 
 
 @bp.route("/settings", methods=["GET", "POST"])
@@ -227,8 +320,12 @@ def user_token(uid):
 @bp.route("/protocols")
 @manager_required
 def protocols():
-    summary = ProtocolService().summary()
-    return render_template("manager/protocols.html", summary=summary, active_page='manager')
+    """Retired deep-link for the pre-v2 periodic-care heuristic."""
+    flash(
+        "پایش‌های بالینی دوره‌ای فقط از بسته‌های govern‌شدهٔ Clinical Engine v2 منتشر می‌شوند.",
+        "warning",
+    )
+    return redirect(url_for("manager.clinical_engine"))
 
 
 @bp.route("/rules")
@@ -241,50 +338,32 @@ def rules():
 @bp.route("/rules/update", methods=["POST"])
 @manager_required
 def rules_update():
-    """Update one clinical indicator's editable fields."""
+    """Update descriptive observation-catalog metadata only."""
     from src.adapters.sqlite.clinical_rules_repo import ClinicalRulesRepository
+
     indicator_id = request.form.get("indicator_id", type=int)
     if not indicator_id:
         flash("شناسه نامعتبر")
         return redirect(url_for("manager.diseases"))
 
-    def num(field):
-        v = request.form.get(field, "").strip()
-        if v == "":
-            return None
-        try:
-            return float(v)
-        except ValueError:
-            return None
-
+    try:
+        display_order = int(request.form.get("display_order") or 100)
+    except ValueError:
+        display_order = 100
     fields = {
-        'label': request.form.get("label", "").strip(),
-        'unit': request.form.get("unit", "").strip(),
-        'direction': request.form.get("direction", "high"),
-        'warn': num("warn"), 'danger': num("danger"), 'target': num("target"),
-        'goal_low': num("goal_low"), 'goal_high': num("goal_high"),
-        'conditions': request.form.get("conditions", "all").strip() or "all",
-        'risk_weight': int(num("risk_weight") or 0),
-        'display_order': int(num("display_order") or 100),
-        'is_active': 1 if request.form.get("is_active") == "on" else 0,
+        "label": request.form.get("label", "").strip(),
+        "unit": request.form.get("unit", "").strip(),
+        "category": request.form.get("category", "other").strip() or "other",
+        "conditions": request.form.get("conditions", "all").strip() or "all",
+        "is_vital": 1 if request.form.get("is_vital") == "on" else 0,
+        "display_order": display_order,
+        "is_active": 1 if request.form.get("is_active") == "on" else 0,
     }
     ClinicalRulesRepository().update(indicator_id, fields)
-    log_activity("rules_update", f"ویرایش قاعده‌ی بالینی #{indicator_id}")
-    flash("قاعده به‌روزرسانی شد", "success")
-    # Return to wherever the edit came from (per-disease page or the all-indicators page)
+    log_activity("indicator_metadata_update", f"ویرایش فراداده شاخص #{indicator_id}")
+    flash("فرادادهٔ نمایشی شاخص به‌روزرسانی شد", "success")
     return redirect(request.referrer or url_for("manager.diseases"))
 
-
-_RULE_CAT_LABELS = {
-    'diagnosis': 'تشخیص و طبقه‌بندی', 'target': 'اهداف درمانی', 'medication': 'انتخاب دارو',
-    'drug_safety': 'ایمنی و منع دارو', 'insulin': 'انسولین', 'monitoring': 'پایش',
-    'screening': 'غربالگری عوارض', 'redflag': 'هشدارهای فوری', 'hypo': 'هیپوگلیسمی',
-    'lifestyle': 'سبک زندگی و آموزش', 'vaccination': 'واکسیناسیون',
-    'bp_rx': 'درمان فشار خون', 'lipid_rx': 'درمان چربی خون',
-}
-_RULE_CAT_ORDER = ['redflag', 'diagnosis', 'target', 'medication', 'bp_rx', 'lipid_rx',
-                   'insulin', 'drug_safety', 'monitoring', 'screening', 'hypo',
-                   'lifestyle', 'vaccination']
 
 
 @bp.route("/decision-rules")
@@ -304,11 +383,17 @@ def decision_rules_update():
 @bp.route("/diseases")
 @manager_required
 def diseases():
-    """Per-disease module hub — each chronic condition is its own protocol page."""
+    """Per-disease descriptive catalog hub; executable logic remains in v2."""
     from src.adapters.sqlite.clinical_rules_repo import ClinicalRulesRepository
+    from src.adapters.sqlite.clinical_engine_rules_repo import (
+        ClinicalEngineRulesRepository,
+    )
+
     db = get_db()
     repo = ClinicalRulesRepository()
     active_inds = repo.all_indicators(active_only=True)
+    rule_counts = ClinicalEngineRulesRepository().condition_rule_counts()
+    cross_disease_rules = int(rule_counts.get("all", 0))
     rows = db.execute(
         "SELECT * FROM conditions WHERE is_active=1 AND COALESCE(is_chronic,1)=1 "
         "ORDER BY display_order, id").fetchall()
@@ -317,9 +402,9 @@ def diseases():
         c = dict(c)
         code = c.get('code')
         c['ind_count'] = sum(1 for i in active_inds if _indicator_applies(i, code))
-        c['rule_count'] = db.execute(
-            "SELECT COUNT(*) n FROM clinical_rules WHERE condition_code IN (?, 'all')",
-            (code,)).fetchone()['n']
+        c['rule_count'] = (
+            int(rule_counts.get(code, 0)) + cross_disease_rules
+        )
         c['pat_count'] = db.execute(
             "SELECT COUNT(DISTINCT pc.patient_link_id) n FROM patient_conditions pc "
             "JOIN patient_links p ON p.id=pc.patient_link_id AND p.is_active=1 "
@@ -339,7 +424,7 @@ def _indicator_applies(ind: dict, code: str) -> bool:
 @bp.route("/diseases/<code>")
 @manager_required
 def disease_detail(code):
-    """One disease in one page: display indicators/targets + monitoring."""
+    """One disease page: descriptive measurement catalog and monitoring schedule."""
     from src.adapters.sqlite.clinical_rules_repo import ClinicalRulesRepository, CATEGORY_LABELS
     db = get_db()
     cond = db.execute("SELECT * FROM conditions WHERE code=?", (code,)).fetchone()
@@ -356,68 +441,53 @@ def disease_detail(code):
     ind_groups = [(cc, CATEGORY_LABELS.get(cc, cc), ig[cc])
                   for cc in ['glycemic', 'bp', 'lipid', 'kidney', 'anthro', 'other'] if cc in ig]
 
-    # Monitoring schedule (care protocols) for this condition
-    protocols = [dict(p) for p in db.execute(
-        "SELECT * FROM care_protocols WHERE condition_id=? AND is_active=1 ORDER BY interval_months",
-        (cond['id'],)).fetchall()]
-
     return render_template(
-        "manager/disease_detail.html", active_page='manager', cond=dict(cond),
-        ind_groups=ind_groups, protocols=protocols)
+        "manager/disease_detail.html",
+        active_page="manager",
+        cond=dict(cond),
+        ind_groups=ind_groups,
+    )
 
 
 @bp.route("/rules/add", methods=["POST"])
 @manager_required
 def rules_add():
-    """Add a brand-new clinical indicator (manager has a free hand)."""
+    """Add descriptive observation metadata; never a clinical threshold rule."""
     from src.adapters.sqlite.clinical_rules_repo import ClinicalRulesRepository
-
-    def num(field):
-        v = request.form.get(field, "").strip()
-        try:
-            return float(v) if v != "" else None
-        except ValueError:
-            return None
 
     key = request.form.get("key", "").strip().lower().replace(" ", "_")
     label = request.form.get("label", "").strip()
     if not key or not label:
         flash("کلید و عنوان الزامی است")
         return redirect(request.referrer or url_for("manager.diseases"))
+    try:
+        display_order = int(request.form.get("display_order") or 100)
+    except ValueError:
+        display_order = 100
     ClinicalRulesRepository().create({
-        'key': key, 'label': label, 'unit': request.form.get("unit", "").strip(),
-        'category': request.form.get("category", "other"),
-        'direction': request.form.get("direction", "high"),
-        'warn': num("warn"), 'danger': num("danger"), 'target': num("target"),
-        'conditions': request.form.get("conditions", "all").strip() or "all",
-        'risk_weight': int(num("risk_weight") or 1),
-        'display_order': int(num("display_order") or 100),
+        "key": key,
+        "label": label,
+        "unit": request.form.get("unit", "").strip(),
+        "category": request.form.get("category", "other"),
+        "conditions": request.form.get("conditions", "all").strip() or "all",
+        "is_vital": 1 if request.form.get("is_vital") == "on" else 0,
+        "display_order": display_order,
+        "is_active": 1,
     })
-    log_activity("rules_add", f"افزودن شاخص بالینی: {label}")
-    flash("شاخص جدید اضافه شد", "success")
+    log_activity("indicator_metadata_add", f"افزودن فراداده شاخص: {label}")
+    flash("شاخص نمایشی اضافه شد؛ هیچ آستانه یا هدف درمانی ایجاد نشد", "success")
     return redirect(request.referrer or url_for("manager.diseases"))
 
 
 @bp.route("/protocols/followup", methods=["POST"])
 @manager_required
 def protocol_followup():
-    """Create follow-up tasks for all patients due for a given protocol."""
-    from src.adapters.sqlite.followups_repo import FollowupRepository
-    protocol_id = request.form.get("protocol_id", type=int)
-    summary = ProtocolService().summary()
-    target = next((p for p in summary if p['id'] == protocol_id), None)
-    if not target:
-        flash("پروتکل یافت نشد")
-        return redirect(url_for("manager.protocols"))
-    repo = FollowupRepository()
-    created = 0
-    for pat in target['due_patients']:
-        if not repo.exists_open(pat['id'], 'visit_due'):
-            repo.create(pat['id'], reason='visit_due',
-                        detail=f"موعد: {target['name']}")
-            created += 1
-    flash(f"{created} پیگیری برای «{target['name']}» ساخته شد", "success")
-    return redirect(url_for("manager.protocols"))
+    """Fail closed for the retired pre-v2 care-protocol action."""
+    flash(
+        "ساخت پیگیری از پروتکل قدیمی متوقف شده است؛ از recommendation audit‌شدهٔ v2 استفاده کنید.",
+        "warning",
+    )
+    return redirect(url_for("manager.clinical_engine"))
 
 
 # ============================== Engagement engine ==============================

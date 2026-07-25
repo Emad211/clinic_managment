@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+{% block title %}اعتبارسنجی و انتشار موتور بالینی{% endblock %}
+{% block content %}
+<div class="crumb"><a href="{{ url_for('manager.index') }}">مدیریت</a> / <a href="{{ url_for('manager.clinical_engine') }}">موتور بالینی</a> / اعتبارسنجی نهایی</div>
+
+<section class="validation-hero {% if validation.release_ready %}is-ready{% elif validation.report and validation.report.status == 'BLOCKED' %}is-blocked{% endif %}">
+    <div>
+        <span class="engine-kicker">Clinical Engine {{ validation.engine_version }}</span>
+        <h1>مرکز اعتبارسنجی و دروازهٔ انتشار</h1>
+        <p>هر نتیجه به نسخهٔ موتور، بستهٔ قواعد، مجموعهٔ کیس‌ها و دو بازبین مستقل متصل است. جدیدترین گزارش تعیین‌کننده است.</p>
+    </div>
+    <div class="validation-state">
+        <small>وضعیت انتشار</small>
+        <strong>{% if validation.release_ready %}آمادهٔ اتصال به activation{% elif validation.report and validation.report.status == 'BLOCKED' %}مسدود{% else %}در انتظار تکمیل{% endif %}</strong>
+        <code dir="ltr">{{ validation.package_version }}</code>
+    </div>
+</section>
+
+<div id="validation-workspace" class="validation-layout">
+    <main class="validation-main">
+        {% if validation.blockers %}
+        <section class="card validation-blockers" role="alert">
+            <h2>موانع فعلی</h2>
+            <ul>{% for blocker in validation.blockers %}<li>{{ blocker }}</li>{% endfor %}</ul>
+        </section>
+        {% endif %}
+
+        <section class="card validation-action-card">
+            <div class="validation-section-head">
+                <div><span class="validation-step">۱</span><div><h2>اجرای golden cases</h2><p>بستهٔ immutable فعلی دوبار اجرا می‌شود تا نتیجه و replay hash یکسان باشند.</p></div></div>
+                <form method="post" action="{{ url_for('manager.clinical_validation_action', action='run') }}" data-loading-form>
+                    <button class="btn btn-primary" type="submit">اجرای اعتبارسنجی نسخهٔ جاری</button>
+                </form>
+            </div>
+        </section>
+
+        {% set stored = validation.report %}
+        {% set report = stored.report if stored else None %}
+        {% if stored %}
+        <section class="card validation-report-card">
+            <div class="validation-report-head">
+                <div>
+                    <span class="status-pill {% if stored.status == 'PASS' %}is-ok{% else %}is-danger{% endif %}">{{ stored.status }}</span>
+                    <h2>گزارش #{{ stored.id|fa_num }}</h2>
+                    <p>{{ stored.created_at|jalali }} · {{ stored.created_by }}</p>
+                </div>
+                <div class="validation-hashes">
+                    <label>Report hash <code dir="ltr">{{ stored.report_hash }}</code></label>
+                    <label>Package hash <code dir="ltr">{{ stored.package_hash }}</code></label>
+                    <label>Case bundle <code dir="ltr">{{ stored.case_bundle_hash }}</code></label>
+                </div>
+            </div>
+
+            <div class="validation-kpis">
+                <div><span>کیس‌ها</span><strong>{{ stored.case_count|fa_num }}</strong></div>
+                <div><span>False positive</span><strong>{{ report.totals.false_positive|fa_num }}</strong></div>
+                <div><span>False negative</span><strong>{{ report.totals.false_negative|fa_num }}</strong></div>
+                <div><span>ERROR</span><strong>{{ report.totals.error|fa_num }}</strong></div>
+            </div>
+
+            <div class="validation-check-grid">
+                {% for key, passed in report.checks.items() %}
+                <div class="validation-check {% if passed %}is-pass{% else %}is-fail{% endif %}">
+                    <span>{% if passed %}✓{% else %}×{% endif %}</span><code>{{ key }}</code><b>{% if passed %}PASS{% else %}FAIL{% endif %}</b>
+                </div>
+                {% endfor %}
+            </div>
+
+            <div class="table-wrap validation-case-table-wrap">
+                <table class="validation-case-table">
+                    <thead><tr><th>کیس</th><th>دسته‌ها</th><th>نتیجه</th><th>جزئیات</th></tr></thead>
+                    <tbody>
+                    {% for case in report.cases %}
+                    <tr data-validation-case="{{ case.case_id }}">
+                        <td><b dir="ltr">{{ case.case_id }}</b><small>{{ case.title }}</small></td>
+                        <td>{% for category in case.categories %}<span class="validation-tag">{{ category }}</span>{% endfor %}</td>
+                        <td><span class="status-pill {% if case.passed %}is-ok{% else %}is-danger{% endif %}">{% if case.passed %}PASS{% else %}FAIL{% endif %}</span></td>
+                        <td><details><summary>مشاهده</summary>{% if case.failures %}<ul>{% for failure in case.failures %}<li><code>{{ failure }}</code></li>{% endfor %}</ul>{% else %}<p>Outcome، داده‌های مفقود، suppression و replay مطابق قرارداد بودند.</p>{% endif %}<code dir="ltr">{{ case.result_hash }}</code></details></td>
+                    </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+        {% else %}
+        <section class="card empty"><h2>هنوز گزارشی ساخته نشده است</h2><p>اجرای اعتبارسنجی هیچ بیمار واقعی را تغییر نمی‌دهد و فقط artifactهای بستهٔ فعلی را ارزیابی می‌کند.</p></section>
+        {% endif %}
+    </main>
+
+    <aside class="validation-side">
+        {% for role, title, permission in [('CLINICAL','تأیید مسئول بالینی','rule.review.clinical'),('TECHNICAL','تأیید بازبین فنی','rule.review.technical')] %}
+        {% set attestation = validation.attestations.get(role) %}
+        <section class="card validation-attestation {% if attestation %}is-complete{% endif %}">
+            <span class="validation-step">{{ (loop.index + 1)|fa_num }}</span>
+            <h2>{{ title }}</h2>
+            {% if attestation %}
+                <div class="validation-attested"><b>{{ attestation.reviewer }}</b><small>{{ attestation.created_at|jalali }}</small><p>{{ attestation.note }}</p><code dir="ltr">{{ attestation.content_hash }}</code></div>
+            {% elif stored and stored.status == 'PASS' %}
+                <form method="post" action="{{ url_for('manager.clinical_validation_action', action='attest') }}" class="engine-stack-form">
+                    <input type="hidden" name="role" value="{{ role|lower }}">
+                    <input type="hidden" name="report_hash" value="{{ stored.report_hash }}">
+                    <label><span>نام بازبین</span><input name="reviewer" required value="{{ g.user.full_name or g.user.username }}"></label>
+                    <label><span>یادداشت مستند</span><textarea name="note" required rows="4" minlength="3"></textarea></label>
+                    <label class="engine-attestation"><input type="checkbox" name="attestation" value="yes" required><span>گزارش، کیس‌ها و مسئولیت این نقش را بررسی کردم.</span></label>
+                    <button class="btn" type="submit">ثبت {{ title }}</button>
+                </form>
+            {% else %}
+                <p class="text-muted">فقط جدیدترین گزارش PASS قابل تأیید است.</p>
+            {% endif %}
+        </section>
+        {% endfor %}
+
+        <section class="card validation-release-summary {% if validation.release_ready %}is-ready{% endif %}">
+            <h2>Release evidence</h2>
+            {% if validation.release_ready %}
+            <p>دو تأیید مستقل و تمام hashها آماده‌اند. اکنون آزمون ۱۰ بیمار و activation report می‌توانند به این evidence متصل شوند.</p>
+            <code dir="ltr">{{ validation.release_evidence.validation_report_hash }}</code>
+            <a class="btn btn-success" href="{{ url_for('manager.clinical_engine') }}#engine-actions">بازگشت و ادامهٔ راه‌اندازی</a>
+            {% else %}
+            <p>تا تکمیل همهٔ مراحل، mode مؤثر موتور fail-closed باقی می‌ماند.</p>
+            {% endif %}
+        </section>
+    </aside>
+</div>
+{% endblock %}

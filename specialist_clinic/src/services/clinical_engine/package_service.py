@@ -11,13 +11,17 @@ from src.adapters.sqlite.clinical_engine_activation_repo import ClinicalEngineAc
 from src.services.activity_logger import log_activity
 from src.services.clinical_engine.compiler import RuleCompiler
 from src.common.utils import iran_now
+from src.domain.clinical_engine.release import (
+    CURRENT_BUNDLED_PACKAGE_VERSION as PACKAGE_VERSION,
+    RULESET_CODE,
+    base_ruleset_version,
+)
 
-
-PACKAGE_VERSION = "2026.1-draft.1"
-RULESET_CODE = "general-outpatient"
 
 _FACT_LABELS = {
+    "condition.codes": "فهرست تشخیص‌های فعال",
     "condition.diabetes": "تشخیص دیابت",
+    "demographic.age_years": "سن کامل بیمار",
     "observation.bp_systolic": "آخرین فشار خون سیستولیک",
     "observation.bp_diastolic": "آخرین فشار خون دیاستولیک",
     "observation.egfr": "آخرین eGFR",
@@ -32,15 +36,21 @@ _OPERATOR_LABELS = {
     "<=": "کمتر یا مساوی",
     "has": "شامل",
 }
-_VALUE_LABELS = {True: "تأییدشده", False: "ردشده", "metformin": "متفورمین"}
+_VALUE_LABELS = {
+    True: "تأییدشده",
+    False: "ردشده",
+    "diabetes": "دیابت",
+    "metformin": "متفورمین",
+}
 _UNIT_LABELS = {
+    "a": "سال",
     "mm[Hg]": "میلی‌متر جیوه",
     "mL/min/{1.73_m2}": "میلی‌لیتر در دقیقه به‌ازای ۱٫۷۳ مترمربع",
 }
 
 
 def _condition_lines(node: dict) -> tuple[str, list[dict]]:
-    """Render the reviewed DSL predicate without changing its semantics."""
+    """Render a reviewed DSL predicate without changing its semantics."""
     if "all" in node or "any" in node:
         key = "all" if "all" in node else "any"
         lines: list[dict] = []
@@ -100,8 +110,13 @@ class ClinicalRulePackageService:
             raise LookupError("فایل بستهٔ قواعد در برنامه پیدا نشد")
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         latest = self.rules.latest_ruleset(RULESET_CODE)
-        if latest and latest["status"] == "DRAFT":
+        same_package = bool(
+            latest
+            and base_ruleset_version(latest.get("version")) == manifest["version"]
+        )
+        if latest and latest["status"] == "DRAFT" and same_package:
             return latest
+
         members = []
         for item in manifest.get("rules") or []:
             raw = json.loads((package_dir / item["file"]).read_text(encoding="utf-8"))
@@ -118,9 +133,7 @@ class ClinicalRulePackageService:
                 "sort_order": int(item.get("sort_order", 100)),
             })
         version = manifest["version"]
-        if latest:
-            # A reset preserves prior attempts. A new unique ruleset version
-            # reuses the same immutable rule content and requires fresh attestation.
+        if latest and same_package:
             version = f"{manifest['version']}-attempt.{int(latest['id']) + 1}"
         ruleset_id = self.rules.create_ruleset(
             manifest["ruleset_code"], version, members,
@@ -143,6 +156,8 @@ class ClinicalRulePackageService:
         ruleset = self.rules.get_ruleset(int(ruleset_id))
         if not ruleset or ruleset["ruleset_code"] != RULESET_CODE:
             raise LookupError("بستهٔ قواعد پیدا نشد")
+        if base_ruleset_version(ruleset.get("version")) != PACKAGE_VERSION:
+            raise ValueError("این بسته قدیمی است؛ ابتدا بستهٔ اصلاح‌شدهٔ فعلی را آماده کنید")
         if ruleset["status"] != "DRAFT":
             raise ValueError("فقط بستهٔ درحال بازبینی قابل تأیید است")
         expected = {member["rule_code"] for member in ruleset["members"]}
@@ -158,9 +173,6 @@ class ClinicalRulePackageService:
         self.rules.activate_ruleset(
             int(ruleset["id"]), activated_by=reviewer, silent=True,
         )
-        # A report/approval is valid only for the exact ruleset it evaluated.
-        # Starting a newly frozen package always returns the guided workflow to
-        # a clean, off, pre-test state.
         for key in (
             "last_report", "approval_clinical", "approval_technical",
             "selected_rollout_verification", "seal",
@@ -206,11 +218,25 @@ class ClinicalRulePackageService:
 
     def projection(self) -> dict:
         ruleset = self.rules.latest_ruleset(RULESET_CODE)
-        if not ruleset or ruleset["status"] == "RETIRED":
-            return {"state": "missing", "ruleset": None, "rules": []}
+        same_package = bool(
+            ruleset
+            and base_ruleset_version(ruleset.get("version")) == PACKAGE_VERSION
+        )
+        if not ruleset or ruleset["status"] == "RETIRED" or not same_package:
+            return {
+                "state": "missing",
+                "ruleset": None,
+                "rules": [],
+                # A retired attempt of the same current package means the user
+                # intentionally reset the workflow; it is a restart, not an
+                # upgrade warning. Only a genuinely older package is upgrade_from.
+                "upgrade_from": ruleset if ruleset and not same_package else None,
+                "expected_version": PACKAGE_VERSION,
+            }
         rules = []
         for member in ruleset["members"]:
             raw = json.loads(member["rule_json"])
+            eligibility_mode, eligibility_conditions = _condition_lines(raw["eligibility"])
             trigger_mode, trigger_conditions = _condition_lines(raw["condition"])
             rules.append({
                 "code": raw["rule_code"],
@@ -220,6 +246,8 @@ class ClinicalRulePackageService:
                 "population": raw["scope"]["population"],
                 "out_of_scope": raw["scope"].get("out_of_scope") or [],
                 "required_inputs": [fact["prompt_fa"] for fact in raw["required_facts"]],
+                "eligibility_mode": eligibility_mode,
+                "eligibility_conditions": eligibility_conditions,
                 "trigger_mode": trigger_mode,
                 "trigger_conditions": trigger_conditions,
                 "recommendation": raw["recommendation"]["text_fa"],
@@ -231,4 +259,10 @@ class ClinicalRulePackageService:
                 "lifecycle_status": member["lifecycle_status"],
             })
         state = "review" if ruleset["status"] == "DRAFT" else "frozen"
-        return {"state": state, "ruleset": ruleset, "rules": rules}
+        return {
+            "state": state,
+            "ruleset": ruleset,
+            "rules": rules,
+            "upgrade_from": None,
+            "expected_version": PACKAGE_VERSION,
+        }

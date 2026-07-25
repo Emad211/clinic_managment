@@ -4,7 +4,6 @@
   "rule_code": "T2-SAFE-MET-STOP",
   "version": "2.0.0-draft.1",
   "title": "هشدار ایمنی متفورمین در کاهش شدید عملکرد کلیه",
-  "legacy_rule_id": null,
   "phase": "SAFETY",
   "action_type": "safety_alert",
   "severity": "CRITICAL",
@@ -51,7 +50,7 @@
     "evidence_certainty": "NOT_GRADED",
     "recommendation_strength": "NOT_GRADED",
     "local_validation_status": "NOT_REVIEWED",
-    "local_adaptation_note": "پیش‌نویس فنی برای shadow؛ برای استفادهٔ بالینی تصویب نشده است."
+    "local_adaptation_note": "پیش‌نویس فنی تاریخی برای regression؛ runtime package جاری نیست و برای استفادهٔ بالینی تصویب نشده است."
   },
   "governance": {
     "status": "DRAFT",
@@ -60,6 +59,6 @@
     "technical_reviewer": "pending",
     "review_due_date": "2026-08-31",
     "supersedes": null,
-    "change_note": "PR-06 technical safety draft"
+    "change_note": "Historical immutable regression draft; legacy lineage metadata removed."
   }
 }

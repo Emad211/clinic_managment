@@ -1,3 +1,6 @@
+"""Regression guards proving Clinical Engine v1 cannot return to production."""
+from __future__ import annotations
+
 from pathlib import Path
 
 
@@ -15,7 +18,101 @@ def test_production_runtime_has_no_v1_rule_engine_consumer():
     assert offenders == []
 
 
+def test_retired_v1_shell_never_reads_or_interprets_legacy_rules():
+    source = (ROOT / "services" / "rule_engine.py").read_text(
+        encoding="utf-8"
+    )
+    forbidden = (
+        "get_db",
+        "trigger_json",
+        "action_params_json",
+        "SELECT * FROM clinical_rules",
+        "def _eval(",
+        "def _leaf(",
+    )
+    assert all(token not in source for token in forbidden)
+
+
+def test_retired_v1_api_is_inert_without_shadow_capture():
+    from src.services.rule_engine import RuleEngine
+
+    engine = RuleEngine(capture_shadow=False)
+
+    assert engine.build_facts(17) == {
+        "engine": "v1-retired",
+        "facts": (),
+    }
+    assert engine.evaluate(17) == []
+    assert engine.grouped(17) == {
+        "sections": [],
+        "count": 0,
+        "has_redflag": False,
+        "retired": True,
+    }
+
+
+def test_legacy_rule_seed_module_is_physically_removed():
+    assert not (
+        ROOT / "adapters" / "sqlite" / "clinical_rules_seed.py"
+    ).exists()
+
+
+def test_legacy_dosage_guidance_is_inert_without_database_access():
+    from src.adapters.sqlite.clinical_rules_repo import ClinicalRulesRepository
+
+    assert ClinicalRulesRepository().dosage_guidance(
+        ["ckd", "hypertension"]
+    ) == []
+
+
+def test_fresh_application_has_no_v1_tables_or_lineage_columns(tmp_path):
+    from src.adapters.sqlite import core
+    from src.app import create_app
+
+    core._initialized = False
+    app = create_app(
+        {
+            "TESTING": True,
+            "DATABASE_PATH": str(tmp_path / "v1-retired.db"),
+            "BACKUP_FOLDER": str(tmp_path / "backups"),
+            "SECRET_KEY": "v1-retirement-test",
+        }
+    )
+    try:
+        with app.app_context():
+            db = core.get_db()
+            tables = {
+                str(row["name"])
+                for row in db.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table'"
+                ).fetchall()
+            }
+            assert "clinical_rules" not in tables
+            assert "suggestion_log" not in tables
+            rule_columns = {
+                str(row["name"])
+                for row in db.execute(
+                    "PRAGMA table_info(clinical_rule_versions)"
+                ).fetchall()
+            }
+            decision_columns = {
+                str(row["name"])
+                for row in db.execute(
+                    "PRAGMA table_info(clinical_decision_events)"
+                ).fetchall()
+            }
+            assert "source_legacy_rule_id" not in rule_columns
+            assert (
+                "legacy_source_suggestion_log_id"
+                not in decision_columns
+            )
+    finally:
+        core._initialized = False
+
+
 def test_patient_template_has_no_v1_decision_surface():
-    template = (ROOT / "templates" / "patients" / "detail.html").read_text(encoding="utf-8")
+    template = (
+        ROOT / "templates" / "patients" / "detail.html"
+    ).read_text(encoding="utf-8")
     assert "clinical_support" not in template
     assert "suggestion_action" not in template

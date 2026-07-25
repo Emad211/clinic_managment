@@ -17,6 +17,7 @@ _CLINICAL_ENGINE_V2_TABLES = frozenset({
     "clinical_rule_evaluations",
     "clinical_recommendation_events",
     "clinical_decision_events",
+    "clinical_flag_events",
 })
 _CLINICAL_ENGINE_V2_TRIGGERS = frozenset({
     "trg_engine_runs_terminal_no_update",
@@ -267,8 +268,6 @@ def _run_migrations(db):
     # Engagement engine: per-patient SMS opt-out + which event generated a worklist task
     _ensure_column(db, "patient_links", "sms_opt_out", "INTEGER NOT NULL DEFAULT 0")
     _ensure_column(db, "followup_tasks", "source_event", "TEXT")
-    # Per-disease modular engine: each rule belongs to a disease module ('all' = cross-disease)
-    _ensure_column(db, "clinical_rules", "condition_code", "TEXT NOT NULL DEFAULT 'all'")
     # Disease-module registry metadata on the conditions table
     _ensure_column(db, "conditions", "is_chronic", "INTEGER NOT NULL DEFAULT 1")
     _ensure_column(db, "conditions", "display_order", "INTEGER NOT NULL DEFAULT 100")
@@ -300,6 +299,35 @@ def _run_migrations(db):
         "AND clinical_semantic_key IS NOT NULL"
     )
     db.commit()
+    # Pre-v2 periodic-care heuristics and threshold-derived engagement are retired.
+    # Data in this project is seed/demo; copied databases are cut over fail-closed.
+    db.execute("DROP TABLE IF EXISTS care_protocols")
+    db.execute(
+        """UPDATE engagement_events
+           SET is_active=0, channel='off'
+           WHERE event_key IN (
+               'uncontrolled','monitoring_due','screening_due','vaccine_due','red_flag'
+           )"""
+    )
+    db.execute(
+        """UPDATE engagement_events
+           SET category='operational'
+           WHERE event_key IN (
+               'appointment_reminder','refill_due','lapsed','visit_invite',
+               'thank_you','ear_wash_invite','wound_care_invite',
+               'lab_consult_invite','bp_glucose_invite'
+           )"""
+    )
+    db.execute(
+        """UPDATE engagement_approvals
+           SET status='rejected', decided_by='system:logic-consolidation',
+               decided_at=datetime('now','+3 hours','+30 minutes'),
+               last_error='Retired clinical interpretation event'
+           WHERE status='pending' AND event_key IN (
+               'uncontrolled','monitoring_due','screening_due','vaccine_due','red_flag'
+           )"""
+    )
+    db.commit()
     _ensure_column(db, "engagement_events", "event_type", "TEXT")
     _ensure_column(db, "engagement_events", "is_custom", "INTEGER DEFAULT 0")
     _ensure_column(db, "engagement_approvals", "sms_message_id", "INTEGER")
@@ -310,14 +338,57 @@ def _run_migrations(db):
     _ensure_column(db, "processed_invoices", "outreach_done", "INTEGER NOT NULL DEFAULT 0")
     _ensure_column(db, "lab_results", "test_key", "TEXT")
     _seed_flag_sections(db)
+    # Installed pre-history revision triggers target the mutable table and treat
+    # presentation-only catalog edits as clinical changes. Remove them before the
+    # one-time migration; ensure_runtime_schema recreates the canonical bodies.
+    db.executescript(
+        """
+        DROP TRIGGER IF EXISTS trg_clinical_revision_patient_flags_insert;
+        DROP TRIGGER IF EXISTS trg_clinical_revision_patient_flags_update;
+        DROP TRIGGER IF EXISTS trg_clinical_revision_patient_flags_delete;
+        DROP TRIGGER IF EXISTS trg_clinical_revision_flag_catalog_insert;
+        DROP TRIGGER IF EXISTS trg_clinical_revision_flag_catalog_update;
+        DROP TRIGGER IF EXISTS trg_clinical_revision_flag_catalog_delete;
+        DROP TRIGGER IF EXISTS trg_clinical_revision_flag_event_insert;
+        """
+    )
+    from src.adapters.sqlite.clinical_flag_history_schema import (
+        ensure_clinical_flag_history_storage,
+    )
+    ensure_clinical_flag_history_storage(db)
+    from src.adapters.sqlite.clinical_reconciliation_schema import (
+        ensure_clinical_reconciliation_storage,
+    )
+    from src.adapters.sqlite.clinical_data_conflict_schema import (
+        ensure_clinical_data_conflict_storage,
+    )
+    ensure_clinical_reconciliation_storage(db)
+    ensure_clinical_data_conflict_storage(db)
+    from src.adapters.sqlite.clinical_care_loop_strict_guards import (
+        ensure_strict_clinical_care_loop_guards,
+    )
+    from src.adapters.sqlite.security_permission_schema import (
+        ensure_security_permission_storage,
+    )
+    from src.adapters.sqlite.operational_lease_schema import (
+        ensure_operational_lease_storage,
+    )
+    from src.adapters.sqlite.clinical_validation_schema import (
+        ensure_clinical_validation_storage,
+    )
+    from src.adapters.sqlite.clinical_audit_integrity_schema import (
+        ensure_clinical_audit_integrity_storage,
+    )
+    ensure_strict_clinical_care_loop_guards(db)
+    ensure_security_permission_storage(db)
+    ensure_operational_lease_storage(db)
+    ensure_clinical_validation_storage(db)
+    ensure_clinical_audit_integrity_storage(db)
     _ensure_clinical_engine_v2_storage(db)
-    # Seed the clinical decision-rule catalog (idempotent; manager edits preserved).
-    # Also tags each rule's owning disease module (condition_code) on existing DBs.
-    try:
-        from src.adapters.sqlite.clinical_rules_seed import seed_clinical_rules
-        seed_clinical_rules(db)
-    except Exception:
-        pass
+    from src.adapters.sqlite.descriptive_indicator_catalog_schema import (
+        ensure_descriptive_indicator_catalog,
+    )
+    ensure_descriptive_indicator_catalog(db)
     # Seed the lab-test and drug catalogs (idempotent; wrapped so a missing seed
     # module or any failure never breaks startup).
     try:
@@ -331,21 +402,57 @@ def _run_migrations(db):
     except Exception:
         pass
 
+    # A copied pre-cutover database may still contain retired v1 objects. Remove
+    # them on the same connection before `_initialized` is published. Fresh and
+    # already-clean databases are a verified no-op.
+    db.commit()
+    from src.adapters.sqlite.clinical_engine_v1_cutover import (
+        ensure_v1_schema_cutover,
+    )
+
+    ensure_v1_schema_cutover(db)
+
 
 def _ensure_default_admin(db):
-    """Create a default manager account (admin/admin) if no users exist."""
-    try:
-        row = db.execute("SELECT COUNT(*) AS c FROM users").fetchone()
-        if row and row['c'] == 0:
-            import bcrypt
-            pw = bcrypt.hashpw('admin'.encode('utf-8'), bcrypt.gensalt())
-            db.execute(
-                "INSERT INTO users (username, password_hash, role, full_name, is_active) VALUES (?, ?, ?, ?, 1)",
-                ('admin', pw, 'manager', 'مدیر سیستم'),
-            )
-            db.commit()
-    except Exception:
-        pass
+    """Create the first manager without permitting default credentials in production."""
+    row = db.execute("SELECT COUNT(*) AS c FROM users").fetchone()
+    if not row or int(row["c"] or 0) != 0:
+        return
+
+    production = bool(current_app.config.get("PRODUCTION")) and not bool(
+        current_app.config.get("TESTING", False)
+    )
+    username = str(
+        current_app.config.get("BOOTSTRAP_ADMIN_USERNAME")
+        or os.getenv("CLINIC_BOOTSTRAP_ADMIN_USERNAME")
+        or "admin"
+    ).strip()
+    password = str(
+        current_app.config.get("BOOTSTRAP_ADMIN_PASSWORD")
+        or os.getenv("CLINIC_BOOTSTRAP_ADMIN_PASSWORD")
+        or ""
+    )
+    if not username:
+        raise RuntimeError("BOOTSTRAP_ADMIN_USERNAME cannot be empty")
+    if production and (len(password) < 12 or password == "admin"):
+        raise RuntimeError(
+            "Production bootstrap requires CLINIC_BOOTSTRAP_ADMIN_PASSWORD "
+            "with at least 12 characters; admin/admin is forbidden."
+        )
+    if not password:
+        # Development/test compatibility only. Production is rejected above.
+        password = "admin"
+
+    import bcrypt
+
+    password_hash = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt())
+    db.execute(
+        "INSERT INTO users "
+        "(username, password_hash, role, full_name, is_active) "
+        "VALUES (?, ?, 'manager', ?, 1)",
+        (username, password_hash, "مدیر سیستم"),
+    )
+    db.commit()
 
 
 def get_db():
@@ -364,12 +471,16 @@ def get_db():
             except Exception:
                 pass
 
-        db = g._database = sqlite3.connect(db_path)
+        db = g._database = sqlite3.connect(db_path, timeout=10)
         db.row_factory = sqlite3.Row
         db.execute("PRAGMA foreign_keys = ON")
         # Tolerate brief write contention between the request thread and the background
         # scheduler (e.g. the read-only invoice-sync consumer writing its ledger).
-        db.execute("PRAGMA busy_timeout = 3000")
+        db.execute("PRAGMA busy_timeout = 10000")
+        if db_path != ":memory:":
+            db.execute("PRAGMA journal_mode = WAL")
+            db.execute("PRAGMA synchronous = NORMAL")
+            db.execute("PRAGMA wal_autocheckpoint = 1000")
 
         # Initialize schema once per process if users table is missing.
         try:

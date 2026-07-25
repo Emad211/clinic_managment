@@ -3,260 +3,64 @@
   "$id": "https://clinic.example.ir/schemas/clinical-engine-v2/clinical-fact.schema.json",
   "title": "Clinical Engine v2 Fact",
   "type": "object",
-  "required": [
-    "schema_version",
-    "fact_id",
-    "patient_link_id",
-    "kind",
-    "key",
-    "status",
-    "effective_at",
-    "recorded_at",
-    "source",
-    "verification",
-    "freshness",
-    "conflict"
-  ],
+  "required": ["schema_version", "fact_id", "patient_link_id", "kind", "key", "status", "effective_at", "recorded_at", "source", "verification", "freshness", "conflict"],
   "properties": {
-    "schema_version": {
-      "const": "2.0"
-    },
-    "fact_id": {
-      "type": "string",
-      "minLength": 1
-    },
-    "patient_link_id": {
-      "type": "integer",
-      "minimum": 1
-    },
-    "encounter_key": {
-      "type": [
-        "string",
-        "null"
-      ]
-    },
-    "kind": {
-      "enum": [
-        "demographic",
-        "condition",
-        "observation",
-        "medication",
-        "allergy",
-        "flag",
-        "procedure",
-        "followup",
-        "derived"
-      ]
-    },
-    "key": {
-      "type": "string",
-      "pattern": "^[a-z0-9][a-z0-9._-]*$"
-    },
-    "status": {
-      "enum": [
-        "PRESENT",
-        "ABSENT",
-        "UNKNOWN",
-        "NOT_ASKED",
-        "NOT_APPLICABLE"
-      ]
-    },
-    "value": {
-      "oneOf": [
-        {
-          "type": "boolean"
-        },
-        {
-          "type": "number"
-        },
-        {
-          "type": "string"
-        },
-        {
-          "type": "array",
-          "items": {
-            "type": [
-              "string",
-              "number",
-              "boolean"
-            ]
-          }
-        },
-        {
-          "type": "null"
-        }
-      ]
-    },
-    "unit": {
-      "type": [
-        "string",
-        "null"
-      ]
-    },
+    "schema_version": {"const": "2.0"},
+    "fact_id": {"type": "string", "minLength": 1},
+    "patient_link_id": {"type": "integer", "minimum": 1},
+    "encounter_key": {"type": ["string", "null"]},
+    "kind": {"enum": ["demographic", "condition", "observation", "medication", "allergy", "flag", "procedure", "followup", "derived"]},
+    "key": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._-]*$"},
+    "status": {"enum": ["PRESENT", "ABSENT", "UNKNOWN", "NOT_ASKED", "NOT_APPLICABLE"]},
+    "value": {"oneOf": [
+      {"type": "boolean"}, {"type": "number"}, {"type": "string"},
+      {"type": "array", "items": {"type": ["string", "number", "boolean"]}},
+      {"type": "null"}
+    ]},
+    "unit": {"type": ["string", "null"]},
     "reference_range": {
-      "type": [
-        "object",
-        "null"
-      ],
+      "type": ["object", "null"],
       "properties": {
-        "low": {
-          "type": [
-            "number",
-            "null"
-          ]
-        },
-        "high": {
-          "type": [
-            "number",
-            "null"
-          ]
-        },
-        "unit": {
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "source": {
-          "type": [
-            "string",
-            "null"
-          ]
-        }
+        "low": {"type": ["number", "null"]},
+        "high": {"type": ["number", "null"]},
+        "unit": {"type": ["string", "null"]},
+        "source": {"type": ["string", "null"]}
       },
       "additionalProperties": false
     },
-    "effective_at": {
-      "type": "string",
-      "format": "date-time"
-    },
-    "recorded_at": {
-      "type": "string",
-      "format": "date-time"
-    },
+    "effective_at": {"type": "string", "format": "date-time"},
+    "recorded_at": {"type": "string", "format": "date-time"},
     "source": {
-      "type": "object",
-      "required": [
-        "type",
-        "record_id"
-      ],
+      "type": "object", "required": ["type", "record_id"],
       "properties": {
-        "type": {
-          "enum": [
-            "clinician",
-            "patient",
-            "caregiver",
-            "laboratory",
-            "device",
-            "accounting_bridge",
-            "derived",
-            "system"
-          ]
-        },
-        "table": {
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "record_id": {
-          "type": [
-            "integer",
-            "string",
-            "null"
-          ]
-        },
-        "recorded_by": {
-          "type": [
-            "string",
-            "null"
-          ]
-        }
+        "type": {"enum": ["clinician", "patient", "caregiver", "laboratory", "device", "accounting_bridge", "derived", "system"]},
+        "table": {"type": ["string", "null"]},
+        "record_id": {"type": ["integer", "string", "null"]},
+        "recorded_by": {"type": ["string", "null"]}
       },
       "additionalProperties": false
     },
-    "verification": {
-      "enum": [
-        "CONFIRMED",
-        "PROVISIONAL",
-        "UNVERIFIED",
-        "REFUTED",
-        "ENTERED_IN_ERROR"
-      ]
-    },
+    "verification": {"enum": ["CONFIRMED", "PROVISIONAL", "UNVERIFIED", "REFUTED", "ENTERED_IN_ERROR"]},
     "freshness": {
-      "type": "object",
-      "required": [
-        "state"
-      ],
+      "type": "object", "required": ["state"],
       "properties": {
-        "state": {
-          "enum": [
-            "FRESH",
-            "STALE",
-            "UNKNOWN"
-          ]
-        },
-        "max_age_days": {
-          "type": [
-            "integer",
-            "null"
-          ],
-          "minimum": 0
-        },
-        "assessed_at": {
-          "type": [
-            "string",
-            "null"
-          ],
-          "format": "date-time"
-        }
+        "state": {"enum": ["FRESH", "STALE", "UNKNOWN"]},
+        "max_age_days": {"type": ["integer", "null"], "minimum": 0},
+        "assessed_at": {"type": ["string", "null"], "format": "date-time"}
       },
       "additionalProperties": false
     },
     "conflict": {
-      "type": "object",
-      "required": [
-        "state"
-      ],
+      "type": "object", "required": ["state"],
       "properties": {
-        "state": {
-          "enum": [
-            "NONE",
-            "POSSIBLE",
-            "CONFIRMED",
-            "RESOLVED"
-          ]
-        },
-        "group_key": {
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "related_fact_ids": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          },
-          "uniqueItems": true
-        },
-        "resolution_note": {
-          "type": [
-            "string",
-            "null"
-          ]
-        }
+        "state": {"enum": ["NONE", "POSSIBLE", "CONFIRMED", "RESOLVED"]},
+        "group_key": {"type": ["string", "null"]},
+        "related_fact_ids": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+        "resolution_note": {"type": ["string", "null"]}
       },
       "additionalProperties": false
     },
-    "derived_from": {
-      "type": "array",
-      "items": {
-        "type": "string"
-      },
-      "uniqueItems": true
-    },
+    "derived_from": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
     "warnings": {
       "type": "array",
       "items": {
@@ -266,44 +70,35 @@
           "SOURCE_UNAVAILABLE",
           "LEGACY_APPROXIMATION",
           "DUPLICATE",
-          "OUTLIER"
+          "OUTLIER",
+          "PATIENT_REPORTED",
+          "DEVICE_REPORTED",
+          "UNMAPPED_SOURCE",
+          "UNRECONCILED_COLLECTION",
+          "PARTIAL_RECONCILIATION",
+          "COLLECTION_CHANGED_AFTER_RECONCILIATION",
+          "CANONICAL_MAPPING_INCOMPLETE",
+          "UNMAPPED_MEDICATION_CONCEPT",
+          "UNMAPPED_ALLERGY_CONCEPT",
+          "UNRESOLVED_CLINICAL_CONFLICT",
+          "STALE_CONFLICT_RESOLUTION",
+          "CLINICAL_CONFLICT_RESOLVED_UNKNOWN",
+          "INVALID_CONFLICT_RESOLUTION_PAYLOAD",
+          "INVALID_CONFLICT_RESOLUTION_METHOD",
+          "SOURCE_ASSERTION_UNKNOWN",
+          "HISTORICAL_DOSE_APPROXIMATION",
+          "HISTORICAL_INTERVAL_APPROXIMATION",
+          "FLAG_DEFINITION_CHANGED_REVIEW_REQUIRED",
+          "FLAG_EVENT_VALUE_INVALID"
         ]
       },
       "uniqueItems": true
     }
   },
-  "allOf": [
-    {
-      "if": {
-        "properties": {
-          "status": {
-            "const": "PRESENT"
-          }
-        },
-        "required": [
-          "status"
-        ]
-      },
-      "then": {
-        "required": [
-          "value"
-        ],
-        "properties": {
-          "value": {
-            "not": {
-              "type": "null"
-            }
-          }
-        }
-      },
-      "else": {
-        "properties": {
-          "value": {
-            "type": "null"
-          }
-        }
-      }
-    }
-  ],
+  "allOf": [{
+    "if": {"properties": {"status": {"const": "PRESENT"}}, "required": ["status"]},
+    "then": {"required": ["value"], "properties": {"value": {"not": {"type": "null"}}}},
+    "else": {"properties": {"value": {"type": "null"}}}
+  }],
   "additionalProperties": false
 }

@@ -9,8 +9,7 @@ from src.adapters.sqlite.record_repo import RecordRepository
 from src.adapters.sqlite.lab_catalog_repo import LabCatalogRepository
 from src.adapters.sqlite.drug_catalog_repo import DrugCatalogRepository
 from src.adapters.sqlite.sms_repo import SmsRepository
-from src.services.vitals_service import VitalsService, evaluate_reading
-from src.services.analytics_service import AnalyticsService, TARGETS
+from src.services.analytics_service import AnalyticsService
 from src.adapters.sqlite.wallet_repo import WalletRepository
 from src.services.activity_logger import log_activity
 from src.common.utils import jalali_to_gregorian_str, format_jalali_date, today_str, iran_now
@@ -22,70 +21,105 @@ bp = Blueprint("patients", __name__, url_prefix="/patients")
 @bp.route("/")
 @login_required
 def list_patients():
-    """Patient list enriched with control status, conditions and latest key vitals;
-    quick filters + uncontrolled-first ordering (physician-first)."""
+    """Descriptive patient directory with condition and recency filters only.
+
+    The directory intentionally does not grade control, apply clinical thresholds or
+    prioritise patients by measurement values. Actionable clinical ordering belongs
+    to the governed Clinical Engine v2; administrative follow-up lives in the
+    worklist/control-room surfaces.
+    """
     from src.adapters.sqlite.core import get_db
+
     q = request.args.get("q", "").strip()
     flt = request.args.get("filter", "").strip()
     db = get_db()
-
     where = "p.is_active=1"
     params = []
     if q:
         like = f"%{q}%"
-        where += " AND (p.full_name LIKE ? OR COALESCE(p.national_id,'') LIKE ? OR COALESCE(p.phone_number,'') LIKE ?)"
-        params += [like, like, like]
+        where += (
+            " AND (p.full_name LIKE ? OR COALESCE(p.national_id,'') LIKE ? "
+            "OR COALESCE(p.phone_number,'') LIKE ?)"
+        )
+        params.extend((like, like, like))
+
     rows = db.execute(
         f"""
-        SELECT p.id, p.full_name, p.national_id, p.phone_number, p.accounting_patient_id,
-          (SELECT v.value FROM vital_readings v WHERE v.patient_link_id=p.id AND v.type='hba1c'       ORDER BY v.measured_at DESC LIMIT 1) AS hba1c,
-          (SELECT v.value FROM vital_readings v WHERE v.patient_link_id=p.id AND v.type='bp_systolic' ORDER BY v.measured_at DESC LIMIT 1) AS sys,
-          (SELECT v.value FROM vital_readings v WHERE v.patient_link_id=p.id AND v.type='fbs'         ORDER BY v.measured_at DESC LIMIT 1) AS fbs,
-          (SELECT MAX(v.measured_at) FROM vital_readings v WHERE v.patient_link_id=p.id) AS last_vital,
-          (SELECT GROUP_CONCAT(c.code) FROM patient_conditions pc JOIN conditions c ON c.id=pc.condition_id WHERE pc.patient_link_id=p.id AND pc.is_active=1) AS cond_codes,
-          (SELECT GROUP_CONCAT(c.name) FROM patient_conditions pc JOIN conditions c ON c.id=pc.condition_id WHERE pc.patient_link_id=p.id AND pc.is_active=1) AS cond_names
-        FROM patient_links p WHERE {where} ORDER BY p.id DESC LIMIT 500
-        """, params).fetchall()
-
-    def _lvl(v, warn, high):
-        if v is None:
-            return -1
-        return 2 if v >= high else (1 if v >= warn else 0)
-
-    def control_of(hba1c, sys, fbs):
-        levels = [_lvl(hba1c, 7, 8), _lvl(sys, 130, 140), _lvl(fbs, 130, 180)]
-        if max(levels) < 0:
-            return 'unknown'
-        worst = max(levels)
-        return {2: 'uncontrolled', 1: 'borderline', 0: 'controlled'}[worst]
+        SELECT p.id, p.full_name, p.national_id, p.phone_number,
+               p.accounting_patient_id,
+          (SELECT x.value FROM (
+               SELECT v.value, v.measured_at AS observed_at
+               FROM vital_readings v
+               WHERE v.patient_link_id=p.id AND v.type='hba1c'
+               UNION ALL
+               SELECT l.value, l.taken_at AS observed_at
+               FROM lab_results l
+               WHERE l.patient_link_id=p.id AND l.test_key='hba1c'
+           ) x ORDER BY x.observed_at DESC LIMIT 1) AS hba1c,
+          (SELECT v.value FROM vital_readings v
+           WHERE v.patient_link_id=p.id AND v.type='bp_systolic'
+           ORDER BY v.measured_at DESC LIMIT 1) AS sys,
+          (SELECT v.value FROM vital_readings v
+           WHERE v.patient_link_id=p.id AND v.type='fbs'
+           ORDER BY v.measured_at DESC LIMIT 1) AS fbs,
+          MAX(
+            COALESCE((SELECT MAX(v.measured_at) FROM vital_readings v
+                      WHERE v.patient_link_id=p.id), ''),
+            COALESCE((SELECT MAX(l.taken_at) FROM lab_results l
+                      WHERE l.patient_link_id=p.id), '')
+          ) AS last_observation,
+          (SELECT GROUP_CONCAT(c.code)
+           FROM patient_conditions pc JOIN conditions c ON c.id=pc.condition_id
+           WHERE pc.patient_link_id=p.id AND pc.is_active=1) AS cond_codes,
+          (SELECT GROUP_CONCAT(c.name)
+           FROM patient_conditions pc JOIN conditions c ON c.id=pc.condition_id
+           WHERE pc.patient_link_id=p.id AND pc.is_active=1) AS cond_names
+        FROM patient_links p
+        WHERE {where}
+        ORDER BY p.id DESC
+        LIMIT 500
+        """,
+        params,
+    ).fetchall()
 
     patients = []
-    for r in rows:
-        d = dict(r)
-        d['control'] = control_of(d['hba1c'], d['sys'], d['fbs'])
-        d['cond_list'] = [c for c in (d['cond_names'] or '').split(',') if c]
-        d['codes'] = set(c for c in (d['cond_codes'] or '').split(',') if c)
-        d['last_fa'] = format_jalali_date(d['last_vital']) if d['last_vital'] else None
-        patients.append(d)
-
-    counts = {
-        'all': len(patients),
-        'uncontrolled': sum(1 for p in patients if p['control'] == 'uncontrolled'),
-    }
+    for row in rows:
+        item = dict(row)
+        item["cond_list"] = [
+            value for value in (item.get("cond_names") or "").split(",") if value
+        ]
+        item["codes"] = {
+            value for value in (item.get("cond_codes") or "").split(",") if value
+        }
+        item["last_fa"] = (
+            format_jalali_date(item["last_observation"])
+            if item.get("last_observation")
+            else None
+        )
+        patients.append(item)
 
     catalog = PatientRepository().list_condition_catalog()
-    known_codes = {c['code'] for c in catalog if c.get('code')}
-    if flt == 'uncontrolled':
-        patients = [p for p in patients if p['control'] == 'uncontrolled']
-    elif flt in known_codes:
-        patients = [p for p in patients if flt in p['codes']]
+    known_codes = {item["code"] for item in catalog if item.get("code")}
+    if flt in known_codes:
+        patients = [item for item in patients if flt in item["codes"]]
+    else:
+        flt = ""
 
-    rank = {'uncontrolled': 0, 'borderline': 1, 'controlled': 2, 'unknown': 3}
-    patients.sort(key=lambda p: rank.get(p['control'], 3))
-
+    counts = {
+        "all": len(rows),
+        "with_observation": sum(
+            1 for item in rows if item["last_observation"]
+        ),
+    }
     return render_template(
-        "patients/list.html", patients=patients, q=q, active_page='patients',
-        counts=counts, active_filter=flt, condition_catalog=catalog,
+        "patients/list.html",
+        patients=patients,
+        q=q,
+        active_page="patients",
+        counts=counts,
+        active_filter=flt,
+        condition_catalog=catalog,
+        projection_policy="DESCRIPTIVE_ONLY",
     )
 
 
@@ -155,9 +189,8 @@ def detail(pid):
     from src.adapters.sqlite.core import get_db
     from src.services.patient_cockpit_service import PatientCockpitService
 
-    # Clinical analytics powers the cockpit (indicators, per-disease panels, risk, charts, med events)
+    # Descriptive analytics supplies measurements, dates and numeric deltas only.
     adata = AnalyticsService().patient_analytics(pid)
-    control = adata['control']
 
     # The patient surface has one clinical decision source: audited v2 output.
     # When v2 is unavailable we show an explicit unavailable state; v1 must
@@ -173,29 +206,15 @@ def detail(pid):
 
     # Clinical decision inputs (flags + drug-class catalog)
     flag_groups = flags_repo.catalog_grouped()
-    patient_flags = flags_repo.get_flags(pid)
+    patient_flags = flags_repo.get_flag_states(pid)
     drug_class_options = flags_repo.drug_classes()
     drug_class_map = flags_repo.drug_class_map()
 
     # Trend charts for the key chronic vitals
     recent_vitals = vitals_repo.get_readings(pid, limit=30)
-    for r in recent_vitals:
-        r['level'] = evaluate_reading(r['type'], r['value'])
-        meta = indicator_labels.get(r['type']) or VITAL_TYPES.get(r['type'], {})
-        r['type_label'] = meta.get('label', r['type'])
-
-    # At-a-glance snapshot: latest reading per tracked indicator
-    snapshot = []
-    for vtype, reading in (control.get('latest') or {}).items():
-        meta = indicator_labels.get(vtype) or VITAL_TYPES.get(vtype, {})
-        snapshot.append({
-            'label': meta.get('label', vtype),
-            'unit': reading['unit'] or meta.get('unit', ''),
-            'value': reading['value'],
-            'level': evaluate_reading(vtype, reading['value']),
-            'order': meta.get('display_order', 100),
-        })
-    snapshot.sort(key=lambda s: s['order'])
+    for reading in recent_vitals:
+        meta = indicator_labels.get(reading['type']) or VITAL_TYPES.get(reading['type'], {})
+        reading['type_label'] = meta.get('label', reading['type'])
 
     labs = vitals_repo.get_labs(pid)
     appointments = AppointmentRepository().list_for_patient(pid)
@@ -214,23 +233,9 @@ def detail(pid):
     notes_exam = record_repo.list_notes(pid, 'exam')
     notes_lifestyle = record_repo.list_notes(pid, 'lifestyle')
     lab_catalog = lab_catalog_repo.all()
-    suggested_labs = lab_catalog_repo.for_conditions(condition_codes)
 
-    # Meds tab (Phase 3): drug catalog for the class->name->doses cascade,
-    # the diabetic gate for the insulin calculator, and per-disease dose
-    # titration guidance for the non-diabetes conditions the patient has.
+    # Medications remain descriptive; dosing recommendations belong to governed v2 output.
     drug_catalog = DrugCatalogRepository().all()
-    is_diabetic = 'diabetes' in condition_codes
-    condition_name_by_code = {
-        c.get('condition_code'): c.get('condition_name')
-        for c in profile['conditions'] if c.get('condition_code')
-    }
-    guidance_codes = [c for c in condition_codes if c != 'diabetes']
-    dose_guidance = rules_repo.dosage_guidance(guidance_codes)
-    for grp in dose_guidance:
-        grp['condition_name'] = condition_name_by_code.get(
-            grp['condition_code'], grp['condition_code'])
-
     medication_events = PatientRepository().get_medication_events(pid)
     cockpit_service = PatientCockpitService()
     next_action = cockpit_service.next_action(
@@ -272,9 +277,7 @@ def detail(pid):
         medications=profile['medications'],
         allergies=profile['allergies'],
         visit_history=profile['visit_history'],
-        control=control,
         charts=adata['charts'],
-        targets=TARGETS,
         vital_types=VITAL_TYPES,
         recent_vitals=recent_vitals,
         labs=labs,
@@ -282,7 +285,6 @@ def detail(pid):
         followups=followups,
         condition_catalog=condition_catalog,
         entry_indicators=entry_indicators,
-        snapshot=snapshot,
         flag_groups=flag_groups,
         flags_by_section=flags_by_section,
         patient_flags=patient_flags,
@@ -294,17 +296,13 @@ def detail(pid):
         notes_exam=notes_exam,
         notes_lifestyle=notes_lifestyle,
         lab_catalog=lab_catalog,
-        suggested_labs=suggested_labs,
         drug_catalog=drug_catalog,
-        is_diabetic=is_diabetic,
-        dose_guidance=dose_guidance,
         medication_events=medication_events,
         wallet_balance=wallet_balance,
         wallet_tx=wallet_tx,
         indicators=adata['indicators'],
         by_category=adata['by_category'],
         med_events=adata['med_events'],
-        risk=adata['risk'],
         per_disease=adata['per_disease'],
         refill_due=adata['refill_due'],
         appt_summary=adata['appointments'],
@@ -612,41 +610,117 @@ def clinical_v2_decision(pid):
 @bp.route("/<int:pid>/flags", methods=["POST"])
 @login_required
 def save_flags(pid):
-    """Save the patient's clinical decision inputs (ADA flags).
+    """Append one atomic, optimistic-concurrency-controlled flag review batch."""
+    from src.adapters.sqlite.flags_repo import (
+        ClinicalFlagConflict,
+        ClinicalFlagValidationError,
+        ClinicalFlagsRepository,
+    )
+    from src.domain.clinical_engine.flag_history import ClinicalFlagState
 
-    PARTIAL-SAFE: a per-section record form sends a hidden `flag_keys` field
-    (comma-separated keys it manages); only those keys are updated, leaving
-    flags from other sections untouched. If `flag_keys` is absent we fall back
-    to the legacy whole-catalog behavior (backward compat).
-    """
-    from src.adapters.sqlite.flags_repo import ClinicalFlagsRepository
     repo = ClinicalFlagsRepository()
-    catalog_by_key = {f['flag_key']: f for f in repo.catalog()}
-
+    catalog = repo.catalog()
+    catalog_by_key = {item["flag_key"]: item for item in catalog}
+    section = (request.form.get("flag_section") or "").strip()
+    allowed_by_section = {
+        "comorbidity": {
+            item["flag_key"]
+            for item in catalog
+            if (item.get("record_section") or "general")
+            in {"disease", "general"}
+        },
+        "lifestyle": {
+            item["flag_key"]
+            for item in catalog
+            if (item.get("record_section") or "general") == "lifestyle"
+        },
+        "exam": {
+            item["flag_key"]
+            for item in catalog
+            if (item.get("record_section") or "general") == "exam"
+        },
+    }
+    expected_keys = allowed_by_section.get(section)
     raw_keys = request.form.get("flag_keys")
-    if raw_keys is not None:
-        managed = [k.strip() for k in raw_keys.split(",") if k.strip()]
-        flags = [catalog_by_key[k] for k in managed if k in catalog_by_key]
-    else:
-        flags = list(catalog_by_key.values())
+    submitted_keys = [
+        key.strip() for key in (raw_keys or "").split(",") if key.strip()
+    ]
+    if (
+        expected_keys is None
+        or not submitted_keys
+        or len(submitted_keys) != len(set(submitted_keys))
+        or set(submitted_keys) != expected_keys
+    ):
+        flash("فرم وضعیت بالینی معتبر نیست؛ صفحه را دوباره باز کنید.", "error")
+        return redirect(url_for("patients.detail", pid=pid) + "#record")
 
-    values = {}
-    for f in flags:
-        key, ftype = f['flag_key'], f['flag_type']
-        if ftype == 'bool':
-            values[key] = '1' if request.form.get(key) == 'on' else ''
-        elif ftype == 'date':
-            # The date input re-renders empty (the stored value shows in the placeholder),
-            # so a blank submission must NOT wipe a stored date — only update when a new
-            # date is actually entered.
-            greg = jalali_to_gregorian_str(request.form.get(key, ""))
-            if greg:
-                values[key] = greg
-        else:  # enum / text
-            values[key] = request.form.get(key, "").strip()
-    repo.set_flags(pid, values, recorded_by=g.user["username"])
-    log_activity("flags_update", "ثبت وضعیت بالینی بیمار", patient_link_id=pid)
-    flash("وضعیت بالینی ذخیره شد", "success")
+    updates = {}
+    expected_event_ids = {}
+    expected_hashes = {}
+    try:
+        for key in sorted(submitted_keys):
+            definition = catalog_by_key[key]
+            prefix = f"flag__{key}__"
+            token = (request.form.get(prefix + "state") or "").strip()
+            if definition["flag_type"] == "bool":
+                if token == "PRESENT_TRUE":
+                    state, value = ClinicalFlagState.PRESENT, True
+                elif token == "PRESENT_FALSE":
+                    state, value = ClinicalFlagState.PRESENT, False
+                elif token in {"UNKNOWN", "NOT_ASKED"}:
+                    state, value = ClinicalFlagState(token), None
+                else:
+                    raise ClinicalFlagValidationError(
+                        f"وضعیت {definition['label']} انتخاب نشده است"
+                    )
+            else:
+                if token not in {"PRESENT", "UNKNOWN", "NOT_ASKED"}:
+                    raise ClinicalFlagValidationError(
+                        f"وضعیت {definition['label']} انتخاب نشده است"
+                    )
+                state = ClinicalFlagState(token)
+                value = None
+                if state is ClinicalFlagState.PRESENT:
+                    raw_value = (request.form.get(prefix + "value") or "").strip()
+                    if definition["flag_type"] == "date":
+                        value = jalali_to_gregorian_str(raw_value)
+                        if value is None and len(raw_value) == 10 and raw_value[4] == "-":
+                            value = raw_value
+                    else:
+                        value = raw_value
+            updates[key] = {"state": state.value, "value": value}
+            raw_event_id = (request.form.get(prefix + "event_id") or "").strip()
+            expected_event_ids[key] = int(raw_event_id) if raw_event_id else None
+            expected_hashes[key] = (
+                request.form.get(prefix + "definition_hash") or ""
+            ).strip()
+
+        events = repo.append_batch(
+            pid,
+            updates,
+            actor_username=g.user["username"],
+            actor_user_id=int(g.user["id"]),
+            expected_event_ids=expected_event_ids,
+            expected_definition_hashes=expected_hashes,
+            source="clinician",
+            verification="CONFIRMED",
+            record_unchanged=True,
+            note=f"Patient record section review: {section}",
+        )
+    except ClinicalFlagConflict:
+        flash(
+            "این بخش هم‌زمان تغییر کرده است؛ صفحه را مرور و دوباره ثبت کنید.",
+            "warning",
+        )
+    except (ClinicalFlagValidationError, ValueError, LookupError) as exc:
+        flash(f"وضعیت بالینی ثبت نشد: {exc}", "error")
+    else:
+        log_activity(
+            "flags_review",
+            f"ثبت {len(events)} رویداد وضعیت بالینی در بخش {section}",
+            patient_link_id=pid,
+        )
+        flash("مرور وضعیت بالینی به‌صورت تاریخی ثبت شد", "success")
     return redirect(url_for("patients.detail", pid=pid) + "#record")
 
 

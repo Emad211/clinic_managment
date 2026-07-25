@@ -90,10 +90,14 @@
             <a class="nav-item {% if active_page=='patients' %}active{% endif %}" href="{{ url_for('patients.list_patients') }}"{% if active_page=='patients' %} aria-current="page"{% endif %}><svg class="icon"><use href="#i-users"></use></svg> بیماران</a>
             <a class="nav-item {% if active_page=='appointments' %}active{% endif %}" href="{{ url_for('appointments.list_appointments') }}"{% if active_page=='appointments' %} aria-current="page"{% endif %}><svg class="icon"><use href="#i-calendar"></use></svg> نوبت‌دهی</a>
             <a class="nav-item {% if active_page=='sms' %}active{% endif %}" href="{{ url_for('sms.campaigns') }}"{% if active_page=='sms' %} aria-current="page"{% endif %}><svg class="icon"><use href="#i-megaphone"></use></svg> هاب پیام</a>
-            {% if g.user['role']=='manager' %}
+            {% if permissions.get('rule.review.clinical') or permissions.get('rule.review.technical') or permissions.get('rule.activate') or permissions.get('security.grant.manage') %}
             <div class="nav-section">سیستم</div>
+            {% if permissions.get('rule.review.clinical') or permissions.get('rule.review.technical') or permissions.get('rule.activate') %}
             <a class="nav-item {% if active_page=='clinical_engine' %}active{% endif %}" href="{{ url_for('manager.clinical_engine') }}"{% if active_page=='clinical_engine' %} aria-current="page"{% endif %}><svg class="icon"><use href="#i-shield"></use></svg> موتور بالینی</a>
+            {% endif %}
+            {% if permissions.get('security.grant.manage') %}
             <a class="nav-item {% if active_page=='manager' %}active{% endif %}" href="{{ url_for('manager.index') }}"{% if active_page=='manager' %} aria-current="page"{% endif %}><svg class="icon"><use href="#i-settings"></use></svg> تنظیمات سیستم</a>
+            {% endif %}
             {% endif %}
         </nav>
         <div class="sidebar-footer">
@@ -101,7 +105,9 @@
                 <span class="avatar"><svg class="icon icon-sm"><use href="#i-user"></use></svg></span>
                 <span>{{ g.user['full_name'] or g.user['username'] }}</span>
             </div>
-            <a class="nav-item sidebar-logout" href="{{ url_for('auth.logout') }}"><svg class="icon"><use href="#i-log-out"></use></svg> خروج</a>
+            <form method="post" action="{{ url_for('auth.logout') }}" style="margin:0;">
+                <button type="submit" class="nav-item sidebar-logout" style="width:100%;border:0;background:transparent;text-align:right;cursor:pointer;"><svg class="icon"><use href="#i-log-out"></use></svg> خروج</button>
+            </form>
         </div>
     </aside>
     {% endif %}

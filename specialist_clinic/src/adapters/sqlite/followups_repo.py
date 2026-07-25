@@ -1,205 +1,280 @@
-"""Repository for follow-up tasks (worklist)."""
-import sqlite3
+"""Repository for administrative tasks plus read-only clinical-task projections.
 
+Administrative tasks keep their compact mutable workflow. Clinical Engine v2 tasks are
+never resolved or scheduled by updating ``followup_tasks``; their state is projected from
+append-only ``clinical_task_events`` through ``ClinicalCareLoopRepository``.
+"""
+from __future__ import annotations
+
+from src.adapters.sqlite.clinical_care_loop_schema import (
+    ensure_clinical_care_loop_storage,
+)
 from src.adapters.sqlite.core import get_db
 from src.common.utils import iran_now
 
 
 class FollowupRepository:
-
     def active_patient_ids(self) -> list[int]:
         return [
             int(row["id"])
             for row in get_db().execute(
-                "SELECT id FROM patient_links WHERE is_active=1 ORDER BY id"
+                "SELECT id FROM patient_links "
+                "WHERE is_active=1 ORDER BY id"
             ).fetchall()
         ]
 
-    def last_observation_at(self, pid: int, keys: list[str]):
-        """Latest canonical observation timestamp across clinic and lab channels."""
-        if not keys:
-            return None
-        placeholders = ",".join("?" for _ in keys)
-        row = get_db().execute(
-            f"""SELECT MAX(ts) AS measured_at FROM (
-                  SELECT measured_at AS ts FROM vital_readings
-                    WHERE patient_link_id=? AND type IN ({placeholders})
-                  UNION ALL
-                  SELECT taken_at AS ts FROM lab_results
-                    WHERE patient_link_id=? AND test_key IN ({placeholders})
-                )""",
-            (pid, *keys, pid, *keys),
-        ).fetchone()
-        return row["measured_at"] if row else None
-
-    def create(self, pid: int, *, reason, detail=None, due_date=None, assigned_to=None,
-               source_rule=None, source_event=None, appointment_id=None,
-               fulfillment=None) -> int:
-        """fulfillment in remote|in_person — how the task is meant to be closed.
-        appointment_id links the task to the visit that fulfills it (or None).
-
-        When fulfillment is None it is derived from the reason: refill (renewal /
-        periodic-Rx) is remote-closeable, everything else needs an in-person visit.
-        Explicit values are always respected."""
+    def create(
+        self,
+        patient_link_id: int,
+        *,
+        reason,
+        detail=None,
+        due_date=None,
+        assigned_to=None,
+        source_rule=None,
+        source_event=None,
+        appointment_id=None,
+        fulfillment=None,
+    ) -> int:
+        """Create a non-engine administrative worklist task."""
+        if source_event == "clinical_due":
+            raise ValueError(
+                "Clinical Engine tasks must use ClinicalFollowupRepository"
+            )
         if fulfillment is None:
-            fulfillment = 'remote' if reason == 'refill' else 'in_person'
+            fulfillment = (
+                "remote" if reason == "refill" else "in_person"
+            )
         db = get_db()
-        cur = db.execute(
+        cursor = db.execute(
             """INSERT INTO followup_tasks
-                 (patient_link_id, reason, detail, due_date, assigned_to, source_rule,
-                  source_event, appointment_id, fulfillment)
+               (patient_link_id, reason, detail, due_date, assigned_to,
+                source_rule, source_event, appointment_id, fulfillment)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (pid, reason, detail, due_date, assigned_to, source_rule, source_event,
-             appointment_id, fulfillment),
+            (
+                patient_link_id,
+                reason,
+                detail,
+                due_date,
+                assigned_to,
+                source_rule,
+                source_event,
+                appointment_id,
+                fulfillment,
+            ),
         )
         db.commit()
-        return cur.lastrowid
+        return int(cursor.lastrowid)
 
-    def create_clinical_task_once(self, task: dict) -> tuple[int, bool]:
-        """Atomically create one v2 task per evidence episode and open meaning."""
-        db = get_db()
-        db.execute("BEGIN IMMEDIATE")
-        try:
-            existing = db.execute(
-                """SELECT id FROM followup_tasks
-                   WHERE clinical_task_key=?
-                      OR (patient_link_id=? AND clinical_semantic_key=?
-                          AND source_engine='clinical_v2' AND status='open')
-                   ORDER BY id LIMIT 1""",
-                (
-                    task["clinical_task_key"], task["patient_link_id"],
-                    task["clinical_semantic_key"],
-                ),
-            ).fetchone()
-            if existing:
-                db.commit()
-                return int(existing["id"]), False
-            cur = db.execute(
-                """INSERT INTO followup_tasks
-                   (patient_link_id, reason, detail, due_date, fulfillment,
-                    source_rule, source_event, source_engine, source_run_id,
-                    source_recommendation_event_id, clinical_semantic_key,
-                    clinical_task_key)
-                   VALUES (?, ?, ?, ?, 'in_person', ?, 'clinical_due',
-                           'clinical_v2', ?, ?, ?, ?)""",
-                (
-                    task["patient_link_id"], task["reason"], task["detail"],
-                    task["due_date"], task["source_rule"], task["source_run_id"],
-                    task["source_recommendation_event_id"],
-                    task["clinical_semantic_key"], task["clinical_task_key"],
-                ),
-            )
-            db.commit()
-            return int(cur.lastrowid), True
-        except sqlite3.IntegrityError:
-            db.rollback()
-            existing = db.execute(
-                """SELECT id FROM followup_tasks
-                   WHERE clinical_task_key=?
-                      OR (patient_link_id=? AND clinical_semantic_key=?
-                          AND source_engine='clinical_v2' AND status='open')
-                   ORDER BY id LIMIT 1""",
-                (
-                    task["clinical_task_key"], task["patient_link_id"],
-                    task["clinical_semantic_key"],
-                ),
-            ).fetchone()
-            if existing:
-                return int(existing["id"]), False
-            raise
-        except Exception:
-            db.rollback()
-            raise
-
-    def set_appointment(self, task_id: int, appointment_id):
-        """Link an open task to the visit that will fulfill it."""
-        db = get_db()
-        db.execute("UPDATE followup_tasks SET appointment_id=? WHERE id=?",
-                   (appointment_id, task_id))
-        db.commit()
-
-    def assign_appointment_bulk(self, task_ids: list, appointment_id):
-        """Attach several open tasks to a single visit (merge same-due follow-ups)."""
+    @staticmethod
+    def _assert_administrative(db, task_ids: list[int]) -> None:
         if not task_ids:
             return
-        db = get_db()
         placeholders = ",".join("?" for _ in task_ids)
+        row = db.execute(
+            f"""SELECT id FROM followup_tasks
+                WHERE id IN ({placeholders})
+                  AND source_engine='clinical_v2' LIMIT 1""",
+            task_ids,
+        ).fetchone()
+        if row:
+            raise ValueError(
+                "clinical tasks require append-only care-loop transitions"
+            )
+
+    def set_appointment(self, task_id: int, appointment_id):
+        db = get_db()
+        self._assert_administrative(db, [int(task_id)])
         db.execute(
-            f"UPDATE followup_tasks SET appointment_id=? WHERE id IN ({placeholders})",
-            [appointment_id, *task_ids],
+            "UPDATE followup_tasks SET appointment_id=? WHERE id=?",
+            (appointment_id, task_id),
         )
         db.commit()
 
-    def exists_open(self, pid: int, reason: str) -> bool:
+    def assign_appointment_bulk(
+        self,
+        task_ids: list,
+        appointment_id,
+    ):
+        if not task_ids:
+            return
+        normalized = [int(value) for value in task_ids]
         db = get_db()
-        row = db.execute(
-            "SELECT 1 FROM followup_tasks WHERE patient_link_id=? AND reason=? AND status='open' LIMIT 1",
-            (pid, reason),
-        ).fetchone()
-        return bool(row)
+        self._assert_administrative(db, normalized)
+        placeholders = ",".join("?" for _ in normalized)
+        db.execute(
+            "UPDATE followup_tasks SET appointment_id=? "
+            f"WHERE id IN ({placeholders})",
+            [appointment_id, *normalized],
+        )
+        db.commit()
 
-    def recently_handled_source(self, pid: int, source_rule: str, months: int = None) -> bool:
-        """True if there's an OPEN task for this rule, or a DONE one within `months`."""
-        db = get_db()
-        if db.execute(
-            "SELECT 1 FROM followup_tasks WHERE patient_link_id=? AND source_rule=? AND status='open' LIMIT 1",
-            (pid, source_rule),
+    def exists_open(self, patient_link_id: int, reason: str) -> bool:
+        if get_db().execute(
+            """SELECT 1 FROM followup_tasks
+               WHERE patient_link_id=? AND reason=? AND status='open'
+                 AND COALESCE(source_engine,'')<>'clinical_v2'
+               LIMIT 1""",
+            (patient_link_id, reason),
         ).fetchone():
             return True
-        if months:
-            row = db.execute(
-                f"""SELECT 1 FROM followup_tasks WHERE patient_link_id=? AND source_rule=? AND status='done'
-                    AND resolved_at >= datetime('now','+3 hours','+30 minutes','-{int(months)} months') LIMIT 1""",
-                (pid, source_rule),
-            ).fetchone()
-        else:
-            # one-time item (e.g. zoster): suppress once it has ever been done
-            row = db.execute(
-                "SELECT 1 FROM followup_tasks WHERE patient_link_id=? AND source_rule=? AND status='done' LIMIT 1",
-                (pid, source_rule),
-            ).fetchone()
-        return bool(row)
-
-    def list_open(self, reason: str = None) -> list[dict]:
-        db = get_db()
-        sql = """SELECT f.*, p.full_name AS patient_name, p.phone_number
-                 FROM followup_tasks f JOIN patient_links p ON p.id=f.patient_link_id
-                 WHERE f.status='open'"""
-        params = []
-        if reason:
-            sql += " AND f.reason = ?"
-            params.append(reason)
-        sql += " ORDER BY f.due_date IS NULL, f.due_date ASC, f.id DESC"
-        return [dict(r) for r in db.execute(sql, params).fetchall()]
-
-    def search_open(self, q: str) -> list[dict]:
-        """Open tasks whose patient matches `q` by national_id OR full_name OR
-        phone_number (LIKE). Returns rows enriched with patient fields."""
-        db = get_db()
-        like = f"%{(q or '').strip()}%"
-        sql = """SELECT f.*, p.full_name AS patient_name, p.phone_number, p.national_id
-                 FROM followup_tasks f JOIN patient_links p ON p.id=f.patient_link_id
-                 WHERE f.status='open'
-                   AND (p.national_id LIKE ? OR p.full_name LIKE ? OR p.phone_number LIKE ?)
-                 ORDER BY f.due_date IS NULL, f.due_date ASC, f.id DESC"""
-        return [dict(r) for r in db.execute(sql, (like, like, like)).fetchall()]
-
-    def list_for_patient(self, pid: int) -> list[dict]:
-        db = get_db()
-        return [dict(r) for r in db.execute(
-            "SELECT * FROM followup_tasks WHERE patient_link_id=? ORDER BY id DESC", (pid,)).fetchall()]
-
-    def resolve(self, task_id: int, status: str, call_log: str = None):
-        db = get_db()
-        db.execute(
-            "UPDATE followup_tasks SET status=?, call_log=COALESCE(?, call_log), resolved_at=? WHERE id=?",
-            (status, call_log, iran_now().strftime('%Y-%m-%d %H:%M:%S'), task_id),
+        from src.adapters.sqlite.clinical_care_loop_repo import (
+            ClinicalCareLoopRepository,
         )
+
+        return bool(
+            ClinicalCareLoopRepository().list_current(
+                patient_link_id=patient_link_id,
+                reason=reason,
+                include_terminal=False,
+            )
+        )
+
+    @staticmethod
+    def _admin_open(reason: str | None = None, query: str | None = None) -> list[dict]:
+        sql = """SELECT f.*, p.full_name AS patient_name,
+                        p.phone_number, p.national_id,
+                        f.status AS current_status,
+                        f.assigned_to AS current_assigned_to,
+                        f.appointment_id AS current_appointment_id,
+                        f.due_date AS current_due_at,
+                        NULL AS current_event_id,
+                        NULL AS latest_outcome_event_id
+                 FROM followup_tasks f
+                 JOIN patient_links p ON p.id=f.patient_link_id
+                 WHERE f.status='open'
+                   AND COALESCE(f.source_engine,'')<>'clinical_v2'"""
+        params: list = []
+        if reason:
+            sql += " AND f.reason=?"
+            params.append(reason)
+        if query:
+            like = f"%{query.strip()}%"
+            sql += " AND (p.national_id LIKE ? OR p.full_name LIKE ? OR p.phone_number LIKE ?)"
+            params.extend((like, like, like))
+        return [
+            dict(row)
+            for row in get_db().execute(sql, params).fetchall()
+        ]
+
+    @staticmethod
+    def _sort_open(rows: list[dict]) -> list[dict]:
+        return sorted(
+            rows,
+            key=lambda row: (
+                (row.get("current_due_at") or row.get("due_date")) is None,
+                row.get("current_due_at") or row.get("due_date") or "9999-12-31",
+                -int(row["id"]),
+            ),
+        )
+
+    def list_open(self, reason: str | None = None) -> list[dict]:
+        from src.adapters.sqlite.clinical_care_loop_repo import (
+            ClinicalCareLoopRepository,
+        )
+
+        ensure_clinical_care_loop_storage(get_db())
+        rows = self._admin_open(reason=reason)
+        rows.extend(
+            ClinicalCareLoopRepository().list_current(
+                reason=reason,
+                include_terminal=False,
+            )
+        )
+        return self._sort_open(rows)
+
+    def search_open(self, query: str) -> list[dict]:
+        from src.adapters.sqlite.clinical_care_loop_repo import (
+            ClinicalCareLoopRepository,
+        )
+
+        ensure_clinical_care_loop_storage(get_db())
+        rows = self._admin_open(query=query)
+        rows.extend(
+            ClinicalCareLoopRepository().list_current(
+                query=query,
+                include_terminal=False,
+            )
+        )
+        return self._sort_open(rows)
+
+    def list_for_patient(self, patient_link_id: int) -> list[dict]:
+        from src.adapters.sqlite.clinical_care_loop_repo import (
+            ClinicalCareLoopRepository,
+        )
+
+        db = get_db()
+        ensure_clinical_care_loop_storage(db)
+        admin = [
+            dict(row)
+            for row in db.execute(
+                """SELECT *, status AS current_status,
+                          NULL AS current_event_id
+                   FROM followup_tasks
+                   WHERE patient_link_id=?
+                     AND COALESCE(source_engine,'')<>'clinical_v2'
+                   ORDER BY id DESC""",
+                (patient_link_id,),
+            ).fetchall()
+        ]
+        clinical = ClinicalCareLoopRepository().list_current(
+            patient_link_id=patient_link_id,
+            include_terminal=True,
+        )
+        for row in clinical:
+            row["status"] = (
+                "open"
+                if row["current_status"]
+                in {"OPEN", "ASSIGNED", "SCHEDULED", "IN_PROGRESS", "DEFERRED"}
+                else "done"
+                if row["current_status"] == "COMPLETED"
+                else "dismissed"
+            )
+        return sorted([*admin, *clinical], key=lambda row: -int(row["id"]))
+
+    def resolve(
+        self,
+        task_id: int,
+        status: str,
+        call_log: str | None = None,
+    ):
+        db = get_db()
+        self._assert_administrative(db, [int(task_id)])
+        cursor = db.execute(
+            """UPDATE followup_tasks
+               SET status=?, call_log=COALESCE(?, call_log),
+                   resolved_at=?
+               WHERE id=? AND COALESCE(source_engine,'')<>'clinical_v2'""",
+            (
+                status,
+                call_log,
+                iran_now().strftime("%Y-%m-%d %H:%M:%S"),
+                task_id,
+            ),
+        )
+        if cursor.rowcount != 1:
+            db.rollback()
+            raise LookupError("administrative follow-up task not found")
         db.commit()
 
     def counts_by_reason(self) -> dict:
-        db = get_db()
-        rows = db.execute(
-            "SELECT reason, COUNT(*) c FROM followup_tasks WHERE status='open' GROUP BY reason"
-        ).fetchall()
-        return {r['reason']: r['c'] for r in rows}
+        counts = {
+            row["reason"]: int(row["count"])
+            for row in get_db().execute(
+                """SELECT reason, COUNT(*) AS count
+                   FROM followup_tasks
+                   WHERE status='open'
+                     AND COALESCE(source_engine,'')<>'clinical_v2'
+                   GROUP BY reason"""
+            ).fetchall()
+        }
+        from src.adapters.sqlite.clinical_care_loop_repo import (
+            ClinicalCareLoopRepository,
+        )
+
+        for row in ClinicalCareLoopRepository().list_current(
+            include_terminal=False
+        ):
+            reason = row.get("reason")
+            counts[reason] = counts.get(reason, 0) + 1
+        return counts

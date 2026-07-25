@@ -1,5 +1,4 @@
 """Versioned preparation and quality checks for the synthetic safety cohort."""
-
 from __future__ import annotations
 
 from src.adapters.sqlite.demo_cohort_repo import DemoCohortRepository
@@ -9,7 +8,18 @@ from src.domain.clinical_engine.demo_cohort import (
     DEMO_REFERENCE_AT,
     expected_totals,
 )
+from src.domain.clinical_engine.demo_cohort_vocabulary import (
+    canonical_demo_patients,
+)
 from src.services.activity_logger import log_activity
+
+
+# v5 adds exact allergy concepts and proves the cohort has no unresolved source
+# conflicts before it can be used as activation evidence.
+CURRENT_DEMO_COHORT_VERSION = (
+    f"{DEMO_COHORT_VERSION}-reconciled-concepts-flags-conflicts-v5"
+)
+CANONICAL_DEMO_PATIENTS = canonical_demo_patients(DEMO_PATIENTS)
 
 
 class DemoCohortService:
@@ -21,12 +31,17 @@ class DemoCohortService:
         return DEMO_REFERENCE_AT
 
     def summary(self) -> dict:
-        summary = self.repository.summary(expected_version=DEMO_COHORT_VERSION)
-        summary.update({
-            "expected_version": DEMO_COHORT_VERSION,
-            "reference_at": DEMO_REFERENCE_AT,
-            "years": 5.5,
-        })
+        summary = self.repository.summary(
+            expected_version=CURRENT_DEMO_COHORT_VERSION
+        )
+        summary.update(
+            {
+                "expected_version": CURRENT_DEMO_COHORT_VERSION,
+                "source_version": DEMO_COHORT_VERSION,
+                "reference_at": DEMO_REFERENCE_AT,
+                "years": 5.5,
+            }
+        )
         return summary
 
     def ensure(self, *, actor: str, force: bool = False) -> dict:
@@ -35,7 +50,10 @@ class DemoCohortService:
         rebuilt = force or not before["ready"]
         if rebuilt:
             self.repository.replace_all(
-                DEMO_PATIENTS, version=DEMO_COHORT_VERSION, actor=actor,
+                CANONICAL_DEMO_PATIENTS,
+                version=CURRENT_DEMO_COHORT_VERSION,
+                actor=actor,
+                reference_at=DEMO_REFERENCE_AT,
             )
         after = self.summary()
         self._validate(after)
@@ -43,9 +61,12 @@ class DemoCohortService:
         if rebuilt:
             log_activity(
                 "clinical_v2_demo_cohort_rebuild",
-                f"Rebuilt {after['patient_count']} synthetic longitudinal records "
-                f"at cohort version {DEMO_COHORT_VERSION}",
-                user_id=0, username=actor,
+                (
+                    f"Rebuilt {after['patient_count']} synthetic longitudinal "
+                    f"records at cohort version {CURRENT_DEMO_COHORT_VERSION}"
+                ),
+                user_id=0,
+                username=actor,
             )
         return after
 
@@ -58,15 +79,37 @@ class DemoCohortService:
             "vitals": actual["vitals"] == expected["vitals"],
             "labs": actual["labs"] == expected["labs"],
             "medications": actual["medications"] == expected["meds"],
+            "medication_concepts": (
+                actual.get("unmapped_active_medications") == 0
+            ),
+            "allergy_concepts": (
+                actual.get("unmapped_active_allergies") == 0
+            ),
+            "source_conflicts": (
+                actual.get("unresolved_conflicts") == 0
+            ),
             "notes": actual["notes"] == expected["notes"],
-            "appointments": actual["appointments"] == expected["appointments"],
+            "appointments": (
+                actual["appointments"] == expected["appointments"]
+            ),
             "followups": actual["followups"] == expected["followups"],
-            "prescriptions": actual["prescriptions"] == expected["prescriptions"],
+            "prescriptions": (
+                actual["prescriptions"] == expected["prescriptions"]
+            ),
             "history": actual["history"] == expected["history"],
             "conditions": actual["conditions"] == expected["conditions"],
+            "reconciliation": (
+                actual.get("reconciled_collections") == 30
+            ),
+            "flag_history": (
+                actual.get("flag_heads")
+                == summary["patient_count"]
+                * actual.get("active_flag_definitions", 0)
+            ),
         }
         failed = [key for key, passed in checks.items() if not passed]
         if failed:
             raise RuntimeError(
-                "synthetic cohort failed completeness checks: " + ", ".join(failed)
+                "synthetic cohort failed completeness checks: "
+                + ", ".join(failed)
             )

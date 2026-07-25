@@ -1,5 +1,4 @@
 """Immutable rule DTOs produced by the v2 compiler."""
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -12,7 +11,9 @@ from .enums import ActionType, ClinicalPhase, RuleSeverity
 def freeze(value: Any) -> Any:
     """Recursively freeze JSON-compatible data for deterministic DTOs."""
     if isinstance(value, dict):
-        return MappingProxyType({key: freeze(item) for key, item in value.items()})
+        return MappingProxyType(
+            {key: freeze(item) for key, item in value.items()}
+        )
     if isinstance(value, list):
         return tuple(freeze(item) for item in value)
     return value
@@ -46,7 +47,9 @@ class NotExpression:
     child: "Expression"
 
 
-Expression: TypeAlias = LeafExpression | AllExpression | AnyExpression | NotExpression
+Expression: TypeAlias = (
+    LeafExpression | AllExpression | AnyExpression | NotExpression
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -84,7 +87,6 @@ class RuleDefinition:
     evidence: Mapping[str, Any]
     governance: Mapping[str, Any]
     semantic_key: str | None = None
-    legacy_rule_id: int | None = None
 
 
 @dataclass(frozen=True, slots=True)

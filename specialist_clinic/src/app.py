@@ -1,19 +1,21 @@
+import json
 import os
 import sys
 import threading
 import webbrowser
-import json
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import click
-from flask import Flask, redirect, url_for, session, g, render_template
+from flask import Flask, g, redirect, render_template, session, url_for
 
-from src.config.settings import Config
 from src.adapters.sqlite.core import close_connection, get_db
+from src.config.settings import Config, DEFAULT_SECRET_KEY
+from src.security.csrf import install_csrf
+from src.security.permissions import permissions_for_template
 
 
 def create_app(test_config=None):
-    """Flask application factory (works in source and PyInstaller frozen modes)."""
+    """Flask application factory for source and PyInstaller runtimes."""
     if getattr(sys, "frozen", False):
         base_dir = sys._MEIPASS
         template_folder = os.path.join(base_dir, "src", "templates")
@@ -23,104 +25,152 @@ def create_app(test_config=None):
         template_folder = os.path.join(base_dir, "templates")
         static_folder = os.path.join(base_dir, "static")
 
-    app = Flask(__name__, template_folder=template_folder, static_folder=static_folder)
-
+    app = Flask(
+        __name__,
+        template_folder=template_folder,
+        static_folder=static_folder,
+    )
     if test_config is None:
         app.config.from_object(Config)
     else:
         app.config.from_mapping(test_config)
 
-    # ---- Security hardening (active only when PRODUCTION=1; local/.exe/LAN/test unchanged) ----
-    from datetime import timedelta
-    from src.config.settings import DEFAULT_SECRET_KEY
     if app.config.get("PRODUCTION") and not app.config.get("TESTING", False):
         if app.config.get("SECRET_KEY") in (None, DEFAULT_SECRET_KEY):
             raise RuntimeError(
                 "PRODUCTION=1 but SECRET_KEY is unset or the insecure default. "
-                "Set a strong SECRET_KEY environment variable before starting in production.")
+                "Set a strong SECRET_KEY before production startup."
+            )
     app.config.setdefault("SESSION_COOKIE_HTTPONLY", True)
     app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
-    app.config["SESSION_COOKIE_SECURE"] = bool(app.config.get("PRODUCTION"))
+    app.config["SESSION_COOKIE_SECURE"] = bool(
+        app.config.get("PRODUCTION")
+    )
+    app.config.setdefault("SESSION_COOKIE_NAME", "clinic_session")
+    app.config.setdefault("SESSION_REFRESH_EACH_REQUEST", False)
+    app.config.setdefault("MAX_CONTENT_LENGTH", 16 * 1024 * 1024)
     app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(hours=8)
+    install_csrf(app)
 
-    # In source/dev mode pick up template edits without a restart (no effect in the
-    # frozen .exe, where bundled templates never change).
     if not getattr(sys, "frozen", False):
         app.config["TEMPLATES_AUTO_RELOAD"] = True
         app.jinja_env.auto_reload = True
 
     app.teardown_appcontext(close_connection)
 
-    # ---- Logging (rotating file beside the DB for the frozen .exe + console in dev) ----
     if not app.config.get("TESTING", False):
         try:
             from src.common.logging_setup import setup_app_logging
-            _db = app.config.get("DATABASE_PATH") or ""
-            _log_dir = (os.path.dirname(os.path.abspath(_db))
-                        if _db and _db != ":memory:" else app.config.get("PROJECT_ROOT", base_dir))
-            setup_app_logging(_log_dir)
-        except Exception as e:
-            print(f"[logging] not configured: {e}")
 
-    # ---- Load logged-in user ----
+            database_path = app.config.get("DATABASE_PATH") or ""
+            log_dir = (
+                os.path.dirname(os.path.abspath(database_path))
+                if database_path and database_path != ":memory:"
+                else app.config.get("PROJECT_ROOT", base_dir)
+            )
+            setup_app_logging(log_dir)
+        except Exception as exc:
+            print(f"[logging] not configured: {exc}")
+
+    # Safety-critical schema is installed before serving file-backed databases.
+    # The core migration pass owns any copied pre-cutover database cleanup.
+    if (app.config.get("DATABASE_PATH") or "") != ":memory:":
+        with app.app_context():
+            from src.adapters.sqlite.clinical_engine_runtime_schema import (
+                ensure_runtime_schema,
+            )
+            ensure_runtime_schema(get_db())
+    else:
+
+        @app.before_request
+        def ensure_in_memory_clinical_runtime_guards():
+            from src.adapters.sqlite.clinical_engine_runtime_schema import (
+                ensure_runtime_schema,
+            )
+            ensure_runtime_schema(get_db())
+
     @app.before_request
     def load_logged_in_user():
         user_id = session.get("user_id")
         if user_id is None:
             g.user = None
         else:
-            db = get_db()
-            g.user = db.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+            g.user = get_db().execute(
+                "SELECT * FROM users WHERE id = ?",
+                (user_id,),
+            ).fetchone()
 
-    # ---- Blueprints ----
-    from src.api.auth import bp as auth_bp
-    from src.api.dashboard import bp as dashboard_bp
-    from src.api.patients import bp as patients_bp
-    from src.api.vitals import bp as vitals_bp
+    @app.context_processor
+    def inject_security_context():
+        return {
+            "permissions": permissions_for_template(),
+        }
+
     from src.api.appointments import bp as appointments_bp
-    from src.api.followups import bp as followups_bp
-    from src.api.sms import bp as sms_bp
-    from src.api.manager import bp as manager_bp
+    from src.api.auth import bp as auth_bp
+    from src.api.clinical_reconciliation import (
+        bp as clinical_reconciliation_bp,
+    )
     from src.api.control_room import bp as control_room_bp
-    from src.api.ext import bp as ext_bp
+    from src.api.dashboard import bp as dashboard_bp
     from src.api.doctor_queue import bp as doctor_queue_bp
+    from src.api.ext import bp as ext_bp
+    from src.api.followups import bp as followups_bp
+    from src.api.health import bp as health_bp
+    from src.api.manager import bp as manager_bp
     from src.api.patient_card import bp as patient_card_bp
+    from src.api.patients import bp as patients_bp
+    from src.api.sms import bp as sms_bp
+    from src.api.vitals import bp as vitals_bp
 
-    app.register_blueprint(auth_bp)
-    app.register_blueprint(dashboard_bp)
-    app.register_blueprint(patients_bp)
-    app.register_blueprint(vitals_bp)
-    app.register_blueprint(appointments_bp)
-    app.register_blueprint(followups_bp)
-    app.register_blueprint(sms_bp)
-    app.register_blueprint(manager_bp)
-    app.register_blueprint(control_room_bp)
-    app.register_blueprint(ext_bp)
-    app.register_blueprint(doctor_queue_bp)
-    app.register_blueprint(patient_card_bp)
+    for blueprint in (
+        auth_bp,
+        dashboard_bp,
+        patients_bp,
+        clinical_reconciliation_bp,
+        vitals_bp,
+        appointments_bp,
+        followups_bp,
+        sms_bp,
+        manager_bp,
+        control_room_bp,
+        ext_bp,
+        doctor_queue_bp,
+        patient_card_bp,
+        health_bp,
+    ):
+        app.register_blueprint(blueprint)
 
-    # ---- Jinja filters ----
     @app.template_filter("jalali")
     def jalali_filter(value):
         from src.common.utils import format_jalali_datetime
+
         return format_jalali_datetime(value)
 
     @app.template_filter("jalali_date")
     def jalali_date_filter(value):
         from src.common.utils import format_jalali_date
+
         return format_jalali_date(value)
 
     @app.template_filter("fa_num")
     def fa_number_filter(value):
         if value is None:
-            return ''
+            return ""
         try:
-            num = float(value)
+            number = float(value)
         except Exception:
-            trans = str.maketrans('0123456789', '۰۱۲۳۴۵۶۷۸۹')
-            return str(value).translate(trans)
-        s = f"{int(num):,}" if float(num).is_integer() else f"{num:,.1f}"
-        return s.translate(str.maketrans('0123456789,', '۰۱۲۳۴۵۶۷۸۹،'))
+            return str(value).translate(
+                str.maketrans("0123456789", "۰۱۲۳۴۵۶۷۸۹")
+            )
+        rendered = (
+            f"{int(number):,}"
+            if float(number).is_integer()
+            else f"{number:,.1f}"
+        )
+        return rendered.translate(
+            str.maketrans("0123456789,", "۰۱۲۳۴۵۶۷۸۹،")
+        )
 
     @app.route("/")
     def index():
@@ -128,128 +178,249 @@ def create_app(test_config=None):
             return redirect(url_for("auth.login"))
         return redirect(url_for("dashboard.index"))
 
-    @app.cli.command("import-legacy-clinical-decisions")
-    def import_legacy_clinical_decisions():
-        """Idempotently preserve final legacy suggestion review states."""
-        from src.services.clinical_engine.decision_service import LegacyDecisionImporter
-
-        imported = LegacyDecisionImporter().import_once()
-        click.echo(f"Imported {imported} legacy clinical decision state(s).")
-
+    # The legacy clinical-decision importer was intentionally removed. The
+    # application has seed-only data and all visible decisions must originate from
+    # an exact current v2 run rather than reconstructed v1 state.
     @app.cli.group("clinical-v2")
     def clinical_v2():
         """Auditable comparison and guarded Clinical Engine v2 rollout."""
 
     @clinical_v2.command("compare")
-    @click.option("--as-of", "as_of_text", required=True,
-                  help="Fixed Tehran-local ISO timestamp, e.g. 2026-07-22T12:00:00")
+    @click.option(
+        "--as-of",
+        "as_of_text",
+        required=True,
+        help="Fixed Tehran-local ISO timestamp, e.g. 2026-07-22T12:00:00",
+    )
     @click.option("--actor", required=True)
-    @click.option("--format", "output_format", type=click.Choice(["text", "json"]),
-                  default="text", show_default=True)
+    @click.option(
+        "--format",
+        "output_format",
+        type=click.Choice(["text", "json"]),
+        default="text",
+        show_default=True,
+    )
     def clinical_v2_compare(as_of_text, actor, output_format):
-        from src.services.clinical_engine.activation import ClinicalEngineActivationService
+        from src.services.clinical_engine.activation import (
+            ClinicalEngineActivationService,
+        )
+
         try:
             as_of = datetime.fromisoformat(as_of_text)
         except ValueError as exc:
-            raise click.ClickException("--as-of must be a valid ISO timestamp") from exc
+            raise click.ClickException(
+                "--as-of must be a valid ISO timestamp"
+            ) from exc
         report = ClinicalEngineActivationService().build_report(
-            as_of_at=as_of, created_by=actor,
+            as_of_at=as_of,
+            created_by=actor,
         )
         if output_format == "json":
-            click.echo(json.dumps(report, ensure_ascii=False, indent=2))
+            click.echo(
+                json.dumps(report, ensure_ascii=False, indent=2)
+            )
         else:
-            click.echo(ClinicalEngineActivationService.render_text(report))
+            click.echo(
+                ClinicalEngineActivationService.render_text(report)
+            )
 
     @clinical_v2.command("status")
-    @click.option("--format", "output_format", type=click.Choice(["text", "json"]),
-                  default="text", show_default=True)
+    @click.option(
+        "--format",
+        "output_format",
+        type=click.Choice(["text", "json"]),
+        default="text",
+        show_default=True,
+    )
     def clinical_v2_status(output_format):
-        from src.adapters.sqlite.clinical_engine_activation_repo import ClinicalEngineActivationRepository
-        from src.adapters.sqlite.clinical_engine_fact_repo import ClinicalEngineFactRepository
+        from src.adapters.sqlite.clinical_engine_activation_repo import (
+            ClinicalEngineActivationRepository,
+        )
+        from src.adapters.sqlite.clinical_engine_fact_repo import (
+            ClinicalEngineFactRepository,
+        )
+
         state = ClinicalEngineActivationRepository()
-        value = {"effective_mode": ClinicalEngineFactRepository().get_mode(),
-                 "raw_mode": state.raw_mode(), "report": state.get_json("last_report"),
-                 "clinical_approval": state.get_json("approval_clinical"),
-                 "technical_approval": state.get_json("approval_technical"),
-                 "seal": state.get_json("seal"), "rollback": state.get_json("last_rollback")}
+        value = {
+            "effective_mode": ClinicalEngineFactRepository().get_mode(),
+            "raw_mode": state.raw_mode(),
+            "report": state.get_json("last_report"),
+            "clinical_approval": state.get_json("mapproval_clinical"),
+            "technical_approval": state.get_json("mapproval_technical"),
+            "seal": state.get_json("seal"),
+            "rollback": state.get_json("last_rollback"),
+        }
         if output_format == "json":
             click.echo(json.dumps(value, ensure_ascii=False, indent=2))
-        else:
-            click.echo(f"effective_mode: {value['effective_mode']}")
-            click.echo(f"raw_mode: {value['raw_mode']}")
-            click.echo(f"report: {(value['report'] or {}).get('status', 'NONE')}")
-            click.echo(f"clinical_approval: {'YES' if value['clinical_approval'] else 'NO'}")
-            click.echo(f"technical_approval: {'YES' if value['technical_approval'] else 'NO'}")
-            click.echo(f"seal: {'VALID' if value['seal'] else 'NONE'}")
+            return
+        click.echo(f"effective_mode: {value['effective_mode']}")
+        click.echo(f"raw_mode: {value['raw_mode']}")
+        click.echo(
+            f"report: {(value['report'] or {}).get('status', 'NONE')}"
+        )
+        click.echo(
+            "clinical_approval: "
+            + ("YES" if value["clinical_approval"] else "NO")
+        )
+        click.echo(
+            "technical_approval: "
+            + ("YES" if value["technical_approval"] else "NO")
+        )
+        click.echo(f"seal: {'VALID' if value['seal'] else 'NONE'}")
 
     @clinical_v2.command("approve")
-    @click.option("--role", required=True, type=click.Choice(["clinical", "technical"]))
+    @click.option(
+        "--role",
+        required=True,
+        type=click.Choice(["clinical", "technical"]),
+    )
     @click.option("--reviewer", required=True)
     @click.option("--report-hash", required=True)
     @click.option("--note", required=True)
     def clinical_v2_approve(role, reviewer, report_hash, note):
-        from src.services.clinical_engine.activation import ClinicalEngineActivationService
-        ClinicalEngineActivationService().approve(
-            role, reviewer=reviewer, report_hash=report_hash, note=note,
+        from src.services.clinical_engine.activation import (
+            ClinicalEngineActivationService,
         )
-        click.echo(f"{role} approval recorded for report {report_hash}.")
+
+        ClinicalEngineActivationService().approve(
+            role,
+            reviewer=reviewer,
+            report_hash=report_hash,
+            note=note,
+        )
+        click.echo(
+            f"{role} approval recorded for report {report_hash}."
+        )
 
     @clinical_v2.command("activate")
-    @click.option("--mode", required=True, type=click.Choice(["on_selected", "on"]))
+    @click.option(
+        "--mode",
+        required=True,
+        type=click.Choice(["on_selected", "on"]),
+    )
     @click.option("--actor", required=True)
     def clinical_v2_activate(mode, actor):
-        from src.services.clinical_engine.activation import ClinicalEngineActivationService
-        seal = ClinicalEngineActivationService().activate(mode, activated_by=actor)
+        from src.services.clinical_engine.activation import (
+            ClinicalEngineActivationService,
+        )
+
+        seal = ClinicalEngineActivationService().activate(
+            mode,
+            activated_by=actor,
+        )
         click.echo(json.dumps(seal, ensure_ascii=False, indent=2))
 
     @clinical_v2.command("verify-selected")
     @click.option("--reviewer", required=True)
     @click.option("--note", required=True)
     def clinical_v2_verify_selected(reviewer, note):
-        from src.services.clinical_engine.activation import ClinicalEngineActivationService
-        ClinicalEngineActivationService().verify_selected_rollout(reviewer=reviewer, note=note)
+        from src.services.clinical_engine.activation import (
+            ClinicalEngineActivationService,
+        )
+
+        ClinicalEngineActivationService().verify_selected_rollout(
+            reviewer=reviewer,
+            note=note,
+        )
         click.echo("Selected rollout verification recorded.")
 
     @clinical_v2.command("promote-ruleset")
     @click.option("--actor", required=True)
     def clinical_v2_promote_ruleset(actor):
-        from src.services.clinical_engine.activation import ClinicalEngineActivationService
-        ClinicalEngineActivationService().promote_compared_ruleset(promoted_by=actor)
-        click.echo("The compared SILENT ruleset was promoted to ACTIVE.")
+        from src.services.clinical_engine.activation import (
+            ClinicalEngineActivationService,
+        )
+
+        ClinicalEngineActivationService().promote_compared_ruleset(
+            promoted_by=actor
+        )
+        click.echo(
+            "The compared SILENT ruleset was promoted to ACTIVE."
+        )
 
     @clinical_v2.command("rollback")
     @click.option("--actor", required=True)
     @click.option("--reason", required=True)
     def clinical_v2_rollback(actor, reason):
-        from src.services.clinical_engine.activation import ClinicalEngineActivationService
-        ClinicalEngineActivationService().rollback(rolled_back_by=actor, reason=reason)
-        click.echo("Clinical Engine v2 rolled back to off; audit history was retained.")
+        from src.services.clinical_engine.activation import (
+            ClinicalEngineActivationService,
+        )
+
+        ClinicalEngineActivationService().rollback(
+            rolled_back_by=actor,
+            reason=reason,
+        )
+        click.echo(
+            "Clinical Engine v2 rolled back to off; audit history was retained."
+        )
+
+    @app.errorhandler(400)
+    def bad_request(_error):
+        return (
+            render_template(
+                "errors/error.html",
+                status_code=400,
+                error_title="درخواست نامعتبر",
+                error_message=(
+                    "درخواست ایمن نبود یا دادهٔ ارسالی معتبر نبود. صفحه را تازه "
+                    "کنید و دوباره تلاش کنید."
+                ),
+                active_page=None,
+            ),
+            400,
+        )
+
+    @app.errorhandler(403)
+    def forbidden(_error):
+        return (
+            render_template(
+                "errors/error.html",
+                status_code=403,
+                error_title="دسترسی غیرمجاز",
+                error_message="مجوز لازم برای این عملیات ثبت نشده است.",
+                active_page=None,
+            ),
+            403,
+        )
 
     @app.errorhandler(404)
     def not_found(_error):
-        return render_template(
-            "errors/error.html", status_code=404,
-            error_title="صفحه پیدا نشد",
-            error_message="نشانی واردشده وجود ندارد یا جابه‌جا شده است.",
-            active_page=None,
-        ), 404
+        return (
+            render_template(
+                "errors/error.html",
+                status_code=404,
+                error_title="صفحه پیدا نشد",
+                error_message=(
+                    "نشانی واردشده وجود ندارد یا جابه‌جا شده است."
+                ),
+                active_page=None,
+            ),
+            404,
+        )
 
     @app.errorhandler(500)
     def internal_error(_error):
-        return render_template(
-            "errors/error.html", status_code=500,
-            error_title="خطای غیرمنتظره",
-            error_message="درخواست کامل نشد. دوباره تلاش کنید و در صورت تکرار، مدیر سیستم را مطلع کنید.",
-            active_page=None,
-        ), 500
+        return (
+            render_template(
+                "errors/error.html",
+                status_code=500,
+                error_title="خطای غیرمنتظره",
+                error_message=(
+                    "درخواست کامل نشد. دوباره تلاش کنید و در صورت تکرار، "
+                    "مدیر سیستم را مطلع کنید."
+                ),
+                active_page=None,
+            ),
+            500,
+        )
 
-    # ---- Background scheduler (reminders + campaigns) ----
     if not app.config.get("TESTING", False):
         try:
             from src.services.scheduler import init_scheduler
+
             init_scheduler(app)
-        except Exception as e:
-            print(f"[scheduler] not started: {e}")
+        except Exception as exc:
+            print(f"[scheduler] not started: {exc}")
 
     return app
 
@@ -265,6 +436,9 @@ def open_browser():
 if __name__ == "__main__":
     application = create_app()
     threading.Timer(1.5, open_browser).start()
-    application.run(debug=False,
-                    host=("127.0.0.1" if application.config.get("PRODUCTION") else "0.0.0.0"),
-                    port=Config.PORT, use_reloader=False, threaded=True)
+    application.run(
+        host=Config.HOST,
+        port=Config.PORT,
+        debug=False,
+        use_reloader=False,
+    )

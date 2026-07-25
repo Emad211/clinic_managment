@@ -129,14 +129,17 @@ def _valid_rule():
     }
 
 
-def test_pr06_safety_artefacts_compile_and_store_as_draft_without_touching_legacy_catalog(
+def test_pr06_safety_artefacts_compile_and_store_without_v1_storage(
     storage_app,
 ):
     _, _, _, _ = storage_app
     from src.adapters.sqlite.core import get_db
 
     db = get_db()
-    legacy_before = db.execute("SELECT COUNT(*) c FROM clinical_rules").fetchone()["c"]
+    assert db.execute(
+        "SELECT 1 FROM sqlite_master "
+        "WHERE type='table' AND name='clinical_rules'"
+    ).fetchone() is None
     manifest = json.loads(
         (SAFETY_ARTIFACT_DIR / "manifest.json").read_text(encoding="utf-8")
     )
@@ -165,7 +168,10 @@ def test_pr06_safety_artefacts_compile_and_store_as_draft_without_touching_legac
     stored = repository.get_ruleset(ruleset_id)
     assert stored["status"] == "DRAFT"
     assert [item["phase"] for item in stored["members"]] == ["PREFLIGHT", "SAFETY"]
-    assert db.execute("SELECT COUNT(*) c FROM clinical_rules").fetchone()["c"] == legacy_before
+    assert db.execute(
+        "SELECT 1 FROM sqlite_master "
+        "WHERE type='table' AND name='clinical_rules'"
+    ).fetchone() is None
 
 
 @pytest.fixture()
@@ -387,8 +393,13 @@ def test_audit_is_reproducible_append_only_and_survives_backup(storage_app):
     )
 
     stored = audit.get_run(run_id)
+    stored_snapshot = json.loads(stored["fact_snapshot_json"])
+    assert stored_snapshot["facts"] == snapshot["facts"]
+    assert stored_snapshot["patient_link_id"] == patient_id
+    assert stored_snapshot["context_hash"] == stored["context_hash"]
+    assert stored_snapshot["evaluation_context"]["content_hash"] == stored["context_hash"]
     expected_snapshot = json.dumps(
-        snapshot, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+        stored_snapshot, ensure_ascii=False, sort_keys=True, separators=(",", ":")
     )
     assert stored["fact_snapshot_json"] == expected_snapshot
     assert stored["fact_snapshot_hash"] == hashlib.sha256(

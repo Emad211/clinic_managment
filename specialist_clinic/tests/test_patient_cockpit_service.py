@@ -75,7 +75,7 @@ def test_next_action_does_not_call_completed_v2_review_unreviewed():
         followups=[], refill_due=0, appointments=[], indicators=[{"latest": 1}],
     )
     assert result["tone"] == "ok"
-    assert result["title"] == "مورد فوری ثبت نشده"
+    assert result["title"] == "کار اداری باز ثبت نشده"
 
 
 def test_timeline_merges_completed_appointment_with_same_day_visit_and_sorts():

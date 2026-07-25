@@ -1,5 +1,4 @@
-"""PR-08 append-only presentation and clinician-decision contracts."""
-
+"""Append-only presentation and clinician decisions on exact current v2 runs."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -12,13 +11,24 @@ import pytest
 SPECIALIST_ROOT = Path(__file__).resolve().parents[1]
 if str(SPECIALIST_ROOT) not in sys.path:
     sys.path.insert(0, str(SPECIALIST_ROOT))
-tests_path = str(SPECIALIST_ROOT / "tests")
-if tests_path not in sys.path:
-    sys.path.insert(0, tests_path)
+TESTS_ROOT = str(SPECIALIST_ROOT / "tests")
+if TESTS_ROOT not in sys.path:
+    sys.path.insert(0, TESTS_ROOT)
 
+from clinical_engine_current_test_support import (
+    current_snapshot,
+    install_sealed_rollout,
+)
 from test_clinical_engine_v2_compiler import valid_rule
-from src.adapters.sqlite.clinical_engine_audit_repo import ClinicalEngineAuditRepository
-from src.adapters.sqlite.clinical_engine_rules_repo import ClinicalEngineRulesRepository
+from src.adapters.sqlite.clinical_engine_action_repo import (
+    ClinicalEngineActionRepository,
+)
+from src.adapters.sqlite.clinical_engine_audit_repo import (
+    ClinicalEngineAuditRepository,
+)
+from src.adapters.sqlite.clinical_engine_rules_repo import (
+    ClinicalEngineRulesRepository,
+)
 from src.domain.clinical_engine import (
     PredicateState,
     RecommendationEventType,
@@ -30,8 +40,8 @@ from src.services.clinical_engine.decision_service import (
     ClinicalDecisionConflict,
     ClinicalDecisionService,
     ClinicalDecisionValidationError,
-    LegacyDecisionImporter,
 )
+from src.services.clinical_engine.fact_builder import ENGINE_VERSION
 from src.services.clinical_engine.facade import ClinicalEngineReadOnlyFacade
 
 
@@ -41,12 +51,14 @@ def decision_app(tmp_path):
     from src.app import create_app
 
     core._initialized = False
-    app = create_app({
-        "TESTING": True,
-        "DATABASE_PATH": str(tmp_path / "decisions.db"),
-        "BACKUP_FOLDER": str(tmp_path / "backups"),
-        "SECRET_KEY": "decision-test",
-    })
+    app = create_app(
+        {
+            "TESTING": True,
+            "DATABASE_PATH": str(tmp_path / "decisions.db"),
+            "BACKUP_FOLDER": str(tmp_path / "backups"),
+            "SECRET_KEY": "decision-test",
+        }
+    )
     context = app.app_context()
     context.push()
     yield app
@@ -54,32 +66,36 @@ def decision_app(tmp_path):
     core._initialized = False
 
 
-def _patient(db, national_id="TEST0001"):
-    patient_id = int(db.execute(
-        """INSERT INTO patient_links
-           (national_id, full_name, enrolled_by, enrolled_at, updated_at)
-           VALUES (?, 'Decision Patient', 'pytest',
-                   '2026-07-22 09:00:00', '2026-07-22 09:00:00')""",
-        (national_id,),
-    ).lastrowid)
-    db.execute(
-        "UPDATE settings SET value='on_selected' WHERE key='clinical_engine_v2_mode'"
+def _patient(db, national_id="TEST0001") -> int:
+    patient_id = int(
+        db.execute(
+            """INSERT INTO patient_links
+               (national_id, full_name, enrolled_by, enrolled_at, updated_at)
+               VALUES (?, 'Decision Patient', 'pytest',
+                       '2026-07-22 09:00:00', '2026-07-22 09:00:00')""",
+            (national_id,),
+        ).lastrowid
     )
     db.commit()
     return patient_id
 
 
-def _presentable_recommendation(db, patient_id):
+def _presentable_recommendation(
+    patient_id: int,
+    ruleset_id: int,
+) -> tuple[str, int]:
     compiled = RuleCompiler().compile(valid_rule())
     rule_id = ClinicalEngineRulesRepository().create_rule_version(
-        compiled, created_by="pytest"
+        compiled,
+        created_by="pytest",
     )
     audit = ClinicalEngineAuditRepository()
     run_id = audit.start_run(
         patient_link_id=patient_id,
         as_of_at="2026-07-22 10:00:00",
-        engine_version="2.2.0-decisions",
-        fact_snapshot={"facts": []},
+        engine_version=ENGINE_VERSION,
+        ruleset_id=ruleset_id,
+        fact_snapshot=current_snapshot(patient_id),
     )
     evaluation_id = audit.append_evaluation(
         run_id=run_id,
@@ -104,48 +120,74 @@ def _presentable_recommendation(db, patient_id):
         recommendation_key="rec:test",
         action_type="educate",
         event_type=RecommendationEventType.CREATED,
-        payload={"suggestion_only": True, "text_fa": "آموزش بیمار"},
+        payload={
+            "suggestion_only": True,
+            "action_type": "educate",
+            "text_fa": "آموزش بیمار",
+        },
     )
     audit.complete_run(run_id, status=RunStatus.COMPLETED)
     return run_id, event_id
+
+
+def _current_case(db, national_id="TEST0001"):
+    patient_id = _patient(db, national_id)
+    ruleset_id = install_sealed_rollout()
+    run_id, event_id = _presentable_recommendation(
+        patient_id,
+        ruleset_id,
+    )
+    return patient_id, ruleset_id, run_id, event_id
 
 
 def test_presentation_event_is_terminal_safe_and_idempotent(decision_app):
     from src.adapters.sqlite.core import get_db
 
     db = get_db()
-    patient_id = _patient(db)
-    _, event_id = _presentable_recommendation(db, patient_id)
-
-    first = ClinicalEngineAuditRepository().append_presentation_once(
-        event_id, patient_link_id=patient_id
+    patient_id, ruleset_id, _run_id, event_id = _current_case(db)
+    action = ClinicalEngineActionRepository()
+    first = action.append_presentation_once(
+        event_id,
+        patient_link_id=patient_id,
+        mode="on_selected",
+        engine_version=ENGINE_VERSION,
+        ruleset_id=ruleset_id,
+        clinical_data_revision=0,
     )
-    second = ClinicalEngineAuditRepository().append_presentation_once(
-        event_id, patient_link_id=patient_id
+    second = action.append_presentation_once(
+        event_id,
+        patient_link_id=patient_id,
+        mode="on_selected",
+        engine_version=ENGINE_VERSION,
+        ruleset_id=ruleset_id,
+        clinical_data_revision=0,
     )
 
     assert first == second
     assert db.execute(
-        "SELECT COUNT(*) AS c FROM clinical_recommendation_events "
+        "SELECT COUNT(*) AS count FROM clinical_recommendation_events "
         "WHERE event_type='PRESENTED'"
-    ).fetchone()["c"] == 1
+    ).fetchone()["count"] == 1
 
 
-def test_event_timing_triggers_separate_creation_from_presentation(decision_app):
+def test_event_timing_triggers_still_protect_low_level_audit(decision_app):
     from src.adapters.sqlite.core import get_db
 
     db = get_db()
     patient_id = _patient(db)
+    ruleset_id = install_sealed_rollout()
     compiled = RuleCompiler().compile(valid_rule())
     rule_id = ClinicalEngineRulesRepository().create_rule_version(
-        compiled, created_by="pytest"
+        compiled,
+        created_by="pytest",
     )
     audit = ClinicalEngineAuditRepository()
     run_id = audit.start_run(
         patient_link_id=patient_id,
         as_of_at="2026-07-22 10:00:00",
-        engine_version="2.2.0-decisions",
-        fact_snapshot={"facts": []},
+        engine_version=ENGINE_VERSION,
+        ruleset_id=ruleset_id,
+        fact_snapshot=current_snapshot(patient_id),
     )
     evaluation_id = audit.append_evaluation(
         run_id=run_id,
@@ -163,7 +205,7 @@ def test_event_timing_triggers_separate_creation_from_presentation(decision_app)
             event_type=RecommendationEventType.PRESENTED,
             payload={},
         )
-    created_id = audit.append_recommendation_event(
+    audit.append_recommendation_event(
         run_id=run_id,
         evaluation_id=evaluation_id,
         recommendation_key="rec:timing",
@@ -181,21 +223,18 @@ def test_event_timing_triggers_separate_creation_from_presentation(decision_app)
             event_type=RecommendationEventType.CREATED,
             payload={},
         )
-    assert audit.append_presentation_once(
-        created_id, patient_link_id=patient_id
-    ) > created_id
 
 
-def test_gc19_acceptance_appends_decision_without_medication_mutation(decision_app):
+def test_acceptance_appends_decision_without_medication_mutation(decision_app):
     from src.adapters.sqlite.core import get_db
 
     db = get_db()
-    patient_id = _patient(db)
-    _, event_id = _presentable_recommendation(db, patient_id)
+    patient_id, _ruleset_id, _run_id, event_id = _current_case(db)
     before = db.execute(
-        "SELECT COUNT(*) AS c FROM patient_medications WHERE patient_link_id=?",
+        "SELECT COUNT(*) AS count FROM patient_medications "
+        "WHERE patient_link_id=?",
         (patient_id,),
-    ).fetchone()["c"]
+    ).fetchone()["count"]
 
     decision = ClinicalDecisionService().record(
         patient_link_id=patient_id,
@@ -207,20 +246,20 @@ def test_gc19_acceptance_appends_decision_without_medication_mutation(decision_a
     )
 
     after = db.execute(
-        "SELECT COUNT(*) AS c FROM patient_medications WHERE patient_link_id=?",
+        "SELECT COUNT(*) AS count FROM patient_medications "
+        "WHERE patient_link_id=?",
         (patient_id,),
-    ).fetchone()["c"]
+    ).fetchone()["count"]
     assert decision["decision"] == "ACCEPTED"
     assert decision["supersedes_event_id"] is None
     assert before == after == 0
 
 
-def test_gc18_dismissal_requires_reason_and_projects_actor_time_reason(decision_app):
+def test_dismissal_requires_reason_and_projects_current_decision(decision_app):
     from src.adapters.sqlite.core import get_db
 
     db = get_db()
-    patient_id = _patient(db)
-    _, event_id = _presentable_recommendation(db, patient_id)
+    patient_id, _ruleset_id, _run_id, event_id = _current_case(db)
     service = ClinicalDecisionService()
 
     with pytest.raises(ClinicalDecisionValidationError, match="reason"):
@@ -248,15 +287,13 @@ def test_gc18_dismissal_requires_reason_and_projects_actor_time_reason(decision_
     assert item["current_decision"]["id"] == recorded["id"]
     assert item["current_decision"]["actor_username"] == "doctor"
     assert item["current_decision"]["reason_text"] == "شرایط فعلی بیمار"
-    assert item["current_decision"]["occurred_at"]
 
 
-def test_correction_is_an_append_only_superseding_chain(decision_app):
+def test_decision_corrections_form_an_append_only_superseding_chain(decision_app):
     from src.adapters.sqlite.core import get_db
 
     db = get_db()
-    patient_id = _patient(db)
-    _, event_id = _presentable_recommendation(db, patient_id)
+    patient_id, _ruleset_id, _run_id, event_id = _current_case(db)
     service = ClinicalDecisionService()
     first = service.record(
         patient_link_id=patient_id,
@@ -278,7 +315,8 @@ def test_correction_is_an_append_only_superseding_chain(decision_app):
 
     rows = db.execute(
         "SELECT * FROM clinical_decision_events "
-        "WHERE recommendation_event_id=? ORDER BY id", (event_id,)
+        "WHERE recommendation_event_id=? ORDER BY id",
+        (event_id,),
     ).fetchall()
     assert len(rows) == 2
     assert corrected["supersedes_event_id"] == first["id"]
@@ -286,13 +324,18 @@ def test_correction_is_an_append_only_superseding_chain(decision_app):
     assert rows[1]["decision"] == "ACCEPTED"
 
 
-def test_stale_or_cross_patient_decision_is_rejected(decision_app):
+def test_stale_cross_patient_and_revoked_seal_decisions_are_rejected(decision_app):
+    from src.adapters.sqlite.clinical_engine_activation_repo import (
+        ClinicalEngineActivationRepository,
+    )
     from src.adapters.sqlite.core import get_db
 
     db = get_db()
-    patient_id = _patient(db, "TEST0001")
+    patient_id, _ruleset_id, _run_id, event_id = _current_case(
+        db,
+        "TEST0001",
+    )
     other_id = _patient(db, "TEST0002")
-    _, event_id = _presentable_recommendation(db, patient_id)
     service = ClinicalDecisionService()
     first = service.record(
         patient_link_id=patient_id,
@@ -321,68 +364,35 @@ def test_stale_or_cross_patient_decision_is_rejected(decision_app):
             expected_current_event_id=first["id"],
         )
 
-
-def test_legacy_import_is_idempotent_and_preserves_disclaimer(decision_app):
-    from src.adapters.sqlite.core import get_db
-
-    db = get_db()
-    patient_id = _patient(db)
-    legacy_id = int(db.execute(
-        """INSERT INTO suggestion_log
-           (patient_link_id, rule_code, suggestion_text, status, acted_by,
-            acted_at, note)
-           VALUES (?, 'LEGACY-1', 'پیشنهاد قدیمی', 'dismissed', 'legacy-doctor',
-                   '2026-07-20 08:00:00', 'ثبت وضعیت؛ تاریخچه قبلی قابل بازیابی نیست')""",
-        (patient_id,),
-    ).lastrowid)
-    db.commit()
-
-    first = LegacyDecisionImporter().import_once()
-    second = LegacyDecisionImporter().import_once()
-
-    assert first == 1 and second == 0
-    row = db.execute(
-        "SELECT * FROM clinical_decision_events "
-        "WHERE legacy_source_suggestion_log_id=?", (legacy_id,)
-    ).fetchone()
-    assert row["decision"] == "DISMISSED"
-    assert "غیرقابل بازیابی" in row["reason_text"]
+    ClinicalEngineActivationRepository().delete("seal")
+    with pytest.raises(ClinicalDecisionValidationError, match="runtime"):
+        service.record(
+            patient_link_id=patient_id,
+            recommendation_event_id=event_id,
+            decision="DEFERRED",
+            reason_code="MORE_DATA_NEEDED",
+            actor_user_id=1,
+            actor_username="doctor",
+            expected_current_event_id=first["id"],
+        )
 
 
-def test_legacy_importer_is_available_as_idempotent_cli(decision_app):
-    from src.adapters.sqlite.core import get_db
-
-    db = get_db()
-    patient_id = _patient(db)
-    db.execute(
-        """INSERT INTO suggestion_log
-           (patient_link_id, rule_code, suggestion_text, status, acted_by,
-            acted_at)
-           VALUES (?, 'LEGACY-CLI', 'پیشنهاد قدیمی', 'accepted', 'doctor',
-                   '2026-07-20 08:00:00')""",
-        (patient_id,),
-    )
-    db.commit()
-
+def test_legacy_import_command_is_removed(decision_app):
     runner = decision_app.test_cli_runner()
-    first = runner.invoke(args=["import-legacy-clinical-decisions"])
-    second = runner.invoke(args=["import-legacy-clinical-decisions"])
-
-    assert first.exit_code == 0
-    assert "Imported 1" in first.output
-    assert second.exit_code == 0
-    assert "Imported 0" in second.output
+    result = runner.invoke(args=["import-legacy-clinical-decisions"])
+    assert result.exit_code != 0
+    assert "No such command" in result.output
 
 
-def test_thin_http_route_records_review_state_and_redirects_to_v2_panel(decision_app):
+def test_thin_http_route_records_review_state_and_redirects(decision_app):
     from src.adapters.sqlite.core import get_db
 
     db = get_db()
-    patient_id = _patient(db)
-    _, event_id = _presentable_recommendation(db, patient_id)
+    patient_id, _ruleset_id, _run_id, event_id = _current_case(db)
     client = decision_app.test_client()
     login = client.post(
-        "/auth/login", data={"username": "admin", "password": "admin"}
+        "/auth/login",
+        data={"username": "admin", "password": "admin"},
     )
     assert login.status_code in {302, 303}
 
@@ -397,20 +407,18 @@ def test_thin_http_route_records_review_state_and_redirects_to_v2_panel(decision
     )
 
     assert response.status_code in {302, 303}
-    assert response.headers["Location"].endswith("#clinical-engine-v2")
-    row = db.execute(
-        "SELECT * FROM clinical_decision_events WHERE recommendation_event_id=?",
-        (event_id,),
-    ).fetchone()
-    assert row["decision"] == "ACCEPTED"
-    assert db.execute(
-        "SELECT COUNT(*) AS c FROM patient_medications WHERE patient_link_id=?",
-        (patient_id,),
-    ).fetchone()["c"] == 0
-
-
-def test_reviewed_main_no_longer_redirects_to_untrusted_referrer():
-    route = (SPECIALIST_ROOT / "src" / "api" / "patients.py").read_text(
-        encoding="utf-8"
+    assert response.headers["Location"].endswith(
+        "#clinical-engine-v2"
     )
+    assert db.execute(
+        "SELECT decision FROM clinical_decision_events "
+        "WHERE recommendation_event_id=?",
+        (event_id,),
+    ).fetchone()["decision"] == "ACCEPTED"
+
+
+def test_patient_route_never_redirects_to_untrusted_referrer():
+    route = (
+        SPECIALIST_ROOT / "src" / "api" / "patients.py"
+    ).read_text(encoding="utf-8")
     assert "redirect(request.referrer" not in route

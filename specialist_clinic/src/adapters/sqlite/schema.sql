@@ -157,7 +157,7 @@ CREATE TABLE IF NOT EXISTS followup_tasks (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     patient_link_id INTEGER NOT NULL,
     due_date TEXT,                  -- gregorian YYYY-MM-DD
-    reason TEXT,                    -- 'refill','uncontrolled','lapsed','visit_due','manual'
+    reason TEXT,                    -- 'refill','lapsed','visit_due','manual' or governed v2 task metadata
     detail TEXT,
     status TEXT NOT NULL DEFAULT 'open',  -- open, done, dismissed
     assigned_to TEXT,
@@ -178,16 +178,6 @@ CREATE TABLE IF NOT EXISTS followup_tasks (
     FOREIGN KEY (source_recommendation_event_id) REFERENCES clinical_recommendation_events(id)
 );
 
--- Care protocols (clinical decision support: periodic standard checks)
-CREATE TABLE IF NOT EXISTS care_protocols (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    condition_id INTEGER,
-    name TEXT NOT NULL,
-    interval_months INTEGER NOT NULL,
-    is_active INTEGER DEFAULT 1,
-    FOREIGN KEY (condition_id) REFERENCES conditions(id)
-);
-
 -- SMS templates
 CREATE TABLE IF NOT EXISTS sms_templates (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -202,7 +192,7 @@ CREATE TABLE IF NOT EXISTS sms_campaigns (
     name TEXT NOT NULL,
     template_id INTEGER,
     body TEXT,
-    segment TEXT,                   -- 'all','diabetes','hypertension','uncontrolled','lapsed','refill_due'
+    segment TEXT,                   -- descriptive/admin segments: all, condition, lapsed, refill_due
     campaign_type TEXT NOT NULL DEFAULT 'info',  -- 'info','wallet_credit','reminder'
     credit_amount INTEGER DEFAULT 0,             -- wallet credit granted per recipient (Toman)
     credit_expires_days INTEGER,                 -- optional credit expiry
@@ -280,12 +270,12 @@ CREATE TABLE IF NOT EXISTS engagement_events (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     event_key TEXT UNIQUE NOT NULL,
     label TEXT NOT NULL,
-    category TEXT NOT NULL DEFAULT 'clinical',   -- operational | clinical | marketing
+    category TEXT NOT NULL DEFAULT 'operational', -- operational | marketing
     channel TEXT NOT NULL DEFAULT 'worklist',    -- sms | worklist | both | off
     sms_template TEXT,                           -- {name} placeholder; used when channel includes sms
     lead_days INTEGER NOT NULL DEFAULT 0,        -- fire this many days before the due date
     cooldown_days INTEGER NOT NULL DEFAULT 30,   -- min days between repeats of this event per patient
-    source_action TEXT,                          -- rule action_type that feeds this event (NULL = time-based/manual)
+    source_action TEXT,                          -- retained audit metadata; governed v2 tasks use their own worklist path
     priority INTEGER NOT NULL DEFAULT 100,
     is_active INTEGER NOT NULL DEFAULT 1,
     notes TEXT
@@ -306,17 +296,12 @@ CREATE TABLE IF NOT EXISTS engagement_dispatch (
 CREATE INDEX IF NOT EXISTS idx_engagement_dispatch ON engagement_dispatch (patient_link_id, event_key);
 
 -- Seed the default event -> channel routing (manager-editable afterwards).
--- Routine outreach -> SMS; lapsed -> SMS + worklist; uncontrolled / red-flag -> worklist (phone call).
+-- Administrative outreach only. Clinical alerts and recommendations are projected by Clinical Engine v2.
 INSERT OR IGNORE INTO engagement_events
   (event_key, label, category, channel, sms_template, lead_days, cooldown_days, source_action, priority) VALUES
   ('appointment_reminder','یادآوری نوبت','operational','sms','سلام {name} عزیز، یادآوری نوبت شما در کلینیک تخصصی. لطفاً در زمان مقرر مراجعه فرمایید.',1,1,NULL,10),
   ('refill_due','یادآوری تجدید دارو','operational','sms','سلام {name} عزیز، داروی شما رو به اتمام است. جهت تمدید نسخه با کلینیک تماس بگیرید.',7,25,NULL,20),
-  ('monitoring_due','سررسید آزمایش پایش','clinical','sms','سلام {name} عزیز، زمان آزمایشِ پایشِ دوره‌ای شما فرارسیده است. لطفاً نوبت بگیرید.',0,60,'create_followup',30),
-  ('screening_due','سررسید غربالگری','clinical','sms','سلام {name} عزیز، زمان غربالگریِ دوره‌ای شما فرارسیده است. برای حفظ سلامتی نوبت بگیرید.',0,180,'schedule_screening',40),
-  ('vaccine_due','سررسید واکسن','clinical','sms','سلام {name} عزیز، یک واکسنِ توصیه‌شده برای شما سررسید شده است. لطفاً با کلینیک هماهنگ کنید.',0,180,'vaccine',50),
-  ('lapsed','بدون مراجعه اخیر','clinical','both','سلام {name} عزیز، مدتی است شما را در کلینیک ندیده‌ایم. برای ادامهٔ مراقبت نوبت بگیرید.',0,60,NULL,60),
-  ('uncontrolled','کنترل‌نشده','clinical','worklist',NULL,0,14,NULL,70),
-  ('red_flag','هشدار فوری بالینی','clinical','worklist',NULL,0,1,'redflag',80),
+  ('lapsed','بدون مراجعه اخیر','operational','both','سلام {name} عزیز، مدتی است شما را در کلینیک ندیده‌ایم. برای ادامهٔ مراقبت نوبت بگیرید.',0,60,NULL,60),
   ('visit_invite','دعوت به نوبت (پیامکی)','operational','sms','سلام {name} عزیز، برای ادامهٔ روند درمان لطفاً جهت تعیینِ نوبتِ ویزیت با کلینیک تماس بگیرید.',0,7,NULL,15),
   -- Phase 2: invoice-triggered outreach (thank-you after invoice close + procedure follow-up invites). Manager-editable; gated by the approval queue.
   ('thank_you','تشکر پس از مراجعه','operational','sms','سلام {name} عزیز، از مراجعه و اعتمادِ شما به کلینیک سپاسگزاریم. سلامت و تندرست باشید.',0,1,NULL,16),
@@ -326,6 +311,15 @@ INSERT OR IGNORE INTO engagement_events
   -- Manager-editable; approval-gated; deliberately generic wording (no clinical claims / no drug names).
   ('lab_consult_invite','دعوتِ آزمایش و مشاوره','operational','sms','سلام {name} عزیز، طبقِ توصیهٔ پزشک برای انجامِ آزمایش و مشاورهٔ پیگیری لطفاً جهتِ تعیینِ نوبت با کلینیک تماس بگیرید.',0,14,NULL,19),
   ('bp_glucose_invite','یادآوریِ قند و فشار','operational','sms','سلام {name} عزیز، برای اندازه‌گیریِ دوره‌ایِ قند و فشارِ خون لطفاً جهتِ هماهنگیِ نوبت با کلینیک تماس بگیرید.',0,14,NULL,19);
+
+-- Retire the pre-v2 threshold-driven worklist event on copied databases.
+UPDATE engagement_events
+SET is_active=0,
+    channel='off',
+    notes=COALESCE(notes,'') || '\nRetired: clinical interpretation moved to Clinical Engine v2.'
+WHERE event_key IN (
+    'uncontrolled','monitoring_due','screening_due','vaccine_due','red_flag'
+);
 
 -- Patient public-card access tokens (ADR-0004). Per-patient, unguessable, short-lived,
 -- revocable. The PUBLIC card route only ever READS via get_by_token; issue/revoke are
@@ -381,11 +375,6 @@ INSERT OR IGNORE INTO conditions (id, name, code, is_chronic, display_order, des
  (5, 'تیروئید', 'thyroid', 1, 50, 'پایش TSH و تنظیم درمان تیروئید.', 'i-stethoscope', 'ok');
 
 -- Seed care protocols (diabetes + hypertension standard periodic checks)
-INSERT OR IGNORE INTO care_protocols (id, condition_id, name, interval_months) VALUES (1, 1, 'آزمایش HbA1c', 3);
-INSERT OR IGNORE INTO care_protocols (id, condition_id, name, interval_months) VALUES (2, 1, 'معاینه فوندوس چشم', 12);
-INSERT OR IGNORE INTO care_protocols (id, condition_id, name, interval_months) VALUES (3, 1, 'آزمایش عملکرد کلیه', 12);
-INSERT OR IGNORE INTO care_protocols (id, condition_id, name, interval_months) VALUES (4, 2, 'کنترل فشار خون', 1);
-INSERT OR IGNORE INTO care_protocols (id, condition_id, name, interval_months) VALUES (5, 2, 'نوار قلب (ECG)', 12);
 
 -- Seed SMS templates
 INSERT OR IGNORE INTO sms_templates (id, name, body) VALUES (1, 'یادآوری نوبت', 'سلام {name} عزیز، یادآوری نوبت شما در کلینیک تخصصی. لطفاً در زمان مقرر مراجعه فرمایید.');
@@ -393,48 +382,40 @@ INSERT OR IGNORE INTO sms_templates (id, name, body) VALUES (2, 'یادآوری 
 INSERT OR IGNORE INTO sms_templates (id, name, body) VALUES (3, 'دعوت به چکاپ دوره‌ای', 'سلام {name} عزیز، زمان چکاپ دوره‌ای شما فرارسیده است. برای حفظ سلامتی نوبت بگیرید.');
 
 -- ============================================================================
--- Clinical decision rules engine (editable by the manager at /manager/rules)
--- Drives indicator metadata, red-flag thresholds, chart target lines,
--- per-disease dashboards, and the weighted risk score.
--- Source defaults: ADA Standards of Care (see docs/clinical_reference.md).
+-- Descriptive measurement catalog.
+-- Supplies labels, units, categories, disease applicability and display ordering.
+-- It MUST NOT contain or drive clinical thresholds, treatment targets, risk scores,
+-- alerts or recommendations; those belong exclusively to Clinical Engine v2 rules.
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS clinical_indicators (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    key TEXT UNIQUE NOT NULL,          -- vital_readings.type key
+    key TEXT UNIQUE NOT NULL,
     label TEXT NOT NULL,
     unit TEXT,
-    category TEXT NOT NULL DEFAULT 'other',  -- glycemic, bp, lipid, kidney, anthro, other
-    direction TEXT NOT NULL DEFAULT 'high',  -- 'high' = higher worse, 'low' = lower worse
-    warn REAL,                         -- borderline threshold (NULL = no flag)
-    danger REAL,                       -- red-flag threshold (NULL = no flag)
-    target REAL,                       -- goal value, drawn as chart reference line
-    goal_low REAL,                     -- optional goal range lower bound
-    goal_high REAL,                    -- optional goal range upper bound
-    conditions TEXT NOT NULL DEFAULT 'all',  -- comma list of condition codes, or 'all'
-    risk_weight INTEGER NOT NULL DEFAULT 1,  -- contribution to the weighted risk score
-    is_vital INTEGER NOT NULL DEFAULT 1,     -- show in vital entry / dashboard
+    category TEXT NOT NULL DEFAULT 'other',
+    conditions TEXT NOT NULL DEFAULT 'all',
+    is_vital INTEGER NOT NULL DEFAULT 1,
     display_order INTEGER NOT NULL DEFAULT 100,
     is_active INTEGER NOT NULL DEFAULT 1,
     notes TEXT
 );
 
--- Seed indicators (ADA-based defaults; manager may edit afterwards)
 INSERT OR IGNORE INTO clinical_indicators
-  (key, label, unit, category, direction, warn, danger, target, goal_low, goal_high, conditions, risk_weight, display_order, notes) VALUES
-  ('hba1c',        'HbA1c',              '%',          'glycemic', 'high', 7.0,  8.0,  7.0,  NULL, NULL, 'diabetes',                         3, 10, 'هدف اکثر بزرگسالان <۷٪؛ آسان‌گیرانه <۸٪'),
-  ('fbs',          'قند ناشتا (FBS)',    'mg/dL',      'glycemic', 'high', 130,  180,  130,  80,   130,  'diabetes',                         2, 20, 'هدف ناشتا ۸۰–۱۳۰'),
-  ('ppg',          'قند ۲ ساعت پس‌غذا',  'mg/dL',      'glycemic', 'high', 180,  250,  180,  NULL, NULL, 'diabetes',                         1, 25, 'اوج پس‌غذا <۱۸۰'),
-  ('bp_systolic',  'فشار سیستول',        'mmHg',       'bp',       'high', 130,  140,  130,  NULL, NULL, 'diabetes,hypertension',            2, 30, 'هدف <۱۳۰/۸۰'),
-  ('bp_diastolic', 'فشار دیاستول',       'mmHg',       'bp',       'high', 80,   90,   80,   NULL, NULL, 'diabetes,hypertension',            1, 40, 'هدف <۱۳۰/۸۰'),
-  ('pulse',        'ضربان قلب',          'bpm',        'bp',       'high', 100,  120,  NULL, 60,   100,  'all',                              0, 110,'اطلاعاتی'),
-  ('ldl',          'LDL کلسترول',        'mg/dL',      'lipid',    'high', 70,   100,  70,   NULL, NULL, 'diabetes,hypertension,hyperlipidemia', 2, 50, 'هدف فردی: <۷۰ پرخطر، <۵۵ ASCVD مستقر'),
-  ('hdl',          'HDL کلسترول',        'mg/dL',      'lipid',    'low',  40,   35,   NULL, 40,   NULL, 'all',                              1, 60, 'هرچه بالاتر بهتر'),
-  ('triglyceride', 'تری‌گلیسرید',        'mg/dL',      'lipid',    'high', 150,  500,  150,  NULL, NULL, 'diabetes,hypertension,hyperlipidemia', 1, 70, '≥۵۰۰ خطر پانکراتیت'),
-  ('egfr',         'eGFR (عملکرد کلیه)', 'mL/min',     'kidney',   'low',  60,   30,   NULL, 60,   NULL, 'diabetes,hypertension,ckd',        3, 80, 'هرچه بالاتر بهتر؛ <۳۰ پرخطر'),
-  ('uacr',         'UACR (آلبومین ادرار)','mg/g',      'kidney',   'high', 30,   300,  30,   NULL, NULL, 'diabetes,hypertension,ckd',        2, 90, '۳۰–۲۹۹ میکرو، ≥۳۰۰ ماکروآلبومینوری'),
-  ('weight',       'وزن',                'kg',         'anthro',   'high', NULL, NULL, NULL, NULL, NULL, 'all',                              0, 100,'پایش روند'),
-  ('bmi',          'BMI',                '',           'anthro',   'high', 25,   30,   NULL, NULL, 25,   'all',                              1, 105,'اضافه‌وزن ≥۲۵، چاقی ≥۳۰'),
-  ('tsh',          'TSH (تیروئید)',      'mIU/L',      'other',    'high', 4.5,  10,   2.5,  0.4,  4.0,  'thyroid',                          1, 115,'بالا=کم‌کاری؛ پایین (<۰.۴)=پرکاری');
+  (key, label, unit, category, conditions, display_order, notes) VALUES
+  ('hba1c',        'HbA1c',               '%',            'glycemic', 'diabetes',                              10, 'نمایش روند'),
+  ('fbs',          'قند ناشتا (FBS)',     'mg/dL',        'glycemic', 'diabetes',                              20, 'نمایش روند'),
+  ('ppg',          'قند ۲ ساعت پس‌غذا',   'mg/dL',        'glycemic', 'diabetes',                              25, 'نمایش روند'),
+  ('bp_systolic',  'فشار سیستول',         'mmHg',         'bp',       'diabetes,hypertension',                 30, 'نمایش روند'),
+  ('bp_diastolic', 'فشار دیاستول',        'mmHg',         'bp',       'diabetes,hypertension',                 40, 'نمایش روند'),
+  ('pulse',        'ضربان قلب',           'bpm',          'bp',       'all',                                  110, 'نمایش روند'),
+  ('ldl',          'LDL کلسترول',         'mg/dL',        'lipid',    'diabetes,hypertension,hyperlipidemia',  50, 'نمایش روند'),
+  ('hdl',          'HDL کلسترول',         'mg/dL',        'lipid',    'all',                                   60, 'نمایش روند'),
+  ('triglyceride', 'تری‌گلیسرید',         'mg/dL',        'lipid',    'diabetes,hypertension,hyperlipidemia',  70, 'نمایش روند'),
+  ('egfr',         'eGFR (عملکرد کلیه)',  'mL/min/1.73m²','kidney',   'diabetes,hypertension,ckd',             80, 'نمایش روند'),
+  ('uacr',         'UACR (آلبومین ادرار)','mg/g',         'kidney',   'diabetes,hypertension,ckd',             90, 'نمایش روند'),
+  ('weight',       'وزن',                 'kg',           'anthro',   'all',                                  100, 'نمایش روند'),
+  ('bmi',          'BMI',                 '',             'anthro',   'all',                                  105, 'نمایش روند'),
+  ('tsh',          'TSH (تیروئید)',       'mIU/L',        'other',    'thyroid',                              115, 'نمایش روند');
 
 -- ============================================================================
 -- Medication events: objective timeline of start / stop / dose changes.
@@ -458,7 +439,7 @@ CREATE INDEX IF NOT EXISTS idx_medevents_patient ON medication_events (patient_l
 -- ============================================================================
 -- Clinical decision inputs (ADA T2D engines) — see docs/treatment_engine_plan.md
 -- flag_catalog: editable catalog of categorical/boolean clinical inputs (ADA §2)
--- patient_flags: per-patient values for those inputs
+-- clinical_flag_events: typed append-only per-patient history
 -- drug_classes : editable catalog mapping medications to a pharmacologic class
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS flag_catalog (
@@ -466,24 +447,60 @@ CREATE TABLE IF NOT EXISTS flag_catalog (
     flag_key TEXT UNIQUE NOT NULL,
     label TEXT NOT NULL,
     flag_type TEXT NOT NULL DEFAULT 'bool',   -- bool | enum | date | text
-    options TEXT,                             -- enum: "value|label,value|label,..."
-    category TEXT NOT NULL DEFAULT 'other',    -- cardiac|renal|risk|hepatic|repro|lifestyle|functional|history|exam
+    options TEXT,                             -- retired input format; migration canonicalizes it
+    options_json TEXT,                        -- canonical [{"value","label"}, ...]
+    definition_hash TEXT,                     -- semantic identity (key/type/options/active/version)
+    definition_version INTEGER NOT NULL DEFAULT 1,
+    category TEXT NOT NULL DEFAULT 'other',   -- cardiac|renal|risk|hepatic|repro|lifestyle|functional|history|exam
     display_order INTEGER NOT NULL DEFAULT 100,
     is_active INTEGER NOT NULL DEFAULT 1,
+    record_section TEXT,
     notes TEXT
 );
 
-CREATE TABLE IF NOT EXISTS patient_flags (
+-- Longitudinal, typed and append-only decision inputs. Audit triggers and strict
+-- value/supersession guards are installed by clinical_flag_history_schema.py.
+CREATE TABLE IF NOT EXISTS clinical_flag_events (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     patient_link_id INTEGER NOT NULL,
-    flag_key TEXT NOT NULL,
-    value TEXT,
-    recorded_by TEXT,
-    updated_at TIMESTAMP DEFAULT (datetime('now', '+3 hours', '+30 minutes')),
-    UNIQUE (patient_link_id, flag_key),
-    FOREIGN KEY (patient_link_id) REFERENCES patient_links(id)
+    flag_key TEXT NOT NULL CHECK (length(trim(flag_key)) > 0),
+    status TEXT NOT NULL CHECK (status IN ('PRESENT','UNKNOWN','NOT_ASKED')),
+    value_json TEXT,
+    flag_type TEXT NOT NULL CHECK (flag_type IN ('bool','enum','date','text')),
+    definition_hash TEXT NOT NULL CHECK (length(definition_hash)=64),
+    verification TEXT NOT NULL DEFAULT 'CONFIRMED'
+      CHECK (verification IN ('CONFIRMED','PROVISIONAL','UNVERIFIED','REFUTED')),
+    source TEXT NOT NULL DEFAULT 'clinician'
+      CHECK (source IN ('clinician','patient','caregiver','imported','system')),
+    source_record_id TEXT,
+    actor_user_id INTEGER,
+    actor_username TEXT NOT NULL CHECK (length(trim(actor_username)) > 0),
+    effective_at TEXT NOT NULL CHECK (datetime(effective_at) IS NOT NULL),
+    recorded_at TEXT NOT NULL CHECK (datetime(recorded_at) IS NOT NULL),
+    batch_id TEXT NOT NULL CHECK (length(trim(batch_id)) > 0),
+    supersedes_event_id INTEGER,
+    note TEXT,
+    CHECK (datetime(effective_at) <= datetime(recorded_at)),
+    CHECK (
+      (status='PRESENT' AND value_json IS NOT NULL AND json_valid(value_json))
+      OR (status<>'PRESENT' AND value_json IS NULL)
+    ),
+    FOREIGN KEY (patient_link_id) REFERENCES patient_links(id),
+    FOREIGN KEY (flag_key) REFERENCES flag_catalog(flag_key),
+    FOREIGN KEY (actor_user_id) REFERENCES users(id),
+    FOREIGN KEY (supersedes_event_id) REFERENCES clinical_flag_events(id)
 );
-CREATE INDEX IF NOT EXISTS idx_patient_flags ON patient_flags (patient_link_id);
+CREATE INDEX IF NOT EXISTS idx_clinical_flag_events_projection
+    ON clinical_flag_events(patient_link_id, flag_key, recorded_at DESC, id DESC);
+CREATE INDEX IF NOT EXISTS idx_clinical_flag_events_effective
+    ON clinical_flag_events(patient_link_id, effective_at, recorded_at, id);
+CREATE INDEX IF NOT EXISTS idx_clinical_flag_events_batch
+    ON clinical_flag_events(patient_link_id, batch_id, id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_clinical_flag_events_one_per_batch
+    ON clinical_flag_events(patient_link_id, batch_id, flag_key);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_clinical_flag_events_one_child
+    ON clinical_flag_events(supersedes_event_id)
+    WHERE supersedes_event_id IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS drug_classes (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -495,74 +512,27 @@ CREATE TABLE IF NOT EXISTS drug_classes (
 );
 
 -- Seed clinical-flag catalog (ADA §2 decision inputs)
-INSERT OR IGNORE INTO flag_catalog (flag_key, label, flag_type, options, category, display_order) VALUES
- ('ascvd', 'سابقهٔ ASCVD (بیماری قلبی-عروقی آترواسکلروتیک)', 'bool', NULL, 'cardiac', 10),
- ('cvd_high_risk', 'ریسک بسیار بالای قلبی-عروقی (≥۵۵ سال + ≥۲ ریسک‌فاکتور)', 'bool', NULL, 'cardiac', 20),
- ('hf', 'نارسایی قلب (HF)', 'bool', NULL, 'cardiac', 30),
- ('hf_type', 'نوع نارسایی قلب', 'enum', 'HFrEF|EF کاهش‌یافته,HFpEF|EF حفظ‌شده,unknown|نامشخص', 'cardiac', 40),
- ('hf_symptomatic', 'نارسایی قلبِ علامت‌دار', 'bool', NULL, 'cardiac', 50),
- ('ckd_stage_g', 'مرحلهٔ CKD بر اساس eGFR', 'enum', 'G1|G1 (≥۹۰),G2|G2 (۶۰–۸۹),G3a|G3a (۴۵–۵۹),G3b|G3b (۳۰–۴۴),G4|G4 (۱۵–۲۹),G5|G5 (<۱۵)', 'renal', 60),
- ('ckd_stage_a', 'مرحلهٔ آلبومینوری', 'enum', 'A1|A1 (<۳۰),A2|A2 (۳۰–۲۹۹),A3|A3 (≥۳۰۰)', 'renal', 70),
- ('hypo_risk', 'ریسک هیپوگلیسمی', 'enum', 'low|پایین,atrisk|در معرض,high|بالا', 'risk', 80),
- ('masld', 'کبد چربِ متابولیک (MASLD)', 'bool', NULL, 'hepatic', 90),
- ('mash_biopsy', 'MASH اثبات‌شده / ریسک بالای فیبروز', 'bool', NULL, 'hepatic', 100),
- ('pregnancy', 'بارداری', 'bool', NULL, 'repro', 110),
- ('childbearing_no_contraception', 'توان بارداری بدون پیشگیری', 'bool', NULL, 'repro', 120),
- ('smoking', 'مصرف دخانیات/ویپ', 'enum', 'never|هرگز,former|ترک‌کرده,current|فعلی,vape|ویپ', 'lifestyle', 130),
- ('frailty', 'وضعیت سلامت/فراژیلیتی (سالمند)', 'enum', 'robust|سالم,intermediate|میانی,complex|پیچیده/فراژیل', 'functional', 140),
- ('metabolic_surgery', 'سابقهٔ جراحی متابولیک', 'bool', NULL, 'history', 150),
- ('monofilament', 'مونوفیلامان ۱۰گرمی (حس محافظتی پا)', 'enum', 'normal|طبیعی,impaired|مختل,not_done|انجام‌نشده', 'exam', 160),
- ('eye_exam_date', 'آخرین معاینهٔ چشم (ته‌چشم گشاد)', 'date', NULL, 'exam', 170),
- ('foot_exam_date', 'آخرین معاینهٔ جامع پا', 'date', NULL, 'exam', 180);
+INSERT OR IGNORE INTO flag_catalog (flag_key, label, flag_type, options, options_json, definition_hash, definition_version, category, display_order) VALUES
+ ('ascvd', 'سابقهٔ ASCVD (بیماری قلبی-عروقی آترواسکلروتیک)', 'bool', NULL, '[]', '3d19e17c0e34a0fdfffed3508ec52bb78146435dc65042984addd4834c26304d', 1, 'cardiac', 10),
+ ('cvd_high_risk', 'ریسک بسیار بالای قلبی-عروقی (≥۵۵ سال + ≥۲ ریسک‌فاکتور)', 'bool', NULL, '[]', 'f540af588404e0684fc37ec3b8ef2c064e9c48d97ec92348f9d76f10d1626fb4', 1, 'cardiac', 20),
+ ('hf', 'نارسایی قلب (HF)', 'bool', NULL, '[]', '33a983fb8c46be7fafe64e76132912befd15592177351dfc4c94fdced858f221', 1, 'cardiac', 30),
+ ('hf_type', 'نوع نارسایی قلب', 'enum', 'HFrEF|EF کاهش‌یافته,HFpEF|EF حفظ‌شده,unknown|نامشخص', '[{"label":"EF کاهش‌یافته","value":"HFrEF"},{"label":"EF حفظ‌شده","value":"HFpEF"},{"label":"نامشخص","value":"unknown"}]', '5357fb10b920702b86ac174ba8ed037e61137e150b9ab92fc1099dd5fba5928b', 1, 'cardiac', 40),
+ ('hf_symptomatic', 'نارسایی قلبِ علامت‌دار', 'bool', NULL, '[]', '2998b151451e32396c1f08a8ff1c67c7f8e52830c671dbebb8616e9737eedcf4', 1, 'cardiac', 50),
+ ('ckd_stage_g', 'مرحلهٔ CKD بر اساس eGFR', 'enum', 'G1|G1 (≥۹۰),G2|G2 (۶۰–۸۹),G3a|G3a (۴۵–۵۹),G3b|G3b (۳۰–۴۴),G4|G4 (۱۵–۲۹),G5|G5 (<۱۵)', '[{"label":"G1 (≥۹۰)","value":"G1"},{"label":"G2 (۶۰–۸۹)","value":"G2"},{"label":"G3a (۴۵–۵۹)","value":"G3a"},{"label":"G3b (۳۰–۴۴)","value":"G3b"},{"label":"G4 (۱۵–۲۹)","value":"G4"},{"label":"G5 (<۱۵)","value":"G5"}]', '8d8b96cd7e6fed405d5719e629333550f25368f93ee2c3f828160bcb531c5bc5', 1, 'renal', 60),
+ ('ckd_stage_a', 'مرحلهٔ آلبومینوری', 'enum', 'A1|A1 (<۳۰),A2|A2 (۳۰–۲۹۹),A3|A3 (≥۳۰۰)', '[{"label":"A1 (<۳۰)","value":"A1"},{"label":"A2 (۳۰–۲۹۹)","value":"A2"},{"label":"A3 (≥۳۰۰)","value":"A3"}]', '9e394eea169c368f3e404abb5a40156afff8ebc24107cb824426597c181b4073', 1, 'renal', 70),
+ ('hypo_risk', 'ریسک هیپوگلیسمی', 'enum', 'low|پایین,atrisk|در معرض,high|بالا', '[{"label":"پایین","value":"low"},{"label":"در معرض","value":"atrisk"},{"label":"بالا","value":"high"}]', '29eca6db11c90736cb5f3d43ffffa5b971f62dba1b027514ea3af3e46b40dcef', 1, 'risk', 80),
+ ('masld', 'کبد چربِ متابولیک (MASLD)', 'bool', NULL, '[]', 'e4a61128e35c278f3af215487551450de0ba42c5110dfbf7abbbea59353b0267', 1, 'hepatic', 90),
+ ('mash_biopsy', 'MASH اثبات‌شده / ریسک بالای فیبروز', 'bool', NULL, '[]', 'c6434309bd8a4fdbc8365cc2fb4e8dff8ce49080573bd2b14db5d03442b065b0', 1, 'hepatic', 100),
+ ('pregnancy', 'بارداری', 'bool', NULL, '[]', '495d687e880cab3d73def759a3065d543fb89f1e6e3eb04572fa0db07244a797', 1, 'repro', 110),
+ ('childbearing_no_contraception', 'توان بارداری بدون پیشگیری', 'bool', NULL, '[]', '02f08c682405d5483b58f9a8737e5d21c80b15653413b44c5ba9623623340b27', 1, 'repro', 120),
+ ('smoking', 'مصرف دخانیات/ویپ', 'enum', 'never|هرگز,former|ترک‌کرده,current|فعلی,vape|ویپ', '[{"label":"هرگز","value":"never"},{"label":"ترک‌کرده","value":"former"},{"label":"فعلی","value":"current"},{"label":"ویپ","value":"vape"}]', '1a3a78d436c0cbeb05828eb329caef736aae75511b831153a512e8f0ce4cfa4a', 1, 'lifestyle', 130),
+ ('frailty', 'وضعیت سلامت/فراژیلیتی (سالمند)', 'enum', 'robust|سالم,intermediate|میانی,complex|پیچیده/فراژیل', '[{"label":"سالم","value":"robust"},{"label":"میانی","value":"intermediate"},{"label":"پیچیده/فراژیل","value":"complex"}]', 'e8b9d3b5667ff5f5381f31376dc10f0f5f64968b6ad3ba5b336b2727d847e628', 1, 'functional', 140),
+ ('metabolic_surgery', 'سابقهٔ جراحی متابولیک', 'bool', NULL, '[]', 'a621ae8b11e34ce52c1c37bd5730a4c10ad12d156ffcf8b7888a4e5aaa075c23', 1, 'history', 150),
+ ('monofilament', 'مونوفیلامان ۱۰گرمی (حس محافظتی پا)', 'enum', 'normal|طبیعی,impaired|مختل,not_done|انجام‌نشده', '[{"label":"طبیعی","value":"normal"},{"label":"مختل","value":"impaired"},{"label":"انجام‌نشده","value":"not_done"}]', '1646698e884e9d59c93812662eb1d3302e7910baf71054c9b80ae0413d38d33e', 1, 'exam', 160),
+ ('eye_exam_date', 'آخرین معاینهٔ چشم (ته‌چشم گشاد)', 'date', NULL, '[]', 'e8aaeac1db2b36bf5223ff3d3256c7e50315fe53bc9116eb93edd02cae6b442e', 1, 'exam', 170),
+ ('foot_exam_date', 'آخرین معاینهٔ جامع پا', 'date', NULL, '[]', '3be3418d8cf3d798bed2c4ca9616907e8e79821913dc10f9d41d19677bd3e2c2', 1, 'exam', 180);
 
--- ============================================================================
--- clinical_rules: the If/Then decision catalog covering EVERY section of the
--- ADA T2D document (diagnosis, screening, targets, medication, drug-safety,
--- insulin, monitoring, complication-screening, red-flags, hypoglycemia,
--- lifestyle, vaccination). Seeded idempotently from clinical_rules_seed.py.
--- Editable at /manager/decision-rules.
--- ============================================================================
-CREATE TABLE IF NOT EXISTS clinical_rules (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    rule_code TEXT UNIQUE NOT NULL,
-    title TEXT NOT NULL,
-    category TEXT NOT NULL,        -- diagnosis|target|medication|drug_safety|insulin|
-                                   -- monitoring|screening|redflag|hypo|lifestyle|vaccination|bp_rx|lipid_rx
-    condition_code TEXT NOT NULL DEFAULT 'all',  -- owning disease module: a conditions.code, or 'all' (cross-disease)
-    trigger_json TEXT,             -- machine-evaluable condition tree (NULL = informational/manual)
-    human_if TEXT,
-    recommendation TEXT,           -- the "Then" shown to the clinician
-    dosage_titration TEXT,
-    monitoring TEXT,
-    contraindications TEXT,
-    evidence_level TEXT,           -- A|B|C|E
-    action_type TEXT NOT NULL DEFAULT 'educate',
-                                   -- flag_risk|suggest_med|safety_alert|create_followup|
-                                   -- schedule_screening|educate|classify|set_target|redflag|hypo|vaccine
-    action_params_json TEXT,
-    severity TEXT NOT NULL DEFAULT 'info',  -- info|warn|urgent
-    priority INTEGER NOT NULL DEFAULT 100,
-    source_ref TEXT,
-    is_active INTEGER NOT NULL DEFAULT 1,
-    notes TEXT
-);
-CREATE INDEX IF NOT EXISTS idx_clinical_rules_cat ON clinical_rules (category, priority);
-
--- Physician action on engine suggestions (accountability; suggestion-only system)
-CREATE TABLE IF NOT EXISTS suggestion_log (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    patient_link_id INTEGER NOT NULL,
-    rule_code TEXT NOT NULL,
-    suggestion_text TEXT,
-    evidence_level TEXT,
-    status TEXT NOT NULL DEFAULT 'pending',   -- pending|accepted|dismissed
-    acted_by TEXT,
-    acted_at TIMESTAMP,
-    note TEXT,
-    created_at TIMESTAMP DEFAULT (datetime('now', '+3 hours', '+30 minutes')),
-    UNIQUE (patient_link_id, rule_code),
-    FOREIGN KEY (patient_link_id) REFERENCES patient_links(id)
-);
+-- Clinical decision support is stored exclusively in the versioned v2 tables below.
 
 -- Seed drug-class catalog
 INSERT OR IGNORE INTO drug_classes (class_key, label, glucose_lowering, display_order) VALUES
@@ -752,8 +722,8 @@ CREATE INDEX IF NOT EXISTS idx_doctor_visit_log_workdate ON doctor_visit_log(wor
 
 -- ============================================================================
 -- Clinical Engine v2: immutable rule/ruleset versions and append-only audit.
--- These tables live beside the legacy clinical_rules/suggestion_log tables.
--- Runtime remains disabled by clinical_engine_v2_mode=off until later PRs.
+-- This is the only clinical decision-rule storage contract. Runtime remains
+-- disabled by clinical_engine_v2_mode=off until an activation seal is valid.
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS clinical_rule_versions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -765,7 +735,6 @@ CREATE TABLE IF NOT EXISTS clinical_rule_versions (
     action_type TEXT NOT NULL,
     rule_json TEXT NOT NULL,
     content_hash TEXT NOT NULL,
-    source_legacy_rule_id INTEGER,
     lifecycle_status TEXT NOT NULL DEFAULT 'DRAFT'
         CHECK (lifecycle_status IN ('DRAFT', 'VALIDATED', 'APPROVED', 'SILENT',
                                     'ACTIVE', 'SUSPENDED', 'RETIRED')),
@@ -778,7 +747,6 @@ CREATE TABLE IF NOT EXISTS clinical_rule_versions (
     change_note TEXT,
     UNIQUE(rule_code, version),
     UNIQUE(content_hash),
-    FOREIGN KEY(source_legacy_rule_id) REFERENCES clinical_rules(id),
     FOREIGN KEY(supersedes_rule_version_id) REFERENCES clinical_rule_versions(id)
 );
 CREATE INDEX IF NOT EXISTS idx_rule_versions_code
@@ -900,12 +868,10 @@ CREATE TABLE IF NOT EXISTS clinical_decision_events (
     actor_username TEXT NOT NULL,
     occurred_at TEXT NOT NULL,
     supersedes_event_id INTEGER,
-    legacy_source_suggestion_log_id INTEGER,
     FOREIGN KEY(recommendation_event_id) REFERENCES clinical_recommendation_events(id),
     FOREIGN KEY(patient_link_id) REFERENCES patient_links(id),
     FOREIGN KEY(actor_user_id) REFERENCES users(id),
-    FOREIGN KEY(supersedes_event_id) REFERENCES clinical_decision_events(id),
-    FOREIGN KEY(legacy_source_suggestion_log_id) REFERENCES suggestion_log(id)
+    FOREIGN KEY(supersedes_event_id) REFERENCES clinical_decision_events(id)
 );
 CREATE INDEX IF NOT EXISTS idx_decision_events_recommendation
 ON clinical_decision_events(recommendation_event_id, occurred_at, id);
@@ -996,7 +962,7 @@ END;
 -- Rule content and ruleset identity are versioned; lifecycle fields may change.
 CREATE TRIGGER IF NOT EXISTS trg_rule_version_content_immutable
 BEFORE UPDATE OF rule_code, version, schema_version, dsl_version, phase,
-                 action_type, rule_json, content_hash, source_legacy_rule_id,
+                 action_type, rule_json, content_hash,
                  created_by, created_at, supersedes_rule_version_id
 ON clinical_rule_versions BEGIN
     SELECT RAISE(ABORT, 'clinical rule version content is immutable');
