@@ -46,9 +46,11 @@ jobs:
         run: |
           set -euo pipefail
           python .github/finalize_step6_product.py
+          python .github/finalize_step6_migration_order.py
           git show 599ce4d52ce725c38e3b85a436e23764f6a30a36:.github/workflows/ci.yml > .github/workflows/ci.yml
           rm -f \
             .github/finalize_step6_product.py \
+            .github/finalize_step6_migration_order.py \
             .github/step6-gate-result.json \
             .github/canonical-ci-step6.yml \
             .github/workflows/trigger-step6.yml
