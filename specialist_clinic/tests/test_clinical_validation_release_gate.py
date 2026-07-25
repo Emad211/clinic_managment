@@ -93,7 +93,10 @@ def test_current_package_golden_cases_pass_and_replay_deterministically():
         assert rule_metrics["true_negative"] > 0
 
 
-def test_wrong_expected_outcome_blocks_release_and_status_is_hashed(tmp_path):
+def test_wrong_expected_outcome_blocks_release_and_status_is_hashed(
+    validation_app,
+):
+    _app, tmp_path = validation_app
     report = GoldenCaseValidationHarness().run(
         case_path=_tampered_case_file(tmp_path)
     )
@@ -104,9 +107,7 @@ def test_wrong_expected_outcome_blocks_release_and_status_is_hashed(tmp_path):
     forged = copy.deepcopy(report)
     forged["status"] = "PASS"
     assert forged["report_hash"] == report["report_hash"]
-    # Repository derives status from checks and then validates the status-bound hash.
-    app_error = ClinicalValidationError
-    with pytest.raises(app_error, match="status"):
+    with pytest.raises(ClinicalValidationError, match="status"):
         ClinicalValidationReportRepository().create(
             forged,
             created_by="forger",
