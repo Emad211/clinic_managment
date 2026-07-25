@@ -42,20 +42,47 @@ jobs:
 
       - name: Apply deterministic product finalizer
         id: apply
+        continue-on-error: true
         shell: bash
         run: |
-          set -euo pipefail
-          python .github/finalize_step6_product.py
-          python .github/finalize_step6_migration_order.py
-          git show 599ce4d52ce725c38e3b85a436e23764f6a30a36:.github/workflows/ci.yml > .github/workflows/ci.yml
-          rm -f \
-            .github/finalize_step6_product.py \
-            .github/finalize_step6_migration_order.py \
-            .github/step6-gate-result.json \
-            .github/canonical-ci-step6.yml \
-            .github/workflows/trigger-step6.yml
-          python -m compileall -q specialist_clinic/src specialist_clinic/tests
-          git diff --check
+          set -o pipefail
+          {
+            set -euo pipefail
+            python .github/finalize_step6_product.py
+            python .github/finalize_step6_migration_order.py
+            git show 599ce4d52ce725c38e3b85a436e23764f6a30a36:.github/workflows/ci.yml > .github/workflows/ci.yml
+            rm -f \
+              .github/finalize_step6_product.py \
+              .github/finalize_step6_migration_order.py \
+              .github/step6-gate-result.json \
+              .github/canonical-ci-step6.yml \
+              .github/workflows/trigger-step6.yml
+            python -m compileall -q specialist_clinic/src specialist_clinic/tests
+            git diff --check
+          } 2>&1 | tee /tmp/step6-apply.log
+
+      - name: Report finalizer failure details
+        if: steps.apply.outcome == 'failure'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+        shell: bash
+        run: |
+          tail -n 100 /tmp/step6-apply.log > /tmp/step6-apply-tail.txt
+          {
+            echo "Step 6 deterministic finalizer failed · run ${RUN_ID}"
+            echo
+            echo '```text'
+            cat /tmp/step6-apply-tail.txt
+            echo '```'
+          } > /tmp/step6-apply-comment.txt
+          gh api --method POST repos/${REPOSITORY}/issues/34/comments \
+            --raw-field body="$(cat /tmp/step6-apply-comment.txt)"
+
+      - name: Stop after finalizer failure
+        if: steps.apply.outcome == 'failure'
+        run: exit 1
 
       - uses: actions/setup-python@v5
         with:
