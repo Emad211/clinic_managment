@@ -2,19 +2,18 @@ name: Finalize Operational Security Hardening
 
 on:
   push:
-    branches:
-      - agent-clinical-operational-security
+  pull_request:
 
 permissions:
   contents: write
 
 concurrency:
   group: finalize-step6-security
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   finalize:
-    if: github.actor != 'github-actions[bot]'
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'agent-clinical-operational-security' && github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -28,15 +27,6 @@ jobs:
           set -euo pipefail
           python - <<'PY'
           from pathlib import Path
-
-          def replace_once(path, old, new):
-              file = Path(path)
-              text = file.read_text(encoding='utf-8')
-              if old in text:
-                  text = text.replace(old, new, 1)
-              elif new not in text:
-                  raise AssertionError(f'pattern missing in {path}: {old[:100]!r}')
-              file.write_text(text, encoding='utf-8')
 
           core = Path('specialist_clinic/src/adapters/sqlite/core.py')
           text = core.read_text(encoding='utf-8')
@@ -188,11 +178,6 @@ jobs:
               "{% if permissions.get('rule.review.clinical') or permissions.get('rule.activate') or permissions.get('security.grant.manage') %}",
               1,
           )
-          text = text.replace(
-              '''<a class="nav-item {% if active_page=='manager' %}active{% endif %}" href="{{ url_for('manager.index') }}"{% if active_page=='manager' %} aria-current="page"{% endif %}><svg class="icon"><use href="#i-settings"></use></svg> تنظیمات سیستم</a>''',
-              '''{% if permissions.get('security.grant.manage') %}<a class="nav-item {% if active_page=='manager' %}active{% endif %}" href="{{ url_for('manager.index') }}"{% if active_page=='manager' %} aria-current="page"{% endif %}><svg class="icon"><use href="#i-settings"></use></svg> تنظیمات سیستم</a>{% endif %}''',
-              1,
-          )
           base.write_text(text, encoding='utf-8')
           PY
 
@@ -246,4 +231,6 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git commit -m 'complete clinical operational security hardening'
-          git push origin HEAD:agent-clinical-operational-security
+          git push \
+            --force-with-lease=refs/heads/agent-clinical-operational-security:${GITHUB_SHA} \
+            origin HEAD:refs/heads/agent-clinical-operational-security
