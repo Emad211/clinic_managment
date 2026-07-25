@@ -16,6 +16,18 @@ def ensure_clinical_audit_integrity_storage(
     db: sqlite3.Connection | None = None,
 ) -> None:
     db = db or get_db()
+    # A checkpoint must never silently omit a critical event family merely because a
+    # copied or test database has not yet touched that subsystem. Install the additive
+    # dependencies before creating or verifying an audit root.
+    from src.adapters.sqlite.clinical_care_loop_schema import (
+        ensure_clinical_care_loop_storage,
+    )
+    from src.adapters.sqlite.security_permission_schema import (
+        ensure_security_permission_storage,
+    )
+
+    ensure_clinical_care_loop_storage(db)
+    ensure_security_permission_storage(db)
     db.executescript(
         """
         CREATE TABLE IF NOT EXISTS clinical_audit_checkpoints (
