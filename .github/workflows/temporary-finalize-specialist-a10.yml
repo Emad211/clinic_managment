@@ -66,6 +66,8 @@ jobs:
         run: python .github/finalize_a10_scope_guards.py
       - name: Apply A10 regression contracts
         run: python .github/finalize_a10_regressions.py
+      - name: Clean temporary A10 branch markers
+        run: python .github/finalize_a10_cleanup.py
 
       - name: Verify deterministic integration and accounting boundary
         shell: bash
