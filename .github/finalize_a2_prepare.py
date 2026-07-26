@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+# Trigger revision: align the one-shot finalizer with the current compiler contract.
 ROOT = Path(__file__).resolve().parents[1]
 COMPILER = ROOT / "specialist_clinic/src/services/clinical_engine/compiler.py"
 FINALIZER = ROOT / ".github/finalize_a2.py"
