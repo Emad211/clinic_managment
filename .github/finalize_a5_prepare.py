@@ -19,6 +19,26 @@ from src.services.sms.governance_service import (
         1,
     )
 
+helper_anchor = '''    def collect_due_events(self, patient_link_id: int) -> tuple[list[dict], dict]:
+'''
+helper = '''    @staticmethod
+    def _care_sms_allowed(patient_link_id: int) -> bool:
+        try:
+            SmsGovernanceService().require_allowed(
+                patient_link_id=int(patient_link_id),
+                purpose="CARE",
+            )
+            return True
+        except SmsConsentDenied:
+            return False
+
+    def collect_due_events(self, patient_link_id: int) -> tuple[list[dict], dict]:
+'''
+if helper not in text:
+    if helper_anchor not in text:
+        raise AssertionError("EngagementService helper anchor missing")
+    text = text.replace(helper_anchor, helper, 1)
+
 text = text.replace(
     "SELECT id, full_name, phone_number, sms_opt_out",
     "SELECT id, full_name, phone_number",
@@ -27,14 +47,7 @@ text = text.replace(
 old_dispatch = '''        opted_out = bool(patient["sms_opt_out"])
         has_phone = bool(patient["phone_number"])
 '''
-new_dispatch = '''        try:
-            SmsGovernanceService().require_allowed(
-                patient_link_id=patient_link_id,
-                purpose="CARE",
-            )
-            opted_out = False
-        except SmsConsentDenied:
-            opted_out = True
+new_dispatch = '''        opted_out = not self._care_sms_allowed(patient_link_id)
         has_phone = bool(patient["phone_number"])
 '''
 if old_dispatch in text:
@@ -46,20 +59,17 @@ old_approve = '''        if (
             or patient["sms_opt_out"]
         ):
 '''
-new_approve = '''        consent_denied = False
-        if patient:
-            try:
-                SmsGovernanceService().require_allowed(
-                    patient_link_id=int(approval["patient_link_id"]),
-                    purpose="CARE",
-                )
-            except SmsConsentDenied:
-                consent_denied = True
-        if not patient or not patient["phone_number"] or consent_denied:
+new_approve = '''        if (
+            not patient
+            or not patient["phone_number"]
+            or not self._care_sms_allowed(int(approval["patient_link_id"]))
+        ):
 '''
 if old_approve in text:
     text = text.replace(old_approve, new_approve, 1)
 
+# enqueue_event_for_patient, enqueue_invite and enqueue_control_room_invite share this
+# shape; replace every remaining instance.
 old_enqueue = '''        if (
             not patient
             or patient["sms_opt_out"]
@@ -67,18 +77,14 @@ old_enqueue = '''        if (
         ):
             return None
 '''
-new_enqueue = '''        if not patient or not patient["phone_number"]:
-            return None
-        try:
-            SmsGovernanceService().require_allowed(
-                patient_link_id=patient_link_id,
-                purpose="CARE",
-            )
-        except SmsConsentDenied:
+new_enqueue = '''        if (
+            not patient
+            or not patient["phone_number"]
+            or not self._care_sms_allowed(patient_link_id)
+        ):
             return None
 '''
-if old_enqueue in text:
-    text = text.replace(old_enqueue, new_enqueue, 1)
+text = text.replace(old_enqueue, new_enqueue)
 
 old_send = '''                source_type="engagement",
                 source_ref=str(approval_id),
@@ -98,11 +104,14 @@ remaining = [
     for token in (
         'patient["sms_opt_out"]',
         "patient['sms_opt_out']",
+        "phone_number, sms_opt_out",
     )
     if token in text
 ]
 if remaining:
-    raise AssertionError("legacy SMS opt-out reads remain in EngagementService")
+    raise AssertionError(
+        "legacy SMS opt-out reads remain in EngagementService: " + ",".join(remaining)
+    )
 
 PATH.write_text(text, encoding="utf-8")
 Path(__file__).unlink()
