@@ -1,6 +1,7 @@
 from pathlib import Path
 
 # One-shot A2 trigger; this file removes itself after applying the runtime patch.
+# Diagnostic retry: finalizers run in independent workflow steps.
 ROOT = Path(__file__).resolve().parents[1]
 PATH = ROOT / "specialist_clinic/src/adapters/sqlite/clinical_care_loop_repo.py"
 text = PATH.read_text(encoding="utf-8")
