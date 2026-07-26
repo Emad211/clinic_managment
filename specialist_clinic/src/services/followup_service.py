@@ -4,6 +4,7 @@ from src.services.clinical_alert_service import ClinicalAlertService
 from src.services.followup_engine import ClinicalV2FollowupService
 
 REASON_LABELS = {
+    "encounter_plan": "تعهد طرح ویزیت",
     'refill': 'تجدید دارو',
     'uncontrolled': 'پیگیری قدیمی',
     'lapsed': 'بدون مراجعه اخیر',

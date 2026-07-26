@@ -74,6 +74,19 @@ class FollowupProjectionService:
                 if row.get("source_engine") == "clinical_v2"
                 else None
             )
+            row["plan_commitment"] = (
+                {
+                    "commitment_id": row.get("commitment_id"),
+                    "document_event_id": row.get("document_event_id"),
+                    "encounter_id": row.get("encounter_id"),
+                    "journey_id": row.get("journey_id"),
+                    "commitment_type": row.get("commitment_type"),
+                    "instruction": row.get("instruction"),
+                    "original_due_at": row.get("original_due_at"),
+                }
+                if row.get("source_engine") == "encounter_plan"
+                else None
+            )
         return normalized
 
     def open_tasks(

@@ -31,6 +31,7 @@ class Permission(StrEnum):
     CLINICAL_ENCOUNTER_MANAGE = "clinical.encounter.manage"
     CLINICAL_DOCUMENT_WRITE = "clinical.document.write"
     CLINICAL_DOCUMENT_AMEND = "clinical.document.amend"
+    FOLLOWUP_PLAN_TRANSITION = "followup.plan.transition"
     CLINICAL_DECISION_RECORD = "clinical.decision.record"
     CLINICAL_TASK_VIEW = "clinical.task.view"
     FOLLOWUP_CONTACT_RECORD = "followup.contact.record"
@@ -73,6 +74,7 @@ _ROLE_DEFAULTS = {
             Permission.PATIENT_EDIT,
             Permission.CLINICAL_DATA_RECORD,
             Permission.CLINICAL_DOCUMENT_WRITE,
+            Permission.FOLLOWUP_PLAN_TRANSITION,
             Permission.CLINICAL_TASK_VIEW,
             Permission.FOLLOWUP_CONTACT_RECORD,
             Permission.CLINICAL_ALERT_VIEW,

@@ -26,6 +26,14 @@ from src.services.followup_booking_service import (
     FollowupBookingService,
 )
 from src.services.followup_projection_service import FollowupProjectionService
+from src.services.encounter_plan_commitment_service import (
+    COMMITMENT_LABELS as PLAN_COMMITMENT_LABELS,
+    EVIDENCE_LABELS as PLAN_EVIDENCE_LABELS,
+    OUTCOME_LABELS as PLAN_OUTCOME_LABELS,
+    EncounterPlanCommitmentConflict,
+    EncounterPlanCommitmentService,
+    EncounterPlanCommitmentValidationError,
+)
 from src.services.followup_contact_service import (
     CHANNEL_LABELS as CONTACT_CHANNEL_LABELS,
     OUTCOME_LABELS as CONTACT_OUTCOME_LABELS,
@@ -38,12 +46,17 @@ from src.services.followup_contact_service import (
 bp = Blueprint("followups", __name__, url_prefix="/followups")
 
 
-def _clinical_task(task_id: int) -> bool:
+def _task_source(task_id: int) -> str:
     row = get_db().execute(
-        "SELECT source_engine FROM followup_tasks WHERE id=?",
+        "SELECT COALESCE(source_engine,'') AS source_engine "
+        "FROM followup_tasks WHERE id=?",
         (task_id,),
     ).fetchone()
-    return bool(row and row["source_engine"] == "clinical_v2")
+    return str(row["source_engine"] or "admin") if row else "missing"
+
+
+def _clinical_task(task_id: int) -> bool:
+    return _task_source(task_id) == "clinical_v2"
 
 
 def _observed_at(raw: str | None):
@@ -72,6 +85,16 @@ def worklist():
                 task.get("current_status"), task.get("current_status")
             )
             due = task.get("current_due_at") or task.get("due_date")
+        elif task.get("source_engine") == "encounter_plan":
+            task["status_fa"] = {
+                "OPEN": "باز", "IN_PROGRESS": "در حال انجام",
+                "SCHEDULED": "زمان‌بندی‌شده", "COMPLETED": "تکمیل‌شده",
+                "CANCELLED": "لغوشده", "ENTERED_IN_ERROR": "ثبت اشتباه",
+            }.get(task.get("current_status"), task.get("current_status"))
+            due = task.get("current_due_at") or task.get("due_date")
+        else:
+            due = task.get("current_due_at") or task.get("due_date")
+        if task.get("source_engine") in {"clinical_v2", "encounter_plan"}:
             try:
                 due_date = datetime.fromisoformat(str(due)).date() if due else None
             except ValueError:
@@ -120,6 +143,9 @@ def worklist():
         disposition_labels=DISPOSITION_LABELS,
         contact_channel_labels=CONTACT_CHANNEL_LABELS,
         contact_outcome_labels=CONTACT_OUTCOME_LABELS,
+        plan_commitment_labels=PLAN_COMMITMENT_LABELS,
+        plan_evidence_labels=PLAN_EVIDENCE_LABELS,
+        plan_outcome_labels=PLAN_OUTCOME_LABELS,
         active_reason=reason,
         q=q,
         hub_pending=EngagementRepository().count_pending(),
@@ -192,9 +218,16 @@ def record_contact(task_id: int):
 @bp.route("/<int:task_id>/resolve", methods=["POST"])
 @login_required
 def resolve(task_id):
-    if _clinical_task(task_id):
+    source = _task_source(task_id)
+    if source == "clinical_v2":
         flash(
             "پیگیری بالینی فقط از مسیر lifecycle و با شواهد outcome بسته می‌شود.",
+            "error",
+        )
+        return redirect(request.referrer or url_for("followups.worklist"))
+    if source == "encounter_plan":
+        flash(
+            "تعهد طرح Encounter فقط از مسیر lifecycle و با شاهد معتبر بسته می‌شود.",
             "error",
         )
         return redirect(request.referrer or url_for("followups.worklist"))
@@ -202,6 +235,57 @@ def resolve(task_id):
     call_log = request.form.get("call_log") or None
     FollowupRepository().resolve(task_id, status, call_log)
     log_activity("followup_resolve", f"بستن پیگیری اداری ({status})")
+    return redirect(request.referrer or url_for("followups.worklist"))
+
+
+@bp.post("/<int:task_id>/plan/transition")
+@permission_required(Permission.FOLLOWUP_PLAN_TRANSITION)
+def plan_transition(task_id: int):
+    transition = str(request.form.get("transition") or "").strip().lower()
+    due_at = None
+    raw_due = str(request.form.get("due_at") or "").strip()
+    if raw_due:
+        parsed = jalali_to_gregorian_str(raw_due) or raw_due
+        due_time = str(request.form.get("due_time") or "09:00").strip()
+        due_at = f"{parsed} {due_time}:00" if len(parsed) == 10 else parsed
+    try:
+        event = EncounterPlanCommitmentService().transition(
+            task_id=task_id,
+            transition=transition,
+            expected_current_event_id=int(
+                request.form.get("expected_current_event_id") or 0
+            ),
+            actor_username=g.user["username"],
+            actor_user_id=int(g.user["id"]),
+            idempotency_key=request.form.get("idempotency_key") or "",
+            due_at=due_at,
+            assigned_to=request.form.get("assigned_to"),
+            appointment_id=request.form.get("appointment_id", type=int),
+            evidence_type=request.form.get("evidence_type"),
+            evidence_ref=request.form.get("evidence_ref"),
+            outcome_code=request.form.get("outcome_code"),
+            note=request.form.get("note"),
+        )
+    except EncounterPlanCommitmentConflict:
+        flash("تعهد هم‌زمان تغییر کرده است؛ صفحه را تازه کنید.", "error")
+    except (
+        LookupError,
+        ValueError,
+        EncounterPlanCommitmentValidationError,
+        sqlite3.IntegrityError,
+    ) as exc:
+        flash(f"تغییر تعهد ثبت نشد: {exc}", "error")
+    else:
+        patient = get_db().execute(
+            "SELECT patient_link_id FROM followup_tasks WHERE id=?",
+            (task_id,),
+        ).fetchone()
+        log_activity(
+            "encounter_plan_commitment_transition",
+            f"task={task_id} event={event['event_type']} status={event['status']}",
+            patient_link_id=int(patient["patient_link_id"]),
+        )
+        flash("رویداد تعهد طرح به‌صورت افزایشی ثبت شد.", "success")
     return redirect(request.referrer or url_for("followups.worklist"))
 
 
@@ -317,6 +401,11 @@ def patient_to_visit(pid):
         Permission.CLINICAL_TASK_TRANSITION
     ):
         flash("مجوز زمان‌بندی پیگیری بالینی ثبت نشده است.", "error")
+        return redirect(request.referrer or url_for("followups.worklist"))
+    if any(row["source_engine"] == "encounter_plan" for row in rows) and not has_permission(
+        Permission.FOLLOWUP_PLAN_TRANSITION
+    ):
+        flash("مجوز زمان‌بندی تعهد طرح Encounter ثبت نشده است.", "error")
         return redirect(request.referrer or url_for("followups.worklist"))
 
     try:

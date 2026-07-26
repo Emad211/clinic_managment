@@ -41,10 +41,13 @@ from src.adapters.sqlite.specialist_service_lineage_schema import (
 from src.adapters.sqlite.encounter_documentation_schema import (
     ensure_encounter_documentation_storage,
 )
+from src.adapters.sqlite.encounter_plan_commitment_schema import (
+    ensure_encounter_plan_commitment_storage,
+)
 from src.common.utils import iran_now
 
 
-SCOPE_VERSION = "2.1-encounter-documentation"
+SCOPE_VERSION = "2.2-encounter-plan-commitments"
 CRITICAL_TABLES = (
     "clinical_rule_versions",
     "clinical_rulesets",
@@ -92,6 +95,9 @@ CRITICAL_TABLES = (
     "specialist_service_line_observations",
     "care_encounter_document_requirements",
     "care_encounter_document_events",
+    "care_plan_commitments",
+    "care_plan_commitment_task_links",
+    "care_plan_commitment_events",
     "security_permission_events",
 )
 
@@ -149,6 +155,7 @@ class ClinicalAuditIntegrityService:
         ensure_specialist_payer_adjustment_storage(db)
         ensure_specialist_service_lineage_storage(db)
         ensure_encounter_documentation_storage(db)
+        ensure_encounter_plan_commitment_storage(db)
         ensure_clinical_audit_integrity_storage(db)
         return db
 

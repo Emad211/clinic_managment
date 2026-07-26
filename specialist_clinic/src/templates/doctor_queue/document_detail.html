@@ -1,5 +1,6 @@
 {% extends "base.html" %}
-{% block title %}سند Encounter{% endblock %}
+{% block title %}سند Encounter
+{% endblock %}
 {% block content %}
 <div class="crumb"><a href="{{ url_for('doctor_queue.index') }}">صف پزشک</a> / سند Encounter</div>
 <div class="topbar"><div><h1><svg class="icon icon-lg"><use href="#i-clipboard"></use></svg> سند Encounter</h1><div class="muted text-sm">فاکتور #{{ invoice_id|fa_num }} · <code dir="ltr">{{ encounter.encounter_id }}</code> · نسخه جاری #{{ document.id|fa_num }}</div></div><a class="btn btn-ghost" href="{{ url_for('patients.detail', pid=encounter.patient_link_id) }}">پرونده بیمار</a></div>
@@ -44,4 +45,18 @@
   </form>
 </div>
 {% endif %}
+
+{% if document.commitments %}
+<div class="card">
+  <div class="section-title"><svg class="icon"><use href="#i-list-checks"></use></svg> تعهدهای اجرایی نسخه امضاشده</div>
+  {% for item in document.commitments %}
+  <div class="list-row">
+    <div><b>{{ item.instruction }}</b><div class="muted text-xs">{{ item.commitment_type }} · {{ item.fulfillment }}{% if item.assigned_to %} · {{ item.assigned_to }}{% endif %}</div></div>
+    <span class="badge badge-info">{{ item.due_at|jalali }}</span>
+  </div>
+  {% endfor %}
+  <div class="help">این مجموعه بخشی از سند امضاشده است. تغییر عملیاتی موعد، مسئول یا وضعیت فقط در Worklist و به‌صورت event ثبت می‌شود.</div>
+</div>
+{% endif %}
+
 {% endblock %}

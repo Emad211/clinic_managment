@@ -82,12 +82,12 @@ class FollowupRepository:
         row = db.execute(
             f"""SELECT id FROM followup_tasks
                 WHERE id IN ({placeholders})
-                  AND source_engine='clinical_v2' LIMIT 1""",
+                  AND source_engine IN ('clinical_v2','encounter_plan') LIMIT 1""",
             task_ids,
         ).fetchone()
         if row:
             raise ValueError(
-                "clinical tasks require append-only care-loop transitions"
+                "governed follow-up tasks require append-only lifecycle transitions"
             )
 
     def set_appointment(self, task_id: int, appointment_id):
@@ -124,7 +124,7 @@ class FollowupRepository:
         if get_db().execute(
             """SELECT 1 FROM followup_tasks
                WHERE patient_link_id=? AND reason=? AND status='open'
-                 AND COALESCE(source_engine,'')<>'clinical_v2'
+                 AND COALESCE(source_engine,'') NOT IN ('clinical_v2','encounter_plan')
                LIMIT 1""",
             (patient_link_id, reason),
         ).fetchone():
@@ -133,10 +133,20 @@ class FollowupRepository:
             ClinicalCareLoopRepository,
         )
 
+        if ClinicalCareLoopRepository().list_current(
+            patient_link_id=patient_link_id,
+            reason=reason,
+            include_terminal=False,
+        ):
+            return True
+        if reason != "encounter_plan":
+            return False
+        from src.adapters.sqlite.encounter_plan_commitment_repo import (
+            EncounterPlanCommitmentRepository,
+        )
         return bool(
-            ClinicalCareLoopRepository().list_current(
+            EncounterPlanCommitmentRepository().list_current(
                 patient_link_id=patient_link_id,
-                reason=reason,
                 include_terminal=False,
             )
         )
@@ -154,7 +164,7 @@ class FollowupRepository:
                  FROM followup_tasks f
                  JOIN patient_links p ON p.id=f.patient_link_id
                  WHERE f.status='open'
-                   AND COALESCE(f.source_engine,'')<>'clinical_v2'"""
+                   AND COALESCE(f.source_engine,'') NOT IN ('clinical_v2','encounter_plan')"""
         params: list = []
         if reason:
             sql += " AND f.reason=?"
@@ -192,6 +202,15 @@ class FollowupRepository:
                 include_terminal=False,
             )
         )
+        from src.adapters.sqlite.encounter_plan_commitment_repo import (
+            EncounterPlanCommitmentRepository,
+        )
+        plan_rows = EncounterPlanCommitmentRepository().list_current(
+            include_terminal=False
+        )
+        if reason:
+            plan_rows = [row for row in plan_rows if row.get("reason") == reason]
+        rows.extend(plan_rows)
         return self._sort_open(rows)
 
     def search_open(self, query: str) -> list[dict]:
@@ -203,6 +222,15 @@ class FollowupRepository:
         rows = self._admin_open(query=query)
         rows.extend(
             ClinicalCareLoopRepository().list_current(
+                query=query,
+                include_terminal=False,
+            )
+        )
+        from src.adapters.sqlite.encounter_plan_commitment_repo import (
+            EncounterPlanCommitmentRepository,
+        )
+        rows.extend(
+            EncounterPlanCommitmentRepository().list_current(
                 query=query,
                 include_terminal=False,
             )
@@ -223,7 +251,7 @@ class FollowupRepository:
                           NULL AS current_event_id
                    FROM followup_tasks
                    WHERE patient_link_id=?
-                     AND COALESCE(source_engine,'')<>'clinical_v2'
+                     AND COALESCE(source_engine,'') NOT IN ('clinical_v2','encounter_plan')
                    ORDER BY id DESC""",
                 (patient_link_id,),
             ).fetchall()
@@ -232,6 +260,19 @@ class FollowupRepository:
             patient_link_id=patient_link_id,
             include_terminal=True,
         )
+        from src.adapters.sqlite.encounter_plan_commitment_repo import (
+            EncounterPlanCommitmentRepository,
+        )
+        plan = EncounterPlanCommitmentRepository().list_current(
+            patient_link_id=patient_link_id,
+            include_terminal=True,
+        )
+        for row in plan:
+            row["status"] = (
+                "open" if row["current_status"] in {"OPEN","IN_PROGRESS","SCHEDULED"}
+                else "done" if row["current_status"] == "COMPLETED"
+                else "dismissed"
+            )
         for row in clinical:
             row["status"] = (
                 "open"
@@ -241,7 +282,7 @@ class FollowupRepository:
                 if row["current_status"] == "COMPLETED"
                 else "dismissed"
             )
-        return sorted([*admin, *clinical], key=lambda row: -int(row["id"]))
+        return sorted([*admin, *clinical, *plan], key=lambda row: -int(row["id"]))
 
     def resolve(
         self,
@@ -255,7 +296,7 @@ class FollowupRepository:
             """UPDATE followup_tasks
                SET status=?, call_log=COALESCE(?, call_log),
                    resolved_at=?
-               WHERE id=? AND COALESCE(source_engine,'')<>'clinical_v2'""",
+               WHERE id=? AND COALESCE(source_engine,'') NOT IN ('clinical_v2','encounter_plan')""",
             (
                 status,
                 call_log,
@@ -275,7 +316,7 @@ class FollowupRepository:
                 """SELECT reason, COUNT(*) AS count
                    FROM followup_tasks
                    WHERE status='open'
-                     AND COALESCE(source_engine,'')<>'clinical_v2'
+                     AND COALESCE(source_engine,'') NOT IN ('clinical_v2','encounter_plan')
                    GROUP BY reason"""
             ).fetchall()
         }
@@ -284,6 +325,14 @@ class FollowupRepository:
         )
 
         for row in ClinicalCareLoopRepository().list_current(
+            include_terminal=False
+        ):
+            reason = row.get("reason")
+            counts[reason] = counts.get(reason, 0) + 1
+        from src.adapters.sqlite.encounter_plan_commitment_repo import (
+            EncounterPlanCommitmentRepository,
+        )
+        for row in EncounterPlanCommitmentRepository().list_current(
             include_terminal=False
         ):
             reason = row.get("reason")
