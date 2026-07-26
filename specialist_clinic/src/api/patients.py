@@ -262,6 +262,14 @@ def detail(pid):
         appointments=appointments,
         indicators=adata['indicators'],
     )
+    from src.adapters.sqlite.encounter_documentation_repo import (
+        EncounterDocumentationRepository,
+    )
+    encounter_documents = (
+        EncounterDocumentationRepository().current_signed_documents_for_patient(
+            pid, limit=50
+        )
+    )
     care_timeline = cockpit_service.timeline(
         appointments=appointments,
         visits=profile['visit_history'],
@@ -269,6 +277,7 @@ def detail(pid):
         followups=all_followups,
         medication_events=medication_events,
         service_lines=service_lines,
+        encounter_documents=encounter_documents,
     )
 
     from src.services.sms.governance_service import SmsGovernanceService
@@ -333,6 +342,7 @@ def detail(pid):
         prescriptions=prescriptions,
         next_action=next_action,
         care_timeline=care_timeline,
+        encounter_documents=encounter_documents,
         service_line_summary=service_line_summary,
         sms_consent=sms_consent,
     )

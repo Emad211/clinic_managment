@@ -48,6 +48,9 @@ from src.adapters.sqlite.specialist_payer_adjustment_schema import (
 from src.adapters.sqlite.specialist_service_lineage_schema import (
     ensure_specialist_service_lineage_storage,
 )
+from src.adapters.sqlite.encounter_documentation_schema import (
+    ensure_encounter_documentation_storage,
+)
 from src.adapters.sqlite.clinical_validation_schema import (
     ensure_clinical_validation_storage,
 )
@@ -108,6 +111,8 @@ _REQUIRED_TABLES = frozenset(
         "specialist_financial_review_events",
         "specialist_service_snapshot_manifests",
         "specialist_service_line_observations",
+        "care_encounter_document_requirements",
+        "care_encounter_document_events",
     }
 )
 
@@ -125,6 +130,7 @@ def _readiness_checks() -> dict[str, bool]:
     ensure_campaign_economics_storage(db)
     ensure_specialist_payer_adjustment_storage(db)
     ensure_specialist_service_lineage_storage(db)
+    ensure_encounter_documentation_storage(db)
     ensure_clinical_validation_storage(db)
     ensure_clinical_audit_integrity_storage(db)
 
@@ -233,6 +239,27 @@ def _readiness_checks() -> dict[str, bool]:
            LIMIT 1"""
     ).fetchone()
     service_lineage_ok = service_inconsistent is None
+    document_inconsistent = db.execute(
+        """SELECT 1
+           FROM care_encounter_document_requirements requirement
+           LEFT JOIN care_encounters encounter
+             ON encounter.encounter_id=requirement.encounter_id
+           WHERE encounter.encounter_id IS NULL
+              OR encounter.journey_id<>requirement.journey_id
+              OR encounter.patient_link_id<>requirement.patient_link_id
+              OR encounter.accounting_invoice_id IS NOT requirement.accounting_invoice_id
+           UNION ALL
+           SELECT 1
+           FROM care_encounter_document_events document
+           LEFT JOIN care_encounters encounter
+             ON encounter.encounter_id=document.encounter_id
+           WHERE encounter.encounter_id IS NULL
+              OR encounter.journey_id<>document.journey_id
+              OR encounter.patient_link_id<>document.patient_link_id
+              OR encounter.accounting_invoice_id<>document.accounting_invoice_id
+           LIMIT 1"""
+    ).fetchone()
+    encounter_documentation_ok = document_inconsistent is None
 
     return {
         "database": integrity_ok,
@@ -246,6 +273,7 @@ def _readiness_checks() -> dict[str, bool]:
         "campaign_economics": campaign_economics_ok,
         "payer_adjustments": payer_adjustment_storage_ok,
         "service_lineage": service_lineage_ok,
+        "encounter_documentation": encounter_documentation_ok,
     }
 
 
@@ -271,6 +299,7 @@ def ready():
             "campaign_economics": False,
             "payer_adjustments": False,
             "service_lineage": False,
+            "encounter_documentation": False,
         }
     is_ready = all(checks.values())
     # Public readiness discloses no table, patient, path, mode, secret or exception.
@@ -298,6 +327,7 @@ def details():
             "campaign_economics": False,
             "payer_adjustments": False,
             "service_lineage": False,
+            "encounter_documentation": False,
         }
         error = "health_check_failed"
     is_ready = all(checks.values())

@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}سند Encounter{% endblock %}
+{% block content %}
+<div class="crumb"><a href="{{ url_for('doctor_queue.index') }}">صف پزشک</a> / سند Encounter</div>
+<div class="topbar"><div><h1><svg class="icon icon-lg"><use href="#i-clipboard"></use></svg> سند Encounter</h1><div class="muted text-sm">فاکتور #{{ invoice_id|fa_num }} · <code dir="ltr">{{ encounter.encounter_id }}</code> · نسخه جاری #{{ document.id|fa_num }}</div></div><a class="btn btn-ghost" href="{{ url_for('patients.detail', pid=encounter.patient_link_id) }}">پرونده بیمار</a></div>
+<div class="alert-banner alert-info"><svg class="icon"><use href="#i-shield"></use></svg><span>نسخه‌های امضاشده overwrite نمی‌شوند. هر اصلاح، سند کامل جدید همراه دلیل و زنجیره supersede ثبت می‌کند.</span></div>
+
+<div class="grid" style="grid-template-columns:minmax(0,1.3fr) minmax(280px,.7fr);gap:var(--s3);align-items:start;">
+  <div class="card">
+    <div class="section-title"><svg class="icon"><use href="#i-clipboard"></use></svg> نسخه جاری <span class="badge badge-ok">امضاشده</span></div>
+    <dl class="record-dl">
+      <dt>شکایت اصلی</dt><dd>{{ document.chief_complaint or '—' }}</dd>
+      <dt>یافته‌های عینی</dt><dd style="white-space:pre-wrap;">{{ document.objective_findings or '—' }}</dd>
+      <dt>مسائل فعال</dt><dd>{% for problem in document.problems %}<span class="chip">{{ problem }}</span>{% else %}—{% endfor %}</dd>
+      <dt>ارزیابی</dt><dd style="white-space:pre-wrap;">{{ document.assessment }}</dd>
+      <dt>طرح</dt><dd style="white-space:pre-wrap;">{{ document.plan }}</dd>
+      <dt>دستور پیگیری</dt><dd style="white-space:pre-wrap;">{{ document.followup_instructions or '—' }}</dd>
+      <dt>Outcome</dt><dd>{{ outcome_labels.get(document.outcome_code, document.outcome_code) }}</dd>
+      <dt>نویسنده / زمان</dt><dd>{{ document.actor_username }} · {{ document.authored_at|jalali }}</dd>
+      {% if document.amendment_reason %}<dt>دلیل اصلاحیه</dt><dd>{{ document.amendment_reason }}</dd>{% endif %}
+    </dl>
+  </div>
+  <div class="card">
+    <div class="section-title"><svg class="icon"><use href="#i-list-checks"></use></svg> تاریخچه نسخه‌ها</div>
+    {% for item in history|reverse %}<div class="timeline-row"><span class="badge {% if item.document_status=='SIGNED' %}badge-ok{% else %}badge-muted{% endif %}">#{{ item.id|fa_num }}</span><div><b>{{ item.event_type }}</b><div class="muted text-xs">{{ item.actor_username }} · {{ item.recorded_at|jalali }}</div></div></div>{% endfor %}
+  </div>
+</div>
+
+{% if permissions.get('clinical.document.amend') %}
+<div class="card" id="amend-document">
+  <div class="section-title"><svg class="icon"><use href="#i-edit"></use></svg> ثبت اصلاحیه</div>
+  <form method="post" action="{{ url_for('doctor_queue.amend_document', invoice_id=invoice_id) }}">
+    <input type="hidden" name="expected_current_event_id" value="{{ document.id }}">
+    <div class="grid grid-2">
+      <div class="fld"><label>شکایت اصلی</label><textarea name="chief_complaint" rows="2">{{ document.chief_complaint or '' }}</textarea></div>
+      <div class="fld"><label>یافته‌های عینی</label><textarea name="objective_findings" rows="2">{{ document.objective_findings or '' }}</textarea></div>
+    </div>
+    <div class="fld"><label>مسائل فعال؛ هر خط یک مورد</label><textarea name="problems" rows="3">{{ document.problems|join('
+') }}</textarea></div>
+    <div class="grid grid-2"><div class="fld"><label>ارزیابی *</label><textarea name="assessment" rows="4">{{ document.assessment }}</textarea></div><div class="fld"><label>طرح *</label><textarea name="plan" rows="4">{{ document.plan }}</textarea></div></div>
+    <div class="grid grid-2"><div class="fld"><label>دستور پیگیری</label><textarea name="followup_instructions" rows="2">{{ document.followup_instructions or '' }}</textarea></div><div class="fld"><label>Outcome *</label><select name="outcome_code">{% for code,label in outcome_labels.items() %}<option value="{{ code }}" {% if document.outcome_code==code %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></div></div>
+    <div class="fld"><label>دلیل اصلاحیه *</label><textarea name="amendment_reason" rows="2" required placeholder="چه چیزی و چرا اصلاح شد؟"></textarea></div>
+    <button class="btn" type="submit" onclick="return confirm('اصلاحیه به‌صورت نسخه جدید ثبت شود؟');"><svg class="icon"><use href="#i-save"></use></svg> ثبت نسخه اصلاح‌شده</button>
+  </form>
+</div>
+{% endif %}
+{% endblock %}
