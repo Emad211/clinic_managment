@@ -56,6 +56,8 @@ jobs:
         run: python .github/finalize_a6_visibility.py
       - name: Apply A6 regression contracts
         run: python .github/finalize_a6_regressions.py
+      - name: Apply A6 first failure fixes
+        run: python .github/finalize_a6_failures.py
 
       - name: Verify deterministic integration and accounting boundary
         shell: bash
@@ -71,7 +73,8 @@ jobs:
             .github/finalize_a6_routes.py \
             .github/finalize_a6_settings.py \
             .github/finalize_a6_visibility.py \
-            .github/finalize_a6_regressions.py; do
+            .github/finalize_a6_regressions.py \
+            .github/finalize_a6_failures.py; do
               test ! -e "$file"
           done
           git diff --check
