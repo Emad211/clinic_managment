@@ -1,5 +1,6 @@
 from pathlib import Path
 
+# Trigger revision: align the legacy expectation and run explicit decision-state tests.
 ROOT = Path(__file__).resolve().parents[1]
 path = ROOT / "specialist_clinic/tests/test_clinical_engine_v2_followups.py"
 text = path.read_text(encoding="utf-8")
