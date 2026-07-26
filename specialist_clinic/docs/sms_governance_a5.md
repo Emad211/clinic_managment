@@ -25,6 +25,8 @@ provider پیام در زمان ساخت ثابت می‌شود. تغییر پن
 
 پذیرش درخواست توسط پنل (`Accepted`) تحویل به گیرنده نیست. وضعیت‌های provider در `sms_delivery_events` append-only ذخیره می‌شوند. برای کاوه‌نگار فقط status code `10` از `sms/status` برابر `Delivered` است.
 
+KPI «ارسال‌شده» در UI جدید به‌عنوان پذیرش پنل تفسیر نمی‌شود؛ `Accepted`، `In flight`، `Delivered`، `Failed` و `Unknown` جدا نمایش داده می‌شوند.
+
 ## Secrets
 
 در production کلیدها فقط از متغیرهای محیطی زیر خوانده می‌شوند:
