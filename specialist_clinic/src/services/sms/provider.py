@@ -1,9 +1,6 @@
-"""SMS provider abstraction.
-
-Concrete providers (e.g. Mediana) implement `send`. This keeps the rest of
-the app provider-agnostic so a different panel can be plugged in later.
-"""
+"""SMS provider abstraction and exact provider resolution."""
 from __future__ import annotations
+
 from dataclasses import dataclass
 from typing import Optional
 
@@ -13,8 +10,7 @@ class SendResult:
     ok: bool
     provider_msgid: Optional[str] = None
     error: Optional[str] = None
-    pending: bool = False   # submitted, but the panel's response timed out / was unclear
-                            # (likely sent) — callers should log it as pending, NOT failed
+    pending: bool = False
     provider_request_id: Optional[str] = None
     delivery_status: Optional[str] = None
     delivery_status_int: Optional[int] = None
@@ -58,32 +54,54 @@ class BatchSendResult:
 
 
 class SmsProvider:
-    def send(self, recipient: str, body: str, message_type: Optional[str] = None) -> SendResult:  # pragma: no cover
+    def send(
+        self,
+        recipient: str,
+        body: str,
+        message_type: Optional[str] = None,
+    ) -> SendResult:  # pragma: no cover
         raise NotImplementedError
 
-    def send_batch(self, messages: list[OutgoingSms], message_type: Optional[str] = None) -> BatchSendResult:
+    def send_batch(
+        self,
+        messages: list[OutgoingSms],
+        message_type: Optional[str] = None,
+    ) -> BatchSendResult:
         items = []
         for message in messages:
             result = self.send(message.recipient, message.body, message_type)
-            items.append(BatchItemResult(
-                ref_id=message.ref_id, ok=result.ok,
-                provider_request_id=result.provider_request_id,
-                provider_msgid=result.provider_msgid,
-                delivery_status=result.delivery_status,
-                error=result.error, pending=result.pending, retryable=result.retryable,
-            ))
+            items.append(
+                BatchItemResult(
+                    ref_id=message.ref_id,
+                    ok=result.ok,
+                    provider_request_id=result.provider_request_id,
+                    provider_msgid=result.provider_msgid,
+                    delivery_status=result.delivery_status,
+                    error=result.error,
+                    pending=result.pending,
+                    retryable=result.retryable,
+                )
+            )
         return BatchSendResult(items=items)
 
-    def fetch_delivery(self, *, request_id: str | None = None,
-                       message_id: str | None = None) -> list[DeliveryUpdate]:
+    def fetch_delivery(
+        self,
+        *,
+        request_id: str | None = None,
+        message_id: str | None = None,
+    ) -> list[DeliveryUpdate]:
         return []
 
 
 class NullProvider(SmsProvider):
-    """Test/simulation provider: logs to console, never actually sends."""
+    """Test/simulation provider: logs to console, never calls an external panel."""
 
-    def send(self, recipient: str, body: str, message_type: Optional[str] = None) -> SendResult:
-        # Console-encoding-safe log (Windows cp1252 can't print Persian).
+    def send(
+        self,
+        recipient: str,
+        body: str,
+        message_type: Optional[str] = None,
+    ) -> SendResult:
         try:
             print(f"[NullSMS] -> {recipient}: {body}")
         except Exception:
@@ -92,70 +110,103 @@ class NullProvider(SmsProvider):
 
 
 class UnconfiguredProvider(SmsProvider):
-    """Production-safe provider used when no real SMS panel is configured."""
+    """Production-safe provider when the requested panel is not configured."""
 
-    def send(self, recipient: str, body: str, message_type: Optional[str] = None) -> SendResult:
+    def __init__(self, provider_name: str | None = None):
+        self.provider_name = provider_name
+
+    def send(
+        self,
+        recipient: str,
+        body: str,
+        message_type: Optional[str] = None,
+    ) -> SendResult:
+        label = f" ({self.provider_name})" if self.provider_name else ""
         return SendResult(
-            ok=False, retryable=True, delivery_status="RetryableFailure",
-            error="پنل پیامک فعال تنظیم نشده است",
+            ok=False,
+            retryable=True,
+            delivery_status="RetryableFailure",
+            error=f"پنل پیامک فعال تنظیم نشده است{label}",
         )
 
 
-def get_provider() -> SmsProvider:
-    """Return the configured SMS provider.
+def get_provider(
+    provider_name: str | None = None,
+    *,
+    allow_fallback: bool | None = None,
+) -> SmsProvider:
+    """Return a provider.
 
-    Honors the ``sms_provider`` setting ('kavenegar' | 'mediana'). If the selected
-    panel has no API key, falls back to whichever panel *does* have a key, and
-    In tests it falls back to NullProvider. A real application never reports a
-    simulated send as successful when no panel is configured.
+    With ``provider_name`` the resolution is exact and never falls back to a different
+    panel. Without it, configured preference/fallback behavior is preserved for new sends.
     """
+    exact = provider_name is not None
+    if allow_fallback is None:
+        allow_fallback = not exact
+    requested = str(provider_name or "").strip().lower()
     try:
         from src.adapters.sqlite.sms_repo import SmsRepository
-        repo = SmsRepository()
-        kav_key = (repo.get_setting('kavenegar_api_key') or '').strip()
-        med_key = (repo.get_setting('mediana_api_key') or '').strip()
-        pref = (repo.get_setting('sms_provider') or '').strip().lower()
-        if pref not in ('kavenegar', 'mediana'):
-            pref = 'kavenegar' if kav_key else ('mediana' if med_key else '')
 
-        def _timeout(key: str) -> int:
+        repo = SmsRepository()
+        kav_key = (repo.get_setting("kavenegar_api_key") or "").strip()
+        med_key = (repo.get_setting("mediana_api_key") or "").strip()
+        preference = (repo.get_setting("sms_provider") or "").strip().lower()
+
+        def timeout(key: str) -> int:
             try:
-                return int(repo.get_setting(key, '45') or 45)
+                return int(repo.get_setting(key, "45") or 45)
             except (TypeError, ValueError):
                 return 45
 
-        def _kavenegar() -> SmsProvider:
+        def kavenegar() -> SmsProvider:
             from src.services.sms.kavenegar_provider import KavenegarProvider
+
             return KavenegarProvider(
                 api_key=kav_key,
-                sender=repo.get_setting('kavenegar_sender'),
-                timeout=_timeout('kavenegar_timeout'),
+                sender=repo.get_setting("kavenegar_sender"),
+                timeout=timeout("kavenegar_timeout"),
             )
 
-        def _mediana() -> SmsProvider:
+        def mediana() -> SmsProvider:
             from src.services.sms.mediana_provider import MedianaProvider
+
             return MedianaProvider(
                 api_key=med_key,
-                sending_number=repo.get_setting('mediana_sending_number'),
-                default_type=repo.get_setting('mediana_message_type', 'PromotionalToCustomers'),
-                timeout=_timeout('mediana_timeout'),
+                sending_number=repo.get_setting("mediana_sending_number"),
+                default_type=repo.get_setting(
+                    "mediana_message_type", "PromotionalToCustomers"
+                ),
+                timeout=timeout("mediana_timeout"),
             )
 
-        if pref == 'kavenegar' and kav_key:
-            return _kavenegar()
-        if pref == 'mediana' and med_key:
-            return _mediana()
-        # Selected panel isn't configured → use whichever has a key.
-        if kav_key:
-            return _kavenegar()
-        if med_key:
-            return _mediana()
-    except Exception as e:
-        print(f"[sms] provider init failed: {e}")
+        if requested in {"null", "simulated"}:
+            return NullProvider()
+        if requested == "kavenegar":
+            return kavenegar() if kav_key else UnconfiguredProvider("kavenegar")
+        if requested == "mediana":
+            return mediana() if med_key else UnconfiguredProvider("mediana")
+        if exact:
+            return UnconfiguredProvider(requested or "unknown")
+
+        if preference not in {"kavenegar", "mediana"}:
+            preference = "kavenegar" if kav_key else ("mediana" if med_key else "")
+        if preference == "kavenegar" and kav_key:
+            return kavenegar()
+        if preference == "mediana" and med_key:
+            return mediana()
+        if allow_fallback:
+            if kav_key:
+                return kavenegar()
+            if med_key:
+                return mediana()
+    except Exception as exc:
+        print(f"[sms] provider init failed: {exc}")
+
     try:
         from flask import current_app
-        if current_app.config.get('TESTING'):
+
+        if current_app.config.get("TESTING"):
             return NullProvider()
     except Exception:
         pass
-    return UnconfiguredProvider()
+    return UnconfiguredProvider(requested or None)
