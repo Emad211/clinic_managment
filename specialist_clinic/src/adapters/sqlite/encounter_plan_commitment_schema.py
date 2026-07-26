@@ -186,6 +186,12 @@ def ensure_encounter_plan_commitment_storage(db: sqlite3.Connection) -> None:
         )
         BEGIN SELECT RAISE(ABORT,'plan commitment signed document scope mismatch'); END;
 
+        CREATE TRIGGER IF NOT EXISTS trg_plan_commitment_task_mutation_guard
+        BEFORE UPDATE OF status,due_date,assigned_to,appointment_id,resolved_at
+        ON followup_tasks
+        WHEN OLD.source_engine='encounter_plan'
+        BEGIN SELECT RAISE(ABORT,'plan commitment tasks require append-only lifecycle'); END;
+
         CREATE TRIGGER IF NOT EXISTS trg_plan_commitment_task_scope
         BEFORE INSERT ON care_plan_commitment_task_links
         WHEN NOT EXISTS (
@@ -198,6 +204,17 @@ def ensure_encounter_plan_commitment_storage(db: sqlite3.Connection) -> None:
               AND task.source_rule=commitment.commitment_id
         )
         BEGIN SELECT RAISE(ABORT,'plan commitment task scope mismatch'); END;
+
+        CREATE TRIGGER IF NOT EXISTS trg_plan_commitment_appointment_scope
+        BEFORE INSERT ON care_plan_commitment_events
+        WHEN NEW.appointment_id IS NOT NULL AND NOT EXISTS (
+            SELECT 1 FROM care_plan_commitments commitment
+            JOIN appointments appointment
+              ON appointment.id=NEW.appointment_id
+            WHERE commitment.commitment_id=NEW.commitment_id
+              AND appointment.patient_link_id=commitment.patient_link_id
+        )
+        BEGIN SELECT RAISE(ABORT,'plan commitment appointment scope mismatch'); END;
 
         CREATE TRIGGER IF NOT EXISTS trg_plan_commitment_first_event
         BEFORE INSERT ON care_plan_commitment_events

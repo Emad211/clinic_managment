@@ -1,16 +1,32 @@
 from __future__ import annotations
 
 from datetime import timedelta
+from pathlib import Path
 import sqlite3
 
 import pytest
 
 
 @pytest.fixture()
-def a10_app(tmp_path):
+def a10_app(tmp_path, monkeypatch):
     from src.adapters.sqlite import core
     from src.app import create_app
 
+    from src.adapters import specialist_accounting_revenue
+    from src.common.utils import iran_now
+    monkeypatch.setattr(
+        specialist_accounting_revenue,
+        "invoice_identity",
+        lambda invoice_id: {
+            "invoice_id": int(invoice_id),
+            "patient_id": int(invoice_id),
+            "status": "open",
+            "work_date": iran_now().strftime("%Y-%m-%d"),
+            "opened_at": iran_now().strftime("%Y-%m-%d %H:%M:%S"),
+            "closed_at": None,
+            "total_amount": 0,
+        },
+    )
     core._initialized = False
     app = create_app(
         {
@@ -356,3 +372,20 @@ def test_worklist_renders_plan_lifecycle_and_health_contract(a10_app):
     assert EncounterPlanCommitmentRepository().current_for_task(task_id)["current_status"] == "OPEN"
     details = client.get("/health/details").get_json()
     assert "encounter_plan_commitments" in details["checks"]
+
+
+
+def test_a10_source_guard_keeps_structured_planner_and_event_route():
+    root = Path(__file__).resolve().parents[1]
+    visit = (root / "src/templates/doctor_queue/visit_quick.html").read_text(encoding="utf-8")
+    worklist = (root / "src/templates/followups/worklist.html").read_text(encoding="utf-8")
+    routes = (root / "src/api/followups.py").read_text(encoding="utf-8")
+    followups = (root / "src/adapters/sqlite/followups_repo.py").read_text(encoding="utf-8")
+    for field in (
+        "commitment_client_key", "commitment_type", "commitment_instruction",
+        "commitment_due_date", "commitment_due_time", "commitment_fulfillment",
+    ):
+        assert f'name="{field}"' in visit
+    assert "followups.plan_transition" in worklist
+    assert "FOLLOWUP_PLAN_TRANSITION" in routes
+    assert "encounter_plan" in followups

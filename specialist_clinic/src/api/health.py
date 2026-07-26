@@ -51,6 +51,9 @@ from src.adapters.sqlite.specialist_service_lineage_schema import (
 from src.adapters.sqlite.encounter_documentation_schema import (
     ensure_encounter_documentation_storage,
 )
+from src.adapters.sqlite.encounter_plan_commitment_schema import (
+    ensure_encounter_plan_commitment_storage,
+)
 from src.adapters.sqlite.clinical_validation_schema import (
     ensure_clinical_validation_storage,
 )
@@ -113,6 +116,9 @@ _REQUIRED_TABLES = frozenset(
         "specialist_service_line_observations",
         "care_encounter_document_requirements",
         "care_encounter_document_events",
+        "care_plan_commitments",
+        "care_plan_commitment_task_links",
+        "care_plan_commitment_events",
     }
 )
 
@@ -131,6 +137,7 @@ def _readiness_checks() -> dict[str, bool]:
     ensure_specialist_payer_adjustment_storage(db)
     ensure_specialist_service_lineage_storage(db)
     ensure_encounter_documentation_storage(db)
+    ensure_encounter_plan_commitment_storage(db)
     ensure_clinical_validation_storage(db)
     ensure_clinical_audit_integrity_storage(db)
 
@@ -260,6 +267,27 @@ def _readiness_checks() -> dict[str, bool]:
            LIMIT 1"""
     ).fetchone()
     encounter_documentation_ok = document_inconsistent is None
+    plan_commitment_inconsistent = db.execute(
+        """SELECT 1
+           FROM care_plan_commitment_task_links link
+           JOIN care_plan_commitments commitment
+             ON commitment.commitment_id=link.commitment_id
+           LEFT JOIN followup_tasks task ON task.id=link.task_id
+           LEFT JOIN care_plan_commitment_events event
+             ON event.commitment_id=commitment.commitment_id
+            AND event.id=(
+                SELECT head.id FROM care_plan_commitment_events head
+                WHERE head.commitment_id=commitment.commitment_id
+                ORDER BY head.recorded_at DESC,head.id DESC LIMIT 1
+            )
+           WHERE task.id IS NULL
+              OR task.patient_link_id<>commitment.patient_link_id
+              OR task.source_engine<>'encounter_plan'
+              OR task.source_rule<>commitment.commitment_id
+              OR event.id IS NULL
+           LIMIT 1"""
+    ).fetchone()
+    encounter_plan_ok = plan_commitment_inconsistent is None
 
     return {
         "database": integrity_ok,
@@ -274,6 +302,7 @@ def _readiness_checks() -> dict[str, bool]:
         "payer_adjustments": payer_adjustment_storage_ok,
         "service_lineage": service_lineage_ok,
         "encounter_documentation": encounter_documentation_ok,
+        "encounter_plan_commitments": encounter_plan_ok,
     }
 
 
@@ -300,6 +329,7 @@ def ready():
             "payer_adjustments": False,
             "service_lineage": False,
             "encounter_documentation": False,
+            "encounter_plan_commitments": False,
         }
     is_ready = all(checks.values())
     # Public readiness discloses no table, patient, path, mode, secret or exception.
@@ -328,6 +358,7 @@ def details():
             "payer_adjustments": False,
             "service_lineage": False,
             "encounter_documentation": False,
+            "encounter_plan_commitments": False,
         }
         error = "health_check_failed"
     is_ready = all(checks.values())

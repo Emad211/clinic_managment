@@ -209,6 +209,7 @@ class EncounterPlanCommitmentService:
         db = self._db()
         patient_id = int(commitment["patient_link_id"])
         kind = str(commitment["commitment_type"])
+        created_at = str(commitment["created_at"])
         evidence = str(evidence_type or "").strip().upper()
         reference = str(evidence_ref or "").strip()
         if evidence not in _ALLOWED_EVIDENCE[kind]:
@@ -222,43 +223,50 @@ class EncounterPlanCommitmentService:
         if evidence == "CONTACT_EVENT":
             row = db.execute(
                 """SELECT 1 FROM followup_contact_events
-                   WHERE id=? AND task_id=? AND patient_link_id=?""",
-                (int(reference), int(task_id), patient_id),
+                   WHERE id=? AND task_id=? AND patient_link_id=?
+                     AND datetime(occurred_at)>=datetime(?)""",
+                (int(reference), int(task_id), patient_id, created_at),
             ).fetchone()
         elif evidence == "APPOINTMENT":
             row = db.execute(
                 """SELECT 1 FROM appointments
-                   WHERE id=? AND patient_link_id=?""",
-                (int(reference), patient_id),
+                   WHERE id=? AND patient_link_id=? AND status='done'
+                     AND datetime(scheduled_at)>=datetime(?)""",
+                (int(reference), patient_id, created_at),
             ).fetchone()
         elif evidence == "ENCOUNTER_DOCUMENT":
             row = db.execute(
                 """SELECT 1 FROM care_encounter_document_events
-                   WHERE id=? AND patient_link_id=? AND document_status='SIGNED'""",
-                (int(reference), patient_id),
+                   WHERE id=? AND patient_link_id=? AND document_status='SIGNED'
+                     AND datetime(authored_at)>=datetime(?)""",
+                (int(reference), patient_id, created_at),
             ).fetchone()
         elif evidence == "LAB_RESULT":
             row = db.execute(
-                "SELECT 1 FROM lab_results WHERE id=? AND patient_link_id=?",
-                (int(reference), patient_id),
+                """SELECT 1 FROM lab_results
+                   WHERE id=? AND patient_link_id=?
+                     AND datetime(taken_at)>=datetime(?)""",
+                (int(reference), patient_id, created_at),
             ).fetchone()
         elif evidence == "MEDICATION_EVENT":
             row = db.execute(
                 """SELECT 1 FROM medication_events
-                   WHERE id=? AND patient_link_id=?""",
-                (int(reference), patient_id),
+                   WHERE id=? AND patient_link_id=?
+                     AND datetime(COALESCE(event_date,created_at))>=datetime(?)""",
+                (int(reference), patient_id, created_at),
             ).fetchone()
         elif evidence == "VITAL_READING":
             row = db.execute(
                 """SELECT 1 FROM vital_readings
-                   WHERE id=? AND patient_link_id=?""",
-                (int(reference), patient_id),
+                   WHERE id=? AND patient_link_id=?
+                     AND datetime(measured_at)>=datetime(?)""",
+                (int(reference), patient_id, created_at),
             ).fetchone()
         else:
-            row = bool(str(note or "").strip())
+            row = len(str(note or "").strip()) >= 12
         if not row:
             raise EncounterPlanCommitmentValidationError(
-                "completion evidence does not belong to this patient or task"
+                "completion evidence is stale, incomplete, or outside task scope"
             )
 
     def transition(
@@ -297,7 +305,44 @@ class EncounterPlanCommitmentService:
             raise EncounterPlanCommitmentValidationError(
                 "unknown plan commitment transition"
             )
+        if event == "ASSIGNED" and not str(assigned_to or "").strip():
+            raise EncounterPlanCommitmentValidationError(
+                "assigned_to is required"
+            )
+        if event == "RESCHEDULED":
+            if not due_at:
+                raise EncounterPlanCommitmentValidationError(
+                    "new due time is required"
+                )
+            parsed_due = datetime.fromisoformat(str(due_at).replace("Z", "+00:00"))
+            if parsed_due.tzinfo is not None:
+                parsed_due = parsed_due.replace(tzinfo=None)
+            now = self.clock()
+            if now.tzinfo is not None:
+                now = now.replace(tzinfo=None)
+            if parsed_due < now:
+                raise EncounterPlanCommitmentValidationError(
+                    "new due time cannot be in the past"
+                )
+        if event == "SCHEDULED":
+            if appointment_id is None:
+                raise EncounterPlanCommitmentValidationError(
+                    "appointment is required for scheduling"
+                )
+            appointment = self._db().execute(
+                """SELECT 1 FROM appointments
+                   WHERE id=? AND patient_link_id=? AND status='scheduled'""",
+                (int(appointment_id), int(current["patient_link_id"])),
+            ).fetchone()
+            if not appointment:
+                raise EncounterPlanCommitmentValidationError(
+                    "scheduled appointment does not belong to commitment patient"
+                )
         if event == "COMPLETED":
+            if str(outcome_code or "").strip().upper() not in OUTCOME_LABELS:
+                raise EncounterPlanCommitmentValidationError(
+                    "completion outcome is required"
+                )
             self._validate_evidence(
                 task_id=task_id,
                 commitment=current,

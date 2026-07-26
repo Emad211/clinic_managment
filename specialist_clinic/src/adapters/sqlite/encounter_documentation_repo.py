@@ -50,6 +50,27 @@ def _text(value: Any) -> str | None:
     return normalized or None
 
 
+def _commitments_json(values) -> str:
+    if values is None:
+        decoded = []
+    elif isinstance(values, str):
+        try:
+            decoded = json.loads(values or "[]")
+        except json.JSONDecodeError as exc:
+            raise EncounterDocumentationValidationError(
+                "commitments JSON is invalid"
+            ) from exc
+    else:
+        decoded = values
+    if not isinstance(decoded, list) or any(
+        not isinstance(item, dict) for item in decoded
+    ):
+        raise EncounterDocumentationValidationError(
+            "commitments must be an array of objects"
+        )
+    return json.dumps(decoded, ensure_ascii=False, separators=(",", ":"))
+
+
 def _problems(values: Iterable[str] | str | None) -> list[str]:
     if values is None:
         return []
@@ -200,6 +221,7 @@ class EncounterDocumentationRepository:
         plan: str | None = None,
         followup_instructions: str | None = None,
         problems: Iterable[str] | str | None = None,
+        commitments=None,
         outcome_code: str | None = None,
         amendment_reason: str | None = None,
         authored_at: datetime | str | None = None,
@@ -293,6 +315,7 @@ class EncounterDocumentationRepository:
                 "problems_json": json.dumps(
                     _problems(problems), ensure_ascii=False
                 ),
+                "commitments_json": _commitments_json(commitments),
                 "outcome_code": outcome,
                 "amendment_reason": amendment,
                 "authored_at": authored,
@@ -306,10 +329,11 @@ class EncounterDocumentationRepository:
                 """INSERT INTO care_encounter_document_events
                    (encounter_id,journey_id,patient_link_id,accounting_invoice_id,
                     event_type,document_status,chief_complaint,objective_findings,
-                    assessment,plan,followup_instructions,problems_json,outcome_code,
-                    amendment_reason,authored_at,recorded_at,actor_user_id,
-                    actor_username,idempotency_key,supersedes_event_id,content_hash)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    assessment,plan,followup_instructions,problems_json,
+                    commitments_json,outcome_code,amendment_reason,authored_at,
+                    recorded_at,actor_user_id,actor_username,idempotency_key,
+                    supersedes_event_id,content_hash)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (*payload.values(), _hash(payload)),
             )
             row = db.execute(
@@ -349,6 +373,9 @@ class EncounterDocumentationRepository:
         for row in rows:
             item = dict(row)
             item["problems"] = json.loads(item.get("problems_json") or "[]")
+            item["commitments"] = json.loads(
+                item.get("commitments_json") or "[]"
+            )
             output.append(item)
         return output
 

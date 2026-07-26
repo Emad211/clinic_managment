@@ -26,6 +26,64 @@ def _snapshot(invoice_id: int) -> dict:
     return {"accounting_invoice_id": int(invoice_id)}
 
 
+def _commitments_from_form() -> list[dict]:
+    keys = request.form.getlist("commitment_client_key")
+    kinds = request.form.getlist("commitment_type")
+    instructions = request.form.getlist("commitment_instruction")
+    dates = request.form.getlist("commitment_due_date")
+    times = request.form.getlist("commitment_due_time")
+    fulfillments = request.form.getlist("commitment_fulfillment")
+    assignees = request.form.getlist("commitment_assigned_to")
+    width = max(
+        len(keys), len(kinds), len(instructions), len(dates), len(times),
+        len(fulfillments), len(assignees), 0,
+    )
+    output: list[dict] = []
+    for index in range(width):
+        def at(values, default=""):
+            return values[index] if index < len(values) else default
+        raw = {
+            "client_key": at(keys).strip(),
+            "commitment_type": at(kinds).strip(),
+            "instruction": at(instructions).strip(),
+            "due_date": at(dates).strip(),
+            "due_time": at(times, "09:00").strip() or "09:00",
+            "fulfillment": at(fulfillments, "remote").strip() or "remote",
+            "assigned_to": at(assignees).strip(),
+        }
+        if not any(
+            raw[field]
+            for field in ("client_key", "commitment_type", "instruction", "due_date", "assigned_to")
+        ):
+            continue
+        if not all(
+            raw[field]
+            for field in ("client_key", "commitment_type", "instruction", "due_date")
+        ):
+            raise ValueError(
+                f"ردیف تعهد {index + 1} ناقص است؛ نوع، دستور و موعد الزامی‌اند."
+            )
+        due_day = jalali_to_gregorian_str(raw["due_date"])
+        if not due_day:
+            raise ValueError(f"تاریخ تعهد {index + 1} نامعتبر است.")
+        try:
+            from datetime import datetime
+            due = datetime.fromisoformat(f"{due_day} {raw['due_time']}:00")
+        except ValueError as exc:
+            raise ValueError(f"زمان تعهد {index + 1} نامعتبر است.") from exc
+        output.append(
+            {
+                "client_key": raw["client_key"],
+                "commitment_type": raw["commitment_type"],
+                "instruction": raw["instruction"],
+                "due_at": due.isoformat(sep=" ", timespec="seconds"),
+                "fulfillment": raw["fulfillment"],
+                "assigned_to": raw["assigned_to"] or None,
+            }
+        )
+    return output
+
+
 def _queue_error(exc: Exception) -> None:
     labels = {
         "ACCOUNTING_BRIDGE_UNAVAILABLE": "اتصال خواندنی حسابداری در دسترس نیست.",
@@ -207,6 +265,9 @@ def visit(invoice_id):
         current_document["problems"] = json.loads(
             current_document.get("problems_json") or "[]"
         )
+        current_document["commitments"] = json.loads(
+            current_document.get("commitments_json") or "[]"
+        )
     outcome_labels = {
         "STABLE_CONTINUE": "پایدار؛ ادامه برنامه فعلی",
         "PLAN_CHANGED": "برنامه درمانی تغییر کرد",
@@ -327,6 +388,7 @@ def save(invoice_id):
         "followup_instructions": request.form.get("followup_instructions"),
         "problems": request.form.get("problems"),
         "outcome_code": request.form.get("outcome_code"),
+        "commitments": _commitments_from_form(),
     }
     action = str(request.form.get("action") or "draft").lower()
     request_id = (
@@ -403,6 +465,9 @@ def document_detail(invoice_id: int):
             raise LookupError("encounter document not found")
         import json
         current["problems"] = json.loads(current.get("problems_json") or "[]")
+        current["commitments"] = json.loads(
+            current.get("commitments_json") or "[]"
+        )
         history = repository.history(encounter["encounter_id"])
     except Exception as exc:
         _queue_error(exc)

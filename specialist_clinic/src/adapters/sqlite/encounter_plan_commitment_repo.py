@@ -329,78 +329,89 @@ class EncounterPlanCommitmentRepository:
         commit: bool = True,
     ) -> dict:
         db = self._db()
-        current = self.current_for_task(task_id)
-        if not current:
-            raise LookupError("plan commitment task not found")
-        if int(current["current_event_id"]) != int(expected_current_event_id):
-            raise EncounterPlanCommitmentConflict("STALE_PLAN_COMMITMENT")
-        event = str(event_type or "").strip().upper()
-        if event not in {
-            "STARTED", "ASSIGNED", "RESCHEDULED", "SCHEDULED",
-            "COMPLETED", "CANCELLED", "ENTERED_IN_ERROR",
-        }:
-            raise EncounterPlanCommitmentValidationError(
-                "invalid plan commitment event"
-            )
-        status_by_event = {
-            "STARTED": "IN_PROGRESS",
-            "ASSIGNED": str(current["current_status"]),
-            "RESCHEDULED": str(current["current_status"]),
-            "SCHEDULED": "SCHEDULED",
-            "COMPLETED": "COMPLETED",
-            "CANCELLED": "CANCELLED",
-            "ENTERED_IN_ERROR": "ENTERED_IN_ERROR",
-        }
-        current_status = str(current["current_status"])
-        if current_status in _TERMINAL_STATUSES:
-            raise EncounterPlanCommitmentConflict(
-                "plan commitment is terminal"
-            )
-        next_due = _time(due_at or current["current_due_at"])
-        next_assigned = (
-            str(assigned_to).strip()
-            if assigned_to is not None and str(assigned_to).strip()
-            else current.get("current_assigned_to")
-        )
-        next_appointment = (
-            int(appointment_id)
-            if appointment_id is not None
-            else current.get("current_appointment_id")
-        )
-        payload = {
-            "commitment_id": str(current["commitment_id"]),
-            "event_type": event,
-            "status": status_by_event[event],
-            "due_at": next_due,
-            "assigned_to": next_assigned,
-            "appointment_id": next_appointment,
-            "evidence_type": (
-                str(evidence_type).strip().upper() if evidence_type else None
-            ),
-            "evidence_ref": str(evidence_ref).strip() if evidence_ref else None,
-            "outcome_code": (
-                str(outcome_code).strip().upper() if outcome_code else None
-            ),
-            "note": str(note).strip() if note else None,
-            "recorded_at": _time(),
-            "actor_user_id": int(actor_user_id) if actor_user_id else None,
-            "actor_username": str(actor_username),
-            "idempotency_key": str(idempotency_key),
-            "supersedes_event_id": int(current["current_event_id"]),
-        }
-        prior = db.execute(
-            "SELECT * FROM care_plan_commitment_events WHERE idempotency_key=?",
-            (payload["idempotency_key"],),
-        ).fetchone()
-        if prior:
-            if prior["commitment_id"] != payload["commitment_id"]:
-                raise EncounterPlanCommitmentConflict(
-                    "commitment idempotency scope mismatch"
-                )
-            return dict(prior)
-        if commit:
+        owns_transaction = bool(commit)
+        if owns_transaction:
+            if db.in_transaction:
+                raise EncounterPlanCommitmentConflict("CALLER_TRANSACTION_ACTIVE")
             db.execute("BEGIN IMMEDIATE")
         try:
+            current = self.current_for_task(task_id)
+            if not current:
+                raise LookupError("plan commitment task not found")
+            key = str(idempotency_key or "").strip()
+            actor = str(actor_username or "").strip()
+            if len(key) < 12 or not actor:
+                raise EncounterPlanCommitmentValidationError(
+                    "commitment event actor and idempotency key are required"
+                )
+            prior = db.execute(
+                "SELECT * FROM care_plan_commitment_events WHERE idempotency_key=?",
+                (key,),
+            ).fetchone()
+            if prior:
+                if prior["commitment_id"] != current["commitment_id"]:
+                    raise EncounterPlanCommitmentConflict(
+                        "commitment idempotency scope mismatch"
+                    )
+                if owns_transaction:
+                    db.commit()
+                return dict(prior)
+            if int(current["current_event_id"]) != int(expected_current_event_id):
+                raise EncounterPlanCommitmentConflict("STALE_PLAN_COMMITMENT")
+            event = str(event_type or "").strip().upper()
+            if event not in {
+                "STARTED", "ASSIGNED", "RESCHEDULED", "SCHEDULED",
+                "COMPLETED", "CANCELLED", "ENTERED_IN_ERROR",
+            }:
+                raise EncounterPlanCommitmentValidationError(
+                    "invalid plan commitment event"
+                )
+            current_status = str(current["current_status"])
+            if current_status in _TERMINAL_STATUSES:
+                raise EncounterPlanCommitmentConflict(
+                    "plan commitment is terminal"
+                )
+            status_by_event = {
+                "STARTED": "IN_PROGRESS",
+                "ASSIGNED": current_status,
+                "RESCHEDULED": current_status,
+                "SCHEDULED": "SCHEDULED",
+                "COMPLETED": "COMPLETED",
+                "CANCELLED": "CANCELLED",
+                "ENTERED_IN_ERROR": "ENTERED_IN_ERROR",
+            }
+            next_due = _time(due_at or current["current_due_at"])
+            next_assigned = (
+                str(assigned_to).strip()
+                if assigned_to is not None and str(assigned_to).strip()
+                else current.get("current_assigned_to")
+            )
+            next_appointment = (
+                int(appointment_id)
+                if appointment_id is not None
+                else current.get("current_appointment_id")
+            )
+            payload = {
+                "commitment_id": str(current["commitment_id"]),
+                "event_type": event,
+                "status": status_by_event[event],
+                "due_at": next_due,
+                "assigned_to": next_assigned,
+                "appointment_id": next_appointment,
+                "evidence_type": (
+                    str(evidence_type).strip().upper() if evidence_type else None
+                ),
+                "evidence_ref": str(evidence_ref).strip() if evidence_ref else None,
+                "outcome_code": (
+                    str(outcome_code).strip().upper() if outcome_code else None
+                ),
+                "note": str(note).strip() if note else None,
+                "recorded_at": _time(),
+                "actor_user_id": int(actor_user_id) if actor_user_id else None,
+                "actor_username": actor,
+                "idempotency_key": key,
+                "supersedes_event_id": int(current["current_event_id"]),
+            }
             cursor = db.execute(
                 """INSERT INTO care_plan_commitment_events
                    (commitment_id,event_type,status,due_at,assigned_to,
@@ -410,43 +421,15 @@ class EncounterPlanCommitmentRepository:
                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (*payload.values(), _hash(payload)),
             )
-            if event == "ASSIGNED":
-                db.execute(
-                    "UPDATE followup_tasks SET assigned_to=? WHERE id=?",
-                    (next_assigned, int(task_id)),
-                )
-            elif event == "RESCHEDULED":
-                db.execute(
-                    "UPDATE followup_tasks SET due_date=? WHERE id=?",
-                    (next_due[:10], int(task_id)),
-                )
-            elif event == "SCHEDULED":
-                db.execute(
-                    """UPDATE followup_tasks
-                       SET appointment_id=?,due_date=? WHERE id=?""",
-                    (next_appointment, next_due[:10], int(task_id)),
-                )
-            elif event == "COMPLETED":
-                db.execute(
-                    """UPDATE followup_tasks SET status='done',resolved_at=?
-                       WHERE id=?""",
-                    (payload["recorded_at"], int(task_id)),
-                )
-            elif event in {"CANCELLED", "ENTERED_IN_ERROR"}:
-                db.execute(
-                    """UPDATE followup_tasks SET status='dismissed',resolved_at=?
-                       WHERE id=?""",
-                    (payload["recorded_at"], int(task_id)),
-                )
-            if commit:
-                db.commit()
             row = db.execute(
                 "SELECT * FROM care_plan_commitment_events WHERE id=?",
                 (cursor.lastrowid,),
             ).fetchone()
+            if owns_transaction:
+                db.commit()
             return dict(row)
         except Exception:
-            if commit:
+            if owns_transaction:
                 db.rollback()
             raise
 
@@ -476,7 +459,7 @@ class EncounterPlanCommitmentRepository:
             clauses.append("event.status IN ('OPEN','IN_PROGRESS','SCHEDULED')")
         where = " AND ".join(clauses) or "1=1"
         rows = self._db().execute(
-            f"""SELECT link.task_id AS id,commitment.patient_link_id,
+            f"""SELECT link.task_id AS id,link.task_id AS task_id,commitment.patient_link_id,
                        'encounter_plan' AS reason,commitment.instruction AS detail,
                        task.status,task.assigned_to,task.appointment_id,
                        task.fulfillment,task.source_engine,task.source_event,

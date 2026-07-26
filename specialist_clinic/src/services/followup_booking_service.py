@@ -15,6 +15,9 @@ from src.adapters.sqlite.followup_operations_repo import (
     FollowupOperationsRepository,
 )
 from src.adapters.sqlite.followups_repo import FollowupRepository
+from src.adapters.sqlite.encounter_plan_commitment_repo import (
+    EncounterPlanCommitmentRepository,
+)
 from src.common.utils import iran_now
 
 
@@ -96,14 +99,16 @@ class FollowupBookingService:
                 return {
                     "appointment_id": int(prior["appointment_id"]),
                     "admin_booked": sum(
-                        1
-                        for task_id in normalized_ids
-                        if not self._is_clinical(db, task_id)
+                        1 for task_id in normalized_ids
+                        if self._task_kind(db, task_id) == "admin"
                     ),
                     "clinical_scheduled": sum(
-                        1
-                        for task_id in normalized_ids
-                        if self._is_clinical(db, task_id)
+                        1 for task_id in normalized_ids
+                        if self._task_kind(db, task_id) == "clinical_v2"
+                    ),
+                    "plan_scheduled": sum(
+                        1 for task_id in normalized_ids
+                        if self._task_kind(db, task_id) == "encounter_plan"
                     ),
                     "duplicate": True,
                 }
@@ -120,8 +125,10 @@ class FollowupBookingService:
                 )
 
             clinical_repo = ClinicalCareLoopRepository(db)
+            plan_repo = EncounterPlanCommitmentRepository(db)
             admin_ids: list[int] = []
             clinical_heads: dict[int, dict] = {}
+            plan_heads: dict[int, dict] = {}
             for row in task_rows:
                 task_id = int(row["id"])
                 if row["source_engine"] == "clinical_v2":
@@ -131,6 +138,15 @@ class FollowupBookingService:
                             f"پیگیری بالینی {task_id} دیگر باز نیست"
                         )
                     clinical_heads[task_id] = current
+                elif row["source_engine"] == "encounter_plan":
+                    current = plan_repo.current_for_task(task_id)
+                    if not current or current["current_status"] not in {
+                        "OPEN", "IN_PROGRESS", "SCHEDULED"
+                    }:
+                        raise FollowupBookingError(
+                            f"تعهد طرح {task_id} دیگر باز نیست"
+                        )
+                    plan_heads[task_id] = current
                 else:
                     if row["status"] != "open":
                         raise FollowupBookingError(
@@ -181,6 +197,18 @@ class FollowupBookingService:
                     note="از ورک‌لیست به ویزیت زمان‌بندی شد",
                     commit=False,
                 )
+            for task_id, current in plan_heads.items():
+                plan_repo.append_event(
+                    task_id=task_id,
+                    event_type="SCHEDULED",
+                    expected_current_event_id=int(current["current_event_id"]),
+                    actor_username=actor,
+                    actor_user_id=actor_user_id,
+                    appointment_id=appointment_id,
+                    idempotency_key=f"{key}:plan:{task_id}",
+                    note="تعهد طرح Encounter به نوبت زمان‌بندی شد",
+                    commit=False,
+                )
 
             created_at = self.clock()
             if created_at.tzinfo is not None:
@@ -219,6 +247,7 @@ class FollowupBookingService:
                 "appointment_id": appointment_id,
                 "admin_booked": len(admin_ids),
                 "clinical_scheduled": len(clinical_heads),
+                "plan_scheduled": len(plan_heads),
                 "duplicate": False,
             }
         except Exception:
@@ -226,9 +255,14 @@ class FollowupBookingService:
             raise
 
     @staticmethod
-    def _is_clinical(db: sqlite3.Connection, task_id: int) -> bool:
+    def _task_kind(db: sqlite3.Connection, task_id: int) -> str:
         row = db.execute(
-            "SELECT source_engine FROM followup_tasks WHERE id=?",
+            "SELECT COALESCE(source_engine,'') AS source_engine "
+            "FROM followup_tasks WHERE id=?",
             (int(task_id),),
         ).fetchone()
-        return bool(row and row["source_engine"] == "clinical_v2")
+        return str(row["source_engine"] or "admin") if row else "missing"
+
+    @classmethod
+    def _is_clinical(cls, db: sqlite3.Connection, task_id: int) -> bool:
+        return cls._task_kind(db, task_id) == "clinical_v2"

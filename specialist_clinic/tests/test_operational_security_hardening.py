@@ -302,4 +302,5 @@ def test_health_is_phi_free_and_permission_protected(secure_app):
         "payer_adjustments",
         "service_lineage",
         "encounter_documentation",
+        "encounter_plan_commitments",
     }

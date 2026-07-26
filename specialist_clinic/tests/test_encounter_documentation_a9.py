@@ -155,7 +155,7 @@ def _document_form(**overrides) -> dict:
         "assessment": "کنترل فشار خون هنوز مطلوب نیست.",
         "plan": "پایش خانگی و بازبینی درمان در مراجعه بعدی.",
         "followup_instructions": "ثبت فشار خون روزانه و تماس در صورت علامت.",
-        "outcome_code": "FOLLOWUP_REQUIRED",
+        "outcome_code": "STABLE_CONTINUE",
     }
     data.update(overrides)
     return data
@@ -281,7 +281,7 @@ def test_sign_completes_atomically_and_surfaces_in_patient_timeline(a9_app):
         encounter["encounter_id"]
     )
     assert current["document_status"] == "SIGNED"
-    assert current["outcome_code"] == "FOLLOWUP_REQUIRED"
+    assert current["outcome_code"] == "STABLE_CONTINUE"
     assert CareJourneyRepository().current_encounter_event(
         encounter["encounter_id"]
     )["event_type"] == "COMPLETED"
@@ -293,7 +293,7 @@ def test_sign_completes_atomically_and_surfaces_in_patient_timeline(a9_app):
     html = document_page.get_data(as_text=True)
     assert document_page.status_code == 200
     assert "کنترل فشار خون هنوز مطلوب نیست" in html
-    assert "پیگیری لازم است" in html
+    assert "پایدار؛ ادامه برنامه" in html
 
     patient_page = client.get(f"/patients/{patient_id}")
     patient_html = patient_page.get_data(as_text=True)

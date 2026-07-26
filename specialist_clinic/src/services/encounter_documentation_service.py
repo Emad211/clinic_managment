@@ -14,6 +14,9 @@ from src.adapters.sqlite.encounter_documentation_repo import (
 )
 from src.adapters.sqlite.vitals_repo import VitalsRepository
 from src.services.care_journey_service import CareJourneyService
+from src.services.encounter_plan_commitment_service import (
+    EncounterPlanCommitmentService,
+)
 
 
 class EncounterDocumentationStateError(RuntimeError):
@@ -127,6 +130,12 @@ class EncounterDocumentationService:
                 raise EncounterDocumentationStateError(
                     "ENCOUNTER_DOCUMENTATION_NOT_REQUIRED"
                 )
+            commitments = EncounterPlanCommitmentService(
+                db=db
+            ).validate_for_document(
+                outcome_code=None,
+                commitments=document.get("commitments"),
+            )
             vital_ids = self._record_vitals(
                 db,
                 patient_link_id=int(visit_snapshot["patient_link_id"]),
@@ -146,6 +155,7 @@ class EncounterDocumentationService:
                 plan=document.get("plan"),
                 followup_instructions=document.get("followup_instructions"),
                 problems=document.get("problems"),
+                commitments=commitments,
                 expected_current_event_id=expected_current_event_id,
                 commit=False,
             )
@@ -192,6 +202,12 @@ class EncounterDocumentationService:
                 raise EncounterDocumentationStateError(
                     "ENCOUNTER_DOCUMENTATION_NOT_REQUIRED"
                 )
+            commitments = EncounterPlanCommitmentService(
+                db=db
+            ).validate_for_document(
+                outcome_code=document.get("outcome_code"),
+                commitments=document.get("commitments"),
+            )
             vital_ids = self._record_vitals(
                 db,
                 patient_link_id=int(visit_snapshot["patient_link_id"]),
@@ -211,8 +227,17 @@ class EncounterDocumentationService:
                 plan=document.get("plan"),
                 followup_instructions=document.get("followup_instructions"),
                 problems=document.get("problems"),
+                commitments=commitments,
                 outcome_code=document.get("outcome_code"),
                 expected_current_event_id=expected_current_event_id,
+                commit=False,
+            )
+            materialized = EncounterPlanCommitmentService(
+                db=db
+            ).materialize_signed_document(
+                document_event=signed,
+                actor_username=actor_username,
+                actor_user_id=actor_user_id,
                 commit=False,
             )
             DoctorQueueRepository(db).mark_done(
@@ -236,6 +261,7 @@ class EncounterDocumentationService:
                 "document": signed,
                 "vital_ids": vital_ids,
                 "encounter": completed["encounter"],
+                "commitments": materialized,
             }
         except Exception:
             db.rollback()
@@ -258,7 +284,11 @@ class EncounterDocumentationService:
         db.execute("BEGIN IMMEDIATE")
         try:
             self._completed_event(db, encounter_id)
-            event = EncounterDocumentationRepository(db).append_document(
+            documentation = EncounterDocumentationRepository(db)
+            current = documentation.current_document(encounter_id)
+            if not current:
+                raise LookupError("encounter document not found")
+            event = documentation.append_document(
                 encounter_id=encounter_id,
                 event_type="AMENDED",
                 actor_username=actor_username,
@@ -270,6 +300,7 @@ class EncounterDocumentationService:
                 plan=document.get("plan"),
                 followup_instructions=document.get("followup_instructions"),
                 problems=document.get("problems"),
+                commitments=current.get("commitments_json") or "[]",
                 outcome_code=document.get("outcome_code"),
                 amendment_reason=amendment_reason,
                 expected_current_event_id=expected_current_event_id,
