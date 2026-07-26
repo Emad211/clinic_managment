@@ -419,7 +419,7 @@ def test_persistence_failure_is_never_silently_swallowed(followup_app):
         ({"may_create_internal_task": False}, "TASK_POLICY_REJECTED"),
         (
             {"requires_clinician_confirmation": True},
-            "TASK_POLICY_REJECTED",
+            "CLINICIAN_DECISION_REQUIRED",
         ),
         ({"semantic_key": ""}, "TASK_IDENTITY_MISSING"),
     ],

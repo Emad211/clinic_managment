@@ -156,6 +156,12 @@ class Scheduler:
 
             period = self._bucket(now)
             self._run_once(
+                job_name="clinical-alerts",
+                period_key=period,
+                lease=lease,
+                callback=self._run_clinical_alerts,
+            )
+            self._run_once(
                 job_name="administrative-engagement",
                 period_key=period,
                 lease=lease,
@@ -221,6 +227,26 @@ class Scheduler:
             checkpoint["id"],
             checkpoint["checkpoint_hash"][:12],
         )
+        return True
+
+    def _run_clinical_alerts(self):
+        from src.services.clinical_alert_service import ClinicalAlertService
+
+        service = ClinicalAlertService()
+        generated = service.generate_all()
+        escalated = service.escalate_due(now=iran_now())
+        if generated["created"] or escalated:
+            logger.warning(
+                "[scheduler] clinical alerts created=%s escalated=%s",
+                generated["created"],
+                len(escalated),
+            )
+        if generated["issues"]:
+            logger.error(
+                "[scheduler] clinical alerts had %s projection issue(s)",
+                len(generated["issues"]),
+            )
+            return False
         return True
 
     def _run_engagement(self):

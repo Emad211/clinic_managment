@@ -1,5 +1,5 @@
 {# Shared "messaging hub" tab bar. Including template sets `hub_tab` to one of
-   'campaigns' | 'messages' | 'approvals' | 'engagement' | 'worklist'. #}
+   'campaigns' | 'messages' | 'approvals' | 'engagement' | 'alerts' | 'worklist'. #}
 <div class="card card-soft hub-nav-card">
     <div class="hub-nav">
         <span class="hub-nav-label muted text-sm"><svg class="icon icon-sm"><use href="#i-megaphone"></use></svg> هابِ پیام</span>
@@ -9,6 +9,9 @@
         <a class="btn btn-sm hub-nav-btn {% if hub_tab=='messages' %}btn{% else %}btn-ghost{% endif %}"{% if hub_tab=='messages' %} aria-current="page"{% endif %} href="{{ url_for('sms.messages_report') }}"><svg class="icon icon-sm"><use href="#i-list-checks"></use></svg> گزارش تحویل</a>
         {% if g.user and g.user['role']=='manager' %}
         <a class="btn btn-sm hub-nav-btn {% if hub_tab=='engagement' %}btn{% else %}btn-ghost{% endif %}"{% if hub_tab=='engagement' %} aria-current="page"{% endif %} href="{{ url_for('manager.engagement') }}"><svg class="icon icon-sm"><use href="#i-zap"></use></svg> یادآوری و پیگیریِ خودکار</a>
+        {% endif %}
+        {% if permissions.get('clinical.alert.view') %}
+        <a class="btn btn-sm hub-nav-btn {% if hub_tab=='alerts' %}btn{% else %}btn-ghost{% endif %}"{% if hub_tab=='alerts' %} aria-current="page"{% endif %} href="{{ url_for('clinical_alerts.index') }}"><svg class="icon icon-sm"><use href="#i-alert"></use></svg> هشدارهای بالینی{% if alert_pending %} <span class="pill pill-danger">{{ alert_pending|fa_num }}</span>{% endif %}</a>
         {% endif %}
         <a class="btn btn-sm hub-nav-btn {% if hub_tab=='worklist' %}btn{% else %}btn-ghost{% endif %}"{% if hub_tab=='worklist' %} aria-current="page"{% endif %} href="{{ url_for('followups.worklist') }}"><svg class="icon icon-sm"><use href="#i-list-checks"></use></svg> ورک‌لیستِ تماس</a>
         </div>

@@ -111,6 +111,7 @@ def create_app(test_config=None):
     from src.api.clinical_reconciliation import (
         bp as clinical_reconciliation_bp,
     )
+    from src.api.clinical_alerts import bp as clinical_alerts_bp
     from src.api.control_room import bp as control_room_bp
     from src.api.dashboard import bp as dashboard_bp
     from src.api.doctor_queue import bp as doctor_queue_bp
@@ -128,6 +129,7 @@ def create_app(test_config=None):
         dashboard_bp,
         patients_bp,
         clinical_reconciliation_bp,
+        clinical_alerts_bp,
         vitals_bp,
         appointments_bp,
         followups_bp,

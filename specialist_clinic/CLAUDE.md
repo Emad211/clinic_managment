@@ -139,3 +139,10 @@ Decision support is **suggestion-only**: "پیشنهاد — تأیید با پ�
 - completion فقط با outcome هم-task، نوع و verification مجاز و در صورت `canonical_ingestion=REQUIRED` با لینک canonical ممکن است.
 - outcomeهای `observation.*` و `lab.*` در همان transaction به `vital_readings` یا `lab_results` وارد و در `clinical_outcome_canonical_links` متصل می‌شوند.
 - recommendation `params` باید در DTO، audit payload و follow-up projection حفظ شود؛ حذف آن‌ها ممنوع است.
+
+## قرارداد هشدار بالینی داخلی (A3)
+
+- خروجی `redflag` یا `safety_alert` فقط یک تعهد داخلی برای مشاهده و تصمیم انسانی ایجاد می‌کند؛ SMS، ارجاع، نوبت یا اقدام درمانی خودکار ممنوع است.
+- هر هشدار به exact current run و CREATED recommendation event متصل، immutable و دارای lifecycle افزایشی است.
+- `ACKNOWLEDGED` مسئول رسیدگی را ثبت می‌کند؛ `RESOLVED` فقط با آخرین decision event پزشک روی همان recommendation و یادداشت جمع‌بندی مجاز است.
+- Ruleهایی که نیازمند تأیید پزشک‌اند فقط پس از latest decision=`ACCEPTED` task می‌سازند و repository همان decision را دوباره داخل transaction بررسی می‌کند.
