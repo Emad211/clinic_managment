@@ -45,6 +45,9 @@ from src.adapters.sqlite.campaign_economics_schema import (
 from src.adapters.sqlite.specialist_payer_adjustment_schema import (
     ensure_specialist_payer_adjustment_storage,
 )
+from src.adapters.sqlite.specialist_service_lineage_schema import (
+    ensure_specialist_service_lineage_storage,
+)
 from src.adapters.sqlite.clinical_validation_schema import (
     ensure_clinical_validation_storage,
 )
@@ -103,6 +106,8 @@ _REQUIRED_TABLES = frozenset(
         "specialist_payer_breakdown_observations",
         "specialist_financial_adjustment_events",
         "specialist_financial_review_events",
+        "specialist_service_snapshot_manifests",
+        "specialist_service_line_observations",
     }
 )
 
@@ -119,6 +124,7 @@ def _readiness_checks() -> dict[str, bool]:
     ensure_sms_governance_storage(db)
     ensure_campaign_economics_storage(db)
     ensure_specialist_payer_adjustment_storage(db)
+    ensure_specialist_service_lineage_storage(db)
     ensure_clinical_validation_storage(db)
     ensure_clinical_audit_integrity_storage(db)
 
@@ -201,6 +207,32 @@ def _readiness_checks() -> dict[str, bool]:
            WHERE observation.id IS NULL LIMIT 1"""
     ).fetchone()
     payer_adjustment_storage_ok = payer_orphan is None
+    service_inconsistent = db.execute(
+        """SELECT manifest.snapshot_id
+           FROM specialist_service_snapshot_manifests manifest
+           LEFT JOIN specialist_financial_observations observation
+             ON observation.id=manifest.financial_observation_id
+           LEFT JOIN specialist_service_line_observations line
+             ON line.snapshot_id=manifest.snapshot_id
+           GROUP BY manifest.snapshot_id
+           HAVING observation.id IS NULL
+              OR (manifest.status='COMPLETE' AND (
+                    COUNT(line.id)<>manifest.expected_line_count
+                    OR COALESCE(SUM(line.total_amount),0)<>
+                       manifest.expected_total_amount
+                    OR manifest.expected_line_count<>observation.billable_item_count
+                    OR manifest.expected_total_amount<>observation.billed_amount
+                    OR SUM(CASE WHEN line.id IS NOT NULL AND (
+                         line.accounting_invoice_id<>manifest.accounting_invoice_id
+                         OR line.journey_id<>manifest.journey_id
+                         OR line.encounter_id<>manifest.encounter_id
+                         OR line.patient_link_id<>manifest.patient_link_id
+                    ) THEN 1 ELSE 0 END)>0
+                 ))
+              OR (manifest.status='LEGACY_UNAVAILABLE' AND COUNT(line.id)<>0)
+           LIMIT 1"""
+    ).fetchone()
+    service_lineage_ok = service_inconsistent is None
 
     return {
         "database": integrity_ok,
@@ -213,6 +245,7 @@ def _readiness_checks() -> dict[str, bool]:
         "sms_governance": sms_governance_ok,
         "campaign_economics": campaign_economics_ok,
         "payer_adjustments": payer_adjustment_storage_ok,
+        "service_lineage": service_lineage_ok,
     }
 
 
@@ -237,6 +270,7 @@ def ready():
             "sms_governance": False,
             "campaign_economics": False,
             "payer_adjustments": False,
+            "service_lineage": False,
         }
     is_ready = all(checks.values())
     # Public readiness discloses no table, patient, path, mode, secret or exception.
@@ -263,6 +297,7 @@ def details():
             "sms_governance": False,
             "campaign_economics": False,
             "payer_adjustments": False,
+            "service_lineage": False,
         }
         error = "health_check_failed"
     is_ready = all(checks.values())

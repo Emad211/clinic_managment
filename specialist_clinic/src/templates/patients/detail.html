@@ -198,14 +198,22 @@
 
     {# ---- UNIFIED CARE TIMELINE ---- #}
     <div class="card care-timeline-card">
-        <div class="section-title"><svg class="icon"><use href="#i-activity"></use></svg> تاریخچه مراقبت <span class="section-sub">ویزیت، آزمایش، نوبت، دارو و پیگیری در یک مسیر زمانی</span></div>
+        <div class="section-title"><svg class="icon"><use href="#i-activity"></use></svg> تاریخچه مراقبت <span class="section-sub">ویزیت، تزریق، خدمت عملی، آزمایش، نوبت، دارو و پیگیری در یک مسیر زمانی</span></div>
+        {% if service_line_summary.total %}
+        <div class="legend" style="margin-bottom:var(--s3);">
+            <span class="chip">خدمات دقیق: {{ service_line_summary.total|fa_num }}</span>
+            <span class="chip"><span class="dot dot-ok"></span> ویزیت: {{ service_line_summary.visits|fa_num }}</span>
+            <span class="chip"><span class="dot dot-info"></span> تزریق: {{ service_line_summary.injections|fa_num }}</span>
+            <span class="chip">خدمت عملی: {{ service_line_summary.procedures|fa_num }}</span>
+        </div>
+        {% endif %}
         {% if care_timeline %}
         <ol class="care-timeline">
             {% for event in care_timeline %}
             <li class="care-event tone-{{ event.tone }}">
                 <div class="care-event-icon" aria-hidden="true"><svg class="icon icon-sm"><use href="#i-{{ event.icon }}"></use></svg></div>
                 <div class="care-event-copy">
-                    <strong>{{ event.title }}</strong>
+                    <strong>{{ event.title }}{% if event.lineage %} <span class="badge badge-info text-xs">متصل به Encounter</span>{% endif %}</strong>
                     {% if event.detail %}<span>{{ event.detail }}</span>{% endif %}
                 </div>
                 <time datetime="{{ event.date }}">{{ event.date|jalali }}</time>

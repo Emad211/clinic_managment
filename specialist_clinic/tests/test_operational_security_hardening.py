@@ -300,4 +300,5 @@ def test_health_is_phi_free_and_permission_protected(secure_app):
         "sms_governance",
         "campaign_economics",
         "payer_adjustments",
+        "service_lineage",
     }

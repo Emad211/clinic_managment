@@ -1,7 +1,9 @@
 """Presentation-ready care priorities and a unified patient activity timeline.
 
-This service only composes already-authoritative domain data.  It performs no
-SQL and keeps patient-page prioritisation out of the Flask route/template.
+This service only composes already-authoritative domain data. It performs no SQL and keeps
+patient-page prioritisation out of the Flask route/template. A8 service events are shown
+only from current COMPLETE specialist service manifests; broad accounting visits are
+suppressed only when the exact same accounting invoice has a governed VISIT line.
 """
 from __future__ import annotations
 
@@ -27,6 +29,12 @@ MEDICATION_EVENT = {
     "dose_change": "تغییر دوز",
 }
 
+SERVICE_EVENT = {
+    "VISIT": ("ویزیت تخصصی انجام‌شده", "stethoscope", "ok"),
+    "INJECTION": ("تزریق انجام‌شده", "syringe", "info"),
+    "PROCEDURE": ("خدمت عملی انجام‌شده", "clipboard", "info"),
+}
+
 
 def _date(value) -> str:
     """Return a sortable ISO-like value without inventing a timestamp."""
@@ -47,8 +55,6 @@ class PatientCockpitService:
             for group in v2_groups
             if group.get("action_type") in {"safety_alert", "suggest_med"}
             for item in (group.get("items") or [])
-            # ACCEPTED/DISMISSED are completed reviews.  DEFERRED deliberately
-            # stays actionable, because the clinician asked to revisit it.
             if not item.get("current_decision")
             or item["current_decision"].get("decision") == "DEFERRED"
         )
@@ -107,24 +113,56 @@ class PatientCockpitService:
 
     @staticmethod
     def timeline(*, appointments, visits, labs, followups, medication_events,
-                 limit: int = 16) -> list[dict]:
+                 service_lines=None, limit: int = 24) -> list[dict]:
         events: list[dict] = []
+        exact_lines = list(service_lines or [])
+        exact_visit_invoice_ids = {
+            int(line["accounting_invoice_id"])
+            for line in exact_lines
+            if str(line.get("item_type") or "").upper() == "VISIT"
+            and line.get("accounting_invoice_id") is not None
+        }
         visit_days = {_date(v.get("visit_date"))[:10] for v in (visits or [])}
 
+        for line in exact_lines:
+            item_type = str(line.get("item_type") or "").upper()
+            title, icon, tone = SERVICE_EVENT.get(
+                item_type, ("خدمت تخصصی انجام‌شده", "clipboard", "info")
+            )
+            detail_parts = [str(line.get("description") or "").strip()]
+            performer = str(line.get("performer_name") or "").strip()
+            if performer:
+                detail_parts.append(performer)
+            when = line.get("performed_at") or line.get("work_date")
+            events.append({
+                "sort_at": _date(when),
+                "date": when,
+                "kind": f"service_{item_type.lower()}",
+                "icon": icon,
+                "tone": tone,
+                "title": title,
+                "detail": " · ".join(part for part in detail_parts if part),
+                "accounting_invoice_id": line.get("accounting_invoice_id"),
+                "encounter_id": line.get("encounter_id"),
+                "lineage": "ACCOUNTING_SERVICE_LINES_V1",
+            })
+
         for visit in visits or []:
+            invoice_id = visit.get("invoice_id")
+            if invoice_id is not None and int(invoice_id) in exact_visit_invoice_ids:
+                continue
             events.append({
                 "sort_at": _date(visit.get("visit_date")),
                 "date": visit.get("visit_date"),
                 "kind": "visit", "icon": "building", "tone": "ok",
-                "title": "ویزیت انجام‌شده",
-                "detail": visit.get("doctor_name") or "ویزیت ثبت‌شده در حسابداری",
+                "title": "ویزیت ثبت‌شده در حسابداری",
+                "detail": visit.get("doctor_name") or "جزئیات خدمت هنوز وارد lineage تخصصی نشده است",
+                "accounting_invoice_id": invoice_id,
             })
 
         for appointment in appointments or []:
             when = _date(appointment.get("scheduled_at"))
             status = appointment.get("status") or "scheduled"
-            # A completed local appointment on the same day as the accounting
-            # visit is one real-world event, not two timeline entries.
             if status == "done" and when[:10] in visit_days:
                 continue
             title, tone = APPOINTMENT_STATUS.get(status, ("نوبت", "muted"))
