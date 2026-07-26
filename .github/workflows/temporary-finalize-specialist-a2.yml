@@ -53,6 +53,9 @@ jobs:
       - name: Apply A2 runtime finalizer
         run: python .github/finalize_a2_runtime.py
 
+      - name: Apply A2 regression fixes
+        run: python .github/finalize_a2_regression_fixes.py
+
       - name: Verify deterministic A2 integration
         shell: bash
         run: |
@@ -61,6 +64,7 @@ jobs:
           test ! -e .github/finalize_a2.py
           test ! -e .github/finalize_a2_legacy.py
           test ! -e .github/finalize_a2_runtime.py
+          test ! -e .github/finalize_a2_regression_fixes.py
           git diff --check
           git diff --quiet origin/main -- webapp
 
