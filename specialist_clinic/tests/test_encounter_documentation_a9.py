@@ -293,7 +293,7 @@ def test_sign_completes_atomically_and_surfaces_in_patient_timeline(a9_app):
     html = document_page.get_data(as_text=True)
     assert document_page.status_code == 200
     assert "کنترل فشار خون هنوز مطلوب نیست" in html
-    assert "FOLLOWUP_REQUIRED" not in html
+    assert "پیگیری لازم است" in html
 
     patient_page = client.get(f"/patients/{patient_id}")
     patient_html = patient_page.get_data(as_text=True)
@@ -436,3 +436,71 @@ def test_legacy_backfill_runs_once_and_does_not_exempt_new_programmatic_encounte
     assert CareJourneyRepository().current_encounter_event(encounter_id)[
         "event_type"
     ] == "COMPLETED"
+
+
+
+def test_document_request_idempotency_prevents_duplicate_vitals_and_signs(a9_app):
+    from src.adapters.sqlite.care_journey_repo import CareJourneyRepository
+    from src.adapters.sqlite.core import get_db
+    from src.adapters.sqlite.encounter_documentation_repo import (
+        EncounterDocumentationRepository,
+    )
+
+    app, accounting, _specialist = a9_app
+    patient_id = _enroll_and_add_invoice(accounting)
+    client = app.test_client()
+    _login(client)
+    _start(client)
+    request_id = uuid.uuid4().hex
+    draft = _document_form(
+        action="draft",
+        document_request_id=request_id,
+        pulse="82",
+        outcome_code="",
+    )
+    client.post("/doctor-queue/101/save", data=draft)
+    client.post("/doctor-queue/101/save", data=draft)
+    encounter = CareJourneyRepository().encounter_for_invoice(101)
+    repository = EncounterDocumentationRepository()
+    assert len(repository.history(encounter["encounter_id"])) == 1
+    assert get_db().execute(
+        "SELECT COUNT(*) FROM vital_readings WHERE patient_link_id=?",
+        (patient_id,),
+    ).fetchone()[0] == 1
+
+    current = repository.current_document(encounter["encounter_id"])
+    sign_id = uuid.uuid4().hex
+    signed = _document_form(
+        action="sign",
+        document_request_id=sign_id,
+        expected_current_event_id=current["id"],
+        bp_systolic="132",
+    )
+    client.post("/doctor-queue/101/save", data=signed)
+    client.post("/doctor-queue/101/save", data=signed)
+    assert [row["event_type"] for row in repository.history(
+        encounter["encounter_id"]
+    )] == ["DRAFT_SAVED", "SIGNED"]
+    assert get_db().execute(
+        "SELECT COUNT(*) FROM vital_readings WHERE patient_link_id=?",
+        (patient_id,),
+    ).fetchone()[0] == 2
+
+
+
+def test_a9_source_guard_has_no_direct_done_and_keeps_required_fields():
+    root = Path(__file__).resolve().parents[1]
+    queue = (root / "src/templates/doctor_queue/queue.html").read_text(
+        encoding="utf-8"
+    )
+    visit = (root / "src/templates/doctor_queue/visit_quick.html").read_text(
+        encoding="utf-8"
+    )
+    routes = (root / "src/api/doctor_queue.py").read_text(encoding="utf-8")
+    assert "url_for('doctor_queue.done'" not in queue
+    assert 'name="assessment"' in visit
+    assert 'name="plan"' in visit
+    assert 'name="outcome_code"' in visit
+    assert 'name="action" value="sign"' in visit
+    assert "permission_required(Permission.CLINICAL_DOCUMENT_WRITE)" in routes
+    assert "permission_required(Permission.CLINICAL_DOCUMENT_AMEND)" in routes

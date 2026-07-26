@@ -167,6 +167,15 @@ class EncounterDocumentationRepository:
             ).fetchone()
         )
 
+    def document_by_idempotency(self, key: str) -> dict | None:
+        return self._row(
+            self._db().execute(
+                """SELECT * FROM care_encounter_document_events
+                   WHERE idempotency_key=?""",
+                (str(key),),
+            ).fetchone()
+        )
+
     def history(self, encounter_id: str) -> list[dict]:
         return [
             dict(row)

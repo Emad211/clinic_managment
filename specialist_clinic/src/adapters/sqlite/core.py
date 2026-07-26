@@ -400,6 +400,9 @@ def _run_migrations(db):
     from src.adapters.sqlite.specialist_service_lineage_schema import (
         ensure_specialist_service_lineage_storage,
     )
+    from src.adapters.sqlite.encounter_documentation_schema import (
+        ensure_encounter_documentation_storage,
+    )
     from src.adapters.sqlite.clinical_validation_schema import (
         ensure_clinical_validation_storage,
     )
@@ -418,6 +421,7 @@ def _run_migrations(db):
     ensure_campaign_economics_storage(db)
     ensure_specialist_payer_adjustment_storage(db)
     ensure_specialist_service_lineage_storage(db)
+    ensure_encounter_documentation_storage(db)
     ensure_clinical_validation_storage(db)
     ensure_clinical_audit_integrity_storage(db)
     _ensure_clinical_engine_v2_storage(db)

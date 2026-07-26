@@ -114,8 +114,13 @@ class EncounterDocumentationService:
             raise EncounterDocumentationStateError("CALLER_TRANSACTION_ACTIVE")
         db.execute("BEGIN IMMEDIATE")
         try:
+            documentation = EncounterDocumentationRepository(db)
+            existing = documentation.document_by_idempotency(idempotency_key)
+            if existing:
+                db.commit()
+                return {"document": existing, "vital_ids": []}
             self._active_event(db, visit_snapshot["encounter_id"])
-            requirement = EncounterDocumentationRepository(db).requirement(
+            requirement = documentation.requirement(
                 visit_snapshot["encounter_id"]
             )
             if not requirement or requirement["requirement_status"] != "REQUIRED":
@@ -167,8 +172,20 @@ class EncounterDocumentationService:
             raise EncounterDocumentationStateError("CALLER_TRANSACTION_ACTIVE")
         db.execute("BEGIN IMMEDIATE")
         try:
+            documentation = EncounterDocumentationRepository(db)
+            existing = documentation.document_by_idempotency(idempotency_key)
+            if existing:
+                encounter = CareJourneyRepository(db).encounter(
+                    visit_snapshot["encounter_id"]
+                )
+                db.commit()
+                return {
+                    "document": existing,
+                    "vital_ids": [],
+                    "encounter": encounter,
+                }
             self._active_event(db, visit_snapshot["encounter_id"])
-            requirement = EncounterDocumentationRepository(db).requirement(
+            requirement = documentation.requirement(
                 visit_snapshot["encounter_id"]
             )
             if not requirement or requirement["requirement_status"] != "REQUIRED":

@@ -35,6 +35,15 @@ SERVICE_EVENT = {
     "PROCEDURE": ("خدمت عملی انجام‌شده", "clipboard", "info"),
 }
 
+DOCUMENT_OUTCOME = {
+    "STABLE_CONTINUE": "پایدار؛ ادامه برنامه فعلی",
+    "PLAN_CHANGED": "برنامه درمانی تغییر کرد",
+    "FOLLOWUP_REQUIRED": "پیگیری لازم است",
+    "REFERRED": "ارجاع انجام شد",
+    "URGENT_ESCALATION": "اقدام یا ارجاع فوری",
+    "OTHER": "سایر",
+}
+
 
 def _date(value) -> str:
     """Return a sortable ISO-like value without inventing a timestamp."""
@@ -113,7 +122,8 @@ class PatientCockpitService:
 
     @staticmethod
     def timeline(*, appointments, visits, labs, followups, medication_events,
-                 service_lines=None, limit: int = 24) -> list[dict]:
+                 service_lines=None, encounter_documents=None,
+                 limit: int = 24) -> list[dict]:
         events: list[dict] = []
         exact_lines = list(service_lines or [])
         exact_visit_invoice_ids = {
@@ -123,6 +133,36 @@ class PatientCockpitService:
             and line.get("accounting_invoice_id") is not None
         }
         visit_days = {_date(v.get("visit_date"))[:10] for v in (visits or [])}
+
+        for document in encounter_documents or []:
+            assessment = str(document.get("assessment") or "").strip()
+            if len(assessment) > 140:
+                assessment = assessment[:137].rstrip() + "…"
+            outcome = DOCUMENT_OUTCOME.get(
+                document.get("outcome_code"),
+                document.get("outcome_code") or "سند امضاشده",
+            )
+            detail = outcome
+            if assessment:
+                detail = f"{outcome} · {assessment}"
+            events.append({
+                "sort_at": _date(document.get("authored_at")),
+                "date": document.get("authored_at"),
+                "kind": "encounter_document",
+                "icon": "clipboard",
+                "tone": (
+                    "danger"
+                    if document.get("outcome_code") == "URGENT_ESCALATION"
+                    else "warn"
+                    if document.get("outcome_code") in {"REFERRED", "FOLLOWUP_REQUIRED"}
+                    else "ok"
+                ),
+                "title": "سند ویزیت امضاشده",
+                "detail": detail,
+                "document_invoice_id": document.get("accounting_invoice_id"),
+                "encounter_id": document.get("encounter_id"),
+                "lineage": "SIGNED_ENCOUNTER_DOCUMENT_V1",
+            })
 
         for line in exact_lines:
             item_type = str(line.get("item_type") or "").upper()

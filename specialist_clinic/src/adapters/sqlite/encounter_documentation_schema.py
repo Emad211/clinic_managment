@@ -23,6 +23,12 @@ def _hash(payload: dict[str, Any]) -> str:
 
 
 def _backfill_legacy_requirements(db: sqlite3.Connection) -> None:
+    completed = db.execute(
+        "SELECT 1 FROM encounter_documentation_migrations "
+        "WHERE migration_key='A9_LEGACY_CUTOFF_V1'"
+    ).fetchone()
+    if completed:
+        return
     rows = db.execute(
         """SELECT encounter.encounter_id,encounter.journey_id,
                   encounter.patient_link_id,encounter.accounting_invoice_id,
@@ -51,11 +57,24 @@ def _backfill_legacy_requirements(db: sqlite3.Connection) -> None:
                VALUES (?,?,?,?,?,?,?,?,?)""",
             (*payload.values(), _hash(payload)),
         )
+    db.execute(
+        """INSERT INTO encounter_documentation_migrations
+           (migration_key,applied_at,note)
+           VALUES ('A9_LEGACY_CUTOFF_V1',
+                   datetime('now','+3 hours','+30 minutes'),
+                   'Existing encounters exempted once before A9 enforcement')"""
+    )
 
 
 def ensure_encounter_documentation_storage(db: sqlite3.Connection) -> None:
     db.executescript(
         """
+        CREATE TABLE IF NOT EXISTS encounter_documentation_migrations (
+            migration_key TEXT PRIMARY KEY,
+            applied_at TEXT NOT NULL CHECK (datetime(applied_at) IS NOT NULL),
+            note TEXT NOT NULL
+        );
+
         CREATE TABLE IF NOT EXISTS care_encounter_document_requirements (
             encounter_id TEXT PRIMARY KEY,
             journey_id TEXT NOT NULL,

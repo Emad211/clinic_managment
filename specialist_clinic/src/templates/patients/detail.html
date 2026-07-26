@@ -213,7 +213,7 @@
             <li class="care-event tone-{{ event.tone }}">
                 <div class="care-event-icon" aria-hidden="true"><svg class="icon icon-sm"><use href="#i-{{ event.icon }}"></use></svg></div>
                 <div class="care-event-copy">
-                    <strong>{{ event.title }}{% if event.lineage %} <span class="badge badge-info text-xs">متصل به Encounter</span>{% endif %}</strong>
+                    <strong>{% if event.document_invoice_id %}<a href="{{ url_for('doctor_queue.document_detail', invoice_id=event.document_invoice_id) }}">{{ event.title }}</a>{% else %}{{ event.title }}{% endif %}{% if event.lineage %} <span class="badge badge-info text-xs">متصل به Encounter</span>{% endif %}</strong>
                     {% if event.detail %}<span>{{ event.detail }}</span>{% endif %}
                 </div>
                 <time datetime="{{ event.date }}">{{ event.date|jalali }}</time>

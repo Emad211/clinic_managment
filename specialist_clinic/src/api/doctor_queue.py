@@ -6,7 +6,11 @@ Patient identity, work date, ownership and specialist enrollment are resolved se
 from flask import Blueprint, render_template, request, redirect, url_for, flash, g
 
 from src.api.auth import login_required
-from src.security.permissions import Permission, has_permission
+from src.security.permissions import (
+    Permission,
+    has_permission,
+    permission_required,
+)
 from src.services.doctor_queue_service import (
     DoctorQueueIdentityError,
     DoctorQueueService,
@@ -41,6 +45,10 @@ def _queue_error(exc: Exception) -> None:
         "journey attribution requires the latest campaign response": "پاسخ انتخاب‌شده آخرین پاسخ بیمار نیست.",
         "campaign journey patient mismatch": "پاسخ کمپین متعلق به این بیمار نیست.",
         "campaign response is already attributed to another journey": "این پاسخ قبلاً به Journey دیگری متصل شده است.",
+        "SIGNED_ENCOUNTER_DOCUMENT_REQUIRED": "برای پایان ویزیت، ابتدا سند Encounter را کامل و امضا کنید.",
+        "ENCOUNTER_NOT_ACTIVE_FOR_DOCUMENTATION": "Encounter برای ثبت یا امضای سند فعال نیست.",
+        "ENCOUNTER_NOT_COMPLETED_FOR_AMENDMENT": "اصلاح سند فقط پس از تکمیل Encounter مجاز است.",
+        "STALE_ENCOUNTER_DOCUMENT": "نسخه سند تغییر کرده است؛ صفحه را تازه کنید.",
     }
     flash(labels.get(str(exc), f"عملیات متوقف شد: {exc}"), "error")
 
@@ -72,6 +80,7 @@ def start(invoice_id):
             actor_username=g.user["username"],
             appointment_id=request.form.get("appointment_id", type=int),
             campaign_response_event_id=response_event_id,
+            require_documentation=True,
         )
         appointment_text = (
             f" appointment={visit['appointment_id']}"
@@ -185,6 +194,29 @@ def visit(invoice_id):
         )
         vital["type_label"] = metadata.get("label", vital["type"])
     notes = RecordRepository().list_notes(pid, "exam")
+    from src.adapters.sqlite.encounter_documentation_repo import (
+        EncounterDocumentationRepository,
+    )
+    document_repository = EncounterDocumentationRepository()
+    current_document = document_repository.current_document(
+        snapshot["encounter_id"]
+    )
+    document_history = document_repository.history(snapshot["encounter_id"])
+    if current_document:
+        import json
+        current_document["problems"] = json.loads(
+            current_document.get("problems_json") or "[]"
+        )
+    outcome_labels = {
+        "STABLE_CONTINUE": "پایدار؛ ادامه برنامه فعلی",
+        "PLAN_CHANGED": "برنامه درمانی تغییر کرد",
+        "FOLLOWUP_REQUIRED": "پیگیری لازم است",
+        "REFERRED": "ارجاع انجام شد",
+        "URGENT_ESCALATION": "اقدام یا ارجاع فوری",
+        "OTHER": "سایر",
+    }
+    import uuid
+    document_request_id = uuid.uuid4().hex
     open_followups = [
         task for task in FollowupRepository().list_for_patient(pid)
         if task.get("status") == "open"
@@ -207,22 +239,59 @@ def visit(invoice_id):
         recent_vitals=recent_vitals,
         last_note=(notes[0] if notes else None),
         open_followups=open_followups,
+        current_document=current_document,
+        document_history=document_history,
+        outcome_labels=outcome_labels,
+        document_request_id=document_request_id,
     )
 
 
 @bp.route("/<int:invoice_id>/save", methods=["POST"])
-@login_required
+@permission_required(Permission.CLINICAL_DOCUMENT_WRITE)
 def save(invoice_id):
+    import uuid
+    from src.adapters.sqlite.vitals_repo import VITAL_TYPES
+    from src.adapters.sqlite.clinical_rules_repo import ClinicalRulesRepository
+    from src.adapters.sqlite.encounter_documentation_repo import (
+        EncounterDocumentationConflict,
+        EncounterDocumentationValidationError,
+    )
+    from src.services.encounter_documentation_service import (
+        EncounterDocumentationService,
+        EncounterDocumentationStateError,
+    )
+
+    requested_action = str(request.form.get("action") or "draft").lower()
+    requested_id = request.form.get("document_request_id") or ""
     try:
         snapshot = DoctorQueueService().active_visit_snapshot(invoice_id)
     except Exception as exc:
+        if requested_action == "sign" and requested_id:
+            from src.adapters.sqlite.care_journey_repo import CareJourneyRepository
+            from src.adapters.sqlite.encounter_documentation_repo import (
+                EncounterDocumentationRepository,
+            )
+            encounter = CareJourneyRepository().encounter_for_invoice(invoice_id)
+            existing = (
+                EncounterDocumentationRepository().document_by_idempotency(
+                    f"encounter-document:sign:{encounter['encounter_id']}:{requested_id}"
+                )
+                if encounter else None
+            )
+            current = (
+                CareJourneyRepository().current_encounter_event(
+                    encounter["encounter_id"]
+                )
+                if encounter else None
+            )
+            if (
+                existing and existing["document_status"] == "SIGNED"
+                and current and current["event_type"] == "COMPLETED"
+            ):
+                flash("این درخواست قبلاً با موفقیت امضا و تکمیل شده است.", "success")
+                return redirect(url_for("doctor_queue.index"))
         _queue_error(exc)
         return redirect(url_for("doctor_queue.index"))
-
-    pid = snapshot["patient_link_id"]
-    from src.adapters.sqlite.vitals_repo import VitalsRepository, VITAL_TYPES
-    from src.adapters.sqlite.clinical_rules_repo import ClinicalRulesRepository
-    from src.adapters.sqlite.record_repo import RecordRepository
 
     measured = jalali_to_gregorian_str(request.form.get("measured_date", ""))
     measured_at = f"{measured} 12:00:00" if measured else None
@@ -250,26 +319,168 @@ def save(invoice_id):
         )
         return redirect(url_for("doctor_queue.visit", invoice_id=invoice_id))
 
-    vitals = VitalsRepository()
-    for vital_type, value, unit in parsed:
-        vitals.add_reading(
-            pid,
-            vtype=vital_type,
-            value=value,
-            unit=unit,
+    document = {
+        "chief_complaint": request.form.get("chief_complaint"),
+        "objective_findings": request.form.get("objective_findings"),
+        "assessment": request.form.get("assessment"),
+        "plan": request.form.get("plan"),
+        "followup_instructions": request.form.get("followup_instructions"),
+        "problems": request.form.get("problems"),
+        "outcome_code": request.form.get("outcome_code"),
+    }
+    action = str(request.form.get("action") or "draft").lower()
+    request_id = (
+        request.form.get("document_request_id") or uuid.uuid4().hex
+    )
+    expected = request.form.get("expected_current_event_id", type=int)
+    service = EncounterDocumentationService()
+    try:
+        if action == "sign":
+            result = service.sign_and_complete(
+                visit_snapshot=snapshot,
+                document=document,
+                readings=parsed,
+                measured_at=measured_at,
+                actor_username=g.user["username"],
+                actor_user_id=int(g.user["id"]),
+                idempotency_key=(
+                    f"encounter-document:sign:{snapshot['encounter_id']}:{request_id}"
+                ),
+                expected_current_event_id=expected,
+            )
+            log_activity(
+                "encounter_document_sign",
+                f"signed document={result['document']['id']} encounter={snapshot['encounter_id']}",
+                patient_link_id=snapshot["patient_link_id"],
+            )
+            flash("سند Encounter امضا و ویزیت تکمیل شد.", "success")
+            return redirect(url_for("doctor_queue.index"))
+        result = service.save_draft_with_vitals(
+            visit_snapshot=snapshot,
+            document=document,
+            readings=parsed,
             measured_at=measured_at,
-            recorded_by=g.user["username"],
+            actor_username=g.user["username"],
+            actor_user_id=int(g.user["id"]),
+            idempotency_key=(
+                f"encounter-document:draft:{snapshot['encounter_id']}:{request_id}"
+            ),
+            expected_current_event_id=expected,
         )
-    note = (request.form.get("note") or "").strip()
-    if note:
-        RecordRepository().add_note(
-            pid, "exam", note, recorded_by=g.user["username"]
-        )
-    if parsed or note:
         log_activity(
-            "visit_save",
-            f"ثبت {len(parsed)} شاخص + یادداشت Encounter",
-            patient_link_id=pid,
+            "encounter_document_draft",
+            f"draft document={result['document']['id']} encounter={snapshot['encounter_id']}",
+            patient_link_id=snapshot["patient_link_id"],
         )
-        flash("اطلاعات ویزیت ثبت شد.", "success")
+        flash("پیش‌نویس سند و شاخص‌ها به‌صورت اتمیک ذخیره شد.", "success")
+    except (
+        EncounterDocumentationConflict,
+        EncounterDocumentationValidationError,
+        EncounterDocumentationStateError,
+        ValueError,
+        LookupError,
+    ) as exc:
+        _queue_error(exc)
     return redirect(url_for("doctor_queue.visit", invoice_id=invoice_id))
+
+
+@bp.get("/<int:invoice_id>/document")
+@login_required
+def document_detail(invoice_id: int):
+    from src.adapters.sqlite.care_journey_repo import CareJourneyRepository
+    from src.adapters.sqlite.encounter_documentation_repo import (
+        EncounterDocumentationRepository,
+    )
+
+    try:
+        snapshot = DoctorQueueService().canonical_snapshot(invoice_id)
+        encounter = CareJourneyRepository().encounter_for_invoice(invoice_id)
+        if not encounter:
+            raise LookupError("encounter not found")
+        repository = EncounterDocumentationRepository()
+        current = repository.current_document(encounter["encounter_id"])
+        if not current:
+            raise LookupError("encounter document not found")
+        import json
+        current["problems"] = json.loads(current.get("problems_json") or "[]")
+        history = repository.history(encounter["encounter_id"])
+    except Exception as exc:
+        _queue_error(exc)
+        return redirect(url_for("doctor_queue.index"))
+    return render_template(
+        "doctor_queue/document_detail.html",
+        active_page="doctor_queue",
+        invoice_id=invoice_id,
+        snapshot=snapshot,
+        encounter=encounter,
+        document=current,
+        history=history,
+        outcome_labels={
+            "STABLE_CONTINUE": "پایدار؛ ادامه برنامه فعلی",
+            "PLAN_CHANGED": "برنامه درمانی تغییر کرد",
+            "FOLLOWUP_REQUIRED": "پیگیری لازم است",
+            "REFERRED": "ارجاع انجام شد",
+            "URGENT_ESCALATION": "اقدام یا ارجاع فوری",
+            "OTHER": "سایر",
+        },
+    )
+
+
+@bp.post("/<int:invoice_id>/document/amend")
+@permission_required(Permission.CLINICAL_DOCUMENT_AMEND)
+def amend_document(invoice_id: int):
+    import uuid
+    from src.adapters.sqlite.care_journey_repo import CareJourneyRepository
+    from src.adapters.sqlite.encounter_documentation_repo import (
+        EncounterDocumentationConflict,
+        EncounterDocumentationValidationError,
+    )
+    from src.services.encounter_documentation_service import (
+        EncounterDocumentationService,
+        EncounterDocumentationStateError,
+    )
+
+    encounter = CareJourneyRepository().encounter_for_invoice(invoice_id)
+    if not encounter:
+        flash("Encounter یافت نشد.", "error")
+        return redirect(url_for("doctor_queue.index"))
+    document = {
+        "chief_complaint": request.form.get("chief_complaint"),
+        "objective_findings": request.form.get("objective_findings"),
+        "assessment": request.form.get("assessment"),
+        "plan": request.form.get("plan"),
+        "followup_instructions": request.form.get("followup_instructions"),
+        "problems": request.form.get("problems"),
+        "outcome_code": request.form.get("outcome_code"),
+    }
+    try:
+        event = EncounterDocumentationService().amend_completed_document(
+            encounter_id=encounter["encounter_id"],
+            document=document,
+            actor_username=g.user["username"],
+            actor_user_id=int(g.user["id"]),
+            idempotency_key=(
+                request.form.get("idempotency_key")
+                or f"encounter-document:amend:{encounter['encounter_id']}:{uuid.uuid4().hex}"
+            ),
+            expected_current_event_id=request.form.get(
+                "expected_current_event_id", type=int
+            ),
+            amendment_reason=request.form.get("amendment_reason") or "",
+        )
+    except (
+        EncounterDocumentationConflict,
+        EncounterDocumentationValidationError,
+        EncounterDocumentationStateError,
+        ValueError,
+        LookupError,
+    ) as exc:
+        _queue_error(exc)
+    else:
+        log_activity(
+            "encounter_document_amend",
+            f"amended document={event['id']} encounter={encounter['encounter_id']}",
+            patient_link_id=encounter["patient_link_id"],
+        )
+        flash("اصلاحیهٔ سند با حفظ نسخه‌های قبلی ثبت شد.", "success")
+    return redirect(url_for("doctor_queue.document_detail", invoice_id=invoice_id))

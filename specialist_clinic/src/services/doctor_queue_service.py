@@ -171,6 +171,7 @@ class DoctorQueueService:
         actor_username: str | None = None,
         appointment_id: int | None = None,
         campaign_response_event_id: int | None = None,
+        require_documentation: bool = False,
     ) -> dict:
         canonical = self.canonical_snapshot(snapshot["accounting_invoice_id"])
         actor = str(actor_username or "system:doctor-queue").strip()
@@ -230,6 +231,15 @@ class DoctorQueueService:
                     ),
                     commit=False,
                 )
+            if require_documentation:
+                from src.adapters.sqlite.encounter_documentation_repo import (
+                    EncounterDocumentationRepository,
+                )
+                EncounterDocumentationRepository(db).require_for_encounter(
+                    encounter["encounter_id"],
+                    actor_username=actor,
+                    commit=False,
+                )
             DoctorQueueRepository(db).start(
                 **self._repo_snapshot(canonical), commit=False
             )
@@ -249,6 +259,7 @@ class DoctorQueueService:
         done_by: str,
         notes: str | None = None,
     ) -> dict:
+        """Legacy-compatible completion; REQUIRED A9 encounters need a signed document."""
         canonical = self.canonical_snapshot(snapshot["accounting_invoice_id"])
         if str(canonical["work_date"]) != str(self.work_date_provider()):
             raise DoctorQueueIdentityError("ACCOUNTING_INVOICE_OUTSIDE_ACTIVE_DAY")
@@ -268,18 +279,21 @@ class DoctorQueueService:
                 canonical["accounting_invoice_id"]
             )
             if not encounter:
-                if canonical["accounting_status"] != "open":
+                raise DoctorQueueIdentityError("SPECIALIST_VISIT_NOT_STARTED")
+            current = repository.current_encounter_event(encounter["encounter_id"])
+            if not current or current["event_type"] != "STARTED":
+                raise DoctorQueueIdentityError("SPECIALIST_VISIT_NOT_ACTIVE")
+            from src.adapters.sqlite.encounter_documentation_repo import (
+                EncounterDocumentationRepository,
+            )
+            documentation = EncounterDocumentationRepository(db)
+            requirement = documentation.requirement(encounter["encounter_id"])
+            if requirement and requirement["requirement_status"] == "REQUIRED":
+                document = documentation.current_document(encounter["encounter_id"])
+                if not document or document["document_status"] != "SIGNED":
                     raise DoctorQueueIdentityError(
-                        "SPECIALIST_ENCOUNTER_MISSING_FOR_CLOSED_INVOICE"
+                        "SIGNED_ENCOUNTER_DOCUMENT_REQUIRED"
                     )
-                CareJourneyService(db=db).start_accounting_visit(
-                    patient_link_id=canonical["patient_link_id"],
-                    accounting_invoice_id=canonical["accounting_invoice_id"],
-                    actor_username=done_by,
-                    expected_work_date=canonical["work_date"],
-                    effective_at=iran_now(),
-                    commit=False,
-                )
             DoctorQueueRepository(db).mark_done(
                 done_by=done_by,
                 notes=notes,
