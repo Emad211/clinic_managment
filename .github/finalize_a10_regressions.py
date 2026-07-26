@@ -55,7 +55,7 @@ def test_a10_source_guard_keeps_structured_planner_and_event_route():
         "commitment_due_date", "commitment_due_time", "commitment_fulfillment",
     ):
         assert f'name="{field}"' in visit
-    assert "/plan/transition" in worklist
+    assert "followups.plan_transition" in worklist
     assert "FOLLOWUP_PLAN_TRANSITION" in routes
     assert "encounter_plan" in followups
 '''
