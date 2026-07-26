@@ -1,6 +1,6 @@
 """Immutable compiler/evaluation contracts shared across engine layers."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from .enums import (
@@ -27,7 +27,8 @@ class RuleCompilationError(ValueError):
     def __init__(self, diagnostics: tuple[CompilationDiagnostic, ...]):
         self.diagnostics = diagnostics
         summary = "; ".join(
-            f"{item.code} at {item.path}: {item.message}" for item in diagnostics
+            f"{item.code} at {item.path}: {item.message}"
+            for item in diagnostics
         )
         super().__init__(summary or "Rule compilation failed")
 
@@ -70,13 +71,16 @@ class Recommendation:
     requires_clinician_confirmation: bool
     presentation: Presentation
     may_create_internal_task: bool = False
+    # Params are frozen compiler output. They carry due/completion contracts through
+    # composition, audit persistence and follow-up projection without mutation.
+    params: Any = field(default_factory=dict)
 
 
 @dataclass(frozen=True, slots=True)
 class ResolvedEvaluation:
     """An evaluation after semantic deduplication/conflict handling.
 
-    ``merged_rule_codes`` is provenance, not a clinical decision.  It lets the
+    ``merged_rule_codes`` is provenance, not a clinical decision. It lets the
     presentation layer explain which equivalent rules contributed to one card.
     """
 
