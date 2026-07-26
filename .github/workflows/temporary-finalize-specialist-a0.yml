@@ -1,0 +1,124 @@
+name: Temporary Finalize Specialist A0
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: write
+  issues: write
+
+concurrency:
+  group: temporary-finalize-specialist-a0
+  cancel-in-progress: false
+
+jobs:
+  finalize:
+    if: >-
+      github.event.issue.number == 41 &&
+      github.event.comment.user.login == 'Emad211' &&
+      github.event.comment.body == '/finalize-specialist-a0-20260726'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/specialist-revenue-boundary-a0
+          fetch-depth: 0
+
+      - name: Capture exact branch lease
+        shell: bash
+        run: |
+          echo "START_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+          git fetch origin main
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: pip
+          cache-dependency-path: specialist_clinic/requirements.txt
+
+      - name: Apply deterministic A0 product integration
+        shell: bash
+        run: |
+          set -euo pipefail
+          python .github/finalize_a0_transactions.py
+          python .github/finalize_a0.py
+          test ! -e .github/a0_bundle.part00
+          test ! -e .github/a0_parts/part000
+          test ! -e .github/finalize_a0.py
+          test ! -e .github/finalize_a0_transactions.py
+          git diff --check
+          if ! git diff --quiet origin/main -- webapp; then
+            echo 'A0 must not modify webapp' >&2
+            git diff --stat origin/main -- webapp
+            exit 1
+          fi
+
+      - name: Compile specialist application
+        env:
+          PYTHONDONTWRITEBYTECODE: '1'
+        run: python -m compileall -q specialist_clinic/src specialist_clinic/tests
+
+      - name: Install specialist dependencies
+        working-directory: specialist_clinic
+        run: python -m pip install -r requirements.txt pytest
+
+      - name: Run A0 and boundary regressions
+        working-directory: specialist_clinic
+        env:
+          PYTEST_DISABLE_PLUGIN_AUTOLOAD: '1'
+          PYTHONDONTWRITEBYTECODE: '1'
+          PYTHONIOENCODING: utf-8
+        run: |
+          python -m pytest -q --tb=short \
+            --junitxml="${RUNNER_TEMP}/pytest-specialist-a0.xml" \
+            tests/test_specialist_revenue_boundary.py \
+            tests/test_end_to_end_loops.py \
+            tests/test_invoice_outreach.py \
+            tests/test_invoice_outreach_retry.py \
+            tests/test_sms_delivery_lifecycle.py \
+            tests/test_visit_invites.py
+
+      - name: Verify accounting/webapp zero-write boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --quiet origin/main -- webapp
+          git diff --check
+          if find webapp -type f \( -name '*.db-wal' -o -name '*.db-shm' \) -print -quit | grep -q .; then
+            echo 'unexpected accounting sidecar generated' >&2
+            exit 1
+          fi
+
+      - name: Commit exact tested A0 tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          git add -A
+          git diff --cached --check
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'establish specialist revenue cutover and care journeys'
+          git push \
+            --force-with-lease=refs/heads/agent/specialist-revenue-boundary-a0:${START_SHA} \
+            origin HEAD:refs/heads/agent/specialist-revenue-boundary-a0
+
+      - name: Upload A0 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: specialist-a0-release-evidence
+          path: ${{ runner.temp }}/pytest-specialist-a0.xml
+          if-no-files-found: ignore
+
+      - name: Report outcome
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          STATUS: ${{ job.status }}
+          RUN_ID: ${{ github.run_id }}
+        shell: bash
+        run: |
+          gh api --method POST repos/${REPOSITORY}/issues/41/comments \
+            -f body="Specialist A0 release gate run ${RUN_ID}: ${STATUS}"
