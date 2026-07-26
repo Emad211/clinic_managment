@@ -41,12 +41,14 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          python .github/finalize_a0_test_compat.py
           python .github/finalize_a0_transactions.py
           python .github/finalize_a0.py
           test ! -e .github/a0_bundle.part00
           test ! -e .github/a0_parts/part000
           test ! -e .github/finalize_a0.py
           test ! -e .github/finalize_a0_transactions.py
+          test ! -e .github/finalize_a0_test_compat.py
           git diff --check
           if ! git diff --quiet origin/main -- webapp; then
             echo 'A0 must not modify webapp' >&2
