@@ -57,6 +57,9 @@ jobs:
       - name: Apply A5 enrollment integration
         run: python .github/finalize_a5_enrollment.py
 
+      - name: Apply A5 test contracts
+        run: python .github/finalize_a5_test_contracts.py
+
       - name: Verify deterministic integration and accounting boundary
         shell: bash
         run: |
@@ -67,6 +70,7 @@ jobs:
           test ! -e .github/finalize_a5_ui.py
           test ! -e .github/finalize_a5_regression.py
           test ! -e .github/finalize_a5_enrollment.py
+          test ! -e .github/finalize_a5_test_contracts.py
           git diff --check
           git diff --quiet origin/main -- webapp
 
