@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+{% block title %}هشدارهای بالینی{% endblock %}
+{% block content %}
+{% include "sms/_hub_tabs.html" %}
+
+<div class="topbar">
+    <div>
+        <h1><svg class="icon"><use href="#i-alert"></use></svg> هشدارهای بالینی نیازمند اقدام</h1>
+        <div class="muted text-sm">صف داخلی مشاهده، واگذاری و بستن هشدار؛ هیچ پیام، ارجاع یا اقدام درمانی از این صفحه خودکار انجام نمی‌شود.</div>
+    </div>
+    <a class="btn btn-ghost" href="{{ url_for('followups.worklist') }}"><svg class="icon"><use href="#i-list-checks"></use></svg> ورک‌لیست پیگیری</a>
+</div>
+
+<div class="alert-banner alert-warn">
+    <svg class="icon"><use href="#i-shield"></use></svg>
+    <span><b>قرارداد ایمنی:</b> تأیید مشاهده فقط مسئولیت رسیدگی را ثبت می‌کند. بستن هشدار فقط پس از ثبت تصمیم پزشک روی همان توصیه و درج جمع‌بندی مجاز است.</span>
+</div>
+
+{% if alerts %}
+<div class="flex" style="flex-direction:column;gap:var(--s3);">
+{% for alert in alerts %}
+    <article class="card" style="border-inline-start:6px solid {% if alert.severity=='CRITICAL' %}var(--danger){% elif alert.severity=='URGENT' %}var(--warning){% else %}var(--info){% endif %};">
+        <div class="flex items-center gap-2 wrap" style="justify-content:space-between;">
+            <div class="flex items-center gap-2 wrap">
+                <span class="badge {% if alert.severity=='CRITICAL' %}badge-danger{% elif alert.severity=='URGENT' %}badge-warn{% else %}badge-info{% endif %}">{{ alert.severity }}</span>
+                <span class="badge {% if alert.current_status=='ESCALATED' %}badge-danger{% elif alert.current_status=='ACKNOWLEDGED' %}badge-info{% else %}badge-warn{% endif %}">
+                    {% if alert.current_status=='OPEN' %}در انتظار مشاهده{% elif alert.current_status=='ACKNOWLEDGED' %}مشاهده و واگذار شده{% elif alert.current_status=='ESCALATED' %}مهلت گذشته / Escalated{% else %}{{ alert.current_status }}{% endif %}
+                </span>
+                {% if alert.is_overdue %}<span class="badge badge-danger">عبور از SLA{% if alert.overdue_minutes is not none %}: {{ alert.overdue_minutes|fa_num }} دقیقه{% endif %}</span>{% endif %}
+            </div>
+            <div class="muted text-sm nums">مهلت مشاهده: {{ alert.acknowledgement_due_at|jalali }}</div>
+        </div>
+
+        <div class="section-title" style="margin-top:var(--s3);">
+            <svg class="icon"><use href="#i-alert"></use></svg>
+            <div>
+                <div>{{ alert.title_fa }}</div>
+                <div class="section-sub">قاعده {{ alert.rule_code }} · {{ alert.action_type }}</div>
+            </div>
+        </div>
+
+        <div class="card card-soft" style="margin-top:var(--s2);">
+            {{ alert.message_fa }}
+        </div>
+
+        <div class="row" style="margin-top:var(--s3);align-items:flex-start;">
+            <div class="fld" style="flex:1;">
+                <label>بیمار</label>
+                <a href="{{ url_for('patients.detail', pid=alert.patient_link_id) }}"><b>{{ alert.patient_name }}</b></a>
+                <div class="muted text-sm nums">{{ alert.national_id or 'بدون کد ملی' }}{% if alert.phone_number %} · {{ alert.phone_number }}{% endif %}</div>
+            </div>
+            <div class="fld" style="flex:1;">
+                <label>مسئول فعلی</label>
+                <div>{{ alert.current_assigned_to or 'هنوز واگذار نشده' }}</div>
+                <div class="muted text-sm">آخرین تغییر: {{ alert.current_recorded_at|jalali }}</div>
+            </div>
+            <div class="fld" style="flex:1;">
+                <label>آخرین تصمیم پزشک</label>
+                {% if alert.current_decision %}
+                    <div><span class="badge badge-info">{{ alert.current_decision.decision }}</span> رویداد #{{ alert.current_decision.id|fa_num }}</div>
+                    {% if alert.current_decision.reason_text %}<div class="muted text-sm">{{ alert.current_decision.reason_text }}</div>{% endif %}
+                {% else %}
+                    <div class="muted">هنوز تصمیمی روی توصیه ثبت نشده است.</div>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="flex gap-2 wrap" style="margin-top:var(--s3);">
+            {% if permissions.get('clinical.alert.acknowledge') and alert.current_status in ['OPEN','ESCALATED'] %}
+            <form method="post" action="{{ url_for('clinical_alerts.acknowledge', alert_id=alert.id) }}" class="card card-soft" style="margin:0;min-width:310px;">
+                <input type="hidden" name="expected_current_event_id" value="{{ alert.current_event_id }}">
+                <div class="fld"><label>مسئول رسیدگی</label><input name="assigned_to" value="{{ g.user['username'] }}" required></div>
+                <div class="fld"><label>یادداشت مشاهده</label><input name="note" placeholder="مثلاً پرونده بازبینی شد"></div>
+                <button class="btn" type="submit"><svg class="icon"><use href="#i-check"></use></svg> مشاهده شد و مسئولیت را می‌پذیرم</button>
+            </form>
+            {% endif %}
+
+            {% if permissions.get('clinical.alert.resolve') and alert.current_status in ['ACKNOWLEDGED','ESCALATED'] %}
+            <form method="post" action="{{ url_for('clinical_alerts.resolve', alert_id=alert.id) }}" class="card card-soft" style="margin:0;min-width:340px;">
+                <input type="hidden" name="expected_current_event_id" value="{{ alert.current_event_id }}">
+                {% if alert.current_decision %}
+                    <input type="hidden" name="decision_event_id" value="{{ alert.current_decision.id }}">
+                    <div class="fld"><label>جمع‌بندی الزامی</label><textarea name="note" required placeholder="اقدام یا تصمیم انسانی ثبت‌شده را خلاصه کنید"></textarea></div>
+                    <button class="btn btn-ok" type="submit"><svg class="icon"><use href="#i-check"></use></svg> بستن با تصمیم پزشک #{{ alert.current_decision.id|fa_num }}</button>
+                {% else %}
+                    <div class="alert-banner alert-warn">برای بستن، ابتدا تصمیم پزشک روی توصیهٔ همین هشدار ثبت شود.</div>
+                {% endif %}
+            </form>
+
+            <form method="post" action="{{ url_for('clinical_alerts.entered_in_error', alert_id=alert.id) }}" class="card card-soft" style="margin:0;min-width:300px;">
+                <input type="hidden" name="expected_current_event_id" value="{{ alert.current_event_id }}">
+                <div class="fld"><label>علت ثبت اشتباه</label><input name="note" required></div>
+                <button class="btn btn-ghost" type="submit"><svg class="icon"><use href="#i-x"></use></svg> ثبت‌شده به اشتباه</button>
+            </form>
+            {% endif %}
+        </div>
+    </article>
+{% endfor %}
+</div>
+{% else %}
+<div class="empty-state card">
+    <svg class="icon"><use href="#i-check"></use></svg>
+    <h3>هشدار باز یا Escalated وجود ندارد</h3>
+    <p class="muted">هشدارهای جدید فقط از اجرای جاری، ممیزی‌شده و معتبر موتور بالینی ساخته می‌شوند.</p>
+</div>
+{% endif %}
+{% endblock %}
