@@ -16,7 +16,7 @@ Encounter
 → Completed or cancelled
 ```
 
-`followup_tasks` فقط هویت task و نقطهٔ اتصال به Worklist است. وضعیت، موعد جاری، مسئول، نوبت و نتیجه از آخرین `care_plan_commitment_events` استخراج می‌شوند؛ ستون mutable task منبع حقیقت نیست.
+`followup_tasks` فقط هویت task و نقطهٔ اتصال به Worklist است. وضعیت، موعد جاری، مسئول، نوبت و نتیجه از آخرین `care_plan_commitment_events` استخراج می‌شوند؛ ستون mutable task منبع حقیقت نیست. جستجو، شمارش، Dashboard، پرونده بیمار و Worklist همگی همین projection را مصرف می‌کنند.
 
 ## انواع تعهد
 
@@ -43,7 +43,7 @@ CREATED → STARTED / ASSIGNED / RESCHEDULED / SCHEDULED
         → COMPLETED / CANCELLED / ENTERED_IN_ERROR
 ```
 
-تمام رویدادها append-only، idempotent و دارای optimistic concurrency هستند. مسیر resolve سادهٔ task اداری و UPDATE مستقیم SQLite برای taskهای `encounter_plan` مسدود است.
+تمام رویدادها append-only، idempotent و دارای optimistic concurrency هستند. مسیر resolve سادهٔ task اداری و UPDATE مستقیم SQLite برای taskهای `encounter_plan` مسدود است. رزرو نوبت، تماس و lifecycle تعهد در همان Worklist موجود انجام می‌شوند.
 
 ## شواهد تکمیل
 
@@ -57,7 +57,7 @@ CREATED → STARTED / ASSIGNED / RESCHEDULED / SCHEDULED
 - Vital ثبت‌شده؛
 - تأیید مستند دستی با توضیح کافی.
 
-رزرو نوبت فقط `SCHEDULED` است و completion محسوب نمی‌شود.
+رزرو نوبت فقط `SCHEDULED` است و completion محسوب نمی‌شود. شاهد قدیمی، متعلق به بیمار دیگر یا خارج از نوع مجاز، کل transition را fail-closed متوقف می‌کند.
 
 ## اتمیک‌بودن
 
@@ -73,7 +73,7 @@ Doctor Queue done
 Encounter COMPLETED
 ```
 
-شکست هر بخش، همهٔ عملیات را rollback می‌کند.
+شکست هر بخش، همهٔ عملیات را rollback می‌کند. Double-click با idempotency key نه Vital، نه سند، نه commitment و نه task تکراری ایجاد می‌کند.
 
 ## مرز حسابداری
 
