@@ -1,4 +1,4 @@
-"""Mediana delivery reconciliation; polling never resubmits a message."""
+"""Provider-affine delivery reconciliation; polling never resubmits a message."""
 from collections import defaultdict
 import logging
 
@@ -28,7 +28,6 @@ UNKNOWN_STATUSES = {'RetryableFailure', 'SubmissionUnknown', 'StatusUnknown'}
 
 
 def delivery_summary(rows) -> dict:
-    """Return report KPIs for the exact filtered rows shown to the user."""
     result = {'total': 0, 'delivered': 0, 'in_flight': 0, 'failed': 0, 'unknown': 0}
     for row in rows or []:
         status = row.get('delivery_status') or 'Queued'
@@ -45,9 +44,19 @@ def delivery_summary(rows) -> dict:
 
 
 class DeliveryService:
-    def __init__(self, provider=None, repo=None):
-        self.provider = provider or get_provider()
+    def __init__(self, provider=None, repo=None, provider_factory=None):
+        # An injected provider remains useful for deterministic tests. Production rows
+        # resolve their exact stored provider and never fall back to the active panel.
+        self.provider = provider
+        self.provider_factory = provider_factory or (
+            lambda name: get_provider(name, allow_fallback=False)
+        )
         self.repo = repo or SmsRepository()
+
+    def _provider_for(self, stored_name):
+        return self.provider or self.provider_factory(
+            str(stored_name or '').strip().lower()
+        )
 
     def reconcile(self, *, limit=100, message_ids=None, campaign_id=None):
         affected = set(self.repo.expire_stale_delivery())
@@ -55,33 +64,61 @@ class DeliveryService:
             limit=limit, message_ids=message_ids, campaign_id=campaign_id)
         groups = defaultdict(list)
         for message in messages:
-            key = ('request', message['provider_request_id']) if message.get('provider_request_id') \
-                else ('item', message['provider_msgid'])
+            lookup_kind = 'request' if message.get('provider_request_id') else 'item'
+            identifier = (
+                message.get('provider_request_id')
+                if lookup_kind == 'request'
+                else message.get('provider_msgid')
+            )
+            key = (
+                str(message.get('provider') or '').strip().lower(),
+                lookup_kind,
+                identifier,
+            )
             groups[key].append(message)
         checked = updated = errors = 0
-        for (kind, identifier), rows in groups.items():
+        for (provider_name, kind, identifier), rows in groups.items():
+            provider = self._provider_for(provider_name)
             try:
-                updates = self.provider.fetch_delivery(
+                updates = provider.fetch_delivery(
                     request_id=identifier if kind == 'request' else None,
-                    message_id=identifier if kind == 'item' else None)
+                    message_id=identifier if kind == 'item' else None,
+                )
                 checked += len(rows)
                 for row in rows:
-                    match = next((u for u in updates if
-                                  (u.provider_msgid and str(u.provider_msgid) == str(row.get('provider_msgid')))
-                                  or (u.recipient and str(u.recipient) == str(row.get('recipient')))), None)
+                    match = next(
+                        (
+                            update for update in updates
+                            if (
+                                update.provider_msgid
+                                and str(update.provider_msgid)
+                                == str(row.get('provider_msgid'))
+                            ) or (
+                                update.recipient
+                                and str(update.recipient)
+                                == str(row.get('recipient'))
+                            )
+                        ),
+                        None,
+                    )
                     if match is None and len(rows) == 1 and len(updates) == 1:
                         match = updates[0]
                     if match:
-                        self.repo.apply_delivery(row['id'], match.status, match.status_int,
-                                                 match.delivered_at, match.provider_msgid)
+                        self.repo.apply_delivery(
+                            row['id'], match.status, match.status_int,
+                            match.delivered_at, match.provider_msgid,
+                        )
                         updated += 1
                     affected.add(row.get('campaign_id'))
             except Exception:
                 errors += len(rows)
-                logger.exception("Mediana delivery lookup failed for %s %s", kind, identifier)
-        for cid in affected:
-            if cid:
-                self.repo.refresh_campaign_counts(cid)
+                logger.exception(
+                    "%s delivery lookup failed for %s %s",
+                    provider_name or 'unknown-provider', kind, identifier,
+                )
+        for campaign in affected:
+            if campaign:
+                self.repo.refresh_campaign_counts(campaign)
         return {'checked': checked, 'updated': updated, 'errors': errors}
 
 
