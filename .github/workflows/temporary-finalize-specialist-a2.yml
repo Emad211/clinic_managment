@@ -41,6 +41,9 @@ jobs:
           cache: pip
           cache-dependency-path: specialist_clinic/requirements.txt
 
+      - name: Align A2 compiler finalizer
+        run: python .github/finalize_a2_prepare.py
+
       - name: Apply A2 core finalizer
         run: python .github/finalize_a2.py
 
@@ -54,6 +57,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          test ! -e .github/finalize_a2_prepare.py
           test ! -e .github/finalize_a2.py
           test ! -e .github/finalize_a2_legacy.py
           test ! -e .github/finalize_a2_runtime.py
