@@ -247,7 +247,13 @@ def test_cleanup_preserves_v2_rows_and_reinstalls_guards(cleanup_app):
         "trg_decision_events_no_update",
         "trg_decision_events_no_delete",
         "trg_decision_events_terminal_run_only",
+        "trg_clinical_alert_transition",
     } <= triggers
+    alert_trigger_sql = db.execute(
+        """SELECT sql FROM sqlite_master
+           WHERE type='trigger' AND name='trg_clinical_alert_transition'"""
+    ).fetchone()["sql"]
+    assert "clinical_decision_events" in alert_trigger_sql
     with pytest.raises(sqlite3.IntegrityError, match="immutable"):
         db.execute(
             "UPDATE clinical_decision_events SET reason_text='changed' "

@@ -45,6 +45,42 @@ def _columns(db: sqlite3.Connection, table: str) -> set[str]:
     }
 
 
+def _external_dependent_triggers(
+    db: sqlite3.Connection,
+    rebuilt_tables: tuple[str, ...],
+) -> list[tuple[str, str]]:
+    """Capture triggers on other tables that reference a table being rebuilt.
+
+    SQLite validates every persisted trigger body while renaming a table. A trigger
+    owned by another table can therefore make the usual create/copy/drop/rename
+    migration fail during the brief interval after the old table is dropped. Keep
+    those trigger definitions and reinstall them inside the same transaction.
+    """
+    if not rebuilt_tables:
+        return []
+    placeholders = ", ".join("?" for _ in rebuilt_tables)
+    rows = db.execute(
+        f"""SELECT name, sql
+              FROM sqlite_master
+             WHERE type='trigger'
+               AND sql IS NOT NULL
+               AND tbl_name NOT IN ({placeholders})
+             ORDER BY name""",
+        rebuilt_tables,
+    ).fetchall()
+    lowered_tables = tuple(table.lower() for table in rebuilt_tables)
+    return [
+        (str(row["name"]), str(row["sql"]))
+        for row in rows
+        if any(table in str(row["sql"]).lower() for table in lowered_tables)
+    ]
+
+
+def _drop_trigger(db: sqlite3.Connection, name: str) -> None:
+    quoted_name = name.replace('"', '""')
+    db.execute(f'DROP TRIGGER "{quoted_name}"')
+
+
 def _assert_no_lineage(
     db: sqlite3.Connection,
     table: str,
@@ -264,8 +300,24 @@ def cleanup_legacy_clinical_schema(
     db.execute("PRAGMA foreign_keys=OFF")
     try:
         db.execute("BEGIN IMMEDIATE")
+        rebuilt_tables = tuple(
+            table
+            for table, needed in (
+                ("clinical_rule_versions", before["rule_column"]),
+                ("clinical_decision_events", before["decision_column"]),
+            )
+            if needed
+        )
+        dependent_triggers = _external_dependent_triggers(
+            db,
+            rebuilt_tables,
+        )
+        for trigger_name, _trigger_sql in dependent_triggers:
+            _drop_trigger(db, trigger_name)
         _rebuild_rule_versions(db)
         _rebuild_decisions(db)
+        for _trigger_name, trigger_sql in dependent_triggers:
+            db.execute(trigger_sql)
         db.execute("DROP TABLE IF EXISTS suggestion_log")
         db.execute("DROP TABLE IF EXISTS clinical_rules")
         violations = db.execute("PRAGMA foreign_key_check").fetchall()
