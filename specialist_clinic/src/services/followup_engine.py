@@ -2,7 +2,7 @@
 
 Administrative reminders remain separate. Rule-derived tasks require an explicit,
 versioned due/completion contract; an inactive/stale rollout or incomplete contract emits
-no mutation.
+no mutation. Human confirmation is verified from the latest append-only decision event.
 """
 from __future__ import annotations
 
@@ -147,7 +147,6 @@ class ClinicalV2FollowupService:
                 recommendation.get("action_type") != action
                 or not recommendation.get("suggestion_only")
                 or not recommendation.get("may_create_internal_task")
-                or recommendation.get("requires_clinician_confirmation")
             ):
                 issues.append(
                     {
@@ -156,6 +155,47 @@ class ClinicalV2FollowupService:
                     }
                 )
                 continue
+
+            requires_confirmation = bool(
+                recommendation.get("requires_clinician_confirmation")
+            )
+            current_decision = event.get("current_decision")
+            decision_event_id: int | None = None
+            if requires_confirmation:
+                if not current_decision:
+                    issues.append(
+                        {
+                            "code": "CLINICIAN_DECISION_REQUIRED",
+                            "rule_code": evaluation.get("rule_code"),
+                            "recommendation_event_id": int(event["id"]),
+                        }
+                    )
+                    continue
+                if current_decision.get("decision") != "ACCEPTED":
+                    issues.append(
+                        {
+                            "code": "CLINICIAN_DECISION_NOT_ACCEPTED",
+                            "rule_code": evaluation.get("rule_code"),
+                            "recommendation_event_id": int(event["id"]),
+                            "decision": current_decision.get("decision"),
+                            "decision_event_id": int(current_decision["id"]),
+                        }
+                    )
+                    continue
+                decision_event_id = int(current_decision["id"])
+            elif current_decision:
+                if current_decision.get("decision") != "ACCEPTED":
+                    issues.append(
+                        {
+                            "code": "TASK_BLOCKED_BY_CLINICIAN_DECISION",
+                            "rule_code": evaluation.get("rule_code"),
+                            "recommendation_event_id": int(event["id"]),
+                            "decision": current_decision.get("decision"),
+                            "decision_event_id": int(current_decision["id"]),
+                        }
+                    )
+                    continue
+                decision_event_id = int(current_decision["id"])
 
             semantic_key = str(
                 recommendation.get("semantic_key") or ""
@@ -218,6 +258,7 @@ class ClinicalV2FollowupService:
                     "evidence_fact_ids": evidence_ids,
                     "context_hash": contract.context_hash,
                     "task_contract": task_contract,
+                    "source_decision_event_id": decision_event_id,
                 },
                 ensure_ascii=False,
                 sort_keys=True,
@@ -238,6 +279,8 @@ class ClinicalV2FollowupService:
                     "source_rule": evaluation.get("rule_code"),
                     "source_run_id": run["run_id"],
                     "source_recommendation_event_id": int(event["id"]),
+                    "source_decision_event_id": decision_event_id,
+                    "requires_clinician_confirmation": requires_confirmation,
                     "clinical_semantic_key": semantic_key,
                     "clinical_task_key": task_key,
                     "source_mode": contract.mode,
@@ -260,11 +303,26 @@ class ClinicalV2FollowupService:
             try:
                 task_id, was_created = self.repo.create_clinical_task_once(task)
             except RuntimeError as exc:
-                if str(exc) == "STALE_CLINICAL_TASK_SOURCE":
+                code = str(exc)
+                if code == "STALE_CLINICAL_TASK_SOURCE":
                     issues.append(
                         {
                             "code": "CURRENT_RUN_STALE",
                             "rule_code": task.get("source_rule"),
+                        }
+                    )
+                    continue
+                if code in {
+                    "CLINICIAN_DECISION_STALE",
+                    "CLINICIAN_DECISION_NOT_ACCEPTED",
+                }:
+                    issues.append(
+                        {
+                            "code": code,
+                            "rule_code": task.get("source_rule"),
+                            "recommendation_event_id": task.get(
+                                "source_recommendation_event_id"
+                            ),
                         }
                     )
                     continue
