@@ -71,10 +71,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          for file in .github/finalize_a10_*.py; do
-            echo "unapplied finalizer remains: $file" >&2
+          if compgen -G '.github/finalize_a10_*.py' > /dev/null; then
+            echo 'one or more unapplied A10 finalizers remain' >&2
+            find .github -maxdepth 1 -name 'finalize_a10_*.py' -print >&2
             exit 1
-          done
+          fi
           git diff --check
           git diff --quiet origin/main -- webapp
 
