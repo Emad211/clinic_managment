@@ -85,7 +85,9 @@ jobs:
           PYTEST_DISABLE_PLUGIN_AUTOLOAD: '1'
           PYTHONDONTWRITEBYTECODE: '1'
           PYTHONIOENCODING: utf-8
+        shell: bash
         run: |
+          set -o pipefail
           python -m pytest -q --tb=short \
             --junitxml="${RUNNER_TEMP}/pytest-specialist-a5.xml" \
             tests/test_sms_governance_a5.py \
@@ -101,7 +103,8 @@ jobs:
             tests/test_clinician_decision_task_gate.py \
             tests/test_clinical_task_contracts.py \
             tests/test_followup_unified_state.py \
-            tests/test_specialist_revenue_boundary.py
+            tests/test_specialist_revenue_boundary.py \
+            2>&1 | tee "${RUNNER_TEMP}/pytest-specialist-a5.log"
 
       - name: Verify zero accounting mutation
         shell: bash
@@ -134,5 +137,6 @@ jobs:
           name: specialist-a5-release-evidence
           path: |
             ${{ runner.temp }}/pytest-specialist-a5.xml
+            ${{ runner.temp }}/pytest-specialist-a5.log
             ${{ runner.temp }}/a5-core-error.log
           if-no-files-found: ignore
