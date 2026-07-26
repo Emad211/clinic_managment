@@ -98,7 +98,7 @@ jobs:
             tests/test_approval_quiet_hours.py \
             tests/test_end_to_end_loops.py \
             tests/test_operational_security_hardening.py \
-            tests/test_specialist_financial_funnel.py \
+            tests/test_specialist_attendance_collection.py \
             tests/test_clinical_alert_lifecycle.py \
             tests/test_clinician_decision_task_gate.py \
             tests/test_clinical_task_contracts.py \
