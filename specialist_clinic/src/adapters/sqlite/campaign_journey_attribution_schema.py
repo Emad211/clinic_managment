@@ -270,8 +270,6 @@ def ensure_campaign_journey_attribution_storage(db: sqlite3.Connection) -> None:
             OR (NEW.event_type='REATTRIBUTED' AND (
                 NEW.status<>'ATTRIBUTED'
                 OR length(trim(COALESCE(NEW.note,'')))=0
-                OR (SELECT status FROM campaign_journey_attribution_events
-                    WHERE id=NEW.supersedes_event_id)='ENTERED_IN_ERROR'
             ))
             OR (NEW.event_type='REVOKED' AND (
                 NEW.status<>'REVOKED'
