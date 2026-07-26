@@ -36,15 +36,20 @@ jobs:
           cache: pip
           cache-dependency-path: specialist_clinic/requirements.txt
 
-      - name: Apply deterministic A5 integration
-        shell: bash
-        run: |
-          set -euo pipefail
-          python .github/finalize_a5_core.py
-          python .github/finalize_a5_routes.py
-          python .github/finalize_a5_ui.py
-          python .github/finalize_a5_regression.py
-          python .github/finalize_a5_enrollment.py
+      - name: Apply A5 core integration
+        run: python .github/finalize_a5_core.py
+
+      - name: Apply A5 routes integration
+        run: python .github/finalize_a5_routes.py
+
+      - name: Apply A5 UX integration
+        run: python .github/finalize_a5_ui.py
+
+      - name: Apply A5 regression integration
+        run: python .github/finalize_a5_regression.py
+
+      - name: Apply A5 enrollment integration
+        run: python .github/finalize_a5_enrollment.py
 
       - name: Verify deterministic integration and accounting boundary
         shell: bash
