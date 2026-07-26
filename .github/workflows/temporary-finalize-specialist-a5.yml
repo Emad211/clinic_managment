@@ -36,6 +36,9 @@ jobs:
           cache: pip
           cache-dependency-path: specialist_clinic/requirements.txt
 
+      - name: Normalize A5 engagement integration
+        run: python .github/finalize_a5_prepare.py
+
       - name: Apply A5 core integration
         shell: bash
         run: |
@@ -58,6 +61,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          test ! -e .github/finalize_a5_prepare.py
           test ! -e .github/finalize_a5_core.py
           test ! -e .github/finalize_a5_routes.py
           test ! -e .github/finalize_a5_ui.py
