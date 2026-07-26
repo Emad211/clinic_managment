@@ -41,13 +41,19 @@ jobs:
           cache: pip
           cache-dependency-path: specialist_clinic/requirements.txt
 
-      - name: Apply deterministic A2 product integration
+      - name: Apply A2 core finalizer
+        run: python .github/finalize_a2.py
+
+      - name: Apply A2 legacy compatibility finalizer
+        run: python .github/finalize_a2_legacy.py
+
+      - name: Apply A2 runtime finalizer
+        run: python .github/finalize_a2_runtime.py
+
+      - name: Verify deterministic A2 integration
         shell: bash
         run: |
           set -euo pipefail
-          python .github/finalize_a2.py
-          python .github/finalize_a2_legacy.py
-          python .github/finalize_a2_runtime.py
           test ! -e .github/finalize_a2.py
           test ! -e .github/finalize_a2_legacy.py
           test ! -e .github/finalize_a2_runtime.py
