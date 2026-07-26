@@ -15,6 +15,7 @@ from src.adapters.sqlite.clinical_alert_repo import (
 from src.adapters.sqlite.clinical_engine_fact_repo import ClinicalEngineFactRepository
 from src.adapters.sqlite.core import get_db
 from src.adapters.sqlite.followups_repo import FollowupRepository
+from src.common.utils import iran_now
 from src.services.clinical_engine.runtime import (
     ClinicalEngineRuntimeError,
     ClinicalEngineRuntimeService,
@@ -80,7 +81,11 @@ class ClinicalAlertService:
             if outcome in {"NEEDS_DATA", "ERROR"}:
                 issues.append(
                     {
-                        "code": "ALERT_RULE_NEEDS_DATA" if outcome == "NEEDS_DATA" else "ALERT_RULE_ERROR",
+                        "code": (
+                            "ALERT_RULE_NEEDS_DATA"
+                            if outcome == "NEEDS_DATA"
+                            else "ALERT_RULE_ERROR"
+                        ),
                         "rule_code": evaluation.get("rule_code"),
                         "data_issues": evaluation.get("data_issues") or [],
                         "error": evaluation.get("error"),
@@ -184,17 +189,29 @@ class ClinicalAlertService:
             include_terminal=False,
             patient_link_id=patient_link_id,
         )
-        now = datetime.now()
+        now = iran_now()
+        if now.tzinfo is not None:
+            now = now.replace(tzinfo=None)
+        db = get_db()
         for row in rows:
             try:
                 due = datetime.fromisoformat(str(row["acknowledgement_due_at"]))
             except (TypeError, ValueError):
                 row["is_overdue"] = True
                 row["overdue_minutes"] = None
-                continue
-            delta = now - due
-            row["is_overdue"] = delta.total_seconds() > 0
-            row["overdue_minutes"] = max(int(delta.total_seconds() // 60), 0)
+            else:
+                delta = now - due
+                row["is_overdue"] = delta.total_seconds() > 0
+                row["overdue_minutes"] = max(
+                    int(delta.total_seconds() // 60), 0
+                )
+            decision = db.execute(
+                """SELECT * FROM clinical_decision_events
+                   WHERE recommendation_event_id=?
+                   ORDER BY occurred_at DESC, id DESC LIMIT 1""",
+                (int(row["source_recommendation_event_id"]),),
+            ).fetchone()
+            row["current_decision"] = dict(decision) if decision else None
         return rows
 
     def current(self, alert_id: int) -> dict:
@@ -262,6 +279,8 @@ class ClinicalAlertService:
         actor_user_id: int | None,
         note: str,
     ) -> dict:
+        if not str(note or "").strip():
+            raise ClinicalAlertValidationError("entered-in-error note is required")
         return self.repository.append_event(
             alert_id,
             event_type="ENTERED_IN_ERROR",
