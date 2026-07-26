@@ -37,7 +37,10 @@ jobs:
           cache-dependency-path: specialist_clinic/requirements.txt
 
       - name: Apply A5 core integration
-        run: python .github/finalize_a5_core.py
+        shell: bash
+        run: |
+          set -o pipefail
+          python .github/finalize_a5_core.py 2>"${RUNNER_TEMP}/a5-core-error.log"
 
       - name: Apply A5 routes integration
         run: python .github/finalize_a5_routes.py
@@ -125,5 +128,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: specialist-a5-release-evidence
-          path: ${{ runner.temp }}/pytest-specialist-a5.xml
+          path: |
+            ${{ runner.temp }}/pytest-specialist-a5.xml
+            ${{ runner.temp }}/a5-core-error.log
           if-no-files-found: ignore
