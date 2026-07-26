@@ -26,6 +26,15 @@ replace_once(
     }
 ''',
 )
+replace_once(
+    "specialist_clinic/tests/test_encounter_documentation_a9.py",
+    '''    assert "کنترل فشار خون هنوز مطلوب نیست" in html
+    assert "FOLLOWUP_REQUIRED" not in html
+''',
+    '''    assert "کنترل فشار خون هنوز مطلوب نیست" in html
+    assert "پیگیری لازم است" in html
+''',
+)
 
 test_path = ROOT / "specialist_clinic/tests/test_encounter_documentation_a9.py"
 text = test_path.read_text(encoding="utf-8")
