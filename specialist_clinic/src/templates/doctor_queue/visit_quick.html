@@ -3,21 +3,21 @@
 {% block content %}
 <div class="crumb"><a href="{{ url_for('doctor_queue.index') }}">صف پزشک</a> / مستندسازی Encounter</div>
 <div class="topbar">
-    <div>
-      <h1><svg class="icon icon-lg"><use href="#i-stethoscope"></use></svg> {{ patient.full_name }} <span class="muted text-sm nums">{{ patient.national_id|fa_num }}</span></h1>
-      <div class="muted text-sm">Encounter <code dir="ltr">{{ encounter_id }}</code> · {% if current_document %}نسخه جاری #{{ current_document.id|fa_num }} — {{ 'امضاشده' if current_document.document_status=='SIGNED' else 'پیش‌نویس' }}{% else %}هنوز پیش‌نویسی ثبت نشده است{% endif %}</div>
-    </div>
-    <a class="btn btn-ghost" href="{{ url_for('patients.detail', pid=pid) }}"><svg class="icon"><use href="#i-clipboard"></use></svg> پرونده کامل</a>
+  <div>
+    <h1><svg class="icon icon-lg"><use href="#i-stethoscope"></use></svg> {{ patient.full_name }} <span class="muted text-sm nums">{{ patient.national_id|fa_num }}</span></h1>
+    <div class="muted text-sm">Encounter <code dir="ltr">{{ encounter_id }}</code> · {% if current_document %}نسخه جاری #{{ current_document.id|fa_num }} — {{ 'امضاشده' if current_document.document_status=='SIGNED' else 'پیش‌نویس' }}{% else %}هنوز پیش‌نویسی ثبت نشده است{% endif %}</div>
+  </div>
+  <a class="btn btn-ghost" href="{{ url_for('patients.detail', pid=pid) }}"><svg class="icon"><use href="#i-clipboard"></use></svg> پرونده کامل</a>
 </div>
 
 {% if allergies %}<div class="alert-banner alert-warn"><svg class="icon"><use href="#i-alert"></use></svg><span><b>حساسیت:</b> {% for a in allergies %}{{ a.substance }}{% if not loop.last %}، {% endif %}{% endfor %}</span></div>{% endif %}
-<div class="alert-banner alert-info"><svg class="icon"><use href="#i-info"></use></svg><span>ذخیره پیش‌نویس Encounter را باز نگه می‌دارد. «امضا و پایان ویزیت» نسخه را قفل و Encounter را در همان تراکنش تکمیل می‌کند. اصلاح بعدی فقط با Amendment تاریخچه‌دار ممکن است.</span></div>
+<div class="alert-banner alert-info"><svg class="icon"><use href="#i-info"></use></svg><span>ذخیره پیش‌نویس، متن و تعهدهای صریح را نگه می‌دارد. «امضا و پایان» سند، commitmentهای Worklist و completion Encounter را در یک تراکنش ثبت می‌کند.</span></div>
 
-<form method="post" action="{{ url_for('doctor_queue.save', invoice_id=invoice_id) }}" class="stack">
+<form method="post" action="{{ url_for('doctor_queue.save', invoice_id=invoice_id) }}" class="stack" id="encounter-document-form">
   <input type="hidden" name="document_request_id" value="{{ document_request_id }}">
   <input type="hidden" name="expected_current_event_id" value="{{ current_document.id if current_document else '' }}">
 
-  <div class="grid" style="grid-template-columns:minmax(280px,.8fr) minmax(420px,1.2fr);gap:var(--s3);align-items:start;">
+  <div class="grid" style="grid-template-columns:minmax(280px,.78fr) minmax(460px,1.22fr);gap:var(--s3);align-items:start;">
     <div class="card">
       <div class="section-title"><svg class="icon"><use href="#i-activity"></use></svg> زمینه و داده امروز</div>
       <div class="fld"><label>بیماری‌های ثبت‌شده</label><div class="flex items-center gap-2 wrap">{% for c in conditions %}<span class="badge badge-info">{{ c.condition_name or c.name }}</span>{% else %}<span class="muted">—</span>{% endfor %}</div></div>
@@ -27,37 +27,110 @@
       {% if open_followups %}<div class="help"><svg class="icon icon-sm"><use href="#i-bell"></use></svg> {{ open_followups|length|fa_num }} پیگیری باز</div>{% endif %}
       <hr class="sep">
       <div class="section-title"><svg class="icon"><use href="#i-activity"></use></svg> شاخص‌های امروز</div>
-      <div class="grid grid-2">
-        {% for i in entry_indicators %}<div class="fld"><label>{{ i.label }}</label><input type="number" step="any" name="{{ i.key }}" placeholder="{{ i.unit or '' }}"></div>{% else %}<div class="empty-mini" style="grid-column:1/-1;">شاخص تخصصی تعریف نشده است.</div>{% endfor %}
-      </div>
+      <div class="grid grid-2">{% for i in entry_indicators %}<div class="fld"><label>{{ i.label }}</label><input type="number" step="any" name="{{ i.key }}" placeholder="{{ i.unit or '' }}"></div>{% else %}<div class="empty-mini" style="grid-column:1/-1;">شاخص تخصصی تعریف نشده است.</div>{% endfor %}</div>
       <div class="fld"><label>تاریخ اندازه‌گیری</label><input type="text" class="jdate" name="measured_date" placeholder="امروز"></div>
     </div>
 
-    <div class="card" id="encounter-document">
-      <div class="section-title"><svg class="icon"><use href="#i-clipboard"></use></svg> سند ساختاریافته Encounter</div>
-      <div class="fld"><label>شکایت اصلی / دلیل مراجعه</label><textarea name="chief_complaint" rows="2" placeholder="با بیان بیمار و بدون استنتاج از فاکتور">{{ current_document.chief_complaint if current_document else '' }}</textarea></div>
-      <div class="fld"><label>یافته‌های عینی و معاینه</label><textarea name="objective_findings" rows="3" placeholder="یافته‌های مشاهده‌شده یا اندازه‌گیری‌شده">{{ current_document.objective_findings if current_document else '' }}</textarea></div>
-      <div class="fld"><label>مشکلات / مسائل فعال <span class="muted text-xs">هر مورد یک خط؛ ورودی صریح پزشک</span></label><textarea name="problems" rows="3" placeholder="مثال: کنترل نامناسب فشار خون">{% if current_document %}{{ current_document.problems|join('
-') }}{% endif %}</textarea></div>
-      <div class="fld"><label>ارزیابی پزشک <span class="c-danger">*</span></label><textarea name="assessment" rows="4" placeholder="جمع‌بندی بالینی؛ برای امضا الزامی">{{ current_document.assessment if current_document else '' }}</textarea></div>
-      <div class="fld"><label>طرح / برنامه <span class="c-danger">*</span></label><textarea name="plan" rows="4" placeholder="اقدام، درمان، آزمایش یا ارجاع؛ برای امضا الزامی">{{ current_document.plan if current_document else '' }}</textarea></div>
-      <div class="fld"><label>دستور پیگیری برای تیم/بیمار</label><textarea name="followup_instructions" rows="2">{{ current_document.followup_instructions if current_document else '' }}</textarea></div>
-      <div class="fld"><label>Outcome ویزیت <span class="c-danger">*</span></label><select name="outcome_code"><option value="">برای امضا انتخاب کنید</option>{% for code,label in outcome_labels.items() %}<option value="{{ code }}" {% if current_document and current_document.outcome_code==code %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></div>
-      <div class="flex items-center gap-2 wrap" style="margin-top:var(--s3);">
-        <button class="btn btn-ghost" type="submit" name="action" value="draft"><svg class="icon"><use href="#i-save"></use></svg> ذخیره پیش‌نویس و شاخص‌ها</button>
-        <button class="btn btn-ok" type="submit" name="action" value="sign" onclick="return confirm('سند امضا و Encounter تکمیل شود؟ اصلاح بعدی فقط با Amendment ثبت خواهد شد.');"><svg class="icon"><use href="#i-check"></use></svg> امضا و پایان ویزیت</button>
+    <div class="stack">
+      <div class="card" id="encounter-document">
+        <div class="section-title"><svg class="icon"><use href="#i-clipboard"></use></svg> سند ساختاریافته Encounter</div>
+        <div class="fld"><label>شکایت اصلی / دلیل مراجعه</label><textarea name="chief_complaint" rows="2" placeholder="با بیان بیمار و بدون استنتاج از فاکتور">{{ current_document.chief_complaint if current_document else '' }}</textarea></div>
+        <div class="fld"><label>یافته‌های عینی و معاینه</label><textarea name="objective_findings" rows="3" placeholder="یافته‌های مشاهده‌شده یا اندازه‌گیری‌شده">{{ current_document.objective_findings if current_document else '' }}</textarea></div>
+        <div class="fld"><label>مشکلات / مسائل فعال <span class="muted text-xs">هر مورد یک خط؛ ورودی صریح پزشک</span></label><textarea name="problems" rows="3" placeholder="مثال: کنترل نامناسب فشار خون">{% if current_document %}{{ current_document.problems|join('\n') }}{% endif %}</textarea></div>
+        <div class="fld"><label>ارزیابی پزشک <span class="c-danger">*</span></label><textarea name="assessment" rows="4" placeholder="جمع‌بندی بالینی؛ برای امضا الزامی">{{ current_document.assessment if current_document else '' }}</textarea></div>
+        <div class="fld"><label>طرح / برنامه <span class="c-danger">*</span></label><textarea name="plan" rows="4" placeholder="اقدام، درمان، آزمایش یا ارجاع؛ برای امضا الزامی">{{ current_document.plan if current_document else '' }}</textarea></div>
+        <div class="fld"><label>دستور پیگیری برای تیم/بیمار</label><textarea name="followup_instructions" rows="2">{{ current_document.followup_instructions if current_document else '' }}</textarea></div>
+        <div class="fld"><label>Outcome ویزیت <span class="c-danger">*</span></label><select name="outcome_code" id="encounter-outcome"><option value="">برای امضا انتخاب کنید</option>{% for code,label in outcome_labels.items() %}<option value="{{ code }}" {% if current_document and current_document.outcome_code==code %}selected{% endif %}>{{ label }}</option>{% endfor %}</select><div class="help" id="commitment-outcome-help">برای outcomeهای پیگیری، ارجاع یا اقدام فوری باید commitment صریح ثبت شود.</div></div>
+      </div>
+
+      <div class="card" id="plan-commitments">
+        <div class="section-title" style="justify-content:space-between;">
+          <span><svg class="icon"><use href="#i-list-checks"></use></svg> تعهدهای اجرایی طرح درمان</span>
+          <button type="button" class="btn btn-sm btn-ghost" id="add-commitment"><svg class="icon icon-sm"><use href="#i-plus"></use></svg> افزودن تعهد</button>
+        </div>
+        <p class="muted text-sm">فقط اقدام‌هایی را ثبت کنید که باید در Worklist پیگیری و با شاهد مشخص بسته شوند. متن آزاد طرح به task تبدیل نمی‌شود.</p>
+        <div id="commitment-list" class="stack">
+          {% set commitments = current_document.commitments if current_document and current_document.commitments else [] %}
+          {% for commitment in commitments %}
+          <div class="card card-soft commitment-row" style="margin:0;">
+            <input type="hidden" name="commitment_client_key" value="{{ commitment.client_key }}">
+            <div class="grid grid-2">
+              <div class="fld"><label>نوع تعهد *</label><select name="commitment_type"><option value="CALL_CHECK" {% if commitment.commitment_type=='CALL_CHECK' %}selected{% endif %}>تماس و بررسی وضعیت</option><option value="IN_PERSON_REVIEW" {% if commitment.commitment_type=='IN_PERSON_REVIEW' %}selected{% endif %}>بازبینی حضوری</option><option value="LAB_REVIEW" {% if commitment.commitment_type=='LAB_REVIEW' %}selected{% endif %}>بررسی نتیجه آزمایش</option><option value="MEDICATION_REVIEW" {% if commitment.commitment_type=='MEDICATION_REVIEW' %}selected{% endif %}>بازبینی دارو</option><option value="REFERRAL_CHECK" {% if commitment.commitment_type=='REFERRAL_CHECK' %}selected{% endif %}>پیگیری ارجاع</option><option value="HOME_MONITORING_REVIEW" {% if commitment.commitment_type=='HOME_MONITORING_REVIEW' %}selected{% endif %}>بررسی پایش خانگی</option></select></div>
+              <div class="fld"><label>شیوه انجام *</label><select name="commitment_fulfillment"><option value="remote" {% if commitment.fulfillment=='remote' %}selected{% endif %}>از راه دور</option><option value="in_person" {% if commitment.fulfillment=='in_person' %}selected{% endif %}>حضوری</option><option value="hybrid" {% if commitment.fulfillment=='hybrid' %}selected{% endif %}>ترکیبی</option></select></div>
+            </div>
+            <div class="fld"><label>دستور اجرایی *</label><textarea name="commitment_instruction" rows="2">{{ commitment.instruction }}</textarea></div>
+            <div class="grid" style="grid-template-columns:1fr .65fr 1fr auto;gap:var(--s2);align-items:end;">
+              <div class="fld"><label>موعد *</label><input name="commitment_due_date" class="jdate" value="{{ commitment.due_at|jalali_date }}"></div>
+              <div class="fld"><label>ساعت *</label><input type="time" name="commitment_due_time" value="{{ commitment.due_at[11:16] if commitment.due_at else '09:00' }}"></div>
+              <div class="fld"><label>مسئول</label><input name="commitment_assigned_to" value="{{ commitment.assigned_to or '' }}" placeholder="نام کاربر/تیم"></div>
+              <button type="button" class="btn btn-sm btn-danger remove-commitment" aria-label="حذف تعهد"><svg class="icon icon-sm"><use href="#i-trash"></use></svg></button>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+        <div class="empty-mini" id="commitment-empty" {% if commitments %}hidden{% endif %}>تعهد اجرایی ثبت نشده است. برای outcomeهای نیازمند اقدام، امضا بدون تعهد رد می‌شود.</div>
+      </div>
+
+      <div class="card">
+        <div class="flex items-center gap-2 wrap">
+          <button class="btn btn-ghost" type="submit" name="action" value="draft"><svg class="icon"><use href="#i-save"></use></svg> ذخیره پیش‌نویس و شاخص‌ها</button>
+          <button class="btn btn-ok" type="submit" name="action" value="sign" onclick="return confirm('سند امضا، commitmentها در Worklist ساخته و Encounter تکمیل شود؟');"><svg class="icon"><use href="#i-check"></use></svg> امضا، ساخت Worklist و پایان ویزیت</button>
+        </div>
       </div>
     </div>
   </div>
 </form>
 
+<template id="commitment-template">
+  <div class="card card-soft commitment-row" style="margin:0;">
+    <input type="hidden" name="commitment_client_key" value="">
+    <div class="grid grid-2">
+      <div class="fld"><label>نوع تعهد *</label><select name="commitment_type"><option value="CALL_CHECK">تماس و بررسی وضعیت</option><option value="IN_PERSON_REVIEW">بازبینی حضوری</option><option value="LAB_REVIEW">بررسی نتیجه آزمایش</option><option value="MEDICATION_REVIEW">بازبینی دارو</option><option value="REFERRAL_CHECK">پیگیری ارجاع</option><option value="HOME_MONITORING_REVIEW">بررسی پایش خانگی</option></select></div>
+      <div class="fld"><label>شیوه انجام *</label><select name="commitment_fulfillment"><option value="remote">از راه دور</option><option value="in_person">حضوری</option><option value="hybrid">ترکیبی</option></select></div>
+    </div>
+    <div class="fld"><label>دستور اجرایی *</label><textarea name="commitment_instruction" rows="2"></textarea></div>
+    <div class="grid" style="grid-template-columns:1fr .65fr 1fr auto;gap:var(--s2);align-items:end;">
+      <div class="fld"><label>موعد *</label><input name="commitment_due_date" class="jdate"></div>
+      <div class="fld"><label>ساعت *</label><input type="time" name="commitment_due_time" value="09:00"></div>
+      <div class="fld"><label>مسئول</label><input name="commitment_assigned_to" placeholder="نام کاربر/تیم"></div>
+      <button type="button" class="btn btn-sm btn-danger remove-commitment" aria-label="حذف تعهد"><svg class="icon icon-sm"><use href="#i-trash"></use></svg></button>
+    </div>
+  </div>
+</template>
+
 <div class="card">
   <div class="section-title"><svg class="icon"><use href="#i-list-checks"></use></svg> اقدامات مکمل <span class="section-sub">Encounter را تکمیل نمی‌کنند</span></div>
   <div class="flex items-center gap-2 wrap">
     <a class="btn btn-ghost" href="{{ url_for('appointments.new_appointment', patient_link_id=pid) }}"><svg class="icon"><use href="#i-calendar"></use></svg> نوبت بعدی</a>
-    <form class="m-0" method="post" action="{{ url_for('followups.add_manual') }}"><input type="hidden" name="patient_link_id" value="{{ pid }}"><input type="hidden" name="detail" value="پیگیری پس از ویزیت"><button class="btn btn-ghost" type="submit"><svg class="icon"><use href="#i-list-checks"></use></svg> ثبت پیگیری</button></form>
+    <form class="m-0" method="post" action="{{ url_for('followups.add_manual') }}"><input type="hidden" name="patient_link_id" value="{{ pid }}"><input type="hidden" name="detail" value="پیگیری پس از ویزیت"><button class="btn btn-ghost" type="submit"><svg class="icon"><use href="#i-list-checks"></use></svg> ثبت پیگیری دستی مستقل</button></form>
     <form class="m-0" method="post" action="{{ url_for('patients.prescription_free', pid=pid) }}" target="_blank"><button class="btn btn-ghost" type="submit"><svg class="icon"><use href="#i-clipboard"></use></svg> نسخه آزاد</button></form>
     <form method="post" action="{{ url_for('doctor_queue.invite', invoice_id=invoice_id) }}" class="visit-message-action"><select name="event_key" aria-label="نوع پیام پیگیری"><option value="lab_consult_invite">دعوت آزمایش و مشاوره</option><option value="bp_glucose_invite">یادآوری قند و فشار</option></select><button class="btn btn-ghost" type="submit"><svg class="icon"><use href="#i-megaphone"></use></svg> افزودن پیام به صف تأیید</button></form>
   </div>
 </div>
+
+<script>
+(function(){
+  const list=document.getElementById('commitment-list');
+  const empty=document.getElementById('commitment-empty');
+  const template=document.getElementById('commitment-template');
+  function key(){return (crypto.randomUUID?crypto.randomUUID():('commitment-'+Date.now()+'-'+Math.random().toString(16).slice(2)));}
+  function initialize(row){
+    const hidden=row.querySelector('[name="commitment_client_key"]');
+    if(hidden && !hidden.value) hidden.value=key();
+    row.querySelector('.remove-commitment')?.addEventListener('click',()=>{row.remove(); empty.hidden=!!list.querySelector('.commitment-row');});
+    if(window.jQuery && jQuery.fn.persianDatepicker){
+      jQuery(row).find('input.jdate').persianDatepicker({format:'YYYY/MM/DD',autoClose:true,initialValue:false,observer:true,calendar:{persian:{locale:'fa'}},toolbox:{todayButton:{enabled:true,text:{fa:'امروز'}},calendarSwitch:{enabled:false}}});
+    }
+  }
+  list.querySelectorAll('.commitment-row').forEach(initialize);
+  document.getElementById('add-commitment').addEventListener('click',()=>{const row=template.content.firstElementChild.cloneNode(true);list.appendChild(row);initialize(row);empty.hidden=true;});
+  const outcome=document.getElementById('encounter-outcome');
+  const help=document.getElementById('commitment-outcome-help');
+  function explain(){
+    const messages={FOLLOWUP_REQUIRED:'حداقل یک commitment صریح الزامی است.',REFERRED:'حداقل یک «پیگیری ارجاع» الزامی است.',URGENT_ESCALATION:'حداقل یک commitment مسئول‌دار با موعد حداکثر ۲۴ ساعت الزامی است.'};
+    help.textContent=messages[outcome.value]||'commitment اختیاری است؛ متن plan خودکار به task تبدیل نمی‌شود.';
+  }
+  outcome.addEventListener('change',explain); explain();
+})();
+</script>
 {% endblock %}
