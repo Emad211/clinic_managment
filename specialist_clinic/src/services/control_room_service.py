@@ -1,16 +1,16 @@
 """Administrative patient worklist and cohort projection.
 
-This service deliberately does not inspect clinical values, thresholds, targets or
-risk weights.  It ranks only operational work already present in the record: stale
-data collection, open follow-ups, refill dates, missed appointments and an optional
-manager-only business-value dimension.  Clinical priority is owned exclusively by
-Clinical Engine v2 and its audited follow-up tasks.
+Clinical priority belongs exclusively to Clinical Engine v2.  The optional business-value
+dimension is also fail-closed: it uses only collected amounts from accounting invoices
+explicitly attributed to a specialist CareJourney/Encounter. Historical or general-clinic
+revenue never changes the worklist score.
 """
 from __future__ import annotations
 
 from datetime import datetime
 
-from src.adapters import accounting_bridge
+from src.adapters import specialist_accounting_revenue
+from src.adapters.sqlite.care_journey_repo import CareJourneyRepository
 from src.adapters.sqlite.core import get_db
 from src.common.utils import format_jalali_date, iran_now
 
@@ -26,6 +26,8 @@ COHORT_DEFS = (
 
 
 class ControlRoomService:
+    VALUE_POLICY = "EXPLICIT_SPECIALIST_ATTRIBUTION_V1"
+
     def panel(self, show_value: bool = True) -> dict:
         db = get_db()
         now = iran_now()
@@ -74,22 +76,40 @@ class ControlRoomService:
 
         revenue: dict[int, int] = {}
         median_revenue = 0
-        if show_value and accounting_bridge.is_available():
-            pairs = [
-                (
-                    int(row["accounting_patient_id"]),
-                    str(row["enrolled_at"])[:10] if row["enrolled_at"] else None,
+        value_available = False
+        value_error = None
+        if show_value:
+            try:
+                patient_ids = [int(row["id"]) for row in rows]
+                invoice_map = CareJourneyRepository().attributed_invoices_by_patient(
+                    patient_ids
                 )
-                for row in rows
-                if row["accounting_patient_id"]
-            ]
-            by_accounting_id = accounting_bridge.revenue_by_patient(pairs)
-            for row in rows:
-                accounting_id = row["accounting_patient_id"]
-                if accounting_id and int(accounting_id) in by_accounting_id:
-                    revenue[int(row["id"])] = int(by_accounting_id[int(accounting_id)] or 0)
-            values = sorted(value for value in revenue.values() if value > 0)
-            median_revenue = values[len(values) // 2] if values else 0
+                all_invoice_ids = sorted(
+                    {
+                        invoice_id
+                        for invoice_ids in invoice_map.values()
+                        for invoice_id in invoice_ids
+                    }
+                )
+                collected = specialist_accounting_revenue.collected_by_invoice_ids(
+                    all_invoice_ids
+                )
+                for patient_id, invoice_ids in invoice_map.items():
+                    revenue[patient_id] = sum(
+                        int(collected.get(invoice_id, 0) or 0)
+                        for invoice_id in invoice_ids
+                    )
+                values = sorted(value for value in revenue.values() if value > 0)
+                median_revenue = values[len(values) // 2] if values else 0
+                value_available = True
+            except (
+                specialist_accounting_revenue.AccountingRevenueUnavailable,
+                specialist_accounting_revenue.AccountingRevenueSchemaError,
+            ) as exc:
+                # Financial unavailability must never demote/upgrade a patient silently.
+                revenue = {}
+                median_revenue = 0
+                value_error = type(exc).__name__.upper()
 
         patients: list[dict] = []
         summary = {
@@ -150,9 +170,15 @@ class ControlRoomService:
                 breakdown.append((f"{no_show} عدم مراجعه", 1))
                 reasons.append("عدم مراجعه")
             value = revenue.get(patient_id, 0)
-            if show_value and median_revenue and value > median_revenue and lapsed:
+            if (
+                show_value
+                and value_available
+                and median_revenue
+                and value > median_revenue
+                and lapsed
+            ):
                 score += 1
-                breakdown.append(("ارزش مالی بالاتر از میانه", 1))
+                breakdown.append(("ارزش وصولی تخصصی بالاتر از میانه", 1))
             if upcoming:
                 score = max(0, score - 1)
                 breakdown.append(("نوبت پیش‌رو", -1))
@@ -184,9 +210,7 @@ class ControlRoomService:
                 }
             )
 
-        patients.sort(
-            key=lambda item: (-item["score"], item["name"], item["id"])
-        )
+        patients.sort(key=lambda item: (-item["score"], item["name"], item["id"]))
 
         def in_cohort(patient: dict, key: str) -> bool:
             if key == "lapsed":
@@ -200,6 +224,7 @@ class ControlRoomService:
             if key == "valuable_lapsed":
                 return (
                     show_value
+                    and value_available
                     and median_revenue > 0
                     and patient["value"] > median_revenue
                     and patient["lapsed"]
@@ -208,7 +233,7 @@ class ControlRoomService:
 
         cohorts = []
         for key, label in COHORT_DEFS:
-            if key == "valuable_lapsed" and not show_value:
+            if key == "valuable_lapsed" and (not show_value or not value_available):
                 continue
             ids = [patient["id"] for patient in patients if in_cohort(patient, key)]
             cohorts.append({"key": key, "label": label, "count": len(ids), "ids": ids})
@@ -221,11 +246,13 @@ class ControlRoomService:
             "total": len(patients),
             "summary": summary,
             "show_value": show_value,
+            "value_available": value_available,
+            "value_error": value_error,
+            "value_policy": self.VALUE_POLICY,
             "projection_policy": "ADMINISTRATIVE_ONLY",
         }
 
     def cohort_ids(self, cohort_key: str, show_value: bool = True) -> list[int]:
-        """Recompute a cohort server-side; posted recipient ids are never trusted."""
         data = self.panel(show_value=show_value)
         return next(
             (
@@ -238,18 +265,20 @@ class ControlRoomService:
 
     @staticmethod
     def conversion() -> dict:
-        """Administrative follow-up-to-visit conversion, not a clinical outcome."""
+        """Legacy booking metric retained but explicitly not called revenue conversion."""
         db = get_db()
         row = db.execute(
             """SELECT COUNT(*) AS resolved,
                       SUM(CASE WHEN appointment_id IS NOT NULL THEN 1 ELSE 0 END)
-                          AS to_visit
+                          AS booked
                FROM followup_tasks WHERE status='done'"""
         ).fetchone()
         resolved = int(row["resolved"] or 0)
-        to_visit = int(row["to_visit"] or 0)
+        booked = int(row["booked"] or 0)
         return {
             "resolved": resolved,
-            "to_visit": to_visit,
-            "rate": round(to_visit * 100 / resolved, 1) if resolved else 0,
+            "to_visit": booked,
+            "booked": booked,
+            "rate": round(booked * 100 / resolved, 1) if resolved else 0,
+            "metric": "BOOKING_RATE_NOT_REVENUE_CONVERSION",
         }
