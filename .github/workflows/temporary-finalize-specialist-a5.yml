@@ -63,6 +63,9 @@ jobs:
       - name: Isolate A5 application accounting configuration
         run: python .github/finalize_a5_accounting_path.py
 
+      - name: Migrate A5 accounting test fixtures
+        run: python .github/finalize_a5_fixture_paths.py
+
       - name: Verify deterministic integration and accounting boundary
         shell: bash
         run: |
@@ -75,6 +78,7 @@ jobs:
           test ! -e .github/finalize_a5_enrollment.py
           test ! -e .github/finalize_a5_test_contracts.py
           test ! -e .github/finalize_a5_accounting_path.py
+          test ! -e .github/finalize_a5_fixture_paths.py
           git diff --check
           git diff --quiet origin/main -- webapp
 
