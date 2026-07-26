@@ -1,23 +1,23 @@
 {% extends "base.html" %}
-{% block title %}صفِ پزشک{% endblock %}
+{% block title %}صف پزشک{% endblock %}
 {% block content %}
 <div class="topbar">
     <div>
-        <h1><svg class="icon icon-lg"><use href="#i-stethoscope"></use></svg> صفِ پزشک <span class="muted text-sm">{{ work_date|jalali_date }}</span></h1>
-        <div class="muted text-sm">شروع ویزیت، حضور واقعی Encounter را ثبت می‌کند. اتصال نوبت فقط با انتخاب صریح انجام می‌شود.</div>
+        <h1><svg class="icon icon-lg"><use href="#i-stethoscope"></use></svg> صف پزشک <span class="muted text-sm">{{ work_date|jalali_date }}</span></h1>
+        <div class="muted text-sm">شروع ویزیت، حضور واقعی Encounter را ثبت می‌کند. نوبت و پاسخ کمپین فقط با انتخاب صریح متصل می‌شوند.</div>
     </div>
     <a class="btn btn-ghost" href="{{ url_for('doctor_queue.index') }}">تازه‌سازی</a>
 </div>
 <p class="page-intro">
-    بیماران دارای فاکتور ویزیت باز امروز، زنده و فقط‌خواندنی از پذیرش. «پایان ویزیت» Encounter تخصصی را تکمیل می‌کند؛
-    <b>فاکتور حسابداری را نمی‌بندد</b> و وصول همچنان از حسابداری خوانده می‌شود.
+    بیماران دارای فاکتور ویزیت باز امروز، زنده و فقط‌خواندنی از پذیرش. پایان ویزیت Encounter تخصصی را تکمیل می‌کند؛
+    <b>فاکتور حسابداری را نمی‌بندد</b> و هیچ کمپینی از روی زمان مراجعه به‌طور خودکار منتسب نمی‌شود.
 </p>
 
 <div class="card">
     <div class="section-title"><svg class="icon"><use href="#i-list-checks"></use></svg> در نوبت <span class="badge badge-warn">{{ waiting|length|fa_num }}</span></div>
     {% if waiting %}
     <div class="table-wrap"><table>
-        <thead><tr><th>بیمار</th><th>زمان پذیرش</th><th>نوبت تخصصی</th><th>اقدام</th></tr></thead>
+        <thead><tr><th>بیمار</th><th>زمان پذیرش</th><th>نوبت تخصصی</th><th>پاسخ مثبت کمپین</th><th>اقدام</th></tr></thead>
         <tbody>
         {% for p in waiting %}
         <tr>
@@ -41,6 +41,14 @@
                 {% endif %}
             </td>
             <td>
+                {% if p.campaign_response_options %}
+                <div class="muted text-xs">فقط پاسخ مثبتی که بیمار صریحاً داده است قابل انتخاب است.</div>
+                {% for response in p.campaign_response_options %}
+                <div class="text-sm">{{ response.campaign_name }} · پاسخ #{{ response.id|fa_num }} · {{ response.recorded_at|jalali }}</div>
+                {% endfor %}
+                {% else %}<span class="badge badge-muted">بدون پاسخ مثبت قابل انتساب</span>{% endif %}
+            </td>
+            <td>
                 <div class="flex items-center gap-2 wrap">
                     {% if p.enrolled %}
                     <form class="m-0 flex items-center gap-2 wrap" method="post" action="{{ url_for('doctor_queue.start', invoice_id=p.invoice_id) }}">
@@ -49,6 +57,14 @@
                             <option value="">Walk-in / بدون اتصال نوبت</option>
                             {% for appointment in p.appointment_options %}
                             <option value="{{ appointment.id }}">نوبت #{{ appointment.id|fa_num }} — {{ appointment.scheduled_at|jalali }}</option>
+                            {% endfor %}
+                        </select>
+                        {% endif %}
+                        {% if p.campaign_response_options and permissions.get('sms.campaign.attribution.record') %}
+                        <select name="campaign_response_event_id" aria-label="پاسخ کمپین مرتبط">
+                            <option value="">بدون انتساب کمپین</option>
+                            {% for response in p.campaign_response_options %}
+                            <option value="{{ response.id }}">{{ response.campaign_name }} — پاسخ #{{ response.id|fa_num }}</option>
                             {% endfor %}
                         </select>
                         {% endif %}
