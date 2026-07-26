@@ -1,0 +1,125 @@
+name: Temporary Finalize Specialist A1
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: write
+  issues: write
+
+concurrency:
+  group: temporary-finalize-specialist-a1
+  cancel-in-progress: false
+
+jobs:
+  finalize:
+    if: >-
+      github.event.issue.number == 43 &&
+      github.event.comment.user.login == 'Emad211' &&
+      github.event.comment.body == '/finalize-specialist-a1-20260726'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/specialist-followup-state-a1
+          fetch-depth: 0
+
+      - name: Capture exact branch lease
+        shell: bash
+        run: |
+          echo "START_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+          git fetch origin main
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: pip
+          cache-dependency-path: specialist_clinic/requirements.txt
+
+      - name: Apply deterministic A1 product integration
+        shell: bash
+        run: |
+          set -euo pipefail
+          python .github/finalize_a1.py
+          python .github/finalize_a1_transactions.py
+          python .github/finalize_a1_booking.py
+          test ! -e .github/finalize_a1.py
+          test ! -e .github/finalize_a1_transactions.py
+          test ! -e .github/finalize_a1_booking.py
+          git diff --check
+          if ! git diff --quiet origin/main -- webapp; then
+            echo 'A1 must not modify webapp' >&2
+            git diff --stat origin/main -- webapp
+            exit 1
+          fi
+
+      - name: Compile specialist application
+        env:
+          PYTHONDONTWRITEBYTECODE: '1'
+        run: python -m compileall -q specialist_clinic/src specialist_clinic/tests
+
+      - name: Install specialist dependencies
+        working-directory: specialist_clinic
+        run: python -m pip install -r requirements.txt pytest
+
+      - name: Run A1 and specialist regressions
+        working-directory: specialist_clinic
+        env:
+          PYTEST_DISABLE_PLUGIN_AUTOLOAD: '1'
+          PYTHONDONTWRITEBYTECODE: '1'
+          PYTHONIOENCODING: utf-8
+        run: |
+          python -m pytest -q --tb=short \
+            --junitxml="${RUNNER_TEMP}/pytest-specialist-a1.xml" \
+            tests/test_followup_unified_state.py \
+            tests/test_specialist_revenue_boundary.py \
+            tests/test_clinical_engine_v2_followups.py \
+            tests/test_end_to_end_loops.py \
+            tests/test_operational_security_hardening.py \
+            tests/test_sms_delivery_lifecycle.py \
+            tests/test_visit_invites.py
+
+      - name: Verify accounting/webapp zero-write boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --quiet origin/main -- webapp
+          git diff --check
+          if find webapp -type f \( -name '*.db-wal' -o -name '*.db-shm' \) -print -quit | grep -q .; then
+            echo 'unexpected accounting sidecar generated' >&2
+            exit 1
+          fi
+
+      - name: Commit exact tested A1 tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          git add -A
+          git diff --cached --check
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'unify follow-up state and contact history'
+          git push \
+            --force-with-lease=refs/heads/agent/specialist-followup-state-a1:${START_SHA} \
+            origin HEAD:refs/heads/agent/specialist-followup-state-a1
+
+      - name: Upload A1 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: specialist-a1-release-evidence
+          path: ${{ runner.temp }}/pytest-specialist-a1.xml
+          if-no-files-found: ignore
+
+      - name: Report outcome
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          STATUS: ${{ job.status }}
+          RUN_ID: ${{ github.run_id }}
+        shell: bash
+        run: |
+          gh api --method POST repos/${REPOSITORY}/issues/43/comments \
+            -f body="Specialist A1 release gate run ${RUN_ID}: ${STATUS}"
