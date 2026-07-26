@@ -3,98 +3,206 @@
 {% block content %}
 {% set hub_tab = 'campaigns' %}
 {% include "sms/_hub_tabs.html" %}
-{% set campaign_status = {'draft':'پیش‌نویس','scheduled':'زمان‌بندی‌شده','sending':'در حال ارسال','done':'تکمیل‌شده','cancelled':'لغوشده'} %}
+{% set lifecycle = economics.lifecycle or {} %}
+{% set status_labels = {
+    'DRAFT':'پیش‌نویس','SCHEDULED':'زمان‌بندی‌شده','PREPARING':'آماده‌سازی',
+    'SENDING':'در حال ثبت در پنل','AWAITING_DELIVERY':'در انتظار نتیجه تحویل',
+    'COMPLETED':'تکمیل‌شده','FAILED':'ناموفق','CANCELLED':'لغوشده',
+    'ENTERED_IN_ERROR':'ثبت‌شده در خطا'
+} %}
+{% set measurement_labels = {
+    'READY':'قابل محاسبه',
+    'AUDIENCE_NOT_FROZEN':'مخاطبان هنوز ثابت نشده‌اند',
+    'LEGACY_AUDIENCE_UNTRUSTED':'مخاطبان قدیمی برای ROI قابل اعتماد نیستند',
+    'DELIVERY_IN_PROGRESS':'نتیجه تحویل هنوز نهایی نشده است',
+    'DIRECT_COST_INCOMPLETE':'هزینه مستقیم پیامک کامل نیست',
+    'FINANCIAL_RECONCILIATION_INCOMPLETE':'مشاهده مالی Journeyها کامل نیست',
+    'WALLET_COMPENSATION_REVIEW_REQUIRED':'جبران اعتبار نیازمند بررسی است',
+    'JOURNEY_ATTRIBUTION_REQUIRED':'پاسخ مثبت به Journey منتسب نشده است'
+} %}
+
 <div class="crumb"><a href="{{ url_for('sms.campaigns') }}">کمپین‌ها</a> / {{ campaign.name }}</div>
 <div class="topbar sms-page-header">
     <div>
-    <h1>{{ campaign.name }}
-        {% if campaign.campaign_type=='wallet_credit' %}<span class="badge badge-violet">اعتبار کیف پول</span>
-        {% elif campaign.campaign_type=='reminder' %}<span class="badge badge-info">یادآوری</span>
-        {% else %}<span class="badge badge-muted">اطلاع‌رسانی</span>{% endif %}
-        <span class="badge {% if campaign.status=='done' %}badge-ok{% elif campaign.status in ['scheduled','sending'] %}badge-warn{% else %}badge-muted{% endif %}">{{ campaign_status.get(campaign.status, campaign.status) }}</span>
-    </h1>
-    <p class="page-intro">گروه هدف: {{ segments.get(campaign.segment, campaign.segment) }}{% if campaign.scheduled_at %} · زمان‌بندی: {{ campaign.scheduled_at|jalali }}{% endif %}</p>
+        <h1>{{ campaign.name }}
+            {% if campaign.campaign_type=='wallet_credit' %}<span class="badge badge-violet">اعتبار کیف پول</span>
+            {% elif campaign.campaign_type=='reminder' %}<span class="badge badge-info">یادآوری مراقبتی</span>
+            {% else %}<span class="badge badge-muted">اطلاع‌رسانی بازاریابی</span>{% endif %}
+            <span class="badge {% if lifecycle.status=='COMPLETED' %}badge-ok{% elif lifecycle.status in ['PREPARING','SENDING','AWAITING_DELIVERY','SCHEDULED'] %}badge-warn{% elif lifecycle.status in ['FAILED','ENTERED_IN_ERROR'] %}badge-danger{% else %}badge-muted{% endif %}">
+                {{ status_labels.get(lifecycle.status, lifecycle.status or 'نامشخص') }}
+            </span>
+        </h1>
+        <p class="page-intro">
+            گروه هدف: {{ segments.get(campaign.segment, campaign.segment) }}
+            {% if campaign.scheduled_at %} · زمان‌بندی: {{ campaign.scheduled_at|jalali }}{% endif %}
+            · سیاست اندازه‌گیری: <code>{{ economics.policy_version }}</code>
+        </p>
     </div>
-    <div class="flex gap-2"><form method="post" action="{{ url_for('sms.reconcile_messages') }}"><input type="hidden" name="campaign_id" value="{{ campaign.id }}"><button class="btn" type="submit"><svg class="icon"><use href="#i-activity"></use></svg> به‌روزرسانی وضعیت</button></form><a class="btn btn-ghost" href="{{ url_for('sms.campaigns') }}"><svg class="icon"><use href="#i-arrow-left"></use></svg> بازگشت</a></div>
+    <div class="flex gap-2 wrap">
+        <form method="post" action="{{ url_for('sms.reconcile_messages') }}">
+            <input type="hidden" name="campaign_id" value="{{ campaign.id }}">
+            <button class="btn" type="submit"><svg class="icon"><use href="#i-activity"></use></svg> استعلام تحویل</button>
+        </form>
+        <a class="btn btn-ghost" href="{{ url_for('sms.campaigns') }}"><svg class="icon"><use href="#i-arrow-left"></use></svg> بازگشت</a>
+    </div>
 </div>
 
-<section class="campaign-metrics" aria-label="خلاصه ارسال کمپین">
-    <div class="message-summary-item"><span>گروه هدف</span><strong>{{ recipients_count|fa_num }}</strong></div>
-    <div class="message-summary-item is-info"><span>پذیرفته‌شده</span><strong>{{ campaign.sent_count|fa_num }}</strong></div>
-    <div class="message-summary-item is-ok"><span>تحویل‌شده</span><strong>{{ campaign.delivered_count|fa_num }}</strong></div>
-    <div class="message-summary-item is-info"><span>در جریان ارسال</span><strong>{{ campaign.pending_count|fa_num }}</strong></div>
-    <div class="message-summary-item is-warn"><span>لیست سیاه</span><strong>{{ campaign.blacklist_count|fa_num }}</strong></div>
-    <div class="message-summary-item is-danger"><span>ناموفق</span><strong>{{ campaign.failed_count|fa_num }}</strong></div>
+<section class="campaign-metrics" aria-label="قیف قابل اثبات کمپین">
+    <div class="message-summary-item"><span>کاندیدا</span><strong>{{ economics.audience.candidate_count|fa_num }}</strong></div>
+    <div class="message-summary-item is-info"><span>دریافت‌کننده ثابت</span><strong>{{ economics.audience.treated_count|fa_num }}</strong></div>
+    <div class="message-summary-item"><span>گروه کنترل</span><strong>{{ economics.audience.control_count|fa_num }}</strong></div>
+    <div class="message-summary-item is-warn"><span>حذف‌شده از مخاطبان</span><strong>{{ economics.audience.excluded_count|fa_num }}</strong></div>
+    <div class="message-summary-item is-info"><span>پذیرفته‌شده توسط پنل</span><strong>{{ economics.messages.provider_accepted|fa_num }}</strong></div>
+    <div class="message-summary-item is-ok"><span>تحویل واقعی</span><strong>{{ economics.messages.delivered|fa_num }}</strong></div>
+    <div class="message-summary-item"><span>پاسخ مثبت</span><strong>{{ economics.responses.positive|fa_num }}</strong></div>
+    <div class="message-summary-item"><span>Journey منتسب</span><strong>{{ economics.attributions.journeys|fa_num }}</strong></div>
+    <div class="message-summary-item"><span>فاکتور مشاهده‌شده</span><strong>{{ economics.finance.invoices|fa_num }}</strong></div>
 </section>
 
 <div class="card campaign-overview-card">
-    <div class="section-title"><svg class="icon"><use href="#i-clipboard"></use></svg> محتوای کمپین</div>
-
-    {% if campaign.campaign_type=='wallet_credit' %}
-    <div class="campaign-credit-note">
-        <svg class="icon icon-sm c-violet"><use href="#i-wallet"></use></svg>
-        <span>اعتبار هر بیمار: <strong>{{ campaign.credit_amount|fa_num }}</strong> تومان · کل اعتبار: <strong>{{ total_credit|fa_num }}</strong> تومان{% if campaign.credit_expires_days %} · اعتبار {{ campaign.credit_expires_days|fa_num }} روز معتبر{% endif %}</span>
-    </div>
-    {% endif %}
-
+    <div class="section-title"><svg class="icon"><use href="#i-clipboard"></use></svg> تعریف و اجرای کمپین</div>
     <div class="campaign-message-body">{{ campaign.body }}</div>
+    <div class="legend" style="margin-top:var(--s3);">
+        <span class="chip">Audience: {% if economics.audience.frozen %}<b>ثابت</b>{% else %}<b>هنوز ثابت نشده</b>{% endif %}</span>
+        {% if economics.audience.source_code %}<span class="chip">منبع: {{ economics.audience.source_code }}</span>{% endif %}
+        {% if economics.audience.snapshot_id %}<span class="chip nums">{{ economics.audience.snapshot_id }}</span>{% endif %}
+        {% if campaign.campaign_type=='wallet_credit' %}
+        <span class="chip">اعتبار وعده‌شده برای هر پیام پذیرفته‌شده: {{ campaign.credit_amount|fa_num }} تومان</span>
+        <span class="chip">حداکثر تعهد بالقوه: {{ total_credit|fa_num }} تومان</span>
+        {% endif %}
+    </div>
 
     {% if not provider_ready %}
-    <div class="alert-banner alert-warn campaign-provider-warning">
+    <div class="alert-banner alert-warn" style="margin-top:var(--s3);">
         <svg class="icon"><use href="#i-alert"></use></svg>
-        <span>پنل پیامک تنظیم نشده است؛ ارسال متوقف می‌ماند و موفق ثبت نمی‌شود.</span>
+        <span>پنل پیامک تنظیم نشده است؛ lifecycle در وضعیت ناموفق ثبت می‌شود و اعتبار کیف پول صادر نخواهد شد.</span>
     </div>
     {% endif %}
 
-    {% if campaign.status in ['draft','scheduled'] %}
-    {% set confirm_msg = 'ارسال کمپین به ' ~ recipients_count ~ ' گیرنده؟' %}
-    {% if campaign.campaign_type == 'wallet_credit' %}{% set confirm_msg = confirm_msg ~ ' مجموع ' ~ total_credit ~ ' تومان اعتبار توزیع می‌شود.' %}{% endif %}
+    {% if lifecycle.status in ['DRAFT','SCHEDULED','FAILED','ENTERED_IN_ERROR'] %}
     <form class="campaign-send-action" method="post" action="{{ url_for('sms.send_campaign', cid=campaign.id) }}"
-          onsubmit="return confirm('{{ confirm_msg }}');">
-        <button class="btn btn-lg" type="submit"><svg class="icon"><use href="#i-zap"></use></svg> ارسال فوری</button>
+          onsubmit="return confirm('اجرای کمپین با Audience ثابت آغاز شود؟');">
+        <button class="btn btn-lg" type="submit"><svg class="icon"><use href="#i-zap"></use></svg> آغاز/ادامه اجرای govern‌شده</button>
+    </form>
+    {% endif %}
+
+    {% if lifecycle.status in ['DRAFT','SCHEDULED','PREPARING','FAILED','ENTERED_IN_ERROR'] and permissions.get('sms.campaign.send') %}
+    <form method="post" action="{{ url_for('sms.cancel_campaign', cid=campaign.id) }}" class="row" style="margin-top:var(--s3);">
+        <input type="hidden" name="expected_current_event_id" value="{{ lifecycle.id }}">
+        <input name="note" placeholder="دلیل لغو" required>
+        <button class="btn btn-danger btn-sm" type="submit">لغو ممیزی‌شده</button>
     </form>
     {% endif %}
 </div>
 
-{% if incrementality %}
-<div class="card">
-    <div class="section-title"><svg class="icon"><use href="#i-sigma"></use></svg> سنجشِ اثرِ علّی (Incrementality)
-        <span class="section-sub">مقایسهٔ گروهِ دریافت‌کننده با گروهِ کنترلِ نگه‌داشته‌شده، در پنجرهٔ {{ incrementality.window_days|fa_num }} روز</span>
+<section class="card" id="campaign-economics">
+    <div class="section-title"><svg class="icon"><use href="#i-banknote"></use></svg> اقتصاد کمپین
+        <span class="section-sub">فقط Journey و فاکتور صریح؛ بدون پنجره زمانی یا نسبت‌دادن حدسی</span>
     </div>
+    {% if economics.safe_to_sum and economics.measurement_status=='READY' %}
     <div class="grid grid-4">
-        <div class="mini"><div class="m-num c-ok">{{ incrementality.incremental|fa_num }}</div><div class="m-lbl">درآمدِ افزایشیِ علّی (تومان)</div></div>
-        <div class="mini"><div class="m-num">{% if incrementality.lift is not none %}{{ incrementality.lift|fa_num }}٪{% else %}—{% endif %}</div><div class="m-lbl">Lift (افزایشِ سرانهٔ درآمد)</div></div>
-        <div class="mini"><div class="m-num">{{ incrementality.pc_treated|fa_num }}</div><div class="m-lbl">سرانهٔ دریافت‌کننده</div></div>
-        <div class="mini"><div class="m-num">{{ incrementality.pc_control|fa_num }}</div><div class="m-lbl">سرانهٔ کنترل</div></div>
+        <div class="mini"><div class="m-num">{{ economics.finance.collected|fa_num }}</div><div class="m-lbl">وصول منتسب (تومان)</div></div>
+        <div class="mini"><div class="m-num">{{ economics.costs.sms_cost|fa_num }}</div><div class="m-lbl">هزینه پیامک (تومان)</div></div>
+        <div class="mini"><div class="m-num">{{ economics.costs.wallet_liability|fa_num }}</div><div class="m-lbl">تعهد اعتبار فعال (تومان)</div></div>
+        <div class="mini"><div class="m-num {% if economics.net_contribution >= 0 %}c-ok{% else %}c-danger{% endif %}">{{ economics.net_contribution|fa_num }}</div><div class="m-lbl">مشارکت خالص (تومان)</div></div>
+        <div class="mini"><div class="m-num">{% if economics.roi_percent is not none %}{{ economics.roi_percent|fa_num }}٪{% else %}—{% endif %}</div><div class="m-lbl">ROI مستقیم</div></div>
     </div>
-    <div class="legend" style="margin-top:var(--s3);">
-        <span class="chip"><span class="dot dot-ok"></span> دریافت‌کننده: {{ incrementality.treated|fa_num }} نفر ({{ incrementality.treated_linked|fa_num }} متصل به حسابداری)</span>
-        <span class="chip"><span class="dot dot-warn"></span> کنترل: {{ incrementality.control|fa_num }} نفر ({{ incrementality.control_linked|fa_num }} متصل)</span>
-        <span class="chip">درآمدِ وصول‌شده — دریافت‌کننده: {{ incrementality.rev_treated|fa_num }} · کنترل: {{ incrementality.rev_control|fa_num }}</span>
+    <div class="alert-banner alert-info" style="margin-top:var(--s3);">
+        این ROI از «وصول منتسب − هزینه پیامک − تعهد اعتبار فعال» محاسبه شده است و ادعای اثر علّی نمی‌کند.
     </div>
-    <div class="muted help" style="margin-top:var(--s3);">«درآمدِ افزایشی» = (سرانهٔ درآمدِ دریافت‌کننده − سرانهٔ کنترل) × تعدادِ دریافت‌کننده — سنجهٔ <b>علّیِ</b> واقعیِ اثرِ کمپین (برخلافِ «درآمد منتسب» که هم‌بستگی است). با گروهِ کوچک، عدم‌قطعیتِ آماری بالاست.</div>
-</div>
-{% endif %}
+    {% else %}
+    <div class="alert-banner alert-warn">
+        <svg class="icon"><use href="#i-alert"></use></svg>
+        <span><b>ROI منتشر نمی‌شود:</b> {{ measurement_labels.get(economics.measurement_status, economics.measurement_status) }}.</span>
+    </div>
+    <div class="grid grid-4" style="margin-top:var(--s3);">
+        <div class="mini"><div class="m-num">{{ economics.finance.collected|fa_num }}</div><div class="m-lbl">وصول مشاهده‌شده؛ هنوز غیرقابل جمع</div></div>
+        <div class="mini"><div class="m-num">{{ economics.costs.costed_messages|fa_num }} / {{ economics.messages.provider_accepted|fa_num }}</div><div class="m-lbl">پیام دارای cost evidence</div></div>
+        <div class="mini"><div class="m-num">{{ economics.finance.missing_journeys|fa_num }}</div><div class="m-lbl">Journey فاقد مشاهده مالی</div></div>
+        <div class="mini"><div class="m-num">{{ economics.costs.wallet_review_required|fa_num }}</div><div class="m-lbl">جبران اعتبار نیازمند بررسی</div></div>
+    </div>
+    {% endif %}
+</section>
 
-<div class="card">
-    <div class="section-title"><svg class="icon"><use href="#i-list-checks"></use></svg> لاگ ارسال</div>
+<section class="card" id="campaign-responses">
+    <div class="section-title"><svg class="icon"><use href="#i-list-checks"></use></svg> پاسخ بیمار و اتصال Journey</div>
+    <p class="help">پاسخ مثبت فقط با شاهد صریح ثبت می‌شود. پاسخ مثبت به‌تنهایی درآمد نیست؛ هنگام شروع ویزیت باید همان پاسخ به Journey انتخاب و متصل شود.</p>
     {% if messages %}
-    <div class="table-wrap">
-    <table>
-        <thead><tr><th>گیرنده</th><th>متن</th><th>وضعیت تحویل</th><th>شناسه/خطا</th><th>آخرین استعلام / تحویل</th></tr></thead>
+    <div class="table-wrap"><table>
+        <thead><tr><th>بیمار</th><th>تحویل</th><th>پاسخ فعلی</th><th>ثبت پاسخ</th></tr></thead>
         <tbody>
         {% for m in messages %}
-            <tr>
-                <td>{{ m.recipient }}</td>
-                <td class="muted text-xs">{{ m.body[:60] }}…</td>
-                <td><span class="badge {% if m.delivery_status=='Delivered' %}badge-ok{% elif m.delivery_status in ['NumberBlackListed','OperatorBlackList','Failed','Undelivered'] %}badge-danger{% elif m.delivery_status in ['SubmissionUnknown','StatusUnknown'] %}badge-warn{% else %}badge-info{% endif %}">{{ status_label(m.delivery_status) }}</span></td>
-                <td class="muted text-xs nums">{{ m.provider_msgid or m.provider_request_id or m.error or '—' }}</td>
-                <td class="muted">{{ m.delivery_checked_at|jalali if m.delivery_checked_at else '—' }}{% if m.delivered_at %}<div class="text-xs c-ok">تحویل: {{ m.delivered_at|jalali }}</div>{% endif %}</td>
-            </tr>
+        <tr>
+            <td>{{ m.full_name }}<div class="muted text-xs nums">{{ m.recipient }}</div></td>
+            <td><span class="badge {% if m.current_delivery_status=='Delivered' %}badge-ok{% elif m.current_delivery_status in ['Failed','Undelivered','NumberBlackListed','OperatorBlackList'] %}badge-danger{% else %}badge-info{% endif %}">{{ status_label(m.current_delivery_status or m.delivery_status) }}</span></td>
+            <td>{% if m.current_response_type %}<span class="badge badge-info">{{ m.current_response_type }}</span>{% else %}<span class="muted">ثبت نشده</span>{% endif %}</td>
+            <td>
+                {% if permissions.get('sms.campaign.response.record') %}
+                <form method="post" action="{{ url_for('sms.campaign_response', cid=campaign.id) }}" class="row">
+                    <input type="hidden" name="patient_link_id" value="{{ m.patient_link_id }}">
+                    <input type="hidden" name="message_id" value="{{ m.id }}">
+                    {% if m.current_response_event_id %}<input type="hidden" name="expected_current_event_id" value="{{ m.current_response_event_id }}">{% endif %}
+                    <select name="response_type" required>
+                        <option value="">نوع پاسخ</option>
+                        <option value="POSITIVE">مثبت / تمایل به مراجعه</option>
+                        <option value="NEGATIVE">منفی</option>
+                        <option value="NO_RESPONSE">بدون پاسخ</option>
+                        <option value="OPT_OUT">لغو پیام بازاریابی</option>
+                    </select>
+                    <select name="evidence_type" required>
+                        <option value="PATIENT_STATED">اظهار مستقیم بیمار</option>
+                        <option value="STAFF_PHONE_CALL">تماس تلفنی کارکنان</option>
+                        <option value="INBOUND_REPLY">پاسخ ورودی ثبت‌شده</option>
+                    </select>
+                    <input name="evidence_ref" placeholder="شناسه پاسخ ورودی (در صورت وجود)">
+                    <input name="note" placeholder="شرح شاهد/تماس">
+                    <button class="btn btn-sm" type="submit">ثبت</button>
+                </form>
+                {% endif %}
+            </td>
+        </tr>
         {% endfor %}
         </tbody>
-    </table>
-    </div>
-    {% else %}<div class="empty"><svg class="icon"><use href="#i-megaphone"></use></svg><div>هنوز پیامی ارسال نشده</div></div>{% endif %}
-</div>
+    </table></div>
+    {% else %}<div class="empty">هنوز پیام govern‌شده‌ای برای این کمپین وجود ندارد.</div>{% endif %}
+</section>
+
+{% if economics.attributions.rows %}
+<section class="card">
+    <div class="section-title">Journeyهای منتسب</div>
+    <div class="table-wrap"><table>
+        <thead><tr><th>Journey</th><th>بیمار</th><th>Response event</th><th>اقدام اصلاحی</th></tr></thead>
+        <tbody>{% for row in economics.attributions.rows %}
+        <tr>
+            <td class="nums">{{ row.journey_id }}</td>
+            <td>{{ row.patient_link_id|fa_num }}</td>
+            <td>{{ row.response_event_id|fa_num }}</td>
+            <td>{% if permissions.get('sms.campaign.attribution.correct') %}
+                <form method="post" action="{{ url_for('sms.revoke_campaign_attribution', cid=campaign.id, journey_id=row.journey_id) }}" class="row">
+                    <input type="hidden" name="expected_current_event_id" value="{{ row.id }}">
+                    <input name="note" placeholder="دلیل اصلاح" required>
+                    <button class="btn btn-danger btn-sm" type="submit">لغو انتساب</button>
+                </form>{% endif %}
+            </td>
+        </tr>{% endfor %}</tbody>
+    </table></div>
+</section>
+{% endif %}
+
+<section class="card">
+    <div class="section-title"><svg class="icon"><use href="#i-list-checks"></use></svg> رویدادهای پیام</div>
+    {% if messages %}
+    <div class="table-wrap"><table>
+        <thead><tr><th>گیرنده</th><th>وضعیت</th><th>هزینه</th><th>شناسه/خطا</th><th>زمان</th></tr></thead>
+        <tbody>{% for m in messages %}
+        <tr>
+            <td>{{ m.recipient }}</td>
+            <td>{{ status_label(m.current_delivery_status or m.delivery_status) }}</td>
+            <td>{% if m.current_sms_cost is not none %}{{ m.current_sms_cost|fa_num }} تومان <span class="muted text-xs">{{ m.cost_evidence_type }}</span>{% else %}<span class="badge badge-warn">فاقد cost evidence</span>{% endif %}</td>
+            <td class="muted text-xs nums">{{ m.provider_msgid or m.provider_request_id or m.error or '—' }}</td>
+            <td class="muted">{{ m.delivery_checked_at|jalali if m.delivery_checked_at else '—' }}</td>
+        </tr>{% endfor %}</tbody>
+    </table></div>
+    {% else %}<div class="empty">هنوز پیامی ارسال نشده است.</div>{% endif %}
+</section>
 {% endblock %}
