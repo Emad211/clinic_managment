@@ -1,4 +1,4 @@
-"""Append-only operational follow-up contact history."""
+"""Append-only operational follow-up contacts and booking requests."""
 from __future__ import annotations
 
 import sqlite3
@@ -66,6 +66,25 @@ def ensure_followup_operations_storage(db: sqlite3.Connection) -> None:
         ON followup_contact_events(next_contact_at, outcome)
         WHERE next_contact_at IS NOT NULL;
 
+        CREATE TABLE IF NOT EXISTS followup_booking_requests (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            idempotency_key TEXT NOT NULL UNIQUE
+                CHECK (length(trim(idempotency_key)) >= 12),
+            patient_link_id INTEGER NOT NULL,
+            appointment_id INTEGER NOT NULL UNIQUE,
+            scheduled_at TEXT NOT NULL CHECK (datetime(scheduled_at) IS NOT NULL),
+            task_ids_json TEXT NOT NULL CHECK (json_valid(task_ids_json)),
+            actor_user_id INTEGER,
+            actor_username TEXT NOT NULL CHECK (length(trim(actor_username)) > 0),
+            created_at TEXT NOT NULL CHECK (datetime(created_at) IS NOT NULL),
+            content_hash TEXT NOT NULL UNIQUE CHECK (length(content_hash)=64),
+            FOREIGN KEY(patient_link_id) REFERENCES patient_links(id),
+            FOREIGN KEY(appointment_id) REFERENCES appointments(id),
+            FOREIGN KEY(actor_user_id) REFERENCES users(id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_followup_booking_patient
+        ON followup_booking_requests(patient_link_id, created_at DESC, id DESC);
+
         CREATE TRIGGER IF NOT EXISTS trg_followup_contact_no_update
         BEFORE UPDATE ON followup_contact_events
         BEGIN SELECT RAISE(ABORT, 'follow-up contact events are append-only'); END;
@@ -91,5 +110,23 @@ def ensure_followup_operations_storage(db: sqlite3.Connection) -> None:
               AND journey.patient_link_id=NEW.patient_link_id
         )
         BEGIN SELECT RAISE(ABORT, 'contact journey/patient scope mismatch'); END;
+
+        CREATE TRIGGER IF NOT EXISTS trg_followup_booking_no_update
+        BEFORE UPDATE ON followup_booking_requests
+        BEGIN SELECT RAISE(ABORT, 'follow-up booking requests are append-only'); END;
+
+        CREATE TRIGGER IF NOT EXISTS trg_followup_booking_no_delete
+        BEFORE DELETE ON followup_booking_requests
+        BEGIN SELECT RAISE(ABORT, 'follow-up booking requests cannot be deleted'); END;
+
+        CREATE TRIGGER IF NOT EXISTS trg_followup_booking_appointment_scope
+        BEFORE INSERT ON followup_booking_requests
+        WHEN NOT EXISTS (
+            SELECT 1 FROM appointments appointment
+            WHERE appointment.id=NEW.appointment_id
+              AND appointment.patient_link_id=NEW.patient_link_id
+              AND appointment.scheduled_at=NEW.scheduled_at
+        )
+        BEGIN SELECT RAISE(ABORT, 'booking appointment scope mismatch'); END;
         """
     )
