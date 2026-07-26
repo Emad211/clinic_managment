@@ -1,161 +1,234 @@
-"""Physician visit-queue panel (phase3_doctor_queue_plan.md).
+"""Physician visit queue backed by read-only accounting invoices.
 
-Live queue of today's OPEN visit invoices (read from the accounting bridge, read-only) +
-the specialist-side در‌نوبت/انجام‌شده state. "پایانِ ویزیت" records physician-side state only;
-it does NOT close the accounting invoice (reception does that). No SQL here — see the
-service / repo. Staff role (the physician is a staff user).
+Only the accounting invoice ID crosses the HTTP boundary. Patient identity, work date,
+and specialist enrollment are resolved again server-side before any clinical write.
 """
 from flask import Blueprint, render_template, request, redirect, url_for, flash, g
 
 from src.api.auth import login_required
-from src.services.doctor_queue_service import DoctorQueueService
-from src.adapters.sqlite.patients_repo import PatientRepository
+from src.services.doctor_queue_service import (
+    DoctorQueueIdentityError,
+    DoctorQueueService,
+)
 from src.services.activity_logger import log_activity
 from src.common.utils import jalali_to_gregorian_str, today_str
 
 bp = Blueprint("doctor_queue", __name__, url_prefix="/doctor-queue")
-
-# Doctor-initiated named SMS invites the physician can fire from the visit «مرحله بعد»
-# (#3 test+consult, #7 sugar+BP). Whitelisted so a tampered form can't enqueue an
-# arbitrary event_key. Each routes through the Phase-2 guardrailed approval queue.
 VISIT_INVITE_EVENTS = {"lab_consult_invite", "bp_glucose_invite"}
 
 
-def _snapshot(invoice_id):
-    """Build the doctor_visit_log snapshot from the posted queue row; resolve the local
-    patient_links id from national_id (so a tampered hidden field can't mis-link)."""
-    nid = (request.form.get("national_id") or "").strip() or None
-    link = PatientRepository().get_by_national_id(nid) if nid else None
-    return {
-        "accounting_invoice_id": invoice_id,
-        "patient_link_id": link["id"] if link else None,
-        "national_id": nid,
-        "full_name": request.form.get("full_name") or "—",
-        "work_date": request.form.get("work_date") or None,
+def _snapshot(invoice_id: int) -> dict:
+    return {"accounting_invoice_id": int(invoice_id)}
+
+
+def _queue_error(exc: Exception) -> None:
+    labels = {
+        "ACCOUNTING_BRIDGE_UNAVAILABLE": "اتصال خواندنی حسابداری در دسترس نیست.",
+        "ACCOUNTING_INVOICE_NOT_FOUND": "فاکتور حسابداری پیدا نشد.",
+        "ACCOUNTING_INVOICE_NOT_OPEN": "فاکتور دیگر باز نیست.",
+        "ACCOUNTING_INVOICE_OUTSIDE_ACTIVE_DAY": "فاکتور متعلق به روز فعال صف نیست.",
+        "SPECIALIST_ENROLLMENT_REQUIRED": "بیمار هنوز وارد برنامهٔ تخصصی نشده است.",
+        "SPECIALIST_VISIT_NOT_STARTED": "ابتدا ویزیت را از صف شروع کنید.",
+        "SPECIALIST_VISIT_NOT_ACTIVE": "این Encounter دیگر فعال نیست.",
     }
+    flash(labels.get(str(exc), f"عملیات متوقف شد: {exc}"), "error")
 
 
 @bp.route("/")
 @login_required
 def index():
     data = DoctorQueueService().queue()
-    return render_template("doctor_queue/queue.html", active_page="doctor_queue", **data)
+    return render_template(
+        "doctor_queue/queue.html", active_page="doctor_queue", **data
+    )
 
 
 @bp.route("/<int:invoice_id>/start", methods=["POST"])
 @login_required
 def start(invoice_id):
-    snap = _snapshot(invoice_id)
-    DoctorQueueService().start(snap)
-    log_activity("visit_start", f"شروع ویزیتِ فاکتور #{invoice_id}")
-    return redirect(url_for("doctor_queue.visit", invoice_id=invoice_id, nid=snap["national_id"] or ""))
+    try:
+        DoctorQueueService().start(
+            _snapshot(invoice_id), actor_username=g.user["username"]
+        )
+        log_activity("visit_start", f"شروع ویزیتِ فاکتور #{invoice_id}")
+        return redirect(url_for("doctor_queue.visit", invoice_id=invoice_id))
+    except Exception as exc:
+        _queue_error(exc)
+        return redirect(url_for("doctor_queue.index"))
 
 
 @bp.route("/<int:invoice_id>/done", methods=["POST"])
 @login_required
 def done(invoice_id):
-    DoctorQueueService().end_visit(_snapshot(invoice_id), g.user["username"],
-                                   notes=request.form.get("notes") or None)
-    log_activity("visit_done", f"پایانِ ویزیتِ فاکتور #{invoice_id}")
+    try:
+        DoctorQueueService().end_visit(
+            _snapshot(invoice_id),
+            g.user["username"],
+            notes=request.form.get("notes") or None,
+        )
+        log_activity("visit_done", f"پایانِ ویزیتِ فاکتور #{invoice_id}")
+    except Exception as exc:
+        _queue_error(exc)
     return redirect(url_for("doctor_queue.index"))
 
 
 @bp.route("/<int:invoice_id>/invite", methods=["POST"])
 @login_required
 def invite(invoice_id):
-    """Doctor-initiated named SMS invite from «مرحله بعد» (#3 test+consult, #7 sugar+BP).
-    Enqueues the chosen engagement event into the physician approval queue (reusing the
-    Phase-2 guardrailed path); the SMS is only sent once the physician approves it."""
     event_key = request.form.get("event_key") or ""
     if event_key not in VISIT_INVITE_EVENTS:
-        flash("نوعِ دعوتِ نامعتبر است.")
+        flash("نوع دعوت نامعتبر است.", "error")
         return redirect(url_for("doctor_queue.index"))
-    nid = (request.form.get("national_id") or "").strip() or None
-    link = PatientRepository().get_by_national_id(nid) if nid else None
-    if not link:
-        flash("این بیمار در پروندهٔ تخصصی ثبت نشده است.")
+    try:
+        snapshot = DoctorQueueService().active_visit_snapshot(invoice_id)
+    except Exception as exc:
+        _queue_error(exc)
         return redirect(url_for("doctor_queue.index"))
+
     from src.services.engagement_service import EngagementService
+
     aid = EngagementService().enqueue_event_for_patient(
-        link["id"], event_key, period_key=f"{event_key}:{today_str()}")
+        snapshot["patient_link_id"],
+        event_key,
+        period_key=f"{event_key}:{today_str()}:{invoice_id}",
+    )
     if aid:
-        log_activity("visit_invite_event", f"دعوتِ «{event_key}» (فاکتور #{invoice_id})",
-                     patient_link_id=link["id"])
-        flash("دعوت در صفِ تأییدِ پیامک ثبت شد.", "success")
+        log_activity(
+            "visit_invite_event",
+            f"دعوت «{event_key}» از Encounter فاکتور #{invoice_id}",
+            patient_link_id=snapshot["patient_link_id"],
+        )
+        flash("دعوت در صف تأیید پیامک ثبت شد.", "success")
     else:
-        flash("دعوت ثبت نشد (انصراف از پیامک، بدون موبایل، تکراری یا داخلِ فاصلهٔ مجاز).")
-    return redirect(url_for("doctor_queue.visit", invoice_id=invoice_id, nid=nid or ""))
+        flash(
+            "دعوت ثبت نشد؛ وضعیت شماره، انصراف، تکرار یا cooldown را بررسی کنید.",
+            "warning",
+        )
+    return redirect(url_for("doctor_queue.visit", invoice_id=invoice_id))
 
 
 @bp.route("/<int:invoice_id>/visit")
 @login_required
 def visit(invoice_id):
-    """Simple visit view for an ENROLLED patient: compact previous info + quick data entry
-    + the «مرحله بعد» menu. Read-only w.r.t. accounting."""
-    nid = (request.args.get("nid") or "").strip() or None
-    link = PatientRepository().get_by_national_id(nid) if nid else None
-    if not link:
-        flash("این بیمار در پروندهٔ تخصصی ثبت نشده — از «پایانِ ویزیت» در صف استفاده کنید.")
+    try:
+        snapshot = DoctorQueueService().active_visit_snapshot(invoice_id)
+    except Exception as exc:
+        _queue_error(exc)
         return redirect(url_for("doctor_queue.index"))
-    pid = link["id"]
+
+    pid = snapshot["patient_link_id"]
     from src.services.patient_service import PatientService
     from src.adapters.sqlite.vitals_repo import VitalsRepository, VITAL_TYPES
     from src.adapters.sqlite.record_repo import RecordRepository
     from src.adapters.sqlite.followups_repo import FollowupRepository
     from src.adapters.sqlite.clinical_rules_repo import ClinicalRulesRepository
+
     profile = PatientService().get_full_profile(pid)
     rules = ClinicalRulesRepository()
-    codes = [c.get("condition_code") for c in profile["conditions"] if c.get("condition_code")]
-    entry_indicators = [i for i in rules.for_conditions(codes) if i.get("is_vital")]
-    ind_labels = {i["key"]: i for i in rules.all_indicators(active_only=False)}
+    codes = [
+        condition.get("condition_code")
+        for condition in profile["conditions"]
+        if condition.get("condition_code")
+    ]
+    entry_indicators = [
+        indicator for indicator in rules.for_conditions(codes)
+        if indicator.get("is_vital")
+    ]
+    indicator_labels = {
+        indicator["key"]: indicator
+        for indicator in rules.all_indicators(active_only=False)
+    }
     recent_vitals = VitalsRepository().get_readings(pid, limit=8)
-    for v in recent_vitals:
-        meta = ind_labels.get(v["type"]) or VITAL_TYPES.get(v["type"], {})
-        v["type_label"] = meta.get("label", v["type"])
+    for vital in recent_vitals:
+        metadata = indicator_labels.get(vital["type"]) or VITAL_TYPES.get(
+            vital["type"], {}
+        )
+        vital["type_label"] = metadata.get("label", vital["type"])
     notes = RecordRepository().list_notes(pid, "exam")
-    open_followups = [t for t in FollowupRepository().list_for_patient(pid) if t.get("status") == "open"]
+    open_followups = [
+        task for task in FollowupRepository().list_for_patient(pid)
+        if task.get("status") == "open"
+    ]
     return render_template(
-        "doctor_queue/visit_quick.html", active_page="doctor_queue",
-        invoice_id=invoice_id, nid=nid, pid=pid, work_date=today_str(),
-        patient=profile["patient"], conditions=profile["conditions"],
-        medications=profile["medications"], allergies=profile["allergies"],
-        entry_indicators=entry_indicators, recent_vitals=recent_vitals,
-        last_note=(notes[0] if notes else None), open_followups=open_followups)
+        "doctor_queue/visit_quick.html",
+        active_page="doctor_queue",
+        invoice_id=invoice_id,
+        nid=snapshot.get("national_id"),
+        pid=pid,
+        work_date=snapshot["work_date"],
+        encounter_id=snapshot["encounter_id"],
+        journey_id=snapshot["journey_id"],
+        patient=profile["patient"],
+        conditions=profile["conditions"],
+        medications=profile["medications"],
+        allergies=profile["allergies"],
+        entry_indicators=entry_indicators,
+        recent_vitals=recent_vitals,
+        last_note=(notes[0] if notes else None),
+        open_followups=open_followups,
+    )
 
 
 @bp.route("/<int:invoice_id>/save", methods=["POST"])
 @login_required
 def save(invoice_id):
-    """Save today's vitals + visit note (reusing the vitals/record repos), then return to
-    the visit view so the physician stays in the visit flow."""
-    pid = request.form.get("pid", type=int)
-    nid = request.form.get("nid") or ""
-    if pid:
-        from src.adapters.sqlite.vitals_repo import VitalsRepository, VITAL_TYPES
-        from src.adapters.sqlite.clinical_rules_repo import ClinicalRulesRepository
-        from src.adapters.sqlite.record_repo import RecordRepository
-        measured = jalali_to_gregorian_str(request.form.get("measured_date", ""))
-        measured_at = f"{measured} 12:00:00" if measured else None
-        indicators = ClinicalRulesRepository().as_map()
-        keys = set(indicators.keys()) | set(VITAL_TYPES.keys())
-        vrepo = VitalsRepository()
-        added = 0
-        for vtype in keys:
-            raw = (request.form.get(vtype, "") or "").strip()
-            if raw == "":
-                continue
-            try:
-                value = float(raw)
-            except ValueError:
-                continue
-            unit = (indicators.get(vtype) or {}).get("unit") or VITAL_TYPES.get(vtype, {}).get("unit")
-            vrepo.add_reading(pid, vtype=vtype, value=value, unit=unit,
-                              measured_at=measured_at, recorded_by=g.user["username"])
-            added += 1
-        note = (request.form.get("note") or "").strip()
-        if note:
-            RecordRepository().add_note(pid, "exam", note, recorded_by=g.user["username"])
-        if added or note:
-            log_activity("visit_save", f"ثبت {added} شاخص + یادداشت ویزیت", patient_link_id=pid)
-            flash("اطلاعاتِ ویزیت ثبت شد", "success")
-    return redirect(url_for("doctor_queue.visit", invoice_id=invoice_id, nid=nid))
+    try:
+        snapshot = DoctorQueueService().active_visit_snapshot(invoice_id)
+    except Exception as exc:
+        _queue_error(exc)
+        return redirect(url_for("doctor_queue.index"))
+
+    pid = snapshot["patient_link_id"]
+    from src.adapters.sqlite.vitals_repo import VitalsRepository, VITAL_TYPES
+    from src.adapters.sqlite.clinical_rules_repo import ClinicalRulesRepository
+    from src.adapters.sqlite.record_repo import RecordRepository
+
+    measured = jalali_to_gregorian_str(request.form.get("measured_date", ""))
+    measured_at = f"{measured} 12:00:00" if measured else None
+    indicators = ClinicalRulesRepository().as_map()
+    keys = set(indicators) | set(VITAL_TYPES)
+    parsed: list[tuple[str, float, str | None]] = []
+    invalid: list[str] = []
+    for vital_type in keys:
+        raw = (request.form.get(vital_type, "") or "").strip()
+        if not raw:
+            continue
+        try:
+            value = float(raw)
+        except ValueError:
+            invalid.append(vital_type)
+            continue
+        unit = (indicators.get(vital_type) or {}).get("unit") or (
+            VITAL_TYPES.get(vital_type, {}).get("unit")
+        )
+        parsed.append((vital_type, value, unit))
+    if invalid:
+        flash(
+            "مقادیر نامعتبر ثبت نشدند: " + "، ".join(sorted(invalid)),
+            "error",
+        )
+        return redirect(url_for("doctor_queue.visit", invoice_id=invoice_id))
+
+    vitals = VitalsRepository()
+    for vital_type, value, unit in parsed:
+        vitals.add_reading(
+            pid,
+            vtype=vital_type,
+            value=value,
+            unit=unit,
+            measured_at=measured_at,
+            recorded_by=g.user["username"],
+        )
+    note = (request.form.get("note") or "").strip()
+    if note:
+        RecordRepository().add_note(
+            pid, "exam", note, recorded_by=g.user["username"]
+        )
+    if parsed or note:
+        log_activity(
+            "visit_save",
+            f"ثبت {len(parsed)} شاخص + یادداشت Encounter",
+            patient_link_id=pid,
+        )
+        flash("اطلاعات ویزیت ثبت شد.", "success")
+    return redirect(url_for("doctor_queue.visit", invoice_id=invoice_id))
