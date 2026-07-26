@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+# Trigger revision: four observed A2 regressions are corrected before the gate.
 ROOT = Path(__file__).resolve().parents[1]
 
 
