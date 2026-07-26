@@ -1,5 +1,6 @@
 from flask import Blueprint, render_template, request, redirect, url_for, flash, g, jsonify
 from src.api.auth import login_required
+from src.security.permissions import Permission, permission_required
 from src.adapters.sqlite.sms_repo import SmsRepository
 from src.adapters.sqlite.wallet_repo import WalletRepository
 from src.services.sms.campaign_service import (
@@ -46,7 +47,7 @@ def _pending_count() -> int:
 
 
 @bp.route("/")
-@login_required
+@permission_required(Permission.SMS_VIEW)
 def campaigns():
     repo = SmsRepository()
     campaigns = repo.list_campaigns()
@@ -60,7 +61,7 @@ def campaigns():
 
 
 @bp.route("/api/check", methods=["POST"])
-@login_required
+@permission_required(Permission.SMS_CAMPAIGN_CREATE)
 def api_check():
     """Live compliance check + preview for the campaign composer."""
     data = request.get_json(silent=True) or {}
@@ -68,7 +69,12 @@ def api_check():
     segment = data.get("segment", "all")
     credit = int(data.get("credit_amount") or 0)
     banned = find_banned(body)
-    recipients = resolve_segment(segment) if segment in SEGMENTS else []
+    campaign_type = str(data.get("campaign_type") or "info")
+    purpose = "CARE" if campaign_type == "reminder" else "MARKETING"
+    recipients = (
+        resolve_segment(segment, purpose=purpose)
+        if segment in SEGMENTS else []
+    )
     sample_name = recipients[0]['full_name'] if recipients else 'محمد محمدی'
     preview = sanitize(personalize(body, name=sample_name, credit=credit, balance=credit))
     return jsonify({
@@ -82,15 +88,21 @@ def api_check():
 
 
 @bp.route("/api/recipients")
-@login_required
+@permission_required(Permission.SMS_CAMPAIGN_CREATE)
 def api_recipients():
     segment = request.args.get("segment", "all")
-    recipients = resolve_segment(segment) if segment in SEGMENTS else []
+    purpose = str(request.args.get("purpose") or "MARKETING").upper()
+    if purpose not in {"CARE", "MARKETING"}:
+        purpose = "MARKETING"
+    recipients = (
+        resolve_segment(segment, purpose=purpose)
+        if segment in SEGMENTS else []
+    )
     return jsonify({"count": len(recipients), "items": recipients[:200]})
 
 
 @bp.route("/campaign/new", methods=["POST"])
-@login_required
+@permission_required(Permission.SMS_CAMPAIGN_CREATE)
 def new_campaign():
     repo = SmsRepository()
     name = request.form.get("name", "").strip()
@@ -121,7 +133,7 @@ def new_campaign():
 
 
 @bp.route("/campaign/<int:cid>")
-@login_required
+@permission_required(Permission.SMS_VIEW)
 def campaign_detail(cid):
     repo = SmsRepository()
     campaign = repo.get_campaign(cid)
@@ -129,7 +141,8 @@ def campaign_detail(cid):
         flash("کمپین یافت نشد")
         return redirect(url_for("sms.campaigns"))
     messages = repo.list_messages(cid)
-    recipients = resolve_segment(campaign['segment'])
+    purpose = "CARE" if campaign.get("campaign_type") == "reminder" else "MARKETING"
+    recipients = resolve_segment(campaign['segment'], purpose=purpose)
     total_credit = (campaign.get('credit_amount') or 0) * len(recipients) if campaign.get('campaign_type') == 'wallet_credit' else 0
     from src.services.revenue_service import RevenueService
     incrementality = RevenueService().campaign_incrementality(cid)
@@ -145,7 +158,7 @@ def campaign_detail(cid):
 
 
 @bp.route("/messages")
-@login_required
+@permission_required(Permission.SMS_VIEW)
 def messages_report():
     repo = SmsRepository()
     rows = repo.list_messages_filtered(
@@ -161,26 +174,33 @@ def messages_report():
 
 
 @bp.route("/messages/reconcile", methods=["POST"])
-@login_required
+@permission_required(Permission.SMS_DELIVERY_RECONCILE)
 def reconcile_messages():
     from src.services.sms.delivery_service import DeliveryService
     result = DeliveryService().reconcile(
         message_ids=[request.form.get('message_id', type=int)] if request.form.get('message_id') else None,
         campaign_id=request.form.get('campaign_id', type=int))
     log_activity("sms_delivery_reconcile", f"استعلام دستی پیامک: {result}")
-    flash(f"وضعیت {result['updated']} پیام به‌روزرسانی شد", "success")
+    if result["errors"]:
+        flash(
+            f"{result['updated']} پیام به‌روزرسانی شد؛ "
+            f"استعلام {result['errors']} پیام خطا داشت.",
+            "warning",
+        )
+    else:
+        flash(f"وضعیت {result['updated']} پیام به‌روزرسانی شد", "success")
     return redirect(request.referrer or url_for('sms.messages_report'))
 
 
 @bp.route("/campaign/<int:cid>/send", methods=["POST"])
-@login_required
+@permission_required(Permission.SMS_CAMPAIGN_SEND)
 def send_campaign(cid):
     result = run_campaign(cid)
     if 'error' in result:
         flash("پنل پیامک فعال تنظیم نشده است" if result.get('reason') == 'provider_unconfigured'
               else "خطا در ارسال کمپین")
     else:
-        msg = f"ارسال شد — موفق: {result['sent']}"
+        msg = f"پنل پذیرفت: {result.get('accepted', result.get('sent', 0))}"
         if result.get('pending'):
             msg += f"، در انتظار تأیید پنل: {result['pending']}"
         flash(msg + f"، ناموفق: {result['failed']} از {result['total']}", "success")
@@ -189,7 +209,7 @@ def send_campaign(cid):
 
 
 @bp.route("/approvals")
-@login_required
+@permission_required(Permission.SMS_VIEW)
 def approvals():
     from src.adapters.sqlite.engagement_repo import EngagementRepository
     from src.services.engagement_service import EngagementService
@@ -207,14 +227,14 @@ def approvals():
 
 
 @bp.route("/approvals/<int:aid>/approve", methods=["POST"])
-@login_required
+@permission_required(Permission.SMS_APPROVAL_REVIEW)
 def approval_approve(aid):
     from src.services.engagement_service import EngagementService
     msg = request.form.get("message", "").strip() or None
     override = request.form.get("override") == "1"
     r = EngagementService().approve(aid, g.user["username"], message=msg, override=override)
     if r.get('ok'):
-        flash("پیام تأیید و ارسال شد", "success")
+        flash("پیام توسط پنل پذیرفته شد؛ تحویل واقعی جداگانه استعلام می‌شود.", "success")
     elif r.get('reason') == 'quiet':
         flash("خارج از ساعتِ مجازِ ارسال (پیش‌فرض ۸ تا ۲۱)؛ پیام در صف ماند. "
               "برای ارسالِ فوری دکمهٔ «ارسالِ فوری» را بزنید.")
@@ -235,7 +255,7 @@ def approval_approve(aid):
 
 
 @bp.route("/approvals/<int:aid>/reject", methods=["POST"])
-@login_required
+@permission_required(Permission.SMS_APPROVAL_REVIEW)
 def approval_reject(aid):
     from src.services.engagement_service import EngagementService
     EngagementService().reject(aid, g.user["username"])
@@ -245,7 +265,7 @@ def approval_reject(aid):
 
 
 @bp.route("/templates/add", methods=["POST"])
-@login_required
+@permission_required(Permission.SMS_TEMPLATE_MANAGE)
 def add_template():
     name = request.form.get("name", "").strip()
     body = request.form.get("body", "").strip()

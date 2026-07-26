@@ -37,6 +37,15 @@ class Permission(StrEnum):
     CLINICAL_ALERT_VIEW = "clinical.alert.view"
     CLINICAL_ALERT_ACKNOWLEDGE = "clinical.alert.acknowledge"
     CLINICAL_ALERT_RESOLVE = "clinical.alert.resolve"
+    SMS_VIEW = "sms.view"
+    SMS_TEMPLATE_MANAGE = "sms.template.manage"
+    SMS_APPROVAL_REVIEW = "sms.approval.review"
+    SMS_SINGLE_SEND = "sms.send.single"
+    SMS_CAMPAIGN_CREATE = "sms.campaign.create"
+    SMS_CAMPAIGN_SEND = "sms.campaign.send"
+    SMS_DELIVERY_RECONCILE = "sms.delivery.reconcile"
+    SMS_SETTINGS_MANAGE = "sms.settings.manage"
+    SMS_CONSENT_MANAGE = "sms.consent.manage"
     RULE_REVIEW_CLINICAL = "rule.review.clinical"
     RULE_REVIEW_TECHNICAL = "rule.review.technical"
     RULE_ACTIVATE = "rule.activate"
@@ -56,6 +65,11 @@ _ROLE_DEFAULTS = {
             Permission.FOLLOWUP_CONTACT_RECORD,
             Permission.CLINICAL_ALERT_VIEW,
             Permission.CLINICAL_ALERT_ACKNOWLEDGE,
+            Permission.SMS_VIEW,
+            Permission.SMS_APPROVAL_REVIEW,
+            Permission.SMS_SINGLE_SEND,
+            Permission.SMS_DELIVERY_RECONCILE,
+            Permission.SMS_CONSENT_MANAGE,
         }
     ),
 }

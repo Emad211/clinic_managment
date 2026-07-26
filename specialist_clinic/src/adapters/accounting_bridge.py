@@ -15,12 +15,12 @@ import os
 import sqlite3
 from typing import Any, Optional
 
-from src.config.settings import Config
+from src.adapters.accounting_path import accounting_db_path
 
 
 def _connect_ro() -> Optional[sqlite3.Connection]:
     """Open a read-only connection to the accounting DB, or None if unavailable."""
-    path = Config.ACCOUNTING_DB_PATH
+    path = accounting_db_path()
     if not path or not os.path.exists(path):
         return None
     try:

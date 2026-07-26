@@ -55,6 +55,12 @@ class SpecialistProgramEnrollmentService:
                 created_by=actor,
                 commit=False,
             )
+            from src.adapters.sqlite.sms_governance_repo import SmsGovernanceRepository
+            SmsGovernanceRepository(db).ensure_patient_defaults(
+                patient_link_id,
+                actor_username=actor,
+                commit=False,
+            )
             db.commit()
             return int(patient_link_id)
         except Exception:

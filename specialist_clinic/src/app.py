@@ -30,10 +30,9 @@ def create_app(test_config=None):
         template_folder=template_folder,
         static_folder=static_folder,
     )
-    if test_config is None:
-        app.config.from_object(Config)
-    else:
-        app.config.from_mapping(test_config)
+    app.config.from_object(Config)
+    if test_config is not None:
+        app.config.update(test_config)
 
     if app.config.get("PRODUCTION") and not app.config.get("TESTING", False):
         if app.config.get("SECRET_KEY") in (None, DEFAULT_SECRET_KEY):

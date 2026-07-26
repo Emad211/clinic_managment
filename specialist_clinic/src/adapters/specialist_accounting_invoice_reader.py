@@ -11,7 +11,7 @@ import os
 import sqlite3
 from typing import Any
 
-from src.config.settings import Config
+from src.adapters.accounting_path import accounting_db_path
 
 
 class AccountingInvoiceUnavailable(RuntimeError):
@@ -23,7 +23,7 @@ class AccountingInvoiceSchemaError(RuntimeError):
 
 
 def _connect() -> sqlite3.Connection:
-    path = Config.ACCOUNTING_DB_PATH
+    path = accounting_db_path()
     if not path or not os.path.isfile(path):
         raise AccountingInvoiceUnavailable("accounting database is unavailable")
     try:

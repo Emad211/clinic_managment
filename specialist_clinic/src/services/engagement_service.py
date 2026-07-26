@@ -24,6 +24,10 @@ from src.common.utils import (
 )
 from src.services.sms.campaign_service import personalize, send_single
 from src.services.sms.compliance import sanitize
+from src.services.sms.governance_service import (
+    SmsConsentDenied,
+    SmsGovernanceService,
+)
 
 
 QUIET_START_DEFAULT = "08:00"
@@ -74,6 +78,17 @@ class EngagementService:
 
             return bool(current_app.config.get("TESTING"))
         except Exception:
+            return False
+
+    @staticmethod
+    def _care_sms_allowed(patient_link_id: int) -> bool:
+        try:
+            SmsGovernanceService().require_allowed(
+                patient_link_id=int(patient_link_id),
+                purpose="CARE",
+            )
+            return True
+        except SmsConsentDenied:
             return False
 
     def collect_due_events(self, patient_link_id: int) -> tuple[list[dict], dict]:
@@ -180,7 +195,7 @@ class EngagementService:
     ) -> dict:
         db = get_db()
         patient = db.execute(
-            """SELECT id, full_name, phone_number, sms_opt_out
+            """SELECT id, full_name, phone_number
                FROM patient_links WHERE id=?""",
             (patient_link_id,),
         ).fetchone()
@@ -193,7 +208,7 @@ class EngagementService:
         if not patient:
             return result
         events, config = self.collect_due_events(patient_link_id)
-        opted_out = bool(patient["sms_opt_out"])
+        opted_out = not self._care_sms_allowed(patient_link_id)
         has_phone = bool(patient["phone_number"])
 
         for event in events:
@@ -350,14 +365,14 @@ class EngagementService:
         ) >= self._daily_cap():
             return {"ok": False, "reason": "daily_cap"}
         patient = db.execute(
-            """SELECT id, full_name, phone_number, sms_opt_out
+            """SELECT id, full_name, phone_number
                FROM patient_links WHERE id=?""",
             (approval["patient_link_id"],),
         ).fetchone()
         if (
             not patient
             or not patient["phone_number"]
-            or patient["sms_opt_out"]
+            or not self._care_sms_allowed(int(approval["patient_link_id"]))
         ):
             self.repo.set_status(
                 approval_id,
@@ -387,6 +402,8 @@ class EngagementService:
                 idempotency_key=idempotency_key,
                 source_type="engagement",
                 source_ref=str(approval_id),
+                purpose="CARE",
+                created_by=decided_by,
             )
         except Exception as exc:
             self.repo.finish_approval(
@@ -468,14 +485,14 @@ class EngagementService:
     ) -> int | None:
         db = get_db()
         patient = db.execute(
-            """SELECT id, full_name, phone_number, sms_opt_out
+            """SELECT id, full_name, phone_number
                FROM patient_links WHERE id=?""",
             (patient_link_id,),
         ).fetchone()
         if (
             not patient
-            or patient["sms_opt_out"]
             or not patient["phone_number"]
+            or not self._care_sms_allowed(patient_link_id)
         ):
             return None
         config = self.repo.get_event(event_key)
@@ -522,14 +539,14 @@ class EngagementService:
         message: str | None = None,
     ) -> int | None:
         patient = get_db().execute(
-            """SELECT id, full_name, phone_number, sms_opt_out
+            """SELECT id, full_name, phone_number
                FROM patient_links WHERE id=?""",
             (patient_link_id,),
         ).fetchone()
         if (
             not patient
-            or patient["sms_opt_out"]
             or not patient["phone_number"]
+            or not self._care_sms_allowed(patient_link_id)
         ):
             return None
         event = self.repo.get_event("visit_invite") or {}
@@ -556,14 +573,14 @@ class EngagementService:
         message: str,
     ) -> int | None:
         patient = get_db().execute(
-            """SELECT id, full_name, phone_number, sms_opt_out
+            """SELECT id, full_name, phone_number
                FROM patient_links WHERE id=?""",
             (patient_link_id,),
         ).fetchone()
         if (
             not patient
-            or patient["sms_opt_out"]
             or not patient["phone_number"]
+            or not self._care_sms_allowed(patient_link_id)
         ):
             return None
         body = sanitize(

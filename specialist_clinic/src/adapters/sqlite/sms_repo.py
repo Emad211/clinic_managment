@@ -22,9 +22,9 @@ class SmsRepository:
         db.commit()
 
     def provider_configured(self) -> bool:
-        """True if any SMS panel (Kavenegar or Mediana) has an API key set."""
-        return bool((self.get_setting('kavenegar_api_key') or '').strip()
-                    or (self.get_setting('mediana_api_key') or '').strip())
+        """True when at least one provider credential is securely resolvable."""
+        from src.services.sms.secret_resolver import configured_sms_providers
+        return bool(configured_sms_providers())
 
     # ---- templates ----
     def list_templates(self) -> list[dict]:
@@ -219,7 +219,9 @@ class SmsRepository:
         where = " WHERE " + " AND ".join(clauses) if clauses else ""
         params.append(limit)
         rows = get_db().execute(
-            "SELECT m.*, c.name campaign_name, p.full_name patient_name FROM sms_messages m "
+            "SELECT m.*, governance.purpose sms_purpose, governance.source_policy, "
+            "c.name campaign_name, p.full_name patient_name FROM sms_messages m "
+            "LEFT JOIN sms_message_governance governance ON governance.message_id=m.id "
             "LEFT JOIN sms_campaigns c ON c.id=m.campaign_id "
             "LEFT JOIN patient_links p ON p.id=m.patient_link_id" + where +
             " ORDER BY m.id DESC LIMIT ?", params).fetchall()
@@ -286,9 +288,9 @@ class SmsRepository:
     def refresh_campaign_counts(self, cid: int):
         db = get_db()
         row = db.execute("""SELECT COUNT(*) total,
-            SUM(CASE WHEN status='sent' THEN 1 ELSE 0 END) sent,
+            SUM(CASE WHEN status IN ('accepted','sent','delivered') THEN 1 ELSE 0 END) sent,
             SUM(CASE WHEN delivery_status='Delivered' THEN 1 ELSE 0 END) delivered,
-            SUM(CASE WHEN delivery_status IN ('PendingApproval','WaitingForSend','Sending','SendToOperator','Sent') THEN 1 ELSE 0 END) pending,
+            SUM(CASE WHEN delivery_status IN ('Accepted','Queued','Submitting','Scheduled','PendingApproval','WaitingForSend','Sending','SendToOperator','Sent') THEN 1 ELSE 0 END) pending,
             SUM(CASE WHEN delivery_status IN ('NumberBlackListed','OperatorBlackList') THEN 1 ELSE 0 END) blacklist,
             SUM(CASE WHEN status='failed' AND delivery_status NOT IN ('NumberBlackListed','OperatorBlackList','RetryableFailure') THEN 1 ELSE 0 END) failed
             FROM sms_messages WHERE campaign_id=?""", (cid,)).fetchone()

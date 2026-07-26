@@ -52,6 +52,7 @@ class PatientRepository:
         birthdate,
         address,
         enrolled_by,
+        commit: bool = True,
     ) -> int:
         db = get_db()
         cursor = db.execute(
@@ -70,7 +71,8 @@ class PatientRepository:
                 enrolled_by,
             ),
         )
-        db.commit()
+        if commit:
+            db.commit()
         return int(cursor.lastrowid)
 
     def update_contact(self, pid: int, *, phone_number, address, notes):

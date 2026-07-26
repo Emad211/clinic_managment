@@ -133,11 +133,12 @@ def _acc_add_visit(conn, invoice_id, patient_id, price=500):
 
 
 def _set_acc_path(path: str):
-    """Hot-swap Config.ACCOUNTING_DB_PATH so the next bridge call uses the new path."""
+    """Hot-swap the exact active test application's read-only accounting path."""
     os.environ["ACCOUNTING_DB_PATH"] = path
     import src.config.settings as cfg_mod
     cfg_mod.Config.ACCOUNTING_DB_PATH = path
-
+    from flask import current_app
+    current_app.config["ACCOUNTING_DB_PATH"] = path
 
 def _enroll(national_id, full_name, phone_number=None, sms_opt_out=0):
     """Insert a patient_links row via the Flask-managed get_db() connection
@@ -481,7 +482,7 @@ class TestENoRealSend:
 
     def test_approve_sends_via_simulated_provider(self, specialist_app):
         """approve() is what 'sends'. With the NullProvider it logs an sms_messages
-        row marked 'sent' with the SIMULATED msgid (proving no live provider ran),
+        row marked 'accepted' with the SIMULATED msgid (proving no live provider ran),
         flips the approval to approved + sent_at, and records the dispatch."""
         app, spec_db, _ = specialist_app
         from src.adapters.sqlite.core import get_db
@@ -505,7 +506,7 @@ class TestENoRealSend:
             "SELECT * FROM sms_messages WHERE patient_link_id=?", (pid,)).fetchall()
         assert len(msgs) == 1, f"approve() should log exactly one sms_messages row, got {len(msgs)}"
         m = dict(msgs[0])
-        assert m["status"] == "sent", f"message status must be 'sent' (simulated), got {m['status']}"
+        assert m["status"] == "accepted", f"panel acceptance must remain distinct from delivery, got {m['status']}"
         assert m["provider_msgid"] == "SIMULATED", (
             "msgid must be 'SIMULATED' — proves the Null/simulated provider sent it, not a live panel")
         assert db.execute(
@@ -523,10 +524,21 @@ class TestENoRealSend:
         aid = svc.enqueue_event_for_patient(
             pid, "lab_consult_invite", period_key="lab_consult_invite:2026-06-20")
         assert aid is not None
-        db.execute("UPDATE patient_links SET sms_opt_out=1 WHERE id=?", (pid,))
-        db.commit()
+        from src.services.sms.governance_service import SmsGovernanceService
+        current = SmsGovernanceService().summary(pid)["CARE"]
+        SmsGovernanceService().record(
+            patient_link_id=pid,
+            purpose="CARE",
+            decision="REVOKED",
+            actor_username="pytest-patient-request",
+            actor_user_id=None,
+            source_code="PATIENT_REQUEST",
+            idempotency_key=f"pytest-care-revoke:{pid}",
+            expected_current_event_id=int(current["id"]),
+            reason_code="PATIENT_REQUEST",
+        )
 
-        _force_quiet_off()  # so opt-out — not quiet hours — is the rejection reason regardless of run time
+        _force_quiet_off()  # so consent — not quiet hours — is the rejection reason regardless of run time
         out = svc.approve(aid, decided_by="admin")
         assert out.get("ok") is False and out.get("reason") == "opt_out"
         assert db.execute("SELECT COUNT(*) c FROM sms_messages").fetchone()["c"] == 0, (
