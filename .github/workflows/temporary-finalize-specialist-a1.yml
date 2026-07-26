@@ -44,9 +44,11 @@ jobs:
           python .github/finalize_a1.py
           python .github/finalize_a1_transactions.py
           python .github/finalize_a1_booking.py
+          python .github/finalize_a1_test_compat.py
           test ! -e .github/finalize_a1.py
           test ! -e .github/finalize_a1_transactions.py
           test ! -e .github/finalize_a1_booking.py
+          test ! -e .github/finalize_a1_test_compat.py
           git diff --check
           if ! git diff --quiet origin/main -- webapp; then
             echo 'A1 must not modify webapp' >&2
