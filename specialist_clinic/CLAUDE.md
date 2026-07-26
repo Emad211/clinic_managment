@@ -110,3 +110,13 @@ Decision support is **suggestion-only**: "پیشنهاد — تأیید با پ�
 ## Accounting bridge — read-only, never write
 
 `src/adapters/accounting_bridge.py` opens `clinic_new.db` with the sqlite3 URI `mode=ro`; any write attempt raises instead of mutating. **Never make this writable.** It returns empty/None gracefully when the accounting DB is absent (the specialist app must keep working standalone). Its revenue functions deliberately mirror the accounting app's definition (closed invoices; `visits.price + injections.total_price + procedures.price`; attributed by `invoices.work_date`) — keep them in sync if that definition changes in `webapp`. Money-side actions (e.g. deferred-payment settlement) belong in `webapp`, tracked in [`docs/accounting_sync.md`](docs/accounting_sync.md).
+
+## مرز قطعی درآمد مطب تخصصی (A0)
+
+- دیتابیس و کد `webapp` منبع عملیاتی شش‌ماهه و خارج از دامنهٔ نوشتن این اپ است.
+- تمام دسترسی‌های حسابداری از `specialist_clinic` باید `mode=ro` و بدون migration/write باشند.
+- تاریخچهٔ مراجعهٔ بیمار پس از ورود به برنامهٔ تخصصی در پرونده قابل مشاهده است، اما صرف تاریخ، کد ملی یا enrollment هیچ درآمدی را منتسب نمی‌کند.
+- درآمد تخصصی فقط از فاکتور بسته‌ای محاسبه می‌شود که آخرین event آن در `accounting_invoice_attribution_events` برابر `ATTRIBUTED` و به همان enrollment، CareJourney و CareEncounter متصل باشد.
+- ثبت دستی بیمار نباید به‌طور حدسی به حسابداری لینک شود. اتصال حسابداری فقط از workflow صریح enrollment و با cutover immutable انجام می‌شود.
+- کمپین، پیامک و appointment تا زمانی که به Journey و invoice صریح متصل نشده‌اند حق تولید KPI درآمدی ندارند.
+- نبود schema پرداخت، نبود cutover یا قطع bridge باید `unavailable` ایجاد کند؛ تبدیل خطا به درآمد صفر ممنوع است.

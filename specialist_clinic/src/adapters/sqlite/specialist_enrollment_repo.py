@@ -46,9 +46,7 @@ class SpecialistEnrollmentRepository:
         self._connection = db
 
     def _db(self) -> sqlite3.Connection:
-        db = self._connection or get_db()
-        ensure_specialist_revenue_boundary_storage(db)
-        return db
+        return self._connection or get_db()
 
     def connection(self) -> sqlite3.Connection:
         """Expose the canonical connection so the service can own one Unit of Work."""

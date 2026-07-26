@@ -48,9 +48,7 @@ class CareJourneyRepository:
         self._connection = db
 
     def _db(self) -> sqlite3.Connection:
-        db = self._connection or get_db()
-        ensure_specialist_revenue_boundary_storage(db)
-        return db
+        return self._connection or get_db()
 
     def connection(self) -> sqlite3.Connection:
         return self._db()

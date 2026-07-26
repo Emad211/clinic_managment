@@ -101,12 +101,23 @@
 </div>
 {% endif %}
 
+{% if bridge_ok and not revenue.available %}
+<div class="alert-banner alert-warn">
+    <svg class="icon"><use href="#i-alert"></use></svg>
+    <span>
+        دامنهٔ مالی مطب تخصصی قابل محاسبه نیست
+        {% if revenue.error_code %}(<code>{{ revenue.error_code }}</code>){% endif %}.
+        هیچ عدد صفرِ حدسی نمایش داده نمی‌شود.
+    </span>
+</div>
+{% endif %}
+
 {% if revenue.available %}
 {% set crate = ((revenue.total.collected / revenue.total.total * 100)|round|int) if revenue.total.total else 0 %}
 <div class="card dashboard-finance-card">
     <div class="section-title">
-        <svg class="icon"><use href="#i-banknote"></use></svg> درآمد بیماران مطب تخصصی
-        <span class="section-sub">— از سامانه حسابداری؛ «وصول‌شده» = آیتم‌های پرداخت‌شده، «صورتحساب» = کل مبلغِ فاکتورهای بسته</span>
+        <svg class="icon"><use href="#i-banknote"></use></svg> درآمد منتسب و تأییدشدهٔ مطب تخصصی
+        <span class="section-sub">فقط فاکتورهای دارای Journey و Encounter تخصصی؛ مراجعات تاریخی و عمومی فقط در پرونده دیده می‌شوند و از درآمد حذف‌اند.</span>
     </div>
     <div class="dashboard-finance-grid">
         <div class="kpi kpi-ok">
@@ -126,8 +137,8 @@
         </div>
         <div class="kpi kpi-violet">
             <div class="ic"><svg class="icon"><use href="#i-megaphone"></use></svg></div>
-            <div class="num c-violet">{{ revenue.campaigns.attributed_total|fa_num }}</div>
-            <div class="label">درآمد منتسب به کمپین‌ها (تومان)</div>
+            <div class="num c-violet">{% if revenue.campaigns.safe_to_sum %}{{ revenue.campaigns.attributed_total|fa_num }}{% else %}—{% endif %}</div>
+            <div class="label">درآمد کمپین <span class="muted">{% if not revenue.campaigns.safe_to_sum %}(نیازمند اتصال Journey){% endif %}</span></div>
         </div>
     </div>
 
@@ -137,12 +148,13 @@
         <span class="badge badge-info">تزریق: {{ revenue.total.injections|fa_num }}</span>
         <span class="badge badge-info">کار عملی: {{ revenue.total.procedures|fa_num }}</span>
         <span class="badge {% if crate >= 90 %}badge-ok{% else %}badge-warn{% endif %}">وصول‌شده: {{ revenue.total.collected|fa_num }} ({{ crate|fa_num }}٪)</span>
-        <span class="badge badge-muted">{{ revenue.total.invoices|fa_num }} فاکتور بسته · {{ revenue.enrolled|fa_num }} بیمار متصل</span>
+        <span class="badge badge-muted">{{ revenue.total.invoices|fa_num }} فاکتور منتسب · {{ revenue.enrolled|fa_num }} عضو برنامهٔ تخصصی</span>
+        <span class="badge badge-info">تاریخچهٔ قبل از ورود: قابل مشاهده، خارج از درآمد</span>
     </div>
 
     <div class="dashboard-revenue-chart">
         <div class="muted flex items-center gap-2 dashboard-chart-label">
-            <svg class="icon icon-sm"><use href="#i-bar-chart"></use></svg> روند درآمد ۳۰ روز اخیر (تومان)
+            <svg class="icon icon-sm"><use href="#i-bar-chart"></use></svg> روند وصول فاکتورهای منتسب تخصصی در ۳۰ روز اخیر (تومان)
         </div>
         <canvas id="revChart" height="80"></canvas>
     </div>
@@ -158,7 +170,7 @@ if (el){
     const T = window.CLINIC_THEME || {};
     new Chart(el, {
         type:'bar',
-        data:{ labels:rev.labels, datasets:[{ label:'درآمد', data:rev.values,
+        data:{ labels:rev.labels, datasets:[{ label:'وصول تخصصی منتسب', data:rev.collected_values || rev.values,
             backgroundColor:'rgba(34,197,94,.5)', borderColor:(T.ok||'#22c55e'), borderWidth:1 }] },
         options:{ plugins:{legend:{display:false}},
             scales:{ x:{ticks:{color:(T.tick||'#92a2c0'),maxTicksLimit:10}}, y:{ticks:{color:(T.tick||'#92a2c0')}} } }
