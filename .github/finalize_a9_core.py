@@ -23,7 +23,7 @@ def replace_once(relative: str, old: str, new: str) -> None:
     target.write_text(text.replace(old, new, 1), encoding="utf-8")
 
 
-# Legacy exemption is a one-time migration cutover, never a recurring default for new encounters.
+# Legacy exemption is a one-time migration cutover, never a recurring default.
 replace_once(
     "specialist_clinic/src/adapters/sqlite/encounter_documentation_schema.py",
     '''def _backfill_legacy_requirements(db: sqlite3.Connection) -> None:
@@ -82,31 +82,6 @@ replace_once(
         );
 
         CREATE TABLE IF NOT EXISTS care_encounter_document_requirements (
-''',
-)
-replace_once(
-    "specialist_clinic/src/adapters/sqlite/encounter_documentation_schema.py",
-    '''        CREATE TRIGGER IF NOT EXISTS trg_encounter_completion_requires_document
-        BEFORE INSERT ON care_encounter_events
-        WHEN NEW.event_type='COMPLETED'
-''',
-    '''        CREATE TRIGGER IF NOT EXISTS trg_encounter_completion_requires_requirement
-        BEFORE INSERT ON care_encounter_events
-        WHEN NEW.event_type='COMPLETED'
-          AND EXISTS (
-              SELECT 1 FROM care_encounters encounter
-              WHERE encounter.encounter_id=NEW.encounter_id
-                AND encounter.accounting_invoice_id IS NOT NULL
-          )
-          AND NOT EXISTS (
-              SELECT 1 FROM care_encounter_document_requirements requirement
-              WHERE requirement.encounter_id=NEW.encounter_id
-          )
-        BEGIN SELECT RAISE(ABORT,'encounter documentation requirement required for completion'); END;
-
-        CREATE TRIGGER IF NOT EXISTS trg_encounter_completion_requires_document
-        BEFORE INSERT ON care_encounter_events
-        WHEN NEW.event_type='COMPLETED'
 ''',
 )
 
