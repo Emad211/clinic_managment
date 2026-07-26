@@ -23,6 +23,93 @@ def replace_once(relative: str, old: str, new: str) -> None:
     target.write_text(text.replace(old, new, 1), encoding="utf-8")
 
 
+# Legacy exemption is a one-time migration cutover, never a recurring default for new encounters.
+replace_once(
+    "specialist_clinic/src/adapters/sqlite/encounter_documentation_schema.py",
+    '''def _backfill_legacy_requirements(db: sqlite3.Connection) -> None:
+    rows = db.execute(
+''',
+    '''def _backfill_legacy_requirements(db: sqlite3.Connection) -> None:
+    completed = db.execute(
+        "SELECT 1 FROM encounter_documentation_migrations "
+        "WHERE migration_key='A9_LEGACY_CUTOFF_V1'"
+    ).fetchone()
+    if completed:
+        return
+    rows = db.execute(
+''',
+)
+replace_once(
+    "specialist_clinic/src/adapters/sqlite/encounter_documentation_schema.py",
+    '''        db.execute(
+            """INSERT INTO care_encounter_document_requirements
+               (encounter_id,journey_id,patient_link_id,accounting_invoice_id,
+                requirement_status,source_code,created_at,created_by,content_hash)
+               VALUES (?,?,?,?,?,?,?,?,?)""",
+            (*payload.values(), _hash(payload)),
+        )
+
+
+def ensure_encounter_documentation_storage(db: sqlite3.Connection) -> None:
+''',
+    '''        db.execute(
+            """INSERT INTO care_encounter_document_requirements
+               (encounter_id,journey_id,patient_link_id,accounting_invoice_id,
+                requirement_status,source_code,created_at,created_by,content_hash)
+               VALUES (?,?,?,?,?,?,?,?,?)""",
+            (*payload.values(), _hash(payload)),
+        )
+    db.execute(
+        """INSERT INTO encounter_documentation_migrations
+           (migration_key,applied_at,note)
+           VALUES ('A9_LEGACY_CUTOFF_V1',
+                   datetime('now','+3 hours','+30 minutes'),
+                   'Existing encounters exempted once before A9 enforcement')"""
+    )
+
+
+def ensure_encounter_documentation_storage(db: sqlite3.Connection) -> None:
+''',
+)
+replace_once(
+    "specialist_clinic/src/adapters/sqlite/encounter_documentation_schema.py",
+    '''        CREATE TABLE IF NOT EXISTS care_encounter_document_requirements (
+''',
+    '''        CREATE TABLE IF NOT EXISTS encounter_documentation_migrations (
+            migration_key TEXT PRIMARY KEY,
+            applied_at TEXT NOT NULL CHECK (datetime(applied_at) IS NOT NULL),
+            note TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS care_encounter_document_requirements (
+''',
+)
+replace_once(
+    "specialist_clinic/src/adapters/sqlite/encounter_documentation_schema.py",
+    '''        CREATE TRIGGER IF NOT EXISTS trg_encounter_completion_requires_document
+        BEFORE INSERT ON care_encounter_events
+        WHEN NEW.event_type='COMPLETED'
+''',
+    '''        CREATE TRIGGER IF NOT EXISTS trg_encounter_completion_requires_requirement
+        BEFORE INSERT ON care_encounter_events
+        WHEN NEW.event_type='COMPLETED'
+          AND EXISTS (
+              SELECT 1 FROM care_encounters encounter
+              WHERE encounter.encounter_id=NEW.encounter_id
+                AND encounter.accounting_invoice_id IS NOT NULL
+          )
+          AND NOT EXISTS (
+              SELECT 1 FROM care_encounter_document_requirements requirement
+              WHERE requirement.encounter_id=NEW.encounter_id
+          )
+        BEGIN SELECT RAISE(ABORT,'encounter documentation requirement required for completion'); END;
+
+        CREATE TRIGGER IF NOT EXISTS trg_encounter_completion_requires_document
+        BEFORE INSERT ON care_encounter_events
+        WHEN NEW.event_type='COMPLETED'
+''',
+)
+
 replace_once(
     "specialist_clinic/src/adapters/sqlite/core.py",
     '''    from src.adapters.sqlite.specialist_service_lineage_schema import (
