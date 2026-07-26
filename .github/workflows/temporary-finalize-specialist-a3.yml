@@ -37,13 +37,16 @@ jobs:
           cache-dependency-path: specialist_clinic/requirements.txt
 
       - name: Apply deterministic A3 integration
-        run: python .github/finalize_a3.py
+        run: |
+          python .github/finalize_a3.py
+          python .github/finalize_a3_regression.py
 
       - name: Verify deterministic integration and accounting boundary
         shell: bash
         run: |
           set -euo pipefail
           test ! -e .github/finalize_a3.py
+          test ! -e .github/finalize_a3_regression.py
           git diff --check
           git diff --quiet origin/main -- webapp
 
@@ -66,6 +69,7 @@ jobs:
           python -m pytest -q --tb=short \
             --junitxml="${RUNNER_TEMP}/pytest-specialist-a3.xml" \
             tests/test_clinical_alert_lifecycle.py \
+            tests/test_clinician_decision_task_gate.py \
             tests/test_clinical_task_contracts.py \
             tests/test_clinical_closed_care_loop.py \
             tests/test_clinical_engine_v2_followups.py \
