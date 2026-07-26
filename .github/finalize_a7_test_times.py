@@ -17,9 +17,11 @@ text = text.replace(
     from src.services.patient_service import PatientService
 
     patient_id = int(PatientService().enroll_from_accounting(1, "pytest-a7"))
-    start = iran_now() + timedelta(seconds=1)
-    active = start + timedelta(minutes=1)
-    completed = active + timedelta(minutes=20)
+    # Event effective times must never be in the future relative to the repository's
+    # recorded_at timestamp.  Keep a deterministic ordering safely behind iran_now().
+    completed = iran_now() - timedelta(seconds=1)
+    active = completed - timedelta(minutes=20)
+    start = active - timedelta(minutes=1)
     repo = CareJourneyRepository()
 ''',
     1,
