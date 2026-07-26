@@ -1,192 +1,167 @@
-"""Revenue analytics for the specialist clinic, sourced from the accounting DB
-(read-only bridge). Revenue definition mirrors the accounting app exactly:
-visits + injections + procedures from CLOSED invoices (consumables excluded).
+"""Authoritative specialist-clinic revenue projection.
+
+Accounting remains read-only and continues to expose the patient's complete historical
+visit record.  Financial KPIs in this service are intentionally narrower: only CLOSED
+accounting invoices carrying a current, explicit ATTRIBUTED event tied to a specialist
+CareJourney/Encounter are included.  Enrollment time alone never attributes revenue.
 """
-from datetime import datetime, timedelta
+from __future__ import annotations
+
+from datetime import timedelta
 
 import jdatetime
 
-from src.adapters.sqlite.core import get_db
-from src.adapters import accounting_bridge
-from src.common.utils import iran_now, format_jalali_date
+from src.adapters import specialist_accounting_revenue as accounting_revenue
+from src.adapters.sqlite.care_journey_repo import CareJourneyRepository
+from src.adapters.sqlite.specialist_enrollment_repo import (
+    SpecialistEnrollmentRepository,
+)
+from src.adapters.sqlite.specialist_finance_repo import (
+    SpecialistFinanceRepository,
+)
+from src.common.utils import format_jalali_date, iran_now
 
 
 def _jalali_month_start_gregorian() -> str:
-    """Gregorian 'YYYY-MM-DD' of the first day of the current Jalali month."""
     j_today = jdatetime.date.fromgregorian(date=iran_now().date())
-    g = jdatetime.date(j_today.year, j_today.month, 1).togregorian()
-    return g.strftime('%Y-%m-%d')
-
-
-# Campaign attribution window: a recipient's revenue is credited to a campaign only
-# within this many days after their SMS (not "forever after send"). Bounds the
-# last-touch over-attribution; could later become a manager-editable setting.
-ATTRIBUTION_WINDOW_DAYS = 60
+    gregorian = jdatetime.date(j_today.year, j_today.month, 1).togregorian()
+    return gregorian.strftime("%Y-%m-%d")
 
 
 class RevenueService:
+    """Read-only financial projection with an explicit specialist scope."""
 
-    def _enrolled_accounting_ids(self) -> list[int]:
-        db = get_db()
-        rows = db.execute(
-            "SELECT accounting_patient_id FROM patient_links "
-            "WHERE is_active=1 AND accounting_patient_id IS NOT NULL"
-        ).fetchall()
-        return [r['accounting_patient_id'] for r in rows]
+    POLICY_VERSION = "EXPLICIT_SPECIALIST_ATTRIBUTION_V1"
 
-    def _enrolled_pairs(self) -> list[tuple[int, str | None]]:
-        """(accounting_patient_id, enrollment_date 'YYYY-MM-DD') for active linked patients.
-
-        The enrollment date bounds specialist-office revenue: only accounting
-        revenue on/after a patient joined the specialist office counts (earlier
-        general-clinic visits are excluded).
-        """
-        db = get_db()
-        rows = db.execute(
-            "SELECT accounting_patient_id, enrolled_at FROM patient_links "
-            "WHERE is_active=1 AND accounting_patient_id IS NOT NULL"
-        ).fetchall()
-        return [(r['accounting_patient_id'], (str(r['enrolled_at'])[:10] if r['enrolled_at'] else None))
-                for r in rows]
+    def __init__(
+        self,
+        *,
+        journeys: CareJourneyRepository | None = None,
+        enrollments: SpecialistEnrollmentRepository | None = None,
+        finance: SpecialistFinanceRepository | None = None,
+        accounting=None,
+        clock=None,
+    ):
+        self.journeys = journeys or CareJourneyRepository()
+        self.enrollments = enrollments or SpecialistEnrollmentRepository()
+        self.finance = finance or SpecialistFinanceRepository()
+        self.accounting = accounting or accounting_revenue
+        self.clock = clock or iran_now
 
     def dashboard(self) -> dict:
-        """Top-level revenue + 30-day trend for enrolled patients.
+        now = self.clock()
+        scope = self.journeys.scope_summary()
+        scope.update(
+            {
+                "policy_version": self.POLICY_VERSION,
+                "history_visible_but_excluded": True,
+                "time_only_attribution": False,
+                "as_of": now.isoformat(sep=" ", timespec="seconds"),
+            }
+        )
 
-        Specialist-office revenue counts each patient's accounting revenue only
-        from their specialist enrollment date (`enrolled_at`) onward — visits made
-        earlier in the general clinic (درمانگاه) are excluded.
-        """
-        if not accounting_bridge.is_available():
-            return {'available': False}
+        if not self.accounting.is_available():
+            return {
+                "available": False,
+                "error_code": "ACCOUNTING_DATABASE_UNAVAILABLE",
+                "scope": scope,
+            }
+        if scope["linked_patients_missing_cutover"]:
+            return {
+                "available": False,
+                "error_code": "SPECIALIST_CUTOVER_MISSING",
+                "scope": scope,
+            }
 
-        pairs = self._enrolled_pairs()
-        total = accounting_bridge.revenue_for_enrolled(pairs)
-        month = accounting_bridge.revenue_for_enrolled(pairs, floor=_jalali_month_start_gregorian())
+        invoice_ids = self.journeys.attributed_invoice_ids()
+        try:
+            total = self.accounting.revenue_for_invoice_ids(invoice_ids)
+            month = self.accounting.revenue_for_invoice_ids(
+                invoice_ids,
+                floor=_jalali_month_start_gregorian(),
+            )
+            today = now.date()
+            start = today - timedelta(days=29)
+            daily = self.accounting.daily_revenue_for_invoice_ids(
+                invoice_ids,
+                start.strftime("%Y-%m-%d"),
+                today.strftime("%Y-%m-%d"),
+            )
+        except (
+            accounting_revenue.AccountingRevenueUnavailable,
+            accounting_revenue.AccountingRevenueSchemaError,
+        ) as exc:
+            return {
+                "available": False,
+                "error_code": type(exc).__name__.upper(),
+                "scope": scope,
+            }
 
-        # 30-day trend (also bounded per-patient by enrollment date)
-        today = iran_now().date()
-        start = today - timedelta(days=29)
-        daily = accounting_bridge.daily_revenue_for_enrolled(
-            pairs, start.strftime('%Y-%m-%d'), today.strftime('%Y-%m-%d'))
-        labels, values = [], []
-        for i in range(30):
-            d = start + timedelta(days=i)
-            key = d.strftime('%Y-%m-%d')
+        labels: list[str] = []
+        billed_values: list[int] = []
+        collected_values: list[int] = []
+        for offset in range(30):
+            day = start + timedelta(days=offset)
+            key = day.strftime("%Y-%m-%d")
+            bucket = daily.get(key) or {"billed": 0, "collected": 0}
             labels.append(format_jalali_date(key))
-            values.append(daily.get(key, 0))
+            billed_values.append(int(bucket["billed"] or 0))
+            collected_values.append(int(bucket["collected"] or 0))
 
-        campaigns = self.campaign_revenue()
-
+        scope["attributed_invoices"] = len(invoice_ids)
         return {
-            'available': True,
-            'enrolled': len(pairs),
-            'total': total,
-            'month': month,
-            'trend': {'labels': labels, 'values': values},
-            'campaigns': campaigns,
+            "available": True,
+            "enrolled": self.enrollments.count(),
+            "total": total,
+            "month": month,
+            "trend": {
+                "labels": labels,
+                "billed_values": billed_values,
+                "collected_values": collected_values,
+                # Backward-compatible key; now intentionally means collected cash.
+                "values": collected_values,
+            },
+            "campaigns": self.campaign_revenue(),
+            "scope": scope,
         }
 
     def campaign_revenue(self, ids_hint: list[int] | None = None) -> dict:
-        """Revenue attributed to each campaign = COLLECTED revenue from its
-        accounting-linked recipients within ATTRIBUTION_WINDOW_DAYS after each
-        recipient's SMS. This is a bounded last-touch correlation estimate (not a
-        causal one — true lift needs a holdout/control group); the time window
-        keeps it from ballooning as old, unrelated visits accumulate.
+        """Fail-closed campaign projection until campaigns create explicit journeys.
+
+        The previous time-window-only estimate could count unrelated general-clinic
+        visits and could count the same invoice for multiple campaigns.  Returning zero
+        with a machine-readable status is safer than publishing a persuasive false KPI.
+        Tranche A2 will bind campaign response -> journey -> encounter -> invoice.
         """
-        db = get_db()
-        campaigns = db.execute(
-            "SELECT id, name, campaign_type, credit_amount, sent_count FROM sms_campaigns ORDER BY id DESC"
-        ).fetchall()
-
-        rows_out = []
-        attributed_total = 0
-        credit_distributed = 0
-        for c in campaigns:
-            cid = c['id']
-            # each accounting-linked recipient + when they were first sent this campaign
-            # (GROUP BY per recipient — a bare MIN() without it collapsed to a single row)
-            recs = db.execute(
-                """SELECT pl.accounting_patient_id AS aid, MIN(m.sent_at) AS first_sent
-                   FROM sms_messages m JOIN patient_links pl ON pl.id = m.patient_link_id
-                   WHERE m.campaign_id = ? AND m.status='sent' AND pl.accounting_patient_id IS NOT NULL
-                   GROUP BY pl.accounting_patient_id""",
-                (cid,)).fetchall()
-            triples = []
-            for r in recs:
-                if not r['aid'] or not r['first_sent']:
-                    continue
-                since = str(r['first_sent'])[:10]
-                try:
-                    until = (datetime.strptime(since, '%Y-%m-%d')
-                             + timedelta(days=ATTRIBUTION_WINDOW_DAYS)).strftime('%Y-%m-%d')
-                except ValueError:
-                    continue
-                triples.append((r['aid'], since, until))
-
-            rev = accounting_bridge.revenue_windowed(triples) if triples else \
-                {'billed': 0, 'collected': 0, 'invoices': 0}
-            attributed_total += rev['collected']
-
-            credit = db.execute(
-                "SELECT COALESCE(SUM(amount),0) s FROM wallet_transactions WHERE reason='campaign' AND campaign_id=? AND amount>0",
-                (cid,)).fetchone()['s']
-            credit_distributed += int(credit or 0)
-
-            rows_out.append({
-                'id': cid, 'name': c['name'], 'type': c['campaign_type'],
-                'recipients': len(triples), 'sent': c['sent_count'],
-                'revenue': rev['collected'], 'invoices': rev['invoices'],
-                'credit': int(credit or 0),
-            })
-
+        rows = []
+        issued_credit = 0
+        for campaign in self.finance.campaigns():
+            credit = self.finance.positive_campaign_credit(campaign["id"])
+            issued_credit += credit
+            rows.append(
+                {
+                    "id": campaign["id"],
+                    "name": campaign["name"],
+                    "type": campaign["campaign_type"],
+                    "recipients": 0,
+                    "sent": int(campaign.get("sent_count") or 0),
+                    "delivered": int(campaign.get("delivered_count") or 0),
+                    "revenue": 0,
+                    "invoices": 0,
+                    "credit": credit,
+                    "measurement_status": "JOURNEY_LINK_REQUIRED",
+                }
+            )
         return {
-            'rows': rows_out,
-            'attributed_total': attributed_total,
-            'credit_distributed': credit_distributed,
-            'window_days': ATTRIBUTION_WINDOW_DAYS,
+            "rows": rows,
+            "attributed_total": 0,
+            "credit_distributed": issued_credit,
+            "window_days": None,
+            "safe_to_sum": False,
+            "measurement_status": "JOURNEY_LINK_REQUIRED",
         }
 
     def campaign_incrementality(self, campaign_id: int) -> dict | None:
-        """Causal lift for a campaign that used a holdout/control group.
-
-        Compares per-recipient COLLECTED revenue (within the attribution window)
-        of the treated group vs the held-out control group — the gold-standard
-        way to separate the campaign's true effect from revenue that would have
-        happened anyway. Returns None if no holdout audience was recorded.
-        """
-        db = get_db()
-        aud = db.execute(
-            "SELECT accounting_patient_id aid, grp, assigned_at FROM campaign_audience WHERE campaign_id=?",
-            (campaign_id,)).fetchall()
-        if not aud:
-            return None
-
-        def _triples(grp):
-            out = []
-            for a in aud:
-                if a['grp'] != grp or not a['aid']:
-                    continue
-                since = str(a['assigned_at'])[:10]
-                try:
-                    until = (datetime.strptime(since, '%Y-%m-%d')
-                             + timedelta(days=ATTRIBUTION_WINDOW_DAYS)).strftime('%Y-%m-%d')
-                except ValueError:
-                    continue
-                out.append((a['aid'], since, until))
-            return out
-
-        tr, ct = _triples('treated'), _triples('control')
-        rev_tr = accounting_bridge.revenue_windowed(tr)['collected'] if tr else 0
-        rev_ct = accounting_bridge.revenue_windowed(ct)['collected'] if ct else 0
-        pc_tr = (rev_tr / len(tr)) if tr else 0.0   # per linked recipient
-        pc_ct = (rev_ct / len(ct)) if ct else 0.0
-        return {
-            'treated': sum(1 for a in aud if a['grp'] == 'treated'),
-            'control': sum(1 for a in aud if a['grp'] == 'control'),
-            'treated_linked': len(tr), 'control_linked': len(ct),
-            'rev_treated': rev_tr, 'rev_control': rev_ct,
-            'pc_treated': round(pc_tr), 'pc_control': round(pc_ct),
-            'incremental': round((pc_tr - pc_ct) * len(tr)) if tr else 0,
-            'lift': round((pc_tr - pc_ct) / pc_ct * 100) if pc_ct else None,
-            'window_days': ATTRIBUTION_WINDOW_DAYS,
-        }
+        # No causal/incremental figure is published before an explicit campaign journey
+        # and exclusive invoice assignment exist.
+        return None
