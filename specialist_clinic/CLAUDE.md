@@ -146,3 +146,13 @@ Decision support is **suggestion-only**: "پیشنهاد — تأیید با پ�
 - هر هشدار به exact current run و CREATED recommendation event متصل، immutable و دارای lifecycle افزایشی است.
 - `ACKNOWLEDGED` مسئول رسیدگی را ثبت می‌کند؛ `RESOLVED` فقط با آخرین decision event پزشک روی همان recommendation و یادداشت جمع‌بندی مجاز است.
 - Ruleهایی که نیازمند تأیید پزشک‌اند فقط پس از latest decision=`ACCEPTED` task می‌سازند و repository همان decision را دوباره داخل transaction بررسی می‌کند.
+
+## قرارداد حضور تا وصول (A4)
+
+- booking، attendance، service completion، invoice closure و collection پنج مرحله مستقل‌اند و نباید با یکدیگر معادل گرفته شوند.
+- appointment فقط با انتخاب صریح و validation همان بیمار/همان روز به Encounter لینک می‌شود؛ matching حدسی ممنوع است.
+- attendance از `care_encounter_events.STARTED` و service completion از latest `COMPLETED` استخراج می‌شود.
+- مشاهده مالی فقط برای invoice دارای attribution جاری و Encounter تکمیل‌شده مجاز است.
+- دیتابیس حسابداری فقط با `mode=ro` و `query_only=ON` خوانده می‌شود؛ snapshot محلی append-only است.
+- Dashboard فقط latest snapshot کامل و تازه را منتشر می‌کند؛ missing/stale/error هرگز به صفر تبدیل نمی‌شود.
+- collection از `invoice_item_payments.is_paid=1` در سطح item مشتق می‌شود؛ wallet داخلی معادل وصول حسابداری نیست.

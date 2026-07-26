@@ -174,6 +174,12 @@ class Scheduler:
                 callback=self._sync_invoices,
             )
             self._run_once(
+                job_name="specialist-financial-reconciliation",
+                period_key=period,
+                lease=lease,
+                callback=self._reconcile_specialist_finance,
+            )
+            self._run_once(
                 job_name="due-campaigns",
                 period_key=period,
                 lease=lease,
@@ -266,6 +272,26 @@ class Scheduler:
                 result["pending_link"],
                 result["cursor"],
             )
+        return True
+
+    def _reconcile_specialist_finance(self):
+        from src.services.specialist_financial_reconciliation_service import (
+            SpecialistFinancialReconciliationService,
+        )
+
+        result = SpecialistFinancialReconciliationService().reconcile_all()
+        if result["changed"]:
+            logger.info(
+                "[scheduler] specialist finance snapshots changed=%s observed=%s",
+                result["changed"],
+                result["observed"],
+            )
+        if result["issues"]:
+            logger.error(
+                "[scheduler] specialist finance reconciliation issues=%s",
+                len(result["issues"]),
+            )
+            return False
         return True
 
     def _run_due_campaigns(self):

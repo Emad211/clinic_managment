@@ -30,6 +30,12 @@ from src.adapters.sqlite.clinical_task_contract_schema import (
 from src.adapters.sqlite.clinical_alert_schema import (
     ensure_clinical_alert_storage,
 )
+from src.adapters.sqlite.specialist_financial_funnel_schema import (
+    ensure_specialist_financial_funnel_storage,
+)
+from src.adapters.sqlite.specialist_financial_funnel_repo import (
+    SpecialistFinancialFunnelRepository,
+)
 from src.adapters.sqlite.clinical_validation_schema import (
     ensure_clinical_validation_storage,
 )
@@ -72,6 +78,9 @@ _REQUIRED_TABLES = frozenset(
         "clinical_outcome_canonical_links",
         "clinical_alerts",
         "clinical_alert_events",
+        "encounter_appointment_links",
+        "encounter_appointment_link_events",
+        "specialist_financial_observations",
     }
 )
 
@@ -84,6 +93,7 @@ def _readiness_checks() -> dict[str, bool]:
     ensure_followup_operations_storage(db)
     ensure_clinical_task_contract_storage(db)
     ensure_clinical_alert_storage(db)
+    ensure_specialist_financial_funnel_storage(db)
     ensure_clinical_validation_storage(db)
     ensure_clinical_audit_integrity_storage(db)
 
@@ -131,6 +141,8 @@ def _readiness_checks() -> dict[str, bool]:
     revenue_scope_ok = SpecialistEnrollmentRepository(
         db
     ).missing_scope_count() == 0
+    finance_scope = SpecialistFinancialFunnelRepository(db).reconciliation_scope()
+    finance_projection_ok = finance_scope["missing_observations"] == 0
 
     return {
         "database": integrity_ok,
@@ -139,6 +151,7 @@ def _readiness_checks() -> dict[str, bool]:
         "audit": audit_ok,
         "worker": worker_ok,
         "revenue_scope": revenue_scope_ok,
+        "finance_projection": finance_projection_ok,
     }
 
 
@@ -159,6 +172,7 @@ def ready():
             "audit": False,
             "worker": False,
             "revenue_scope": False,
+            "finance_projection": False,
         }
     is_ready = all(checks.values())
     # Public readiness discloses no table, patient, path, mode, secret or exception.
