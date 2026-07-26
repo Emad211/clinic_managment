@@ -302,20 +302,25 @@ class TestBRouteHappyPath:
     def test_invite_creates_one_pending_approval(self, test_client, tmp_dir):
         client, spec_db, _ = test_client
         nid = "1110000001"
-        pid = _enroll(nid, "بیمارِ دعوت", phone_number="09120000011")
+        from src.common.utils import today_str
+        work_date = today_str()
 
         acc_db = os.path.join(tmp_dir, "acc_b.db")
         _make_acc_db(acc_db)
         conn = sqlite3.connect(acc_db)
         acc_pid = _acc_add_patient(conn, "بیمارِ دعوت", national_id=nid, phone="09120000011")
-        inv_id = _acc_add_invoice(conn, acc_pid, status="open", work_date="2026-06-20")
+        inv_id = _acc_add_invoice(conn, acc_pid, status="open", work_date=work_date)
         _acc_add_visit(conn, inv_id, acc_pid)
         conn.close()
         _set_acc_path(acc_db)
+        from src.services.patient_service import PatientService
+        pid = PatientService().enroll_from_accounting(acc_pid, "admin")
+        started = client.post(f"/doctor-queue/{inv_id}/start")
+        assert started.status_code == 302
 
         rv = client.post(
             f"/doctor-queue/{inv_id}/invite",
-            data={"event_key": "lab_consult_invite", "national_id": nid},
+            data={"event_key": "lab_consult_invite", "national_id": "TAMPERED"},
             follow_redirects=False)
         assert rv.status_code == 302, f"invite should redirect (302), got {rv.status_code}"
         # redirects to the visit view for that invoice
@@ -333,18 +338,22 @@ class TestBRouteHappyPath:
         """The second whitelisted event also enqueues a pending approval."""
         client, spec_db, _ = test_client
         nid = "1110000002"
-        pid = _enroll(nid, "بیمارِ قند", phone_number="09120000012")
+        from src.common.utils import today_str
+        work_date = today_str()
         acc_db = os.path.join(tmp_dir, "acc_b2.db")
         _make_acc_db(acc_db)
         conn = sqlite3.connect(acc_db)
         acc_pid = _acc_add_patient(conn, "بیمارِ قند", national_id=nid, phone="09120000012")
-        inv_id = _acc_add_invoice(conn, acc_pid, status="open", work_date="2026-06-20")
+        inv_id = _acc_add_invoice(conn, acc_pid, status="open", work_date=work_date)
         _acc_add_visit(conn, inv_id, acc_pid)
         conn.close()
         _set_acc_path(acc_db)
+        from src.services.patient_service import PatientService
+        pid = PatientService().enroll_from_accounting(acc_pid, "admin")
+        assert client.post(f"/doctor-queue/{inv_id}/start").status_code == 302
 
         client.post(f"/doctor-queue/{inv_id}/invite",
-                    data={"event_key": "bp_glucose_invite", "national_id": nid})
+                    data={"event_key": "bp_glucose_invite", "national_id": "TAMPERED"})
         rows = _approvals(event_key="bp_glucose_invite", patient_link_id=pid)
         assert len(rows) == 1, f"expected 1 bp_glucose_invite approval, got {len(rows)}"
         assert rows[0]["status"] == "pending"

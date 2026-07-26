@@ -15,6 +15,12 @@ from src.adapters.sqlite.core import get_db
 from src.adapters.sqlite.operational_lease_schema import (
     ensure_operational_lease_storage,
 )
+from src.adapters.sqlite.specialist_enrollment_repo import (
+    SpecialistEnrollmentRepository,
+)
+from src.adapters.sqlite.specialist_revenue_boundary_schema import (
+    ensure_specialist_revenue_boundary_storage,
+)
 from src.adapters.sqlite.clinical_validation_schema import (
     ensure_clinical_validation_storage,
 )
@@ -45,6 +51,12 @@ _REQUIRED_TABLES = frozenset(
         "clinical_audit_checkpoints",
         "clinical_validation_reports",
         "clinical_validation_attestations",
+        "specialist_program_enrollments",
+        "care_journeys",
+        "care_journey_events",
+        "care_encounters",
+        "care_encounter_events",
+        "accounting_invoice_attribution_events",
     }
 )
 
@@ -53,6 +65,7 @@ def _readiness_checks() -> dict[str, bool]:
     db = get_db()
     ensure_security_permission_storage(db)
     ensure_operational_lease_storage(db)
+    ensure_specialist_revenue_boundary_storage(db)
     ensure_clinical_validation_storage(db)
     ensure_clinical_audit_integrity_storage(db)
 
@@ -97,6 +110,9 @@ def _readiness_checks() -> dict[str, bool]:
            LIMIT 1"""
     ).fetchone()
     worker_ok = stuck is None
+    revenue_scope_ok = SpecialistEnrollmentRepository(
+        db
+    ).missing_scope_count() == 0
 
     return {
         "database": integrity_ok,
@@ -104,6 +120,7 @@ def _readiness_checks() -> dict[str, bool]:
         "activation": activation_ok,
         "audit": audit_ok,
         "worker": worker_ok,
+        "revenue_scope": revenue_scope_ok,
     }
 
 
@@ -123,6 +140,7 @@ def ready():
             "activation": False,
             "audit": False,
             "worker": False,
+            "revenue_scope": False,
         }
     is_ready = all(checks.values())
     # Public readiness discloses no table, patient, path, mode, secret or exception.
@@ -144,6 +162,7 @@ def details():
             "activation": False,
             "audit": False,
             "worker": False,
+            "revenue_scope": False,
         }
         error = "health_check_failed"
     is_ready = all(checks.values())
