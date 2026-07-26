@@ -51,12 +51,26 @@ replace_once(
 ''',
 )
 
-# New governed messages use accepted/delivered status names; legacy sent remains readable.
+# Use the production registration service so bcrypt hashing is part of the permission test.
 replace_once(
-    "specialist_clinic/src/adapters/sqlite/sms_repo.py",
-    '''            SUM(CASE WHEN status='failed' AND delivery_status NOT IN ('NumberBlackListed','OperatorBlackList','RetryableFailure') THEN 1 ELSE 0 END) failed
+    "specialist_clinic/tests/test_sms_governance_a5.py",
+    '''    from src.adapters.sqlite.auth_repo import AuthRepository
+
+    AuthRepository().create_user(
+        "sms-staff",
+        "password123",
+        role="staff",
+        full_name="SMS Staff",
+    )
 ''',
-    '''            SUM(CASE WHEN status='failed' AND delivery_status NOT IN ('NumberBlackListed','OperatorBlackList','RetryableFailure') THEN 1 ELSE 0 END) failed
+    '''    from src.services.auth_service import AuthService
+
+    assert AuthService().register_user(
+        "sms-staff",
+        "password123",
+        role="staff",
+        full_name="SMS Staff",
+    )
 ''',
 )
 
