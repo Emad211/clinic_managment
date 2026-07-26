@@ -91,7 +91,21 @@ def valid_rule():
             "suggestion_only": True,
             "requires_clinician_confirmation": False,
             "may_create_internal_task": False,
-            "params": {},
+            "params": {
+                "due_in_days": 0,
+                "task_contract": {
+                    "urgency": "ROUTINE",
+                    "allowed_outcome_types": [
+                        "OBSERVATION", "PATIENT_REPORTED",
+                        "ENCOUNTER_COMPLETED", "PROCEDURE_COMPLETED",
+                        "LAB_COMPLETED", "OTHER"
+                    ],
+                    "required_fact_keys": [],
+                    "minimum_verification": "UNVERIFIED",
+                    "canonical_ingestion": "OPTIONAL",
+                    "requires_acknowledgement": False,
+                },
+            },
         },
         "evidence": {
             "source_title": "Test guideline",

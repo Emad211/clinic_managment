@@ -232,7 +232,7 @@ class ClinicalTaskContractRepository:
                 "outcome fact_key does not satisfy task contract"
             )
         if contract["canonical_ingestion"] == "REQUIRED":
-            if key is None or value in {None, ""}:
+            if key is None or value is None or value == "":
                 raise ClinicalTaskContractError(
                     "canonical task outcome requires fact_key and value"
                 )
@@ -266,7 +266,7 @@ class ClinicalTaskContractRepository:
     ) -> dict | None:
         ingestion = contract["canonical_ingestion"]
         key = str(fact_key or "").strip()
-        if ingestion == "NONE" or not key or value in {None, ""}:
+        if ingestion == "NONE" or not key or value is None or value == "":
             if ingestion == "REQUIRED":
                 raise ClinicalTaskContractError(
                     "required canonical outcome was not ingestible"

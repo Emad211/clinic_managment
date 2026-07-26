@@ -129,3 +129,13 @@ Decision support is **suggestion-only**: "پیشنهاد — تأیید با پ�
 - هر تماس، پیام، پاسخ، عدم پاسخ، درخواست callback و booking باید در `followup_contact_events` به‌صورت append-only ثبت شود.
 - BOOKED معادل COMPLETED یا درآمد نیست. رزرو appointment نباید task اداری را ببندد.
 - تماس تلفنی و disposition اداری از تصمیم بالینی جدا هستند؛ permission `followup.contact.record` برای این کار استفاده می‌شود.
+
+
+## قرارداد تکمیل task بالینی و canonical outcome (A2)
+
+- هر Rule با `may_create_internal_task=true` باید دقیقاً یکی از `due_in_hours` یا `due_in_days` و یک `task_contract` صریح داشته باشد؛ compiler در غیر این صورت Rule را رد می‌کند.
+- قرارداد task همراه task در `clinical_task_contracts` به‌صورت immutable ذخیره می‌شود و شامل urgency، due_at، outcomeهای مجاز، Factهای لازم، حداقل verification و سیاست canonical ingestion است.
+- ثبت outcome نامنطبق با قرارداد در service و SQLite رد می‌شود.
+- completion فقط با outcome هم-task، نوع و verification مجاز و در صورت `canonical_ingestion=REQUIRED` با لینک canonical ممکن است.
+- outcomeهای `observation.*` و `lab.*` در همان transaction به `vital_readings` یا `lab_results` وارد و در `clinical_outcome_canonical_links` متصل می‌شوند.
+- recommendation `params` باید در DTO، audit payload و follow-up projection حفظ شود؛ حذف آن‌ها ممنوع است.

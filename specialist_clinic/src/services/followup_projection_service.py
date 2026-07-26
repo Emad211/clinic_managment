@@ -8,6 +8,9 @@ from src.adapters.sqlite.followup_operations_repo import (
     FollowupOperationsRepository,
 )
 from src.adapters.sqlite.followups_repo import FollowupRepository
+from src.adapters.sqlite.clinical_task_contract_repo import (
+    ClinicalTaskContractRepository,
+)
 
 
 OPEN_STATUSES = frozenset(
@@ -50,6 +53,7 @@ class FollowupProjectionService:
         summaries = self.contacts.summaries(
             [int(row["id"]) for row in normalized]
         )
+        contracts = ClinicalTaskContractRepository()
         for row in normalized:
             row.update(
                 summaries.get(
@@ -64,6 +68,11 @@ class FollowupProjectionService:
                         "next_contact_at": None,
                     },
                 )
+            )
+            row["task_contract"] = (
+                contracts.get(int(row["id"]))
+                if row.get("source_engine") == "clinical_v2"
+                else None
             )
         return normalized
 

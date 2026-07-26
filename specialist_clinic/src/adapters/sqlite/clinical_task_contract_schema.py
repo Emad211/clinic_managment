@@ -64,11 +64,14 @@ def _legacy_contracts(db: sqlite3.Connection) -> None:
             "contract_origin": "LEGACY_BACKFILL_REVIEW_REQUIRED",
             "due_at": due_at,
             "urgency": "PRIORITY",
-            "allowed_outcome_types": ["ENCOUNTER_COMPLETED"],
+            "allowed_outcome_types": [
+                "OBSERVATION", "PATIENT_REPORTED", "ENCOUNTER_COMPLETED",
+                "PROCEDURE_COMPLETED", "LAB_COMPLETED", "OTHER"
+            ],
             "required_fact_keys": [],
-            "minimum_verification": "CONFIRMED",
-            "canonical_ingestion": "NONE",
-            "requires_acknowledgement": True,
+            "minimum_verification": "UNVERIFIED",
+            "canonical_ingestion": "OPTIONAL",
+            "requires_acknowledgement": False,
             "source_recommendation_event_id": row[
                 "source_recommendation_event_id"
             ],
@@ -83,12 +86,15 @@ def _legacy_contracts(db: sqlite3.Connection) -> None:
                 requires_acknowledgement, source_recommendation_event_id,
                 created_by, created_at, content_hash)
                VALUES (?, '1.0', 'LEGACY_BACKFILL_REVIEW_REQUIRED', ?,
-                       'PRIORITY', ?, '[]', 'CONFIRMED', 'NONE', 1,
+                       'PRIORITY', ?, '[]', 'UNVERIFIED', 'OPTIONAL', 0,
                        ?, 'legacy-task-contract-migration', ?, ?)""",
             (
                 int(row["id"]),
                 due_at,
-                json.dumps(["ENCOUNTER_COMPLETED"], separators=(",", ":")),
+                json.dumps([
+                    "OBSERVATION", "PATIENT_REPORTED", "ENCOUNTER_COMPLETED",
+                    "PROCEDURE_COMPLETED", "LAB_COMPLETED", "OTHER"
+                ], separators=(",", ":")),
                 row["source_recommendation_event_id"],
                 created_at,
                 _hash(payload),
@@ -124,7 +130,7 @@ def ensure_clinical_task_contract_storage(db: sqlite3.Connection) -> None:
             )),
             requires_acknowledgement INTEGER NOT NULL DEFAULT 0
                 CHECK (requires_acknowledgement IN (0,1)),
-            source_recommendation_event_id INTEGER NOT NULL,
+            source_recommendation_event_id INTEGER,
             created_by TEXT NOT NULL CHECK (length(trim(created_by))>0),
             created_at TEXT NOT NULL CHECK (datetime(created_at) IS NOT NULL),
             content_hash TEXT NOT NULL UNIQUE CHECK (length(content_hash)=64),
@@ -159,7 +165,7 @@ def ensure_clinical_task_contract_storage(db: sqlite3.Connection) -> None:
         BEGIN SELECT RAISE(ABORT, 'clinical task contracts cannot be deleted'); END;
         CREATE TRIGGER IF NOT EXISTS trg_clinical_task_contract_scope
         BEFORE INSERT ON clinical_task_contracts
-        WHEN NOT EXISTS (
+        WHEN NEW.contract_origin='RULE_RECOMMENDATION' AND NOT EXISTS (
             SELECT 1 FROM followup_tasks task
             JOIN clinical_recommendation_events recommendation
               ON recommendation.id=NEW.source_recommendation_event_id
@@ -262,3 +268,4 @@ def ensure_clinical_task_contract_storage(db: sqlite3.Connection) -> None:
         """
     )
     _legacy_contracts(db)
+    db.commit()

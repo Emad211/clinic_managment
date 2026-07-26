@@ -165,7 +165,7 @@ def test_contract_rejects_provisional_wrong_fact_and_missing_value(task_contract
     db = get_db()
     _patient_id, task_id = _create_strict_task(db)
     service = ClinicalCareLoopService(
-        clock=lambda: datetime(2026, 7, 22, 10, 5, 0)
+        clock=lambda: datetime(2026, 7, 27, 10, 5, 0)
     )
 
     with pytest.raises(ClinicalTaskContractError, match="verification"):
@@ -214,7 +214,7 @@ def test_confirmed_lab_outcome_is_ingested_idempotently_and_closes(task_contract
     db = get_db()
     patient_id, task_id = _create_strict_task(db)
     service = ClinicalCareLoopService(
-        clock=lambda: datetime(2026, 7, 22, 10, 5, 0)
+        clock=lambda: datetime(2026, 7, 27, 10, 5, 0)
     )
     first = service.record_outcome(
         task_id,

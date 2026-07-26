@@ -347,6 +347,27 @@ class RuleCompiler(ExpressionCompilerMixin):
                     f"{action.value} cannot directly create an internal task.",
                 )
             )
+        if recommendation["may_create_internal_task"]:
+            params = recommendation.get("params") or {}
+            if not isinstance(params.get("task_contract"), dict):
+                diagnostics.append(
+                    self._error(
+                        "MISSING_TASK_CONTRACT",
+                        "$.recommendation.params.task_contract",
+                        "Internal tasks require an explicit due/completion contract.",
+                    )
+                )
+            due_count = int(params.get("due_in_hours") is not None) + int(
+                params.get("due_in_days") is not None
+            )
+            if due_count != 1:
+                diagnostics.append(
+                    self._error(
+                        "INVALID_TASK_DUE_CONTRACT",
+                        "$.recommendation.params",
+                        "Exactly one of due_in_hours or due_in_days is required.",
+                    )
+                )
 
         governance = raw["governance"]
         validation_status = raw["evidence"]["local_validation_status"]

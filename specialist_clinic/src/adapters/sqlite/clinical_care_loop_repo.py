@@ -10,7 +10,14 @@ from typing import Any
 from src.adapters.sqlite.clinical_care_loop_schema import (
     ensure_clinical_care_loop_storage,
 )
+from src.adapters.sqlite.clinical_task_contract_schema import (
+    ensure_clinical_task_contract_storage,
+)
 from src.adapters.sqlite.core import get_db
+from src.adapters.sqlite.clinical_task_contract_repo import (
+    ClinicalTaskContractError,
+    ClinicalTaskContractRepository,
+)
 from src.common.utils import iran_now
 
 
@@ -87,6 +94,7 @@ class ClinicalCareLoopRepository:
             return self._connection
         db = get_db()
         ensure_clinical_care_loop_storage(db)
+        ensure_clinical_task_contract_storage(db)
         return db
 
     @staticmethod
@@ -178,6 +186,12 @@ class ClinicalCareLoopRepository:
         task["current_event"] = dict(head)
         task["current_event_id"] = int(head["id"])
         task["current_status"] = str(head["status"])
+        task["current_assigned_to"] = head["assigned_to"]
+        task["current_appointment_id"] = head["appointment_id"]
+        task["current_due_at"] = head["due_at"]
+        task["current_disposition_code"] = head["disposition_code"]
+        task["completion_outcome_event_id"] = head["outcome_event_id"]
+        task["current_recorded_at"] = head["recorded_at"]
         outcomes = db.execute(
             """SELECT * FROM clinical_outcome_events
                WHERE task_id=? ORDER BY recorded_at DESC, id DESC""",
@@ -187,6 +201,13 @@ class ClinicalCareLoopRepository:
         task["latest_outcome_event_id"] = (
             int(outcomes[0]["id"]) if outcomes else None
         )
+        task["task_contract"] = ClinicalTaskContractRepository(db).get(task_id)
+        links = db.execute(
+            """SELECT * FROM clinical_outcome_canonical_links
+               WHERE task_id=? ORDER BY id DESC""",
+            (task_id,),
+        ).fetchall()
+        task["canonical_links"] = [dict(row) for row in links]
         return task
 
     def list_current(
@@ -261,12 +282,8 @@ class ClinicalCareLoopRepository:
             raise ClinicalCareLoopValidationError("actor_username is required")
         kind = str(outcome_type or "").strip().upper()
         if kind not in {
-            "OBSERVATION",
-            "PATIENT_REPORTED",
-            "ENCOUNTER_COMPLETED",
-            "PROCEDURE_COMPLETED",
-            "LAB_COMPLETED",
-            "OTHER",
+            "OBSERVATION", "PATIENT_REPORTED", "ENCOUNTER_COMPLETED",
+            "PROCEDURE_COMPLETED", "LAB_COMPLETED", "OTHER",
         }:
             raise ClinicalCareLoopValidationError("invalid outcome_type")
         verification = str(verification or "").strip().upper()
@@ -274,33 +291,72 @@ class ClinicalCareLoopRepository:
             raise ClinicalCareLoopValidationError("invalid outcome verification")
         recorded = _now_text(recorded_at)
         observed = _datetime_text(observed_at) or recorded
-        value_json = (
-            None
-            if value is None or value == ""
-            else json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
-        )
-        payload = {
+        clean_fact_key = _clean(fact_key, limit=200)
+        clean_unit = _clean(unit, limit=80)
+        clean_source = _clean(source_system, limit=120) or "clinician"
+        clean_note = _clean(note)
+        stable_identity = {
             "task_id": int(task_id),
             "outcome_type": kind,
-            "fact_key": _clean(fact_key, limit=200),
+            "fact_key": clean_fact_key,
             "value": value,
-            "unit": _clean(unit, limit=80),
+            "unit": clean_unit,
             "verification": verification,
             "observed_at": observed,
+            "source_system": clean_source,
+            "actor_username": actor,
+            "note": clean_note,
+        }
+        clean_source_record = _clean(source_record_id, limit=200)
+        if not clean_source_record:
+            clean_source_record = "task-outcome:" + _canonical_hash(
+                stable_identity
+            )[:48]
+        value_json = (
+            None if value is None or value == ""
+            else json.dumps(
+                value, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+            )
+        )
+        payload = {
+            **stable_identity,
             "recorded_at": recorded,
-            "source_system": _clean(source_system, limit=120),
-            "source_record_id": _clean(source_record_id, limit=200),
-            "note": _clean(note),
+            "source_record_id": clean_source_record,
         }
         if commit:
             db.execute("BEGIN IMMEDIATE")
         try:
-            self._task(db, task_id)
+            task = dict(self._task(db, task_id))
             head = self._head(db, task_id)
             if not head or str(head["status"]) not in _NON_TERMINAL:
                 raise ClinicalCareLoopValidationError(
                     "outcome can only be added to a non-terminal clinical task"
                 )
+            contracts = ClinicalTaskContractRepository(db)
+            contract = contracts.validate_outcome(
+                task_id=task_id,
+                outcome_type=kind,
+                fact_key=clean_fact_key,
+                verification=verification,
+                value=value,
+            )
+            prior = db.execute(
+                """SELECT * FROM clinical_outcome_events
+                   WHERE source_system=? AND source_record_id=?""",
+                (clean_source, clean_source_record),
+            ).fetchone()
+            if prior:
+                if int(prior["task_id"]) != int(task_id):
+                    raise ClinicalCareLoopValidationError(
+                        "outcome idempotency identity belongs to another task"
+                    )
+                if commit:
+                    db.commit()
+                result = dict(prior)
+                result["canonical_link"] = contracts.canonical_link(
+                    int(prior["id"])
+                )
+                return result
             cursor = db.execute(
                 """INSERT INTO clinical_outcome_events
                    (task_id, outcome_type, fact_key, value_json, unit,
@@ -309,30 +365,35 @@ class ClinicalCareLoopRepository:
                     content_hash)
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
-                    task_id,
-                    kind,
-                    payload["fact_key"],
-                    value_json,
-                    payload["unit"],
-                    verification,
-                    observed,
-                    recorded,
-                    payload["source_system"],
-                    payload["source_record_id"],
-                    payload["note"],
-                    actor_user_id,
-                    actor,
+                    int(task_id), kind, clean_fact_key, value_json, clean_unit,
+                    verification, observed, recorded, clean_source,
+                    clean_source_record, clean_note, actor_user_id, actor,
                     _canonical_hash(payload),
                 ),
             )
+            outcome_id = int(cursor.lastrowid)
+            canonical_link = contracts.ingest_if_applicable(
+                task_id=int(task_id),
+                outcome_event_id=outcome_id,
+                patient_link_id=int(task["patient_link_id"]),
+                fact_key=clean_fact_key,
+                value=value,
+                unit=clean_unit,
+                observed_at=observed,
+                actor_username=actor,
+                note=clean_note,
+                contract=contract,
+            )
             row = db.execute(
                 "SELECT * FROM clinical_outcome_events WHERE id=?",
-                (cursor.lastrowid,),
+                (outcome_id,),
             ).fetchone()
             if commit:
                 db.commit()
-            return dict(row)
-        except Exception:
+            result = dict(row)
+            result["canonical_link"] = canonical_link
+            return result
+        except (ClinicalTaskContractError, Exception):
             if commit:
                 db.rollback()
             raise
@@ -366,7 +427,8 @@ class ClinicalCareLoopRepository:
         recorded = _now_text(recorded_at)
         effective = _now_text(effective_at or recorded_at)
 
-        db.execute("BEGIN IMMEDIATE")
+        if commit:
+            db.execute("BEGIN IMMEDIATE")
         try:
             self._task(db, task_id)
             head = self._head(db, task_id)
@@ -430,8 +492,10 @@ class ClinicalCareLoopRepository:
                 "SELECT * FROM clinical_task_events WHERE id=?",
                 (cursor.lastrowid,),
             ).fetchone()
-            db.commit()
+            if commit:
+                db.commit()
             return dict(row)
         except Exception:
-            db.rollback()
+            if commit:
+                db.rollback()
             raise

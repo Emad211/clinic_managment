@@ -85,6 +85,15 @@
                                         {% if t.current_assigned_to %} · مسئول: {{ t.current_assigned_to }}{% endif %}
                                         {% if t.latest_outcome_event_id %} · آخرین شاهد: #{{ t.latest_outcome_event_id|fa_num }}{% endif %}
                                     </div>
+                                    {% if t.task_contract %}
+                                    <div class="text-xs" style="margin-top:var(--s1);">
+                                        <span class="badge badge-info">{{ t.task_contract.urgency }}</span>
+                                        مهلت: {{ t.task_contract.due_at|jalali }} ·
+                                        شاهد مجاز: {{ t.task_contract.allowed_outcome_types|join('، ') }} ·
+                                        حداقل اعتبار: {{ t.task_contract.minimum_verification }}
+                                        {% if t.task_contract.required_fact_keys %} · Fact لازم: {{ t.task_contract.required_fact_keys|join('، ') }}{% endif %}
+                                    </div>
+                                    {% endif %}
                                 {% endif %}
                             </td>
                             <td class="nums">{{ t.current_due|jalali_date if t.current_due else '—' }}</td>

@@ -3,83 +3,299 @@
   "$id": "https://clinic.local/schemas/clinical-engine-v2/evaluation-result.schema.json",
   "title": "Clinical Engine v2 Evaluation Result",
   "type": "object",
-  "required": ["schema_version", "run_id", "patient_link_id", "as_of_at", "engine_version", "ruleset", "fact_snapshot", "run_status", "rule_results", "summary"],
+  "required": [
+    "schema_version",
+    "run_id",
+    "patient_link_id",
+    "as_of_at",
+    "engine_version",
+    "ruleset",
+    "fact_snapshot",
+    "run_status",
+    "rule_results",
+    "summary"
+  ],
   "properties": {
-    "schema_version": {"const": "2.0"},
-    "run_id": {"type": "string", "minLength": 1},
-    "patient_link_id": {"type": "integer", "minimum": 1},
-    "encounter_key": {"type": ["string", "null"]},
-    "as_of_at": {"type": "string", "format": "date-time"},
-    "engine_version": {"type": "string", "minLength": 1},
-    "ruleset": {"type": "object", "required": ["ruleset_id", "version", "hash"], "properties": {"ruleset_id": {"type": "string"}, "version": {"type": "string"}, "hash": {"type": "string"}}, "additionalProperties": false},
-    "fact_snapshot": {"type": "object", "required": ["hash", "facts"], "properties": {"hash": {"type": "string"}, "facts": {"type": "array"}}, "additionalProperties": false},
-    "run_status": {"enum": ["COMPLETED", "COMPLETED_WITH_ERRORS", "SAFETY_FAILED", "FACT_BUILD_FAILED", "AUDIT_FAILED"]},
+    "schema_version": {
+      "const": "2.0"
+    },
+    "run_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "patient_link_id": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "encounter_key": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "as_of_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "engine_version": {
+      "type": "string",
+      "minLength": 1
+    },
+    "ruleset": {
+      "type": "object",
+      "required": [
+        "ruleset_id",
+        "version",
+        "hash"
+      ],
+      "properties": {
+        "ruleset_id": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        },
+        "hash": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "fact_snapshot": {
+      "type": "object",
+      "required": [
+        "hash",
+        "facts"
+      ],
+      "properties": {
+        "hash": {
+          "type": "string"
+        },
+        "facts": {
+          "type": "array"
+        }
+      },
+      "additionalProperties": false
+    },
+    "run_status": {
+      "enum": [
+        "COMPLETED",
+        "COMPLETED_WITH_ERRORS",
+        "SAFETY_FAILED",
+        "FACT_BUILD_FAILED",
+        "AUDIT_FAILED"
+      ]
+    },
     "rule_results": {
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["rule_code", "rule_version", "phase", "outcome", "predicate_state", "trace", "data_issues", "recommendations"],
+        "required": [
+          "rule_code",
+          "rule_version",
+          "phase",
+          "outcome",
+          "predicate_state",
+          "trace",
+          "data_issues",
+          "recommendations"
+        ],
         "properties": {
-          "rule_code": {"type": "string"},
-          "rule_version": {"type": "string"},
-          "phase": {"enum": ["PREFLIGHT", "SAFETY", "ROUTINE"]},
-          "outcome": {"enum": ["FIRED", "NOT_FIRED", "NEEDS_DATA", "NOT_APPLICABLE", "SUPPRESSED", "ERROR"]},
-          "predicate_state": {"enum": ["TRUE", "FALSE", "UNKNOWN", "ERROR"]},
-          "trace": {"type": "object"},
+          "rule_code": {
+            "type": "string"
+          },
+          "rule_version": {
+            "type": "string"
+          },
+          "phase": {
+            "enum": [
+              "PREFLIGHT",
+              "SAFETY",
+              "ROUTINE"
+            ]
+          },
+          "outcome": {
+            "enum": [
+              "FIRED",
+              "NOT_FIRED",
+              "NEEDS_DATA",
+              "NOT_APPLICABLE",
+              "SUPPRESSED",
+              "ERROR"
+            ]
+          },
+          "predicate_state": {
+            "enum": [
+              "TRUE",
+              "FALSE",
+              "UNKNOWN",
+              "ERROR"
+            ]
+          },
+          "trace": {
+            "type": "object"
+          },
           "data_issues": {
             "type": "array",
             "items": {
               "type": "object",
-              "required": ["fact_key", "issue"],
+              "required": [
+                "fact_key",
+                "issue"
+              ],
               "properties": {
-                "fact_key": {"type": "string"},
-                "issue": {"enum": ["MISSING", "UNKNOWN", "NOT_ASKED", "STALE", "UNVERIFIED", "CONFLICTING", "UNIT_MISMATCH", "INVALID_TYPE", "SOURCE_UNAVAILABLE"]},
-                "message_fa": {"type": "string"}
+                "fact_key": {
+                  "type": "string"
+                },
+                "issue": {
+                  "enum": [
+                    "MISSING",
+                    "UNKNOWN",
+                    "NOT_ASKED",
+                    "STALE",
+                    "UNVERIFIED",
+                    "CONFLICTING",
+                    "UNIT_MISMATCH",
+                    "INVALID_TYPE",
+                    "SOURCE_UNAVAILABLE"
+                  ]
+                },
+                "message_fa": {
+                  "type": "string"
+                }
               },
               "additionalProperties": false
             }
           },
           "suppression": {
-            "type": ["object", "null"],
+            "type": [
+              "object",
+              "null"
+            ],
             "properties": {
-              "reason_code": {"type": "string"},
-              "message_fa": {"type": "string"},
-              "caused_by_rule_code": {"type": ["string", "null"]}
+              "reason_code": {
+                "type": "string"
+              },
+              "message_fa": {
+                "type": "string"
+              },
+              "caused_by_rule_code": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
             },
-            "required": ["reason_code", "message_fa", "caused_by_rule_code"],
+            "required": [
+              "reason_code",
+              "message_fa",
+              "caused_by_rule_code"
+            ],
             "additionalProperties": false
           },
           "recommendations": {
             "type": "array",
             "items": {
               "type": "object",
-              "required": ["recommendation_key", "action_type", "text_fa", "suggestion_only", "requires_clinician_confirmation", "presentation", "may_create_internal_task"],
+              "required": [
+                "recommendation_key",
+                "action_type",
+                "text_fa",
+                "suggestion_only",
+                "requires_clinician_confirmation",
+                "presentation",
+                "may_create_internal_task",
+                "params"
+              ],
               "properties": {
-                "recommendation_key": {"type": "string"},
-                "action_type": {"enum": ["redflag", "safety_alert", "suggest_med", "flag_risk", "set_target", "classify", "create_followup", "schedule_screening", "vaccine", "educate"]},
-                "text_fa": {"type": "string"},
-                "suggestion_only": {"const": true},
-                "requires_clinician_confirmation": {"type": "boolean"},
-                "presentation": {"enum": ["INTERRUPTIVE", "PROMINENT", "NON_INTERRUPTIVE", "HIDDEN"]},
-                "may_create_internal_task": {"type": "boolean"}
+                "recommendation_key": {
+                  "type": "string"
+                },
+                "action_type": {
+                  "enum": [
+                    "redflag",
+                    "safety_alert",
+                    "suggest_med",
+                    "flag_risk",
+                    "set_target",
+                    "classify",
+                    "create_followup",
+                    "schedule_screening",
+                    "vaccine",
+                    "educate"
+                  ]
+                },
+                "text_fa": {
+                  "type": "string"
+                },
+                "suggestion_only": {
+                  "const": true
+                },
+                "requires_clinician_confirmation": {
+                  "type": "boolean"
+                },
+                "presentation": {
+                  "enum": [
+                    "INTERRUPTIVE",
+                    "PROMINENT",
+                    "NON_INTERRUPTIVE",
+                    "HIDDEN"
+                  ]
+                },
+                "may_create_internal_task": {
+                  "type": "boolean"
+                },
+                "params": {
+                  "type": "object"
+                }
               },
               "additionalProperties": false
             }
           },
           "error": {
-            "type": ["object", "null"],
-            "properties": {"code": {"type": "string"}, "message": {"type": "string"}},
-            "required": ["code", "message"],
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "code",
+              "message"
+            ],
             "additionalProperties": false
           },
-          "missing_facts": {"type": "array", "items": {"type": "string"}},
-          "suppression_reasons": {"type": "array", "items": {"type": "string"}},
-          "diagnostics": {"type": "array", "items": {"type": "object"}}
+          "missing_facts": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "suppression_reasons": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "diagnostics": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          }
         },
         "additionalProperties": false
       }
     },
-    "summary": {"type": "object"}
+    "summary": {
+      "type": "object"
+    }
   },
   "additionalProperties": false
 }

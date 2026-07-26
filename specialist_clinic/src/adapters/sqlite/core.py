@@ -379,6 +379,9 @@ def _run_migrations(db):
     from src.adapters.sqlite.followup_operations_schema import (
         ensure_followup_operations_storage,
     )
+    from src.adapters.sqlite.clinical_task_contract_schema import (
+        ensure_clinical_task_contract_storage,
+    )
     from src.adapters.sqlite.clinical_validation_schema import (
         ensure_clinical_validation_storage,
     )
@@ -390,6 +393,7 @@ def _run_migrations(db):
     ensure_operational_lease_storage(db)
     ensure_specialist_revenue_boundary_storage(db)
     ensure_followup_operations_storage(db)
+    ensure_clinical_task_contract_storage(db)
     ensure_clinical_validation_storage(db)
     ensure_clinical_audit_integrity_storage(db)
     _ensure_clinical_engine_v2_storage(db)
