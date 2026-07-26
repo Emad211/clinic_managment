@@ -1,9 +1,8 @@
-"""Authoritative specialist-clinic revenue and conversion projection.
+"""Authoritative specialist-clinic revenue and explicit campaign attribution projection.
 
-Accounting remains read-only and exposes complete patient history. Financial KPIs are
-computed only from latest append-only observations of invoices that are explicitly
-attributed to a COMPLETED specialist Encounter. Booking, attendance, service completion,
-invoice closure and collection remain distinct stages.
+Accounting remains read-only. Main financial KPIs require a completed attributed
+Encounter. Campaign revenue requires an additional positive patient-response event and
+one exclusive current campaign attribution for that Journey; time windows are not used.
 """
 from __future__ import annotations
 
@@ -12,6 +11,9 @@ from datetime import datetime, timedelta
 import jdatetime
 
 from src.adapters import specialist_accounting_invoice_reader as accounting_reader
+from src.adapters.sqlite.campaign_journey_attribution_repo import (
+    CampaignJourneyAttributionRepository,
+)
 from src.adapters.sqlite.care_journey_repo import CareJourneyRepository
 from src.adapters.sqlite.specialist_enrollment_repo import (
     SpecialistEnrollmentRepository,
@@ -32,7 +34,7 @@ def _jalali_month_start_gregorian() -> str:
 class RevenueService:
     """Audited financial projection with explicit completed-Encounter scope."""
 
-    POLICY_VERSION = "COMPLETED_ENCOUNTER_OBSERVATION_V2"
+    POLICY_VERSION = "EXPLICIT_RESPONSE_JOURNEY_ATTRIBUTION_V3"
     FRESHNESS_MINUTES = 15
 
     def __init__(
@@ -42,6 +44,7 @@ class RevenueService:
         enrollments: SpecialistEnrollmentRepository | None = None,
         finance: SpecialistFinanceRepository | None = None,
         funnel: SpecialistFinancialFunnelRepository | None = None,
+        campaign_attribution: CampaignJourneyAttributionRepository | None = None,
         accounting=None,
         clock=None,
     ):
@@ -49,6 +52,9 @@ class RevenueService:
         self.enrollments = enrollments or SpecialistEnrollmentRepository()
         self.finance = finance or SpecialistFinanceRepository()
         self.funnel = funnel or SpecialistFinancialFunnelRepository()
+        self.campaign_attribution = (
+            campaign_attribution or CampaignJourneyAttributionRepository()
+        )
         self.accounting = accounting or accounting_reader
         self.clock = clock or iran_now
 
@@ -69,6 +75,8 @@ class RevenueService:
             "history_visible_but_excluded": True,
             "time_only_attribution": False,
             "completed_encounter_required": True,
+            "campaign_positive_response_required": True,
+            "campaign_journey_exclusive": True,
             "payment_evidence": "ITEM_PAID_FLAGS",
             "as_of": now.isoformat(sep=" ", timespec="seconds"),
         }
@@ -169,34 +177,61 @@ class RevenueService:
         }
 
     def campaign_revenue(self, ids_hint: list[int] | None = None) -> dict:
-        """Fail closed until campaign response is explicitly linked to a Journey."""
-        rows = []
-        issued_credit = 0
+        """Collected revenue from exclusive, explicit response→Journey links.
+
+        This is auditable operational attribution, not a causal-lift claim. Each Journey
+        has at most one current campaign attribution, so totals are safe to sum without
+        double-counting the same Journey across campaigns.
+        """
+        requested = {int(value) for value in (ids_hint or [])}
+        rows: list[dict] = []
+        attributed_total = 0
+        billed_total = 0
+        credit_distributed = 0
+        pending_financial = 0
         for campaign in self.finance.campaigns():
-            credit = self.finance.positive_campaign_credit(campaign["id"])
-            issued_credit += credit
+            campaign_id = int(campaign["id"])
+            if requested and campaign_id not in requested:
+                continue
+            metrics = self.campaign_attribution.campaign_metrics(campaign_id)
+            credit = self.finance.positive_campaign_credit(campaign_id)
+            credit_distributed += credit
+            attributed_total += metrics["collected"]
+            billed_total += metrics["billed"]
+            pending_financial += metrics["pending_financial"]
             rows.append(
                 {
-                    "id": campaign["id"],
+                    "id": campaign_id,
                     "name": campaign["name"],
                     "type": campaign["campaign_type"],
-                    "recipients": 0,
+                    "recipients": metrics["audience_treated"],
+                    "audience_total": metrics["audience_total"],
+                    "control": metrics["audience_control"],
                     "sent": int(campaign.get("sent_count") or 0),
                     "delivered": int(campaign.get("delivered_count") or 0),
-                    "revenue": 0,
-                    "invoices": 0,
+                    "positive_responses": metrics["positive_responses"],
+                    "attributed_journeys": metrics["attributed_journeys"],
+                    "billed": metrics["billed"],
+                    "revenue": metrics["collected"],
+                    "invoices": metrics["invoices"],
+                    "pending_financial": metrics["pending_financial"],
                     "credit": credit,
-                    "measurement_status": "JOURNEY_LINK_REQUIRED",
+                    "measurement_status": "EXPLICIT_RESPONSE_JOURNEY",
                 }
             )
         return {
             "rows": rows,
-            "attributed_total": 0,
-            "credit_distributed": issued_credit,
+            "attributed_total": attributed_total,
+            "billed_total": billed_total,
+            "credit_distributed": credit_distributed,
+            "pending_financial": pending_financial,
             "window_days": None,
-            "safe_to_sum": False,
-            "measurement_status": "JOURNEY_LINK_REQUIRED",
+            "safe_to_sum": True,
+            "causal_claim": False,
+            "measurement_status": "EXPLICIT_RESPONSE_JOURNEY",
         }
 
     def campaign_incrementality(self, campaign_id: int) -> dict | None:
+        # Operational attribution is not causal lift. Incrementality remains unavailable
+        # until immutable treated/control exposure and sufficient outcomes are validated.
         return None
