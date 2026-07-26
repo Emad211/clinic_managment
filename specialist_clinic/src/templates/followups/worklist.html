@@ -89,6 +89,31 @@
                             </td>
                             <td class="nums">{{ t.current_due|jalali_date if t.current_due else '—' }}</td>
                             <td>
+                                {% if t.contact_count %}
+                                <div class="text-xs muted" style="margin-bottom:var(--s2);">
+                                    آخرین تماس: {{ contact_outcome_labels.get(t.last_contact_outcome, t.last_contact_outcome) }}
+                                    · {{ t.last_contact_at|jalali if t.last_contact_at else '—' }}
+                                    · {{ t.contact_count|fa_num }} تلاش
+                                    {% if t.next_contact_at %} · تماس بعدی: {{ t.next_contact_at|jalali }}{% endif %}
+                                </div>
+                                {% endif %}
+                                {% if permissions.get('followup.contact.record') %}
+                                <details style="margin-bottom:var(--s2);">
+                                    <summary class="btn btn-sm btn-ghost">ثبت نتیجهٔ تماس</summary>
+                                    <form method="post" action="{{ url_for('followups.record_contact', task_id=t.id) }}" class="card card-soft" style="min-width:340px;margin-top:var(--s2);">
+                                        <input type="hidden" name="idempotency_key" value="{{ t.contact_form_token }}">
+                                        <div class="row">
+                                            <div class="fld"><label>کانال</label><select name="channel">{% for key,label in contact_channel_labels.items() %}<option value="{{ key }}">{{ label }}</option>{% endfor %}</select></div>
+                                            <div class="fld"><label>نتیجه</label><select name="outcome">{% for key,label in contact_outcome_labels.items() %}<option value="{{ key }}">{{ label }}</option>{% endfor %}</select></div>
+                                        </div>
+                                        <div class="row">
+                                            <div class="fld"><label>تماس بعدی</label><input class="jdate" name="next_contact_at" placeholder="در صورت نیاز"></div>
+                                            <div class="fld"><label>توضیح</label><input name="note"></div>
+                                        </div>
+                                        <button class="btn btn-sm" type="submit">ثبت رویداد تماس</button>
+                                    </form>
+                                </details>
+                                {% endif %}
                                 {% if t.source_engine != 'clinical_v2' %}
                                     <div class="flex items-center gap-2">
                                         <form class="m-0" method="post" action="{{ url_for('followups.resolve', task_id=t.id) }}">
@@ -191,11 +216,12 @@
             {% endif %}
 
             <form method="post" action="{{ url_for('followups.patient_to_visit', pid=pg.patient_link_id) }}" class="card card-soft" style="margin-top:var(--s3);">
+                <input type="hidden" name="booking_idempotency_key" value="booking:{{ pg.tasks[0].contact_form_token }}">
                 <div class="section-title" style="margin-bottom:var(--s2);">
                     <svg class="icon icon-sm"><use href="#i-stethoscope"></use></svg>
                     <div>
                         <div>زمان‌بندی یک ویزیت</div>
-                        <div class="section-sub">پیگیری اداری بسته می‌شود؛ پیگیری بالینی فقط SCHEDULED می‌شود و تا ثبت outcome باز می‌ماند.</div>
+                        <div class="section-sub">رزرو نوبت فقط مرحلهٔ BOOKED است؛ پیگیری اداری و بالینی تا حضور یا ثبت نتیجه باز می‌مانند.</div>
                     </div>
                 </div>
                 <div class="flex" style="flex-direction:column;gap:var(--s1);margin-bottom:var(--s2);">
@@ -203,7 +229,7 @@
                     <label class="flex items-center gap-2">
                         <input type="checkbox" name="task_ids" value="{{ t.id }}"{% if t.fulfillment != 'remote' %} checked{% endif %}>
                         <span class="badge badge-warn">{{ t.reason_fa }}</span>
-                        {% if t.source_engine == 'clinical_v2' %}<span class="badge badge-info">بالینی ـ فقط زمان‌بندی</span>{% endif %}
+                        {% if t.source_engine == 'clinical_v2' %}<span class="badge badge-info">بالینی ـ زمان‌بندی</span>{% else %}<span class="badge badge-muted">اداری ـ باز تا نتیجه</span>{% endif %}
                         <span class="muted text-sm">{{ t.detail or '' }}</span>
                     </label>
                 {% endfor %}

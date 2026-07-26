@@ -6,6 +6,8 @@ append-only ``clinical_task_events`` through ``ClinicalCareLoopRepository``.
 """
 from __future__ import annotations
 
+import sqlite3
+
 from src.adapters.sqlite.clinical_care_loop_schema import (
     ensure_clinical_care_loop_storage,
 )
@@ -14,6 +16,12 @@ from src.common.utils import iran_now
 
 
 class FollowupRepository:
+    def __init__(self, db: sqlite3.Connection | None = None):
+        self._connection = db
+
+    def _db(self) -> sqlite3.Connection:
+        return self._connection or get_db()
+
     def active_patient_ids(self) -> list[int]:
         return [
             int(row["id"])
@@ -95,11 +103,13 @@ class FollowupRepository:
         self,
         task_ids: list,
         appointment_id,
+        *,
+        commit: bool = True,
     ):
         if not task_ids:
             return
         normalized = [int(value) for value in task_ids]
-        db = get_db()
+        db = self._db()
         self._assert_administrative(db, normalized)
         placeholders = ",".join("?" for _ in normalized)
         db.execute(
@@ -107,7 +117,8 @@ class FollowupRepository:
             f"WHERE id IN ({placeholders})",
             [appointment_id, *normalized],
         )
-        db.commit()
+        if commit:
+            db.commit()
 
     def exists_open(self, patient_link_id: int, reason: str) -> bool:
         if get_db().execute(

@@ -23,7 +23,7 @@ from src.adapters.sqlite.specialist_revenue_boundary_schema import (
 from src.common.utils import iran_now
 
 
-SCOPE_VERSION = "1.2-specialist-revenue-boundary"
+SCOPE_VERSION = "1.3-followup-contacts"
 CRITICAL_TABLES = (
     "clinical_rule_versions",
     "clinical_rulesets",
@@ -45,6 +45,8 @@ CRITICAL_TABLES = (
     "care_encounters",
     "care_encounter_events",
     "accounting_invoice_attribution_events",
+    "followup_contact_events",
+    "followup_booking_requests",
     "security_permission_events",
 )
 

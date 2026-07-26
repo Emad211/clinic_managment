@@ -20,6 +20,18 @@ from src.services.clinical_care_loop_service import (
     STATUS_LABELS,
 )
 from src.services.followup_service import FollowupService, REASON_LABELS
+from src.services.followup_booking_service import (
+    FollowupBookingError,
+    FollowupBookingService,
+)
+from src.services.followup_projection_service import FollowupProjectionService
+from src.services.followup_contact_service import (
+    CHANNEL_LABELS as CONTACT_CHANNEL_LABELS,
+    OUTCOME_LABELS as CONTACT_OUTCOME_LABELS,
+    FollowupContactConflict,
+    FollowupContactService,
+    FollowupContactValidationError,
+)
 
 
 bp = Blueprint("followups", __name__, url_prefix="/followups")
@@ -47,7 +59,8 @@ def worklist():
     reason = request.args.get("reason") or None
     q = (request.args.get("q") or "").strip()
     repo = FollowupRepository()
-    tasks = repo.search_open(q) if q else repo.list_open(reason)
+    projection = FollowupProjectionService(tasks=repo)
+    tasks = projection.open_tasks(query=q or None, reason=reason)
     today = iran_now().date()
     for task in tasks:
         task["reason_fa"] = REASON_LABELS.get(
@@ -104,6 +117,8 @@ def worklist():
         status_labels=STATUS_LABELS,
         outcome_labels=OUTCOME_LABELS,
         disposition_labels=DISPOSITION_LABELS,
+        contact_channel_labels=CONTACT_CHANNEL_LABELS,
+        contact_outcome_labels=CONTACT_OUTCOME_LABELS,
         active_reason=reason,
         q=q,
         hub_pending=EngagementRepository().count_pending(),
@@ -133,6 +148,38 @@ def generate():
         f"همگام‌سازی ورک‌لیست؛ {total} پیگیری جدید",
     )
     return redirect(url_for("followups.worklist"))
+
+
+@bp.post("/<int:task_id>/contact")
+@permission_required(Permission.FOLLOWUP_CONTACT_RECORD)
+def record_contact(task_id: int):
+    raw_next = (request.form.get("next_contact_at") or "").strip()
+    next_contact = None
+    if raw_next:
+        parsed = jalali_to_gregorian_str(raw_next) or raw_next
+        next_contact = f"{parsed} 09:00:00" if len(parsed) == 10 else parsed
+    try:
+        event = FollowupContactService().record(
+            task_id=task_id,
+            channel=request.form.get("channel") or "PHONE",
+            outcome=request.form.get("outcome") or "OTHER",
+            actor_username=g.user["username"],
+            actor_user_id=int(g.user["id"]),
+            idempotency_key=request.form.get("idempotency_key") or "",
+            note=request.form.get("note"),
+            next_contact_at=next_contact,
+        )
+    except (LookupError, ValueError, FollowupContactConflict,
+            FollowupContactValidationError, sqlite3.IntegrityError) as exc:
+        flash(f"ثبت تماس انجام نشد: {exc}", "error")
+    else:
+        log_activity(
+            "followup_contact_record",
+            f"task={task_id} contact={event['id']} outcome={event['outcome']}",
+            patient_link_id=int(event["patient_link_id"]),
+        )
+        flash("نتیجهٔ تماس به‌صورت افزایشی ثبت شد.", "success")
+    return redirect(request.referrer or url_for("followups.worklist"))
 
 
 @bp.route("/<int:task_id>/resolve", methods=["POST"])
@@ -235,7 +282,7 @@ def clinical_transition(task_id: int):
 @bp.route("/patient/<int:pid>/to-visit", methods=["POST"])
 @login_required
 def patient_to_visit(pid):
-    """Create one appointment; admin tasks close, clinical tasks become SCHEDULED."""
+    """Atomically record BOOKED without falsely completing any follow-up."""
     scheduled_date = jalali_to_gregorian_str(
         request.form.get("scheduled_date", "")
     )
@@ -244,71 +291,56 @@ def patient_to_visit(pid):
         return redirect(request.referrer or url_for("followups.worklist"))
     scheduled_time = (request.form.get("scheduled_time") or "09:00").strip()
     scheduled_at = f"{scheduled_date} {scheduled_time}:00"
-
-    repo = FollowupRepository()
-    available = {
-        int(task["id"]): task
-        for task in repo.list_for_patient(pid)
-        if task.get("status") == "open"
-    }
-    posted = request.form.getlist("task_ids", type=int)
-    task_ids = [task_id for task_id in posted if task_id in available]
+    task_ids = sorted(
+        {int(value) for value in request.form.getlist("task_ids") if str(value).isdigit()}
+    )
     if not task_ids:
-        flash("پیگیریِ بازی برای این بیمار نیست", "error")
+        flash("پیگیری بازی برای این بیمار انتخاب نشده است", "error")
         return redirect(request.referrer or url_for("followups.worklist"))
 
-    clinical_ids = [
-        task_id
-        for task_id in task_ids
-        if available[task_id].get("source_engine") == "clinical_v2"
-    ]
-    if clinical_ids and not has_permission(Permission.CLINICAL_TASK_TRANSITION):
+    marks = ",".join("?" for _ in task_ids)
+    rows = get_db().execute(
+        f"SELECT id, source_engine FROM followup_tasks WHERE id IN ({marks})",
+        task_ids,
+    ).fetchall()
+    if len(rows) != len(task_ids):
+        flash("یکی از پیگیری‌ها دیگر وجود ندارد.", "error")
+        return redirect(request.referrer or url_for("followups.worklist"))
+    if any(row["source_engine"] == "clinical_v2" for row in rows) and not has_permission(
+        Permission.CLINICAL_TASK_TRANSITION
+    ):
         flash("مجوز زمان‌بندی پیگیری بالینی ثبت نشده است.", "error")
         return redirect(request.referrer or url_for("followups.worklist"))
 
-    appointment_id = AppointmentService().schedule(
-        pid,
-        scheduled_at=scheduled_at,
-        appt_type="visit",
-        notes="ویزیت ناشی از ورک‌لیست؛ پیگیری بالینی تا ثبت outcome باز می‌ماند",
-        created_by=g.user["username"],
-    )
-    admin_ids = [task_id for task_id in task_ids if task_id not in clinical_ids]
-    if admin_ids:
-        repo.assign_appointment_bulk(admin_ids, appointment_id)
-        for task_id in admin_ids:
-            repo.resolve(task_id, "done")
-
-    scheduled = 0
-    care = ClinicalCareLoopService()
-    for task_id in clinical_ids:
-        task = care.current(task_id)
-        try:
-            care.transition(
-                task_id,
-                transition="schedule",
-                expected_current_event_id=task["current_event_id"],
-                actor_username=g.user["username"],
-                actor_user_id=int(g.user["id"]),
-                appointment_id=appointment_id,
-                note="از ورک‌لیست به ویزیت زمان‌بندی شد",
-            )
-            scheduled += 1
-        except ClinicalCareLoopConflict:
-            flash(
-                f"پیگیری {task_id} هم‌زمان تغییر کرد و زمان‌بندی نشد.",
-                "warning",
-            )
-
-    log_activity(
-        "followup_to_visit",
-        f"admin_closed={len(admin_ids)} clinical_scheduled={scheduled} patient={pid}",
-        patient_link_id=pid,
-    )
-    flash(
-        f"{len(admin_ids)} پیگیری اداری بسته و {scheduled} پیگیری بالینی زمان‌بندی شد.",
-        "success",
-    )
+    try:
+        result = FollowupBookingService().book(
+            patient_link_id=pid,
+            task_ids=task_ids,
+            scheduled_at=scheduled_at,
+            actor_username=g.user["username"],
+            actor_user_id=int(g.user["id"]),
+            idempotency_key=request.form.get("booking_idempotency_key") or "",
+        )
+    except (FollowupBookingError, ValueError, LookupError, sqlite3.IntegrityError) as exc:
+        flash(f"رزرو نوبت انجام نشد: {exc}", "error")
+    else:
+        log_activity(
+            "followup_to_visit",
+            (
+                f"appointment={result['appointment_id']} "
+                f"admin_booked={result['admin_booked']} "
+                f"clinical_scheduled={result['clinical_scheduled']} "
+                f"duplicate={result['duplicate']} patient={pid}"
+            ),
+            patient_link_id=pid,
+        )
+        flash(
+            (
+                f"نوبت #{result['appointment_id']} ثبت شد؛ "
+                "پیگیری‌ها تا حضور یا ثبت نتیجه باز می‌مانند."
+            ),
+            "success",
+        )
     return redirect(url_for("followups.worklist"))
 
 

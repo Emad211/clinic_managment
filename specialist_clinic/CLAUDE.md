@@ -120,3 +120,12 @@ Decision support is **suggestion-only**: "پیشنهاد — تأیید با پ�
 - ثبت دستی بیمار نباید به‌طور حدسی به حسابداری لینک شود. اتصال حسابداری فقط از workflow صریح enrollment و با cutover immutable انجام می‌شود.
 - کمپین، پیامک و appointment تا زمانی که به Journey و invoice صریح متصل نشده‌اند حق تولید KPI درآمدی ندارند.
 - نبود schema پرداخت، نبود cutover یا قطع bridge باید `unavailable` ایجاد کند؛ تبدیل خطا به درآمد صفر ممنوع است.
+
+
+## وضعیت واحد پیگیری و رویداد تماس (A1)
+
+- هر surface باید وضعیت task را از `FollowupProjectionService` یا repository event-aware بخواند؛ query مستقیم `followup_tasks.status='open'` برای شمارش عمومی ممنوع است.
+- وضعیت clinical task از `clinical_task_events` و وضعیت administrative task فعلاً از workflow خودش خوانده می‌شود، ولی خروجی نهایی یک قرارداد normalized دارد.
+- هر تماس، پیام، پاسخ، عدم پاسخ، درخواست callback و booking باید در `followup_contact_events` به‌صورت append-only ثبت شود.
+- BOOKED معادل COMPLETED یا درآمد نیست. رزرو appointment نباید task اداری را ببندد.
+- تماس تلفنی و disposition اداری از تصمیم بالینی جدا هستند؛ permission `followup.contact.record` برای این کار استفاده می‌شود.
