@@ -68,8 +68,6 @@ new_approve = '''        if (
 if old_approve in text:
     text = text.replace(old_approve, new_approve, 1)
 
-# enqueue_event_for_patient, enqueue_invite and enqueue_control_room_invite share this
-# shape; replace every remaining instance.
 old_enqueue = '''        if (
             not patient
             or patient["sms_opt_out"]
@@ -112,6 +110,30 @@ if remaining:
     raise AssertionError(
         "legacy SMS opt-out reads remain in EngagementService: " + ",".join(remaining)
     )
-
 PATH.write_text(text, encoding="utf-8")
+
+# This pre-finalizer is the sole owner of EngagementService migration. Remove the
+# obsolete duplicate block from the general core finalizer before it runs.
+CORE = ROOT / ".github/finalize_a5_core.py"
+core = CORE.read_text(encoding="utf-8")
+start_marker = '''# ---------------------------------------------------------------------------
+# Engagement: CARE consent replaces the legacy global boolean.
+# ---------------------------------------------------------------------------
+'''
+end_marker = '''# ---------------------------------------------------------------------------
+# Scheduler treats messaging failures as failed jobs.
+# ---------------------------------------------------------------------------
+'''
+if start_marker in core:
+    start = core.index(start_marker)
+    end = core.index(end_marker, start)
+    core = (
+        core[:start]
+        + "# Engagement integration is owned by finalize_a5_prepare.py.\n\n"
+        + core[end:]
+    )
+    CORE.write_text(core, encoding="utf-8")
+elif "Engagement integration is owned by finalize_a5_prepare.py." not in core:
+    raise AssertionError("obsolete Engagement block not found in A5 core finalizer")
+
 Path(__file__).unlink()
