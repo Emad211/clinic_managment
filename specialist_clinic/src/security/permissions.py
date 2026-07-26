@@ -50,6 +50,11 @@ class Permission(StrEnum):
     SMS_CAMPAIGN_ATTRIBUTION_RECORD = "sms.campaign.attribution.record"
     SMS_CAMPAIGN_ATTRIBUTION_CORRECT = "sms.campaign.attribution.correct"
     SMS_CAMPAIGN_ECONOMICS_VIEW = "sms.campaign.economics.view"
+    FINANCIAL_REVIEW_VIEW = "financial.review.view"
+    FINANCIAL_RECONCILE = "financial.reconcile"
+    FINANCIAL_ADJUSTMENT_RECORD = "financial.adjustment.record"
+    FINANCIAL_ADJUSTMENT_CORRECT = "financial.adjustment.correct"
+    FINANCIAL_REVIEW_COMPLETE = "financial.review.complete"
     RULE_REVIEW_CLINICAL = "rule.review.clinical"
     RULE_REVIEW_TECHNICAL = "rule.review.technical"
     RULE_ACTIVATE = "rule.activate"
@@ -76,6 +81,7 @@ _ROLE_DEFAULTS = {
             Permission.SMS_CONSENT_MANAGE,
             Permission.SMS_CAMPAIGN_RESPONSE_RECORD,
             Permission.SMS_CAMPAIGN_ATTRIBUTION_RECORD,
+            Permission.FINANCIAL_REVIEW_VIEW,
         }
     ),
 }

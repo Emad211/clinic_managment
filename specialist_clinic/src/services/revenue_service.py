@@ -129,6 +129,10 @@ class RevenueService:
             scope["freshness_status"] = "NO_COMPLETED_ENCOUNTERS"
 
         total = self.funnel.finance_totals()
+        from src.adapters.sqlite.specialist_payer_adjustment_repo import (
+            SpecialistPayerAdjustmentRepository,
+        )
+        payer_review = SpecialistPayerAdjustmentRepository().reviewed_finance_totals()
         month = self.funnel.finance_totals(
             floor=_jalali_month_start_gregorian()
         )
@@ -165,6 +169,7 @@ class RevenueService:
             },
             "funnel": funnel,
             "campaigns": self.campaign_revenue(),
+            "payer_review": payer_review,
             "scope": scope,
         }
 
