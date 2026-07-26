@@ -354,7 +354,10 @@ def test_changed_service_description_supersedes_without_mutating_history(a8_app)
     assert second_manifest["supersedes_snapshot_id"] == first_manifest["snapshot_id"]
     assert repository.lines_for_snapshot(first_manifest["snapshot_id"])[2]["description"] == "پانسمان"
     current = repository.current_lines_for_patient(patient_id)
-    assert current[2]["description"] == "تعویض پانسمان"
+    current_procedure = next(
+        row for row in current if row["item_type"] == "PROCEDURE"
+    )
+    assert current_procedure["description"] == "تعویض پانسمان"
 
 
 def test_legacy_reader_creates_unavailable_manifest_without_invented_lines(a8_app):
@@ -418,3 +421,25 @@ def test_patient_timeline_uses_exact_lines_and_deduplicates_same_invoice():
         "service_visit", "service_injection", "service_procedure"
     }
     assert all(event.get("lineage") == "ACCOUNTING_SERVICE_LINES_V1" for event in events)
+
+
+
+def test_patient_detail_renders_exact_service_lineage(a8_app):
+    from src.services.specialist_financial_reconciliation_service import (
+        SpecialistFinancialReconciliationService,
+    )
+
+    app, _accounting, _specialist = a8_app
+    patient_id, _encounter = _enroll_and_complete(101)
+    SpecialistFinancialReconciliationService().reconcile_invoice(101)
+    client = app.test_client()
+    login = client.post(
+        "/auth/login", data={"username": "admin", "password": "admin"}
+    )
+    assert login.status_code in {302, 303}
+    response = client.get(f"/patients/{patient_id}")
+    html = response.get_data(as_text=True)
+    assert response.status_code == 200
+    assert "خدمات دقیق" in html
+    assert "تزریق عضلانی" in html
+    assert "متصل به Encounter" in html

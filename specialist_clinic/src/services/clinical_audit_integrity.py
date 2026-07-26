@@ -35,10 +35,13 @@ from src.adapters.sqlite.campaign_economics_schema import (
 from src.adapters.sqlite.specialist_payer_adjustment_schema import (
     ensure_specialist_payer_adjustment_storage,
 )
+from src.adapters.sqlite.specialist_service_lineage_schema import (
+    ensure_specialist_service_lineage_storage,
+)
 from src.common.utils import iran_now
 
 
-SCOPE_VERSION = "1.9-payer-adjustments"
+SCOPE_VERSION = "2.0-service-lineage"
 CRITICAL_TABLES = (
     "clinical_rule_versions",
     "clinical_rulesets",
@@ -82,6 +85,8 @@ CRITICAL_TABLES = (
     "specialist_payer_breakdown_observations",
     "specialist_financial_adjustment_events",
     "specialist_financial_review_events",
+    "specialist_service_snapshot_manifests",
+    "specialist_service_line_observations",
     "security_permission_events",
 )
 
@@ -137,6 +142,7 @@ class ClinicalAuditIntegrityService:
         ensure_sms_governance_storage(db)
         ensure_campaign_economics_storage(db)
         ensure_specialist_payer_adjustment_storage(db)
+        ensure_specialist_service_lineage_storage(db)
         ensure_clinical_audit_integrity_storage(db)
         return db
 

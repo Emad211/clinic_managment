@@ -238,7 +238,23 @@ def detail(pid):
     # Medications remain descriptive; dosing recommendations belong to governed v2 output.
     drug_catalog = DrugCatalogRepository().all()
     medication_events = PatientRepository().get_medication_events(pid)
+    from src.adapters.sqlite.specialist_service_lineage_repo import (
+        SpecialistServiceLineageRepository,
+    )
     cockpit_service = PatientCockpitService()
+    service_lines = SpecialistServiceLineageRepository().current_lines_for_patient(
+        pid, limit=200
+    )
+    service_line_summary = {
+        "total": len(service_lines),
+        "visits": sum(1 for row in service_lines if row.get("item_type") == "VISIT"),
+        "injections": sum(
+            1 for row in service_lines if row.get("item_type") == "INJECTION"
+        ),
+        "procedures": sum(
+            1 for row in service_lines if row.get("item_type") == "PROCEDURE"
+        ),
+    }
     next_action = cockpit_service.next_action(
         clinical_v2=clinical_v2,
         followups=followups,
@@ -252,6 +268,7 @@ def detail(pid):
         labs=labs,
         followups=all_followups,
         medication_events=medication_events,
+        service_lines=service_lines,
     )
 
     from src.services.sms.governance_service import SmsGovernanceService
@@ -316,6 +333,7 @@ def detail(pid):
         prescriptions=prescriptions,
         next_action=next_action,
         care_timeline=care_timeline,
+        service_line_summary=service_line_summary,
         sms_consent=sms_consent,
     )
 

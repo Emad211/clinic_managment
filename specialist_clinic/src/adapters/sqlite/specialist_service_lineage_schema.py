@@ -70,7 +70,7 @@ def _backfill_legacy_manifests(db: sqlite3.Connection) -> None:
                 expected_line_count,expected_total_amount,evidence_code,
                 source_fingerprint,observed_at,created_at,created_by,
                 supersedes_snapshot_id,content_hash)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,NULL,?)""",
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (*payload.values(), _hash(payload)),
         )
 
