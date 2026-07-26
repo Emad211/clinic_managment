@@ -2,7 +2,7 @@
 
 Existing coarse roles are treated only as default grant bundles. Routes depend on a
 stable permission key, so per-user append-only overrides or future directory integration
-can change authorization without rewriting clinical APIs.
+can change authorization without rewriting APIs.
 """
 from __future__ import annotations
 
@@ -37,6 +37,14 @@ class Permission(StrEnum):
     CLINICAL_ALERT_VIEW = "clinical.alert.view"
     CLINICAL_ALERT_ACKNOWLEDGE = "clinical.alert.acknowledge"
     CLINICAL_ALERT_RESOLVE = "clinical.alert.resolve"
+    SMS_CAMPAIGN_VIEW = "sms.campaign.view"
+    SMS_CAMPAIGN_MANAGE = "sms.campaign.manage"
+    SMS_CAMPAIGN_SEND = "sms.campaign.send"
+    SMS_RECIPIENT_VIEW = "sms.recipient.view"
+    SMS_DELIVERY_RECONCILE = "sms.delivery.reconcile"
+    SMS_RESPONSE_RECORD = "sms.response.record"
+    SMS_ATTRIBUTION_MANAGE = "sms.attribution.manage"
+    SMS_APPROVAL_DECIDE = "sms.approval.decide"
     RULE_REVIEW_CLINICAL = "rule.review.clinical"
     RULE_REVIEW_TECHNICAL = "rule.review.technical"
     RULE_ACTIVATE = "rule.activate"
@@ -56,6 +64,11 @@ _ROLE_DEFAULTS = {
             Permission.FOLLOWUP_CONTACT_RECORD,
             Permission.CLINICAL_ALERT_VIEW,
             Permission.CLINICAL_ALERT_ACKNOWLEDGE,
+            Permission.SMS_CAMPAIGN_VIEW,
+            Permission.SMS_RECIPIENT_VIEW,
+            Permission.SMS_DELIVERY_RECONCILE,
+            Permission.SMS_RESPONSE_RECORD,
+            Permission.SMS_APPROVAL_DECIDE,
         }
     ),
 }
@@ -116,8 +129,6 @@ def resolved_permissions(user) -> frozenset[Permission]:
     grants = set(default_permissions(user["role"]))
     overrides = _current_overrides(int(user["id"]))
     if overrides is None:
-        # Failure to read revocations must never restore a role default. Authorization
-        # fails closed until storage health is restored.
         return frozenset()
     for permission, allowed in overrides.items():
         if allowed:
