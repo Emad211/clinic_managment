@@ -5,8 +5,14 @@ from typing import Optional
 
 from src.adapters import accounting_bridge
 from src.adapters.sqlite.patients_repo import PatientRepository
+from src.adapters.sqlite.specialist_enrollment_repo import (
+    SpecialistEnrollmentRepository,
+)
 from src.services.clinical_reconciliation_service import (
     ClinicalReconciliationService,
+)
+from src.services.specialist_enrollment_service import (
+    SpecialistProgramEnrollmentService,
 )
 
 
@@ -20,36 +26,23 @@ class PatientService:
         self.reconciliation = reconciliation or ClinicalReconciliationService()
 
     def search_accounting(self, query: str) -> list[dict]:
-        """Search accounting read-only and mark already-enrolled patients."""
+        """Search accounting read-only and mark immutable specialist enrollment."""
         results = accounting_bridge.search_patients(query)
+        enrollments = SpecialistEnrollmentRepository()
         for row in results:
-            national_id = row.get("national_id")
+            accounting_id = row.get("id")
             row["already_enrolled"] = bool(
-                national_id and self.repo.get_by_national_id(national_id)
+                accounting_id
+                and enrollments.get_by_accounting_patient(int(accounting_id))
             )
         return results
 
     def enroll_from_accounting(
         self, accounting_patient_id: int, enrolled_by: str
     ) -> Optional[int]:
-        """Pull one patient from accounting without ever writing its database."""
-        patient = accounting_bridge.get_patient_by_id(accounting_patient_id)
-        if not patient:
-            return None
-        national_id = patient.get("national_id")
-        if national_id:
-            existing = self.repo.get_by_national_id(national_id)
-            if existing:
-                return existing["id"]
-        return self.repo.create(
-            national_id=national_id,
-            accounting_patient_id=patient.get("id"),
-            full_name=patient.get("full_name") or "—",
-            phone_number=patient.get("phone_number"),
-            gender=patient.get("gender"),
-            birthdate=patient.get("birthdate"),
-            address=patient.get("address"),
-            enrolled_by=enrolled_by,
+        """Create the local mirror and immutable financial cutover atomically."""
+        return SpecialistProgramEnrollmentService().enroll_from_accounting(
+            int(accounting_patient_id), actor_username=enrolled_by
         )
 
     def enroll_manual(
@@ -63,22 +56,19 @@ class PatientService:
         address,
         enrolled_by,
     ) -> Optional[int]:
-        """Create a local patient and optionally link a read-only accounting match."""
+        """Create a local-only patient.
+
+        Manual enrollment never infers an accounting link from name or national ID.
+        Linking real accounting history must use the explicit accounting-enrollment
+        workflow so a specialist cutover is recorded at the same time.
+        """
         if national_id:
             existing = self.repo.get_by_national_id(national_id)
             if existing:
                 return existing["id"]
-            accounting_patient = accounting_bridge.get_patient_by_national_id(
-                national_id
-            )
-            accounting_patient_id = (
-                accounting_patient.get("id") if accounting_patient else None
-            )
-        else:
-            accounting_patient_id = None
         return self.repo.create(
             national_id=national_id or None,
-            accounting_patient_id=accounting_patient_id,
+            accounting_patient_id=None,
             full_name=full_name,
             phone_number=phone_number,
             gender=gender,
@@ -99,9 +89,6 @@ class PatientService:
         return {
             "patient": patient,
             "conditions": self.repo.get_patient_conditions(pid),
-            # Preserve the long-standing cockpit contract: only active medicines
-            # are shown. Historical rows are consumed by the reconciliation/fact
-            # repositories, not leaked into current prescription and UI flows.
             "medications": self.repo.get_medications(pid),
             "allergies": self.repo.get_allergies(pid),
             "reconciliation": self.reconciliation.patient_status(pid),
