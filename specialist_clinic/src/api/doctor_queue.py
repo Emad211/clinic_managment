@@ -1,7 +1,7 @@
 """Physician visit queue backed by read-only accounting invoices.
 
-Only the accounting invoice ID crosses the HTTP boundary. Patient identity, work date,
-and specialist enrollment are resolved again server-side before any clinical write.
+Only the accounting invoice ID and optional local appointment ID cross the HTTP boundary.
+Patient identity, work date, ownership and specialist enrollment are resolved server-side.
 """
 from flask import Blueprint, render_template, request, redirect, url_for, flash, g
 
@@ -30,6 +30,12 @@ def _queue_error(exc: Exception) -> None:
         "SPECIALIST_ENROLLMENT_REQUIRED": "بیمار هنوز وارد برنامهٔ تخصصی نشده است.",
         "SPECIALIST_VISIT_NOT_STARTED": "ابتدا ویزیت را از صف شروع کنید.",
         "SPECIALIST_VISIT_NOT_ACTIVE": "این Encounter دیگر فعال نیست.",
+        "SPECIALIST_APPOINTMENT_NOT_FOUND": "نوبت انتخاب‌شده پیدا نشد.",
+        "SPECIALIST_APPOINTMENT_PATIENT_MISMATCH": "نوبت انتخاب‌شده متعلق به این بیمار نیست.",
+        "SPECIALIST_APPOINTMENT_NOT_SCHEDULED": "نوبت انتخاب‌شده دیگر در وضعیت برنامه‌ریزی‌شده نیست.",
+        "SPECIALIST_APPOINTMENT_DATE_MISMATCH": "نوبت انتخاب‌شده متعلق به روز فعال صف نیست.",
+        "ENCOUNTER_ALREADY_LINKED_TO_ANOTHER_APPOINTMENT": "این Encounter قبلاً به نوبت دیگری متصل شده است.",
+        "APPOINTMENT_ALREADY_LINKED_TO_ANOTHER_ENCOUNTER": "این نوبت قبلاً به Encounter دیگری متصل شده است.",
     }
     flash(labels.get(str(exc), f"عملیات متوقف شد: {exc}"), "error")
 
@@ -47,10 +53,21 @@ def index():
 @login_required
 def start(invoice_id):
     try:
-        DoctorQueueService().start(
-            _snapshot(invoice_id), actor_username=g.user["username"]
+        visit = DoctorQueueService().start(
+            _snapshot(invoice_id),
+            actor_username=g.user["username"],
+            appointment_id=request.form.get("appointment_id", type=int),
         )
-        log_activity("visit_start", f"شروع ویزیتِ فاکتور #{invoice_id}")
+        appointment_text = (
+            f" appointment={visit['appointment_id']}"
+            if visit.get("appointment_id")
+            else " walk-in"
+        )
+        log_activity(
+            "visit_start",
+            f"شروع ویزیت فاکتور #{invoice_id}{appointment_text}",
+            patient_link_id=visit.get("patient_link_id"),
+        )
         return redirect(url_for("doctor_queue.visit", invoice_id=invoice_id))
     except Exception as exc:
         _queue_error(exc)
@@ -61,12 +78,16 @@ def start(invoice_id):
 @login_required
 def done(invoice_id):
     try:
-        DoctorQueueService().end_visit(
+        visit = DoctorQueueService().end_visit(
             _snapshot(invoice_id),
             g.user["username"],
             notes=request.form.get("notes") or None,
         )
-        log_activity("visit_done", f"پایانِ ویزیتِ فاکتور #{invoice_id}")
+        log_activity(
+            "visit_done",
+            f"پایان ویزیت فاکتور #{invoice_id} encounter={visit.get('encounter_id')}",
+            patient_link_id=visit.get("patient_link_id"),
+        )
     except Exception as exc:
         _queue_error(exc)
     return redirect(url_for("doctor_queue.index"))
@@ -158,6 +179,7 @@ def visit(invoice_id):
         work_date=snapshot["work_date"],
         encounter_id=snapshot["encounter_id"],
         journey_id=snapshot["journey_id"],
+        appointment_id=snapshot.get("appointment_id"),
         patient=profile["patient"],
         conditions=profile["conditions"],
         medications=profile["medications"],
