@@ -118,6 +118,23 @@
         <div class="kpi {% if crate >= 90 %}kpi-ok{% else %}kpi-warn{% endif %}"><div class="ic"><svg class="icon"><use href="#i-sigma"></use></svg></div><div class="num">{{ crate|fa_num }}٪</div><div class="label">نرخ وصول واقعی</div></div>
         <div class="kpi kpi-violet"><div class="ic"><svg class="icon"><use href="#i-megaphone"></use></svg></div><div class="num c-violet">{% if revenue.campaigns.safe_to_sum %}{{ revenue.campaigns.attributed_total|fa_num }}{% else %}—{% endif %}</div><div class="label">درآمد کمپین <span class="muted">{% if not revenue.campaigns.safe_to_sum %}(نیازمند اتصال Journey){% endif %}</span></div></div>
     </div>
+    {% if revenue.payer_review %}
+    <div class="alert-banner {% if revenue.payer_review.safe_to_sum %}alert-info{% else %}alert-warn{% endif %}" style="margin-top:var(--s3);">
+        <svg class="icon"><use href="#i-banknote"></use></svg>
+        <span>
+            بازبینی payer/adjustment:
+            {{ revenue.payer_review.reviewed_invoices|fa_num }} از
+            {{ revenue.payer_review.invoices|fa_num }} فاکتور.
+            {% if revenue.payer_review.safe_to_sum %}
+            خالص تعدیل‌شدهٔ بازبینی‌شده: {{ revenue.payer_review.adjusted_collected|fa_num }} تومان.
+            {% else %}
+            تا تکمیل {{ revenue.payer_review.pending_review|fa_num }} بازبینی، جمع خالص منتشر نمی‌شود.
+            {% endif %}
+            {% if permissions.get('financial.review.view') %}<a href="{{ url_for('finance_review.index') }}">بازکردن بازبینی وصول</a>{% endif %}
+        </span>
+    </div>
+    {% endif %}
+
     <div class="dashboard-billing-mix">
         <span class="muted">ترکیب صورتحساب:</span>
         <span class="badge badge-info">ویزیت: {{ revenue.total.visits|fa_num }}</span>

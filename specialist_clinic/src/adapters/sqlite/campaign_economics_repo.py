@@ -1088,9 +1088,38 @@ class CampaignEconomicsRepository:
                       observation.accounting_invoice_id,
                       observation.invoice_status,
                       observation.billed_amount,
-                      observation.collected_amount,
+                      observation.collected_amount AS gross_collected_amount,
                       observation.collection_state,
-                      observation.observed_at
+                      observation.observed_at,
+                      review.id AS financial_review_event_id,
+                      review.status AS financial_review_status,
+                      CASE WHEN review.status='REVIEWED'
+                                AND review.financial_observation_id=observation.id
+                           THEN 1 ELSE 0 END AS financial_review_ready,
+                      COALESCE((
+                          SELECT SUM(adjustment.signed_amount)
+                          FROM specialist_financial_adjustment_events adjustment
+                          WHERE adjustment.accounting_invoice_id=observation.accounting_invoice_id
+                            AND adjustment.financial_observation_id=observation.id
+                            AND adjustment.id=(
+                                SELECT head.id
+                                FROM specialist_financial_adjustment_events head
+                                WHERE head.adjustment_id=adjustment.adjustment_id
+                                ORDER BY head.recorded_at DESC,head.id DESC LIMIT 1
+                            ) AND adjustment.status='ACTIVE'
+                      ),0) AS adjustment_total,
+                      observation.collected_amount+COALESCE((
+                          SELECT SUM(adjustment.signed_amount)
+                          FROM specialist_financial_adjustment_events adjustment
+                          WHERE adjustment.accounting_invoice_id=observation.accounting_invoice_id
+                            AND adjustment.financial_observation_id=observation.id
+                            AND adjustment.id=(
+                                SELECT head.id
+                                FROM specialist_financial_adjustment_events head
+                                WHERE head.adjustment_id=adjustment.adjustment_id
+                                ORDER BY head.recorded_at DESC,head.id DESC LIMIT 1
+                            ) AND adjustment.status='ACTIVE'
+                      ),0) AS adjusted_collected_amount
                FROM campaign_journey_attribution_events attribution
                LEFT JOIN specialist_financial_observations observation
                  ON observation.journey_id=attribution.journey_id
@@ -1098,6 +1127,13 @@ class CampaignEconomicsRepository:
                     SELECT latest.id FROM specialist_financial_observations latest
                     WHERE latest.accounting_invoice_id=observation.accounting_invoice_id
                     ORDER BY latest.observed_at DESC,latest.id DESC LIMIT 1
+                )
+               LEFT JOIN specialist_financial_review_events review
+                 ON review.accounting_invoice_id=observation.accounting_invoice_id
+                AND review.id=(
+                    SELECT review_head.id FROM specialist_financial_review_events review_head
+                    WHERE review_head.accounting_invoice_id=observation.accounting_invoice_id
+                    ORDER BY review_head.recorded_at DESC,review_head.id DESC LIMIT 1
                 )
                WHERE attribution.campaign_id=?
                  AND attribution.id=(
@@ -1184,11 +1220,34 @@ class CampaignEconomicsRepository:
             row for row in attributions if int(row["response_current_positive"] or 0) != 1
         ]
         financial = self.financial_rows_for_campaign(campaign_id)
-        observed_journeys = {row["journey_id"] for row in financial if row["accounting_invoice_id"] is not None}
+        observed_journeys = {
+            row["journey_id"]
+            for row in financial
+            if row["accounting_invoice_id"] is not None
+        }
+        reviewed_journeys = {
+            row["journey_id"]
+            for row in financial
+            if int(row["financial_review_ready"] or 0) == 1
+        }
         attributed_journeys = {row["journey_id"] for row in trusted_attributions}
         billed = sum(int(row["billed_amount"] or 0) for row in financial)
-        collected = sum(int(row["collected_amount"] or 0) for row in financial)
-        invoices = sum(1 for row in financial if row["accounting_invoice_id"] is not None)
+        gross_collected = sum(
+            int(row["gross_collected_amount"] or 0) for row in financial
+        )
+        adjustment_total = sum(
+            int(row["adjustment_total"] or 0)
+            for row in financial
+            if int(row["financial_review_ready"] or 0) == 1
+        )
+        collected = sum(
+            int(row["adjusted_collected_amount"] or 0)
+            for row in financial
+            if int(row["financial_review_ready"] or 0) == 1
+        )
+        invoices = sum(
+            1 for row in financial if row["accounting_invoice_id"] is not None
+        )
         costs = self.cost_summary(campaign_id)
         direct_cost = costs["sms_cost"] + costs["wallet_liability"]
         net = collected - direct_cost
@@ -1201,10 +1260,12 @@ class CampaignEconomicsRepository:
             else messages["messages"] == 0
         )
         finance_complete = attributed_journeys <= observed_journeys
+        adjustment_review_complete = attributed_journeys <= reviewed_journeys
         safe_to_sum = bool(
             trusted_audience
             and cost_complete
             and finance_complete
+            and adjustment_review_complete
             and not stale_attributions
             and costs["wallet_review_required"] == 0
         )
@@ -1220,6 +1281,8 @@ class CampaignEconomicsRepository:
             measurement_status = "STALE_RESPONSE_ATTRIBUTION_REVIEW_REQUIRED"
         elif not finance_complete:
             measurement_status = "FINANCIAL_RECONCILIATION_INCOMPLETE"
+        elif not adjustment_review_complete:
+            measurement_status = "FINANCIAL_ADJUSTMENT_REVIEW_REQUIRED"
         elif costs["wallet_review_required"]:
             measurement_status = "WALLET_COMPENSATION_REVIEW_REQUIRED"
         elif not attributions:
@@ -1244,10 +1307,16 @@ class CampaignEconomicsRepository:
             },
             "finance": {
                 "billed": billed,
+                "gross_collected": gross_collected,
+                "adjustment_total": adjustment_total,
                 "collected": collected,
                 "invoices": invoices,
                 "observed_journeys": len(observed_journeys),
+                "reviewed_journeys": len(reviewed_journeys),
                 "missing_journeys": len(attributed_journeys - observed_journeys),
+                "pending_adjustment_review": len(
+                    attributed_journeys - reviewed_journeys
+                ),
             },
             "costs": {
                 **costs,

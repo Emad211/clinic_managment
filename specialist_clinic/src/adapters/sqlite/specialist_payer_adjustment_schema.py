@@ -101,14 +101,6 @@ def ensure_specialist_payer_adjustment_storage(db: sqlite3.Connection) -> None:
             created_at TEXT NOT NULL CHECK (datetime(created_at) IS NOT NULL),
             created_by TEXT NOT NULL CHECK (length(trim(created_by))>0),
             content_hash TEXT NOT NULL UNIQUE CHECK (length(content_hash)=64),
-            CHECK (
-                patient_cash_collected+patient_card_collected+
-                insurance_collected+unknown_collected=(
-                    SELECT collected_amount
-                    FROM specialist_financial_observations observation
-                    WHERE observation.id=financial_observation_id
-                )
-            ),
             FOREIGN KEY(financial_observation_id)
                 REFERENCES specialist_financial_observations(id),
             FOREIGN KEY(journey_id) REFERENCES care_journeys(journey_id),
@@ -232,6 +224,16 @@ def ensure_specialist_payer_adjustment_storage(db: sqlite3.Connection) -> None:
         CREATE TRIGGER IF NOT EXISTS trg_payer_breakdown_no_delete
         BEFORE DELETE ON specialist_payer_breakdown_observations
         BEGIN SELECT RAISE(ABORT,'payer breakdown observation cannot be deleted'); END;
+        CREATE TRIGGER IF NOT EXISTS trg_payer_breakdown_amount
+        BEFORE INSERT ON specialist_payer_breakdown_observations
+        WHEN NEW.patient_cash_collected+NEW.patient_card_collected+
+             NEW.insurance_collected+NEW.unknown_collected<>(
+                 SELECT observation.collected_amount
+                 FROM specialist_financial_observations observation
+                 WHERE observation.id=NEW.financial_observation_id
+             )
+        BEGIN SELECT RAISE(ABORT,'payer breakdown does not match collected amount'); END;
+
         CREATE TRIGGER IF NOT EXISTS trg_payer_breakdown_scope
         BEFORE INSERT ON specialist_payer_breakdown_observations
         WHEN NOT EXISTS (

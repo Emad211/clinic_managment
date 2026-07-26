@@ -394,6 +394,9 @@ def _run_migrations(db):
     from src.adapters.sqlite.campaign_economics_schema import (
         ensure_campaign_economics_storage,
     )
+    from src.adapters.sqlite.specialist_payer_adjustment_schema import (
+        ensure_specialist_payer_adjustment_storage,
+    )
     from src.adapters.sqlite.clinical_validation_schema import (
         ensure_clinical_validation_storage,
     )
@@ -410,6 +413,7 @@ def _run_migrations(db):
     ensure_specialist_financial_funnel_storage(db)
     ensure_sms_governance_storage(db)
     ensure_campaign_economics_storage(db)
+    ensure_specialist_payer_adjustment_storage(db)
     ensure_clinical_validation_storage(db)
     ensure_clinical_audit_integrity_storage(db)
     _ensure_clinical_engine_v2_storage(db)

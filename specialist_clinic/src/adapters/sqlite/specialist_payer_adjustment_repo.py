@@ -119,20 +119,34 @@ class SpecialistPayerAdjustmentRepository:
                 if commit:
                     db.commit()
                 return existing, False
-            collected_components = {
-                "patient_cash_collected": int(
-                    snapshot.get("patient_cash_collected") or 0
-                ),
-                "patient_card_collected": int(
-                    snapshot.get("patient_card_collected") or 0
-                ),
-                "insurance_collected": int(
-                    snapshot.get("insurance_collected") or 0
-                ),
-                "unknown_collected": int(
-                    snapshot.get("unknown_collected") or 0
-                ),
-            }
+            evidence_code = str(
+                snapshot.get("payer_breakdown_evidence") or ""
+            ).strip()
+            if evidence_code:
+                collected_components = {
+                    "patient_cash_collected": int(
+                        snapshot.get("patient_cash_collected") or 0
+                    ),
+                    "patient_card_collected": int(
+                        snapshot.get("patient_card_collected") or 0
+                    ),
+                    "insurance_collected": int(
+                        snapshot.get("insurance_collected") or 0
+                    ),
+                    "unknown_collected": int(
+                        snapshot.get("unknown_collected") or 0
+                    ),
+                }
+            else:
+                collected_components = {
+                    "patient_cash_collected": 0,
+                    "patient_card_collected": 0,
+                    "insurance_collected": 0,
+                    "unknown_collected": int(
+                        observation["collected_amount"] or 0
+                    ),
+                }
+                evidence_code = "LEGACY_UNAVAILABLE"
             if sum(collected_components.values()) != int(
                 observation["collected_amount"] or 0
             ):
@@ -160,10 +174,7 @@ class SpecialistPayerAdjustmentRepository:
                 "unknown_payment_type_count": int(
                     snapshot.get("unknown_payment_type_count") or 0
                 ),
-                "evidence_code": str(
-                    snapshot.get("payer_breakdown_evidence")
-                    or "LEGACY_UNAVAILABLE"
-                ),
+                "evidence_code": evidence_code,
                 "source_fingerprint": str(snapshot["source_fingerprint"]),
                 "observed_at": observed,
                 "created_at": created,
@@ -209,6 +220,7 @@ class SpecialistPayerAdjustmentRepository:
         *,
         observation: dict,
         actor_username: str = "system:financial-reconciliation",
+        force: bool = False,
         commit: bool = True,
     ) -> tuple[dict, bool]:
         db = self._db()
@@ -223,11 +235,30 @@ class SpecialistPayerAdjustmentRepository:
                 and int(current["financial_observation_id"])
                 == int(observation["id"])
                 and current["status"] in {"REVIEW_REQUIRED", "REVIEWED"}
+                and not force
             ):
                 if commit:
                     db.commit()
                 return current, False
             event_type = "REVIEW_REQUIRED" if current is None else "REOPENED"
+            if current is None:
+                review_key = (
+                    f"financial-review-required:"
+                    f"{observation['accounting_invoice_id']}:"
+                    f"{observation['id']}"
+                )
+            elif force:
+                review_key = (
+                    f"financial-review-reopen:"
+                    f"{observation['accounting_invoice_id']}:"
+                    f"{observation['id']}:after:{current['id']}"
+                )
+            else:
+                review_key = (
+                    f"financial-review-required:"
+                    f"{observation['accounting_invoice_id']}:"
+                    f"{observation['id']}"
+                )
             recorded = _time()
             payload = {
                 "accounting_invoice_id": int(
@@ -247,11 +278,7 @@ class SpecialistPayerAdjustmentRepository:
                     "Current accounting snapshot requires explicit refund/"
                     "chargeback/settlement review."
                 ),
-                "idempotency_key": (
-                    f"financial-review-required:"
-                    f"{observation['accounting_invoice_id']}:"
-                    f"{observation['id']}"
-                ),
+                "idempotency_key": review_key,
                 "supersedes_event_id": int(current["id"]) if current else None,
             }
             cursor = db.execute(
@@ -311,6 +338,15 @@ class SpecialistPayerAdjustmentRepository:
             if current["status"] == "REVIEWED":
                 return current
             active = self.active_adjustments(accounting_invoice_id)
+            stale_adjustments = [
+                row for row in active
+                if int(row["financial_observation_id"]) != int(observation["id"])
+            ]
+            if stale_adjustments:
+                raise SpecialistFinancialReviewValidationError(
+                    "active adjustments belong to an older financial observation; "
+                    "correct or reverse them before review"
+                )
             if with_adjustment and not active:
                 raise SpecialistFinancialReviewValidationError(
                     "review with adjustment requires an active adjustment"
@@ -641,6 +677,7 @@ class SpecialistPayerAdjustmentRepository:
                 self.ensure_review_required(
                     observation=observation,
                     actor_username=actor_username,
+                    force=True,
                     commit=False,
                 )
             row = db.execute(
@@ -667,8 +704,14 @@ class SpecialistPayerAdjustmentRepository:
         breakdown = self.payer_breakdown(int(observation["id"]))
         review = self.current_review(accounting_invoice_id)
         adjustments = self.active_adjustments(accounting_invoice_id)
+        stale_adjustments = [
+            row for row in adjustments
+            if int(row["financial_observation_id"]) != int(observation["id"])
+        ]
         adjustment_total = sum(
-            int(row["signed_amount"]) for row in adjustments
+            int(row["signed_amount"])
+            for row in adjustments
+            if int(row["financial_observation_id"]) == int(observation["id"])
         )
         adjusted = int(observation["collected_amount"] or 0) + adjustment_total
         current_review = bool(
@@ -679,6 +722,8 @@ class SpecialistPayerAdjustmentRepository:
         )
         if not breakdown:
             status = "PAYER_BREAKDOWN_MISSING"
+        elif stale_adjustments:
+            status = "ADJUSTMENT_OBSERVATION_STALE"
         elif not review or int(review["financial_observation_id"]) != int(
             observation["id"]
         ):
@@ -694,6 +739,7 @@ class SpecialistPayerAdjustmentRepository:
             "payer_breakdown": breakdown,
             "review": review,
             "adjustments": adjustments,
+            "stale_adjustments": stale_adjustments,
             "adjustment_total": adjustment_total,
             "gross_collected": int(observation["collected_amount"] or 0),
             "adjusted_collected": adjusted,

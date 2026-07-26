@@ -90,6 +90,9 @@
             <a class="nav-item {% if active_page=='patients' %}active{% endif %}" href="{{ url_for('patients.list_patients') }}"{% if active_page=='patients' %} aria-current="page"{% endif %}><svg class="icon"><use href="#i-users"></use></svg> بیماران</a>
             <a class="nav-item {% if active_page=='appointments' %}active{% endif %}" href="{{ url_for('appointments.list_appointments') }}"{% if active_page=='appointments' %} aria-current="page"{% endif %}><svg class="icon"><use href="#i-calendar"></use></svg> نوبت‌دهی</a>
             <a class="nav-item {% if active_page=='sms' %}active{% endif %}" href="{{ url_for('sms.campaigns') }}"{% if active_page=='sms' %} aria-current="page"{% endif %}><svg class="icon"><use href="#i-megaphone"></use></svg> هاب پیام</a>
+            {% if permissions.get('financial.review.view') %}
+            <a class="nav-item {% if active_page=='finance_review' %}active{% endif %}" href="{{ url_for('finance_review.index') }}"{% if active_page=='finance_review' %} aria-current="page"{% endif %}><svg class="icon"><use href="#i-banknote"></use></svg> بازبینی وصول</a>
+            {% endif %}
             {% if permissions.get('rule.review.clinical') or permissions.get('rule.review.technical') or permissions.get('rule.activate') or permissions.get('security.grant.manage') %}
             <div class="nav-section">سیستم</div>
             {% if permissions.get('rule.review.clinical') or permissions.get('rule.review.technical') or permissions.get('rule.activate') %}

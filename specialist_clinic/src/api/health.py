@@ -42,6 +42,9 @@ from src.adapters.sqlite.sms_governance_schema import (
 from src.adapters.sqlite.campaign_economics_schema import (
     ensure_campaign_economics_storage,
 )
+from src.adapters.sqlite.specialist_payer_adjustment_schema import (
+    ensure_specialist_payer_adjustment_storage,
+)
 from src.adapters.sqlite.clinical_validation_schema import (
     ensure_clinical_validation_storage,
 )
@@ -97,6 +100,9 @@ _REQUIRED_TABLES = frozenset(
         "campaign_journey_attribution_events",
         "campaign_wallet_grant_events",
         "campaign_message_cost_events",
+        "specialist_payer_breakdown_observations",
+        "specialist_financial_adjustment_events",
+        "specialist_financial_review_events",
     }
 )
 
@@ -112,6 +118,7 @@ def _readiness_checks() -> dict[str, bool]:
     ensure_specialist_financial_funnel_storage(db)
     ensure_sms_governance_storage(db)
     ensure_campaign_economics_storage(db)
+    ensure_specialist_payer_adjustment_storage(db)
     ensure_clinical_validation_storage(db)
     ensure_clinical_audit_integrity_storage(db)
 
@@ -187,6 +194,13 @@ def _readiness_checks() -> dict[str, bool]:
            LIMIT 1"""
     ).fetchone()
     campaign_economics_ok = inconsistent_campaign is None
+    payer_orphan = db.execute(
+        """SELECT 1 FROM specialist_payer_breakdown_observations payer
+           LEFT JOIN specialist_financial_observations observation
+             ON observation.id=payer.financial_observation_id
+           WHERE observation.id IS NULL LIMIT 1"""
+    ).fetchone()
+    payer_adjustment_storage_ok = payer_orphan is None
 
     return {
         "database": integrity_ok,
@@ -198,6 +212,7 @@ def _readiness_checks() -> dict[str, bool]:
         "finance_projection": finance_projection_ok,
         "sms_governance": sms_governance_ok,
         "campaign_economics": campaign_economics_ok,
+        "payer_adjustments": payer_adjustment_storage_ok,
     }
 
 
@@ -221,6 +236,7 @@ def ready():
             "finance_projection": False,
             "sms_governance": False,
             "campaign_economics": False,
+            "payer_adjustments": False,
         }
     is_ready = all(checks.values())
     # Public readiness discloses no table, patient, path, mode, secret or exception.
@@ -246,6 +262,7 @@ def details():
             "finance_projection": False,
             "sms_governance": False,
             "campaign_economics": False,
+            "payer_adjustments": False,
         }
         error = "health_check_failed"
     is_ready = all(checks.values())

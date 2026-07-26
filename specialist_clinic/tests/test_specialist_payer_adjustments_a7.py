@@ -134,20 +134,28 @@ def a7_app(tmp_path, monkeypatch):
 
 def _enroll_and_complete(invoice_id: int = 101) -> tuple[int, dict]:
     from src.adapters.sqlite.care_journey_repo import CareJourneyRepository
+    from src.common.utils import iran_now
     from src.services.patient_service import PatientService
 
     patient_id = int(PatientService().enroll_from_accounting(1, "pytest-a7"))
+    # The effective timestamp is captured after enrollment, so it is never before the
+    # specialist cutover. Repository recorded_at is generated afterwards, so the same
+    # timestamp also cannot be in the future. Equal effective times preserve event order
+    # through the append-only event IDs without relying on wall-clock sleeps.
+    start = iran_now()
+    active = start
+    completed = start
     repo = CareJourneyRepository()
     encounter = repo.create_invoice_encounter_once(
         patient_link_id=patient_id,
         accounting_invoice_id=invoice_id,
         actor_username="pytest-a7",
-        effective_at="2026-07-26 11:00:00",
+        effective_at=start,
     )
     repo.start_encounter(
         encounter["encounter_id"],
         actor_username="pytest-a7",
-        effective_at="2026-07-26 11:05:00",
+        effective_at=active,
     )
     repo.attribute_invoice_once(
         accounting_invoice_id=invoice_id,
@@ -155,12 +163,12 @@ def _enroll_and_complete(invoice_id: int = 101) -> tuple[int, dict]:
         patient_link_id=patient_id,
         encounter_id=encounter["encounter_id"],
         actor_username="pytest-a7",
-        effective_at="2026-07-26 11:05:00",
+        effective_at=active,
     )
     repo.complete_encounter(
         encounter["encounter_id"],
         actor_username="pytest-a7",
-        effective_at="2026-07-26 11:30:00",
+        effective_at=completed,
         note="Completed A7 service.",
     )
     return patient_id, encounter
