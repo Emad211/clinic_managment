@@ -1,41 +1,62 @@
 {% extends "base.html" %}
 {% block title %}صفِ پزشک{% endblock %}
-{% macro snap(p) %}<input type="hidden" name="national_id" value="{{ p.national_id or '' }}"><input type="hidden" name="full_name" value="{{ p.full_name or '' }}"><input type="hidden" name="work_date" value="{{ p.work_date or '' }}">{% endmacro %}
 {% block content %}
 <div class="topbar">
-    <h1><svg class="icon icon-lg"><use href="#i-stethoscope"></use></svg> صفِ پزشک <span class="muted text-sm">{{ work_date|jalali_date }}</span></h1>
+    <div>
+        <h1><svg class="icon icon-lg"><use href="#i-stethoscope"></use></svg> صفِ پزشک <span class="muted text-sm">{{ work_date|jalali_date }}</span></h1>
+        <div class="muted text-sm">شروع ویزیت، حضور واقعی Encounter را ثبت می‌کند. اتصال نوبت فقط با انتخاب صریح انجام می‌شود.</div>
+    </div>
     <a class="btn btn-ghost" href="{{ url_for('doctor_queue.index') }}">تازه‌سازی</a>
 </div>
 <p class="page-intro">
-    بیمارانِ دارای فاکتورِ ویزیتِ بازِ امروز (زنده از پذیرش). «پایانِ ویزیت» فقط وضعیتِ پنلِ پزشک را ثبت می‌کند و
-    <b>فاکتورِ حسابداری را نمی‌بندد</b> — بستنِ فاکتور همچنان کارِ پذیرش است.
+    بیماران دارای فاکتور ویزیت باز امروز، زنده و فقط‌خواندنی از پذیرش. «پایان ویزیت» Encounter تخصصی را تکمیل می‌کند؛
+    <b>فاکتور حسابداری را نمی‌بندد</b> و وصول همچنان از حسابداری خوانده می‌شود.
 </p>
 
-<!-- در نوبت -->
 <div class="card">
     <div class="section-title"><svg class="icon"><use href="#i-list-checks"></use></svg> در نوبت <span class="badge badge-warn">{{ waiting|length|fa_num }}</span></div>
     {% if waiting %}
     <div class="table-wrap"><table>
-        <thead><tr><th>بیمار</th><th>زمانِ پذیرش</th><th>اقدام</th></tr></thead>
+        <thead><tr><th>بیمار</th><th>زمان پذیرش</th><th>نوبت تخصصی</th><th>اقدام</th></tr></thead>
         <tbody>
         {% for p in waiting %}
         <tr>
             <td>
                 <strong>{{ p.full_name }}</strong>
                 <div class="muted text-xs nums">{{ p.national_id|fa_num }}</div>
-                {% if p.enrolled %}<span class="badge badge-info text-xs">مزمن</span>{% else %}<span class="badge badge-muted text-xs">معمولی</span>{% endif %}
-                {% if p.status=='in_progress' %}<span class="badge badge-violet text-xs">در حالِ ویزیت</span>{% endif %}
+                {% if p.enrolled %}<span class="badge badge-info text-xs">عضو برنامه تخصصی</span>{% else %}<span class="badge badge-muted text-xs">ثبت‌نشده</span>{% endif %}
+                {% if p.status=='in_progress' %}<span class="badge badge-violet text-xs">در حال ویزیت</span>{% endif %}
             </td>
             <td class="nums">{{ p.opened_at|jalali }}</td>
             <td>
+                {% if p.linked_appointment_id %}
+                    <span class="badge badge-ok">متصل به نوبت #{{ p.linked_appointment_id|fa_num }}</span>
+                {% elif p.appointment_options %}
+                    <div class="muted text-xs">هنگام شروع، نوبت واقعی را انتخاب کنید.</div>
+                    {% for appointment in p.appointment_options %}
+                        <div class="text-sm nums">#{{ appointment.id|fa_num }} · {{ appointment.scheduled_at|jalali }}</div>
+                    {% endfor %}
+                {% else %}
+                    <span class="badge badge-muted">بدون نوبت همان روز / Walk-in</span>
+                {% endif %}
+            </td>
+            <td>
                 <div class="flex items-center gap-2 wrap">
                     {% if p.enrolled %}
-                    <form class="m-0" method="post" action="{{ url_for('doctor_queue.start', invoice_id=p.invoice_id) }}">
-                        {{ snap(p) }}<button class="btn btn-sm btn-ok" type="submit"><svg class="icon icon-sm"><use href="#i-stethoscope"></use></svg> ویزیت</button>
+                    <form class="m-0 flex items-center gap-2 wrap" method="post" action="{{ url_for('doctor_queue.start', invoice_id=p.invoice_id) }}">
+                        {% if not p.linked_appointment_id and p.appointment_options %}
+                        <select name="appointment_id" aria-label="نوبت مرتبط">
+                            <option value="">Walk-in / بدون اتصال نوبت</option>
+                            {% for appointment in p.appointment_options %}
+                            <option value="{{ appointment.id }}">نوبت #{{ appointment.id|fa_num }} — {{ appointment.scheduled_at|jalali }}</option>
+                            {% endfor %}
+                        </select>
+                        {% endif %}
+                        <button class="btn btn-sm btn-ok" type="submit"><svg class="icon icon-sm"><use href="#i-stethoscope"></use></svg> شروع و ثبت حضور</button>
                     </form>
-                    {% else %}<span class="muted text-xs">ثبت‌نشده در پرونده</span>{% endif %}
+                    {% else %}<span class="muted text-xs">ابتدا بیمار را وارد برنامه تخصصی کنید.</span>{% endif %}
                     <form class="m-0" method="post" action="{{ url_for('doctor_queue.done', invoice_id=p.invoice_id) }}">
-                        {{ snap(p) }}<button class="btn btn-sm btn-ghost" type="submit"><svg class="icon icon-sm"><use href="#i-check"></use></svg> پایانِ ویزیت</button>
+                        <button class="btn btn-sm btn-ghost" type="submit"><svg class="icon icon-sm"><use href="#i-check"></use></svg> پایان ویزیت</button>
                     </form>
                 </div>
             </td>
@@ -43,21 +64,24 @@
         {% endfor %}
         </tbody>
     </table></div>
-    {% else %}<div class="empty"><svg class="icon"><use href="#i-check"></use></svg><div>صف خالی است — فاکتورِ ویزیتِ بازی نیست.</div></div>{% endif %}
+    {% else %}<div class="empty"><svg class="icon"><use href="#i-check"></use></svg><div>صف خالی است — فاکتور ویزیت بازی نیست.</div></div>{% endif %}
 </div>
 
-<!-- انجام‌شده -->
 <div class="card">
-    <div class="section-title"><svg class="icon"><use href="#i-check"></use></svg> انجام‌شدهٔ امروز <span class="badge badge-ok">{{ done|length|fa_num }}</span></div>
+    <div class="section-title"><svg class="icon"><use href="#i-check"></use></svg> انجام‌شده امروز <span class="badge badge-ok">{{ done|length|fa_num }}</span></div>
     {% if done %}
     <div class="table-wrap"><table>
-        <thead><tr><th>بیمار</th><th>توسط</th></tr></thead>
+        <thead><tr><th>بیمار</th><th>اتصال نوبت</th><th>توسط</th></tr></thead>
         <tbody>
         {% for p in done %}
-        <tr><td>{{ p.full_name }} <span class="muted text-xs nums">{{ p.national_id|fa_num }}</span></td><td class="muted text-sm">{{ p.done_by or '—' }}</td></tr>
+        <tr>
+            <td>{{ p.full_name }} <span class="muted text-xs nums">{{ p.national_id|fa_num }}</span></td>
+            <td>{% if p.linked_appointment_id %}<span class="badge badge-ok">#{{ p.linked_appointment_id|fa_num }}</span>{% else %}<span class="muted">Walk-in</span>{% endif %}</td>
+            <td class="muted text-sm">{{ p.done_by or '—' }}</td>
+        </tr>
         {% endfor %}
         </tbody>
     </table></div>
-    {% else %}<div class="empty"><div>هنوز ویزیتی انجام‌نشده.</div></div>{% endif %}
+    {% else %}<div class="empty"><div>هنوز ویزیتی انجام نشده است.</div></div>{% endif %}
 </div>
 {% endblock %}
