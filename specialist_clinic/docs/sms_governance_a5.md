@@ -40,6 +40,10 @@ CLINIC_MEDIANA_API_KEY
 
 مقدار خام secret در UI نمایش داده نمی‌شود. SQLite فقط برای development/test fallback است.
 
+## Gate انتشار
+
+Gate محدود A5 خروجی کامل pytest را همراه JUnit نگه می‌دارد، `webapp` را با `main` مقایسه می‌کند و فقط exact tested tree را commit می‌کند.
+
 ## مرز مالی
 
 این tranche هیچ درآمد یا ROI را از provider acceptance نتیجه‌گیری نمی‌کند. campaign attribution تا اتصال صریح campaign→Journey→Encounter→Invoice fail-closed باقی می‌ماند.
