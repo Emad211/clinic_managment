@@ -4,8 +4,10 @@ The accounting database is opened with SQLite ``mode=ro`` and ``query_only=ON``.
 No schema migration, status update, payment write, or sidecar creation is allowed here.
 
 A7 additionally separates only what the accounting rows explicitly prove: cash, card,
-insurance, and unknown paid amounts.  An unpaid amount is not assigned to patient or
-insurer unless accounting carries such evidence.
+insurance, and unknown paid amounts. An unpaid amount is not assigned to patient or
+insurer unless accounting carries such evidence. Legacy schemas that do not yet expose
+payment types remain readable, but all paid amounts are classified as unknown rather
+than guessed.
 """
 from __future__ import annotations
 
@@ -41,6 +43,13 @@ def _connect() -> sqlite3.Connection:
         raise AccountingInvoiceUnavailable(str(exc)) from exc
 
 
+def _table_columns(connection: sqlite3.Connection, table: str) -> set[str]:
+    return {
+        str(row["name"])
+        for row in connection.execute(f"PRAGMA table_info({table})").fetchall()
+    }
+
+
 def _assert_schema(connection: sqlite3.Connection) -> None:
     required = {
         "invoices",
@@ -60,6 +69,20 @@ def _assert_schema(connection: sqlite3.Connection) -> None:
         raise AccountingInvoiceSchemaError(
             "missing accounting invoice tables: " + ",".join(missing)
         )
+
+    required_columns = {
+        "invoices": {"id", "patient_id", "status", "work_date", "opened_at", "closed_at", "total_amount"},
+        "visits": {"id", "invoice_id", "price"},
+        "injections": {"id", "invoice_id", "total_price"},
+        "procedures": {"id", "invoice_id", "price"},
+        "invoice_item_payments": {"invoice_id", "item_type", "item_id", "is_paid"},
+    }
+    for table, expected in required_columns.items():
+        absent = sorted(expected - _table_columns(connection, table))
+        if absent:
+            raise AccountingInvoiceSchemaError(
+                f"missing accounting columns in {table}: " + ",".join(absent)
+            )
 
 
 def is_available() -> bool:
@@ -81,7 +104,13 @@ def _category(
     table: str,
     amount_column: str,
     item_type: str,
+    payment_type_available: bool,
 ) -> dict[str, int]:
+    payment_type = (
+        "lower(trim(COALESCE(payment.payment_type,'')))"
+        if payment_type_available
+        else "''"
+    )
     row = connection.execute(
         f"""SELECT COUNT(*) AS item_count,
                     COALESCE(SUM(item.{amount_column}),0) AS billed,
@@ -94,21 +123,19 @@ def _category(
                     COALESCE(SUM(CASE WHEN COALESCE(payment.is_paid,0)<>1
                         THEN 1 ELSE 0 END),0) AS unpaid_count,
                     COALESCE(SUM(CASE WHEN payment.is_paid=1
-                        AND lower(trim(COALESCE(payment.payment_type,'')))='cash'
+                        AND {payment_type}='cash'
                         THEN item.{amount_column} ELSE 0 END),0) AS cash_collected,
                     COALESCE(SUM(CASE WHEN payment.is_paid=1
-                        AND lower(trim(COALESCE(payment.payment_type,'')))='card'
+                        AND {payment_type}='card'
                         THEN item.{amount_column} ELSE 0 END),0) AS card_collected,
                     COALESCE(SUM(CASE WHEN payment.is_paid=1
-                        AND lower(trim(COALESCE(payment.payment_type,'')))='insurance'
+                        AND {payment_type}='insurance'
                         THEN item.{amount_column} ELSE 0 END),0) AS insurance_collected,
                     COALESCE(SUM(CASE WHEN payment.is_paid=1
-                        AND lower(trim(COALESCE(payment.payment_type,'')))
-                            NOT IN ('cash','card','insurance')
+                        AND {payment_type} NOT IN ('cash','card','insurance')
                         THEN item.{amount_column} ELSE 0 END),0) AS unknown_collected,
                     COALESCE(SUM(CASE WHEN payment.is_paid=1
-                        AND lower(trim(COALESCE(payment.payment_type,'')))
-                            NOT IN ('cash','card','insurance')
+                        AND {payment_type} NOT IN ('cash','card','insurance')
                         THEN 1 ELSE 0 END),0) AS unknown_type_count
              FROM {table} item
              LEFT JOIN invoice_item_payments payment
@@ -140,11 +167,24 @@ def invoice_financial_snapshot(accounting_invoice_id: int) -> dict[str, Any]:
     connection = _connect()
     try:
         _assert_schema(connection)
+        invoice_columns = _table_columns(connection, "invoices")
+        payment_columns = _table_columns(connection, "invoice_item_payments")
+        insurance_select = (
+            "insurance_type" if "insurance_type" in invoice_columns
+            else "NULL AS insurance_type"
+        )
+        supplementary_select = (
+            "supplementary_insurance"
+            if "supplementary_insurance" in invoice_columns
+            else "NULL AS supplementary_insurance"
+        )
+        payment_type_available = "payment_type" in payment_columns
+
         invoice = connection.execute(
-            """SELECT id AS invoice_id,patient_id,status,work_date,
-                      opened_at,closed_at,total_amount,insurance_type,
-                      supplementary_insurance
-               FROM invoices WHERE id=?""",
+            f"""SELECT id AS invoice_id,patient_id,status,work_date,
+                       opened_at,closed_at,total_amount,{insurance_select},
+                       {supplementary_select}
+                FROM invoices WHERE id=?""",
             (invoice_id,),
         ).fetchone()
         if not invoice:
@@ -156,6 +196,7 @@ def invoice_financial_snapshot(accounting_invoice_id: int) -> dict[str, Any]:
             table="visits",
             amount_column="price",
             item_type="visit",
+            payment_type_available=payment_type_available,
         )
         injections = _category(
             connection,
@@ -163,6 +204,7 @@ def invoice_financial_snapshot(accounting_invoice_id: int) -> dict[str, Any]:
             table="injections",
             amount_column="total_price",
             item_type="injection",
+            payment_type_available=payment_type_available,
         )
         procedures = _category(
             connection,
@@ -170,6 +212,7 @@ def invoice_financial_snapshot(accounting_invoice_id: int) -> dict[str, Any]:
             table="procedures",
             amount_column="price",
             item_type="procedure",
+            payment_type_available=payment_type_available,
         )
         categories = (visits, injections, procedures)
         billed = sum(category["billed"] for category in categories)
@@ -177,12 +220,8 @@ def invoice_financial_snapshot(accounting_invoice_id: int) -> dict[str, Any]:
         item_count = sum(category["item_count"] for category in categories)
         paid_count = sum(category["paid_count"] for category in categories)
         unpaid_count = sum(category["unpaid_count"] for category in categories)
-        cash_collected = sum(
-            category["cash_collected"] for category in categories
-        )
-        card_collected = sum(
-            category["card_collected"] for category in categories
-        )
+        cash_collected = sum(category["cash_collected"] for category in categories)
+        card_collected = sum(category["card_collected"] for category in categories)
         insurance_collected = sum(
             category["insurance_collected"] for category in categories
         )
@@ -249,7 +288,11 @@ def invoice_financial_snapshot(accounting_invoice_id: int) -> dict[str, Any]:
             "unknown_collected": unknown_collected,
             "unpaid_amount": unpaid_amount,
             "unknown_payment_type_count": unknown_type_count,
-            "payer_breakdown_evidence": "ACCOUNTING_ITEM_PAYMENT_TYPE_V1",
+            "payer_breakdown_evidence": (
+                "ACCOUNTING_ITEM_PAYMENT_TYPE_V1"
+                if payment_type_available
+                else "LEGACY_UNAVAILABLE"
+            ),
         }
         canonical = json.dumps(
             payload,
