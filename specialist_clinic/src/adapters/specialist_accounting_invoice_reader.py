@@ -2,6 +2,10 @@
 
 The accounting database is opened with SQLite ``mode=ro`` and ``query_only=ON``.
 No schema migration, status update, payment write, or sidecar creation is allowed here.
+
+A7 additionally separates only what the accounting rows explicitly prove: cash, card,
+insurance, and unknown paid amounts.  An unpaid amount is not assigned to patient or
+insurer unless accounting carries such evidence.
 """
 from __future__ import annotations
 
@@ -80,29 +84,52 @@ def _category(
 ) -> dict[str, int]:
     row = connection.execute(
         f"""SELECT COUNT(*) AS item_count,
-                   COALESCE(SUM(item.{amount_column}),0) AS billed,
-                   COALESCE(SUM(CASE WHEN EXISTS (
-                       SELECT 1 FROM invoice_item_payments payment
-                       WHERE payment.invoice_id=item.invoice_id
-                         AND payment.item_type=?
-                         AND payment.item_id=item.id
-                         AND payment.is_paid=1
-                   ) THEN item.{amount_column} ELSE 0 END),0) AS collected,
-                   COALESCE(SUM(CASE WHEN EXISTS (
-                       SELECT 1 FROM invoice_item_payments payment
-                       WHERE payment.invoice_id=item.invoice_id
-                         AND payment.item_type=?
-                         AND payment.item_id=item.id
-                         AND payment.is_paid=1
-                   ) THEN 1 ELSE 0 END),0) AS paid_count
-            FROM {table} item WHERE item.invoice_id=?""",
-        (item_type, item_type, int(invoice_id)),
+                    COALESCE(SUM(item.{amount_column}),0) AS billed,
+                    COALESCE(SUM(CASE WHEN payment.is_paid=1
+                        THEN item.{amount_column} ELSE 0 END),0) AS collected,
+                    COALESCE(SUM(CASE WHEN payment.is_paid=1
+                        THEN 1 ELSE 0 END),0) AS paid_count,
+                    COALESCE(SUM(CASE WHEN COALESCE(payment.is_paid,0)<>1
+                        THEN item.{amount_column} ELSE 0 END),0) AS unpaid,
+                    COALESCE(SUM(CASE WHEN COALESCE(payment.is_paid,0)<>1
+                        THEN 1 ELSE 0 END),0) AS unpaid_count,
+                    COALESCE(SUM(CASE WHEN payment.is_paid=1
+                        AND lower(trim(COALESCE(payment.payment_type,'')))='cash'
+                        THEN item.{amount_column} ELSE 0 END),0) AS cash_collected,
+                    COALESCE(SUM(CASE WHEN payment.is_paid=1
+                        AND lower(trim(COALESCE(payment.payment_type,'')))='card'
+                        THEN item.{amount_column} ELSE 0 END),0) AS card_collected,
+                    COALESCE(SUM(CASE WHEN payment.is_paid=1
+                        AND lower(trim(COALESCE(payment.payment_type,'')))='insurance'
+                        THEN item.{amount_column} ELSE 0 END),0) AS insurance_collected,
+                    COALESCE(SUM(CASE WHEN payment.is_paid=1
+                        AND lower(trim(COALESCE(payment.payment_type,'')))
+                            NOT IN ('cash','card','insurance')
+                        THEN item.{amount_column} ELSE 0 END),0) AS unknown_collected,
+                    COALESCE(SUM(CASE WHEN payment.is_paid=1
+                        AND lower(trim(COALESCE(payment.payment_type,'')))
+                            NOT IN ('cash','card','insurance')
+                        THEN 1 ELSE 0 END),0) AS unknown_type_count
+             FROM {table} item
+             LEFT JOIN invoice_item_payments payment
+               ON payment.invoice_id=item.invoice_id
+              AND payment.item_type=?
+              AND payment.item_id=item.id
+             WHERE item.invoice_id=?""",
+        (item_type, int(invoice_id)),
     ).fetchone()
     return {
         "item_count": int(row["item_count"] or 0),
         "billed": int(row["billed"] or 0),
         "collected": int(row["collected"] or 0),
         "paid_count": int(row["paid_count"] or 0),
+        "unpaid": int(row["unpaid"] or 0),
+        "unpaid_count": int(row["unpaid_count"] or 0),
+        "cash_collected": int(row["cash_collected"] or 0),
+        "card_collected": int(row["card_collected"] or 0),
+        "insurance_collected": int(row["insurance_collected"] or 0),
+        "unknown_collected": int(row["unknown_collected"] or 0),
+        "unknown_type_count": int(row["unknown_type_count"] or 0),
     }
 
 
@@ -114,8 +141,9 @@ def invoice_financial_snapshot(accounting_invoice_id: int) -> dict[str, Any]:
     try:
         _assert_schema(connection)
         invoice = connection.execute(
-            """SELECT id AS invoice_id, patient_id, status, work_date,
-                      opened_at, closed_at, total_amount
+            """SELECT id AS invoice_id,patient_id,status,work_date,
+                      opened_at,closed_at,total_amount,insurance_type,
+                      supplementary_insurance
                FROM invoices WHERE id=?""",
             (invoice_id,),
         ).fetchone()
@@ -143,23 +171,39 @@ def invoice_financial_snapshot(accounting_invoice_id: int) -> dict[str, Any]:
             amount_column="price",
             item_type="procedure",
         )
+        categories = (visits, injections, procedures)
+        billed = sum(category["billed"] for category in categories)
+        collected = sum(category["collected"] for category in categories)
+        item_count = sum(category["item_count"] for category in categories)
+        paid_count = sum(category["paid_count"] for category in categories)
+        unpaid_count = sum(category["unpaid_count"] for category in categories)
+        cash_collected = sum(
+            category["cash_collected"] for category in categories
+        )
+        card_collected = sum(
+            category["card_collected"] for category in categories
+        )
+        insurance_collected = sum(
+            category["insurance_collected"] for category in categories
+        )
+        unknown_collected = sum(
+            category["unknown_collected"] for category in categories
+        )
+        unpaid_amount = sum(category["unpaid"] for category in categories)
+        unknown_type_count = sum(
+            category["unknown_type_count"] for category in categories
+        )
+        if (
+            cash_collected
+            + card_collected
+            + insurance_collected
+            + unknown_collected
+            != collected
+        ):
+            raise AccountingInvoiceSchemaError(
+                "payer breakdown does not equal collected amount"
+            )
 
-        billed = visits["billed"] + injections["billed"] + procedures["billed"]
-        collected = (
-            visits["collected"]
-            + injections["collected"]
-            + procedures["collected"]
-        )
-        item_count = (
-            visits["item_count"]
-            + injections["item_count"]
-            + procedures["item_count"]
-        )
-        paid_count = (
-            visits["paid_count"]
-            + injections["paid_count"]
-            + procedures["paid_count"]
-        )
         status = str(invoice["status"] or "").strip().lower()
         if status != "closed":
             collection_state = "WAITING_FOR_INVOICE_CLOSURE"
@@ -179,6 +223,8 @@ def invoice_financial_snapshot(accounting_invoice_id: int) -> dict[str, Any]:
             "work_date": invoice["work_date"],
             "opened_at": invoice["opened_at"],
             "closed_at": invoice["closed_at"],
+            "insurance_type": invoice["insurance_type"],
+            "supplementary_insurance": invoice["supplementary_insurance"],
             "source_total_amount": (
                 int(invoice["total_amount"])
                 if invoice["total_amount"] is not None
@@ -194,8 +240,16 @@ def invoice_financial_snapshot(accounting_invoice_id: int) -> dict[str, Any]:
             "collected_amount": collected,
             "billable_item_count": item_count,
             "paid_item_count": paid_count,
+            "unpaid_item_count": unpaid_count,
             "collection_state": collection_state,
             "payment_evidence": "ITEM_PAID_FLAGS",
+            "patient_cash_collected": cash_collected,
+            "patient_card_collected": card_collected,
+            "insurance_collected": insurance_collected,
+            "unknown_collected": unknown_collected,
+            "unpaid_amount": unpaid_amount,
+            "unknown_payment_type_count": unknown_type_count,
+            "payer_breakdown_evidence": "ACCOUNTING_ITEM_PAYMENT_TYPE_V1",
         }
         canonical = json.dumps(
             payload,
