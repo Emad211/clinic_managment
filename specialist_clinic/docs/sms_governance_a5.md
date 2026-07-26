@@ -44,6 +44,8 @@ CLINIC_MEDIANA_API_KEY
 
 هر Flask app ابتدا تنظیمات پایه را snapshot و سپس overrideهای همان instance را اعمال می‌کند. readerهای حسابداری مسیر را از `current_app` می‌گیرند؛ بنابراین test app یا process دیگر نمی‌تواند با تغییر `Config` سراسری مسیر حسابداری این instance را آلوده کند.
 
+Test fixtureهایی که عمداً دیتابیس حسابداری را جابه‌جا می‌کنند باید همان `current_app.config['ACCOUNTING_DB_PATH']` را صریح تغییر دهند؛ تغییر کلاس global برای app ساخته‌شده معتبر نیست.
+
 ## Gate انتشار
 
 Gate محدود A5 خروجی کامل pytest را همراه JUnit نگه می‌دارد، regression واقعی A4 یعنی `test_specialist_attendance_collection.py` را اجرا می‌کند، قراردادهای قدیمی تست را بدون عقب‌گرد منطق محصول به `Accepted ≠ Delivered` و consent append-only منتقل می‌کند، `webapp` را با `main` مقایسه می‌کند و فقط exact tested tree را commit می‌کند.
