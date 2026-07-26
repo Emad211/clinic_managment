@@ -36,6 +36,9 @@ from src.adapters.sqlite.specialist_financial_funnel_schema import (
 from src.adapters.sqlite.specialist_financial_funnel_repo import (
     SpecialistFinancialFunnelRepository,
 )
+from src.adapters.sqlite.sms_governance_schema import (
+    ensure_sms_governance_storage,
+)
 from src.adapters.sqlite.clinical_validation_schema import (
     ensure_clinical_validation_storage,
 )
@@ -81,6 +84,9 @@ _REQUIRED_TABLES = frozenset(
         "encounter_appointment_links",
         "encounter_appointment_link_events",
         "specialist_financial_observations",
+        "sms_consent_events",
+        "sms_message_governance",
+        "sms_delivery_events",
     }
 )
 
@@ -94,6 +100,7 @@ def _readiness_checks() -> dict[str, bool]:
     ensure_clinical_task_contract_storage(db)
     ensure_clinical_alert_storage(db)
     ensure_specialist_financial_funnel_storage(db)
+    ensure_sms_governance_storage(db)
     ensure_clinical_validation_storage(db)
     ensure_clinical_audit_integrity_storage(db)
 
@@ -143,6 +150,14 @@ def _readiness_checks() -> dict[str, bool]:
     ).missing_scope_count() == 0
     finance_scope = SpecialistFinancialFunnelRepository(db).reconciliation_scope()
     finance_projection_ok = finance_scope["missing_observations"] == 0
+    ungoverned_messages = db.execute(
+        """SELECT COUNT(*) AS count FROM sms_messages message
+           WHERE NOT EXISTS (
+               SELECT 1 FROM sms_message_governance governance
+               WHERE governance.message_id=message.id
+           )"""
+    ).fetchone()["count"]
+    sms_governance_ok = int(ungoverned_messages or 0) == 0
 
     return {
         "database": integrity_ok,
@@ -152,6 +167,7 @@ def _readiness_checks() -> dict[str, bool]:
         "worker": worker_ok,
         "revenue_scope": revenue_scope_ok,
         "finance_projection": finance_projection_ok,
+        "sms_governance": sms_governance_ok,
     }
 
 
@@ -173,6 +189,7 @@ def ready():
             "worker": False,
             "revenue_scope": False,
             "finance_projection": False,
+            "sms_governance": False,
         }
     is_ready = all(checks.values())
     # Public readiness discloses no table, patient, path, mode, secret or exception.
@@ -195,6 +212,8 @@ def details():
             "audit": False,
             "worker": False,
             "revenue_scope": False,
+            "finance_projection": False,
+            "sms_governance": False,
         }
         error = "health_check_failed"
     is_ready = all(checks.values())

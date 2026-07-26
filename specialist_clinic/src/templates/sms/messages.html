@@ -16,7 +16,8 @@
 
 <section class="message-report-summary" aria-label="خلاصه گزارش فعلی">
     <div class="message-summary-item"><span>نتیجه فعلی</span><strong>{{ summary.total|fa_num }}</strong></div>
-    <div class="message-summary-item is-ok"><span>تحویل‌شده</span><strong>{{ summary.delivered|fa_num }}</strong></div>
+    <div class="message-summary-item is-info"><span>پذیرفته‌شده توسط پنل</span><strong>{{ summary.accepted|fa_num }}</strong></div>
+    <div class="message-summary-item is-ok"><span>تحویل‌شده به گیرنده</span><strong>{{ summary.delivered|fa_num }}</strong></div>
     <div class="message-summary-item is-info"><span>در جریان</span><strong>{{ summary.in_flight|fa_num }}</strong></div>
     <div class="message-summary-item is-danger"><span>ناموفق</span><strong>{{ summary.failed|fa_num }}</strong></div>
     <div class="message-summary-item is-warn"><span>نیازمند بررسی</span><strong>{{ summary.unknown|fa_num }}</strong></div>
@@ -82,6 +83,7 @@
                         {% if m.patient_name %}<div class="muted text-xs">{{ m.patient_name }}</div>{% endif %}
                     </td>
                     <td>
+                        {% if m.sms_purpose=='CARE' %}<span class="badge badge-info">مراقبتی</span>{% elif m.sms_purpose=='MARKETING' %}<span class="badge badge-violet">بازاریابی</span>{% else %}<span class="badge badge-muted">قدیمی/طبقه‌بندی‌نشده</span>{% endif %}
                         {% if m.source_type=='engagement' %}<span class="badge badge-info">یادآوری</span>
                         {% elif m.source_type=='campaign' %}<span class="badge badge-violet">کمپین</span>
                         {% else %}<span class="badge badge-muted">پیام تکی</span>{% endif %}

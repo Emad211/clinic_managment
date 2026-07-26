@@ -79,7 +79,7 @@ def _insert_legacy_consent(
 def _backfill_consent(db: sqlite3.Connection) -> None:
     rows = db.execute(
         """SELECT id, COALESCE(sms_opt_out,0) AS sms_opt_out,
-                  COALESCE(enrolled_at, created_at,
+                  COALESCE(enrolled_at, updated_at,
                            datetime('now','+3 hours','+30 minutes')) AS effective_at
            FROM patient_links"""
     ).fetchall()
@@ -353,6 +353,17 @@ def ensure_sms_governance_storage(db: sqlite3.Connection) -> None:
               AND consent.decision=NEW.consent_decision
         )
         BEGIN SELECT RAISE(ABORT, 'SMS governance consent scope mismatch'); END;
+
+        CREATE TRIGGER IF NOT EXISTS trg_sms_message_submission_governance
+        BEFORE UPDATE OF delivery_status ON sms_messages
+        WHEN NEW.delivery_status='Submitting' AND NOT EXISTS (
+            SELECT 1 FROM sms_message_governance governance
+            WHERE governance.message_id=NEW.id
+              AND governance.allowed_at_submission=1
+              AND governance.consent_decision='GRANTED'
+              AND governance.provider_name=NEW.provider
+        )
+        BEGIN SELECT RAISE(ABORT, 'SMS submission requires governed consent'); END;
 
         CREATE TRIGGER IF NOT EXISTS trg_sms_delivery_no_update
         BEFORE UPDATE ON sms_delivery_events

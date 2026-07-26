@@ -1,6 +1,6 @@
 from flask import Blueprint, render_template, request, redirect, url_for, flash, g
 from src.api.auth import login_required, manager_required
-from src.security.permissions import Permission, has_permission
+from src.security.permissions import Permission, has_permission, permission_required
 from src.adapters.sqlite.core import get_db
 from src.adapters.sqlite.sms_repo import SmsRepository
 from src.services.auth_service import AuthService
@@ -223,18 +223,27 @@ def clinical_validation_action(action):
 
 @bp.route("/settings", methods=["GET", "POST"])
 @manager_required
+@permission_required(Permission.SMS_SETTINGS_MANAGE)
 def settings():
     repo = SmsRepository()
     if request.method == "POST":
+        def _update_sms_secret(setting_key: str, form_key: str) -> None:
+            clear = request.form.get(f"clear_{form_key}") == "1"
+            supplied = str(request.form.get(form_key) or "").strip()
+            if clear:
+                repo.set_setting(setting_key, "")
+            elif supplied:
+                repo.set_setting(setting_key, supplied)
+
         # Active panel selector (kavenegar | mediana).
         prov = (request.form.get('sms_provider', 'kavenegar') or 'kavenegar').strip().lower()
         repo.set_setting('sms_provider', prov if prov in ('kavenegar', 'mediana') else 'kavenegar')
         # Kavenegar (primary panel).
-        repo.set_setting('kavenegar_api_key', request.form.get('kavenegar_api_key', '').strip())
+        _update_sms_secret('kavenegar_api_key', 'kavenegar_api_key')
         repo.set_setting('kavenegar_sender', request.form.get('kavenegar_sender', '').strip())
         repo.set_setting('kavenegar_timeout', str(min(max(request.form.get('kavenegar_timeout', type=int) or 45, 10), 120)))
         # Mediana (legacy/fallback panel).
-        repo.set_setting('mediana_api_key', request.form.get('mediana_api_key', '').strip())
+        _update_sms_secret('mediana_api_key', 'mediana_api_key')
         repo.set_setting('mediana_sending_number', request.form.get('mediana_sending_number', '').strip())
         repo.set_setting('mediana_message_type', request.form.get('mediana_message_type', 'PromotionalToCustomers').strip())
         repo.set_setting('mediana_timeout', str(min(max(request.form.get('mediana_timeout', type=int) or 45, 10), 120)))
@@ -253,12 +262,15 @@ def settings():
         repo.set_setting('public_base_url', request.form.get('public_base_url', '').strip())
         flash("تنظیمات ذخیره شد", "success")
         return redirect(url_for("manager.settings"))
+    from src.services.sms.secret_resolver import masked_secret
     data = {
         'sms_provider': repo.get_setting('sms_provider', 'kavenegar'),
-        'kavenegar_api_key': repo.get_setting('kavenegar_api_key', ''),
+        'kavenegar_api_key_set': bool(masked_secret('kavenegar')),
+        'kavenegar_api_key_masked': masked_secret('kavenegar'),
         'kavenegar_sender': repo.get_setting('kavenegar_sender', ''),
         'kavenegar_timeout': repo.get_setting('kavenegar_timeout', '45'),
-        'mediana_api_key': repo.get_setting('mediana_api_key', ''),
+        'mediana_api_key_set': bool(masked_secret('mediana')),
+        'mediana_api_key_masked': masked_secret('mediana'),
         'mediana_sending_number': repo.get_setting('mediana_sending_number', ''),
         'mediana_message_type': repo.get_setting('mediana_message_type', 'PromotionalToCustomers'),
         'mediana_timeout': repo.get_setting('mediana_timeout', '45'),

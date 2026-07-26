@@ -224,11 +224,12 @@ def specialist_app(tmp_dir):
 # ---------------------------------------------------------------------------
 
 def _set_acc_path(path: str):
-    """Hot-swap Config.ACCOUNTING_DB_PATH so the next bridge call uses the new path."""
+    """Hot-swap the exact active test application's read-only accounting path."""
     os.environ["ACCOUNTING_DB_PATH"] = path
     import src.config.settings as cfg_mod
     cfg_mod.Config.ACCOUNTING_DB_PATH = path
-
+    from flask import current_app
+    current_app.config["ACCOUNTING_DB_PATH"] = path
 
 def _enroll_patient(national_id, full_name, phone_number=None, sms_opt_out=0):
     """Insert a patient_links row via the Flask-managed get_db() connection.

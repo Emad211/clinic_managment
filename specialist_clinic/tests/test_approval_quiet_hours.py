@@ -236,7 +236,7 @@ class TestApproveQuietHoursGate:
             f"got {_counts(pid)}")
         m = dict(db.execute(
             "SELECT * FROM sms_messages WHERE patient_link_id=?", (pid,)).fetchone())
-        assert m["status"] == "sent" and m["provider_msgid"] == "SIMULATED", (
+        assert m["status"] == "accepted" and m["provider_msgid"] == "SIMULATED", (
             "override send must go through the simulated NullProvider, not a live panel")
 
     # (c) -------------------------------------------------------------------

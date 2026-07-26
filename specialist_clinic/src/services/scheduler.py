@@ -298,14 +298,26 @@ class Scheduler:
         from src.adapters.sqlite.sms_repo import SmsRepository
         from src.services.sms.campaign_service import run_campaign
 
+        failures = 0
         for campaign in SmsRepository().due_campaigns():
-            run_campaign(campaign["id"])
+            result = run_campaign(campaign["id"])
+            failures += int(bool(result.get("error")))
+        if failures:
+            logger.error("[scheduler] due campaigns failed=%s", failures)
+            return False
         return True
 
     def _reconcile_sms_delivery(self):
         from src.services.sms.delivery_service import DeliveryService
 
-        DeliveryService().reconcile()
+        result = DeliveryService().reconcile()
+        if result["errors"]:
+            logger.error(
+                "[scheduler] SMS delivery reconciliation errors=%s providers=%s",
+                result["errors"],
+                result.get("provider_errors") or {},
+            )
+            return False
         return True
 
     @staticmethod

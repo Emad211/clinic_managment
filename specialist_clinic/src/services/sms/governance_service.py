@@ -54,15 +54,26 @@ class SmsGovernanceService:
         self.repository = repository or SmsGovernanceRepository()
 
     def summary(self, patient_link_id: int) -> dict[str, dict]:
-        rows = self.repository.consent_summary(patient_link_id)
-        return {
-            purpose: {
+        output: dict[str, dict] = {}
+        for purpose in ("CARE", "MARKETING"):
+            row = self.repository.current_consent(patient_link_id, purpose)
+            if row is None:
+                decision = "GRANTED" if purpose == "CARE" else "REVOKED"
+                row = {
+                    "id": None,
+                    "patient_link_id": int(patient_link_id),
+                    "purpose": purpose,
+                    "decision": decision,
+                    "source_code": "NOT_RECORDED_CONSERVATIVE_DEFAULT",
+                    "recorded_at": None,
+                    "reason_code": None,
+                }
+            output[purpose] = {
                 **row,
                 "allowed": row["decision"] == "GRANTED",
                 "label": self.PURPOSE_LABELS[purpose],
             }
-            for purpose, row in rows.items()
-        }
+        return output
 
     def decision(self, patient_link_id: int, purpose: str) -> SmsConsentDecision:
         normalized = str(purpose or "").strip().upper()

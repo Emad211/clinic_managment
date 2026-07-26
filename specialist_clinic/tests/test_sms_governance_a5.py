@@ -36,7 +36,10 @@ def _patient(db, national_id: str = "SMSA5001", phone: str = "09121234567") -> i
         (national_id, phone),
     )
     db.commit()
-    return int(cursor.lastrowid)
+    patient_id = int(cursor.lastrowid)
+    from src.adapters.sqlite.sms_governance_repo import SmsGovernanceRepository
+    SmsGovernanceRepository(db).ensure_patient_defaults(patient_id)
+    return patient_id
 
 
 def _login(client, username="admin", password="admin"):
@@ -259,9 +262,9 @@ def test_production_secret_never_falls_back_to_plaintext_db(sms_a5_app, monkeypa
 
 
 def test_staff_permissions_allow_operations_but_not_campaign_mutation(sms_a5_app):
-    from src.adapters.sqlite.auth_repo import AuthRepository
+    from src.services.auth_service import AuthService
 
-    AuthRepository().create_user(
+    assert AuthService().register_user(
         "sms-staff",
         "password123",
         role="staff",

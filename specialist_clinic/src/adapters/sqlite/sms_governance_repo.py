@@ -80,7 +80,7 @@ class SmsGovernanceRepository:
         db = self._db()
         patient = db.execute(
             """SELECT id, COALESCE(sms_opt_out,0) AS sms_opt_out,
-                      COALESCE(enrolled_at, created_at,
+                      COALESCE(enrolled_at, updated_at,
                                datetime('now','+3 hours','+30 minutes')) AS effective_at
                FROM patient_links WHERE id=?""",
             (int(patient_link_id),),

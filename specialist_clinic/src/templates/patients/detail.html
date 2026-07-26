@@ -68,6 +68,46 @@
 <div class="alert-banner alert-warn"><svg class="icon"><use href="#i-alert"></use></svg> آلرژی‌ها: {% for a in allergies %}{{ a.substance }}{% if a.severity %} ({{ a.severity }}){% endif %}{% if not loop.last %} · {% endif %}{% endfor %}</div>
 {% endif %}
 
+<section class="card card-soft" id="sms-consent" aria-labelledby="sms-consent-title">
+    <div class="section-title">
+        <svg class="icon"><use href="#i-bell"></use></svg>
+        <div>
+            <div id="sms-consent-title">رضایت پیامک</div>
+            <div class="section-sub">پیام مراقبتی و پیام بازاریابی دو تصمیم مستقل و تاریخچه‌دار هستند.</div>
+        </div>
+    </div>
+    <div class="grid grid-2 gap-3">
+        {% for purpose in ['CARE','MARKETING'] %}
+        {% set consent = sms_consent.get(purpose) %}
+        <div class="card" style="margin:0;">
+            <div class="flex items-center gap-2 wrap" style="justify-content:space-between;">
+                <div>
+                    <b>{{ consent.label }}</b>
+                    <div class="muted text-xs">آخرین تغییر: {{ consent.recorded_at|jalali }}</div>
+                </div>
+                <span class="badge {% if consent.allowed %}badge-ok{% else %}badge-danger{% endif %}">
+                    {{ 'مجاز' if consent.allowed else 'لغوشده' }}
+                </span>
+            </div>
+            <div class="muted text-xs" style="margin-top:var(--s2);">منبع: {{ consent.source_code }}{% if consent.reason_code %} · دلیل: {{ consent.reason_code }}{% endif %}</div>
+            {% if permissions.get('sms.consent.manage') %}
+            <form method="post" action="{{ url_for('patients.sms_consent_update', pid=patient.id) }}" style="margin-top:var(--s3);">
+                <input type="hidden" name="purpose" value="{{ purpose }}">
+                <input type="hidden" name="decision" value="{{ 'REVOKED' if consent.allowed else 'GRANTED' }}">
+                <input type="hidden" name="expected_current_event_id" value="{{ consent.id }}">
+                <div class="row">
+                    <div class="fld" style="flex:1;"><label>یادداشت</label><input name="note" placeholder="درخواست بیمار یا مستند تغییر"></div>
+                    <button class="btn btn-sm {% if consent.allowed %}btn-danger{% else %}btn-ok{% endif %}" type="submit">
+                        {{ 'لغو این نوع پیام' if consent.allowed else 'ثبت رضایت این نوع پیام' }}
+                    </button>
+                </div>
+            </form>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+</section>
+
 <!-- ============ TAB BAR ============ -->
 <div class="tabbar" role="tablist" aria-label="بخش‌های پرونده بیمار">
     <button type="button" role="tab" id="tab-cockpit" aria-controls="pane-cockpit" aria-selected="true" tabindex="0" data-tab="cockpit" class="active"><svg class="icon"><use href="#i-stethoscope"></use></svg> نمای کلی{% if v2_action_count.value %} <span class="pill pill-danger">{{ v2_action_count.value|fa_num }}</span>{% endif %}</button>

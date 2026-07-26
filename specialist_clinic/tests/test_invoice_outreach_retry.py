@@ -139,11 +139,12 @@ def _acc_add_invoice(conn, patient_id, status="closed", total=1000,
 
 
 def _set_acc_path(path: str):
-    """hot-swap آدرس DB حسابداری بدون reload ماژول."""
+    """Hot-swap the exact active test application's read-only accounting path."""
     os.environ["ACCOUNTING_DB_PATH"] = path
     import src.config.settings as cfg_mod
     cfg_mod.Config.ACCOUNTING_DB_PATH = path
-
+    from flask import current_app
+    current_app.config["ACCOUNTING_DB_PATH"] = path
 
 def _enroll_patient(national_id, full_name, phone_number=None, sms_opt_out=0):
     """یک ردیف patient_links در DB جاری می‌سازد (داخل app_context)."""

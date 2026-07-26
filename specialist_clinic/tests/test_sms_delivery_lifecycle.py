@@ -28,6 +28,8 @@ def _patient(db, phone="09110000000"):
         (phone,),
     ).lastrowid
     db.commit()
+    from src.adapters.sqlite.sms_governance_repo import SmsGovernanceRepository
+    SmsGovernanceRepository(db).ensure_patient_defaults(int(patient_id))
     return int(patient_id)
 
 
@@ -168,9 +170,9 @@ def test_delivery_summary_matches_filtered_rows():
         "total": 6,
         "accepted": 1,
         "delivered": 1,
-        "in_flight": 3,
+        "in_flight": 2,
         "failed": 1,
-        "unknown": 1,
+        "unknown": 2,
     }
 
 

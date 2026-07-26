@@ -141,6 +141,7 @@ def a4_app(tmp_path):
         {
             "TESTING": True,
             "DATABASE_PATH": str(tmp_path / "specialist.db"),
+            "ACCOUNTING_DB_PATH": str(accounting),
             "BACKUP_FOLDER": str(tmp_path / "backups"),
             "SECRET_KEY": "a4-test",
         }
@@ -384,6 +385,7 @@ def test_financial_observation_rows_are_append_only(a4_app):
 def test_observation_cannot_be_recorded_before_encounter_completion(a4_app):
     from src.adapters import specialist_accounting_invoice_reader
 
+    Config.ACCOUNTING_DB_PATH = str(a4_app[1])
     patient_id, appointment_id = _enroll_and_appointment()
     DoctorQueueService(work_date_provider=lambda: "2026-07-26").start(
         {"accounting_invoice_id": 20},

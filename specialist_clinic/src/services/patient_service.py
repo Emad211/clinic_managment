@@ -66,16 +66,33 @@ class PatientService:
             existing = self.repo.get_by_national_id(national_id)
             if existing:
                 return existing["id"]
-        return self.repo.create(
-            national_id=national_id or None,
-            accounting_patient_id=None,
-            full_name=full_name,
-            phone_number=phone_number,
-            gender=gender,
-            birthdate=birthdate,
-            address=address,
-            enrolled_by=enrolled_by,
-        )
+        from src.adapters.sqlite.core import get_db
+        from src.adapters.sqlite.sms_governance_repo import SmsGovernanceRepository
+
+        db = get_db()
+        db.execute("BEGIN IMMEDIATE")
+        try:
+            patient_id = self.repo.create(
+                national_id=national_id or None,
+                accounting_patient_id=None,
+                full_name=full_name,
+                phone_number=phone_number,
+                gender=gender,
+                birthdate=birthdate,
+                address=address,
+                enrolled_by=enrolled_by,
+                commit=False,
+            )
+            SmsGovernanceRepository(db).ensure_patient_defaults(
+                patient_id,
+                actor_username=str(enrolled_by or "manual-enrollment"),
+                commit=False,
+            )
+            db.commit()
+            return patient_id
+        except Exception:
+            db.rollback()
+            raise
 
     def get_full_profile(self, pid: int) -> Optional[dict]:
         patient = self.repo.get_by_id(pid)

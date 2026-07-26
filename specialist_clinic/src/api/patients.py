@@ -1,5 +1,6 @@
 from flask import Blueprint, render_template, request, redirect, url_for, flash, g, jsonify
 from src.api.auth import login_required
+from src.security.permissions import Permission, permission_required
 from src.services.patient_service import PatientService
 from src.adapters.sqlite.patients_repo import PatientRepository
 from src.adapters.sqlite.vitals_repo import VitalsRepository, VITAL_TYPES
@@ -253,6 +254,9 @@ def detail(pid):
         medication_events=medication_events,
     )
 
+    from src.services.sms.governance_service import SmsGovernanceService
+    sms_consent = SmsGovernanceService().summary(pid)
+
     wallet_repo = WalletRepository()
     wallet_balance = wallet_repo.get_balance(pid)
     wallet_tx = wallet_repo.transactions(pid, limit=20)
@@ -312,6 +316,7 @@ def detail(pid):
         prescriptions=prescriptions,
         next_action=next_action,
         care_timeline=care_timeline,
+        sms_consent=sms_consent,
     )
 
 
@@ -320,6 +325,47 @@ def detail(pid):
 def analytics(pid):
     """Merged into the unified patient cockpit; kept as a stable deep-link to the trends tab."""
     return redirect(url_for("patients.detail", pid=pid) + "#trends")
+
+
+@bp.post("/<int:pid>/sms-consent")
+@permission_required(Permission.SMS_CONSENT_MANAGE)
+def sms_consent_update(pid: int):
+    import uuid
+    from src.services.sms.governance_service import (
+        SmsGovernanceConflict,
+        SmsGovernanceService,
+        SmsGovernanceValidationError,
+    )
+
+    purpose = str(request.form.get("purpose") or "").strip().upper()
+    decision = str(request.form.get("decision") or "").strip().upper()
+    expected = request.form.get("expected_current_event_id", type=int)
+    try:
+        event = SmsGovernanceService().record(
+            patient_link_id=pid,
+            purpose=purpose,
+            decision=decision,
+            actor_username=g.user["username"],
+            actor_user_id=int(g.user["id"]),
+            source_code="CLINIC_STAFF_RECORDED",
+            idempotency_key=(
+                request.form.get("idempotency_key")
+                or f"sms-consent:{pid}:{purpose}:{uuid.uuid4().hex}"
+            ),
+            reason_code=request.form.get("reason_code") or "PATIENT_REQUEST",
+            note=request.form.get("note"),
+            expected_current_event_id=expected,
+        )
+    except (LookupError, SmsGovernanceConflict, SmsGovernanceValidationError) as exc:
+        flash(f"تغییر رضایت پیامک ثبت نشد: {exc}", "error")
+    else:
+        log_activity(
+            "sms_consent_record",
+            f"purpose={purpose} decision={decision} event={event['id']}",
+            patient_link_id=pid,
+        )
+        flash("وضعیت رضایت پیامک به‌صورت افزایشی ثبت شد.", "success")
+    return redirect(url_for("patients.detail", pid=pid) + "#sms-consent")
 
 
 @bp.route("/<int:pid>/wallet/adjust", methods=["POST"])

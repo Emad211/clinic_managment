@@ -193,7 +193,8 @@ def test_closed_invoice_to_approved_simulated_sms_is_idempotent(e2e_app):
         (patient_id,),
     ).fetchone()
     assert message["provider_msgid"] == "SIMULATED"
-    assert message["status"] == "sent"
+    assert message["status"] == "accepted"
+    assert message["delivery_status"] == "Accepted"
 
 
 def test_reconciled_severe_bp_to_presentation_and_decision(e2e_app):
