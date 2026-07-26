@@ -42,7 +42,7 @@ CLINIC_MEDIANA_API_KEY
 
 ## Gate انتشار
 
-Gate محدود A5 خروجی کامل pytest را همراه JUnit نگه می‌دارد، `webapp` را با `main` مقایسه می‌کند و فقط exact tested tree را commit می‌کند.
+Gate محدود A5 خروجی کامل pytest را همراه JUnit نگه می‌دارد، regression واقعی A4 یعنی `test_specialist_attendance_collection.py` را اجرا می‌کند، `webapp` را با `main` مقایسه می‌کند و فقط exact tested tree را commit می‌کند.
 
 ## مرز مالی
 
