@@ -47,8 +47,28 @@ replace_once(
 ''',
 )
 
-# A delivered message was necessarily provider-accepted; direct cost completeness must
-# include both currently accepted/in-flight messages and terminal delivered messages.
+# Provider acceptance is a historical submission fact, not the current delivery status.
+replace_once(
+    "specialist_clinic/src/adapters/sqlite/campaign_economics_repo.py",
+    '''            "accepted": 0,
+            "delivered": 0,
+''',
+    '''            "accepted": 0,
+            "provider_accepted": 0,
+            "delivered": 0,
+''',
+)
+replace_once(
+    "specialist_clinic/src/adapters/sqlite/campaign_economics_repo.py",
+    '''        for row in rows:
+            status = str(
+''',
+    '''        for row in rows:
+            if str(row.get("status") or "") in {"accepted", "delivered", "sent"}:
+                result["provider_accepted"] += 1
+            status = str(
+''',
+)
 replace_once(
     "specialist_clinic/src/adapters/sqlite/campaign_economics_repo.py",
     '''        cost_complete = (
@@ -57,22 +77,12 @@ replace_once(
             else True
         )
 ''',
-    '''        provider_accepted_messages = messages["accepted"] + messages["delivered"]
+    '''        provider_accepted_messages = messages["provider_accepted"]
         cost_complete = (
             provider_accepted_messages == costs["costed_messages"]
             if provider_accepted_messages
             else True
         )
-''',
-)
-replace_once(
-    "specialist_clinic/src/adapters/sqlite/campaign_economics_repo.py",
-    '''            "messages": messages,
-''',
-    '''            "messages": {
-                **messages,
-                "provider_accepted": provider_accepted_messages,
-            },
 ''',
 )
 
