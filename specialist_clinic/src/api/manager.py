@@ -247,6 +247,20 @@ def settings():
         repo.set_setting('mediana_sending_number', request.form.get('mediana_sending_number', '').strip())
         repo.set_setting('mediana_message_type', request.form.get('mediana_message_type', 'PromotionalToCustomers').strip())
         repo.set_setting('mediana_timeout', str(min(max(request.form.get('mediana_timeout', type=int) or 45, 10), 120)))
+        for provider_name in ('kavenegar', 'mediana'):
+            field = f'sms_cost_per_part_{provider_name}_toman'
+            raw = str(request.form.get(field) or '').strip()
+            if not raw:
+                repo.set_setting(field, '')
+                continue
+            try:
+                amount = int(raw)
+            except ValueError:
+                amount = -1
+            if amount < 0:
+                flash('هزینه هر بخش پیامک باید عدد صحیح نامنفی باشد.', 'error')
+                return redirect(url_for('manager.settings'))
+            repo.set_setting(field, str(amount))
         repo.set_setting('reminder_template', request.form.get('reminder_template', '').strip())
         # Free-prescription header / stamp settings (printed on app-issued non-insurance scripts).
         repo.set_setting('clinic_name', request.form.get('clinic_name', '').strip())
@@ -274,6 +288,12 @@ def settings():
         'mediana_sending_number': repo.get_setting('mediana_sending_number', ''),
         'mediana_message_type': repo.get_setting('mediana_message_type', 'PromotionalToCustomers'),
         'mediana_timeout': repo.get_setting('mediana_timeout', '45'),
+        'sms_cost_per_part_kavenegar_toman': repo.get_setting(
+            'sms_cost_per_part_kavenegar_toman', ''
+        ),
+        'sms_cost_per_part_mediana_toman': repo.get_setting(
+            'sms_cost_per_part_mediana_toman', ''
+        ),
         'reminder_template': repo.get_setting('reminder_template',
             'سلام {name} عزیز، یادآوری نوبت شما در کلینیک تخصصی. لطفاً در زمان مقرر مراجعه فرمایید.'),
         # Free-prescription header / stamp.

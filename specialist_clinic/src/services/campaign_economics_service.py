@@ -135,6 +135,7 @@ class CampaignEconomicsService:
         *,
         execution_id: str,
         actor_username: str,
+        commit: bool = True,
     ) -> dict:
         existing = self.repository.audience_snapshot(campaign_id)
         if existing:
@@ -154,7 +155,15 @@ class CampaignEconomicsService:
         excluded: list[dict] = []
         for candidate in candidates:
             patient_id = int(candidate["id"])
-            consent = governance.summary(patient_id)[purpose]
+            consent = governance.repository.ensure_patient_defaults(
+                patient_id,
+                actor_username=actor_username,
+                commit=False,
+            )[purpose]
+            consent = {
+                **consent,
+                "allowed": consent["decision"] == "GRANTED",
+            }
             try:
                 phone = canonicalize_iran_mobile(candidate.get("phone_number"))
             except ValueError:
@@ -244,6 +253,7 @@ class CampaignEconomicsService:
             random_seed=seed,
             members=members,
             actor_username=actor_username,
+            commit=commit,
         )
 
     def prepare_execution(
@@ -257,50 +267,90 @@ class CampaignEconomicsService:
             raise LookupError("campaign not found")
         current = self.repository.current_lifecycle(campaign_id)
         if current is None:
-            current = self.register_campaign(campaign_id, actor_username=actor_username)
+            current = self.register_campaign(
+                campaign_id, actor_username=actor_username
+            )
         if current["status"] in {"COMPLETED", "CANCELLED"}:
             raise CampaignExecutionError(
                 f"campaign is terminal: {current['status']}"
             )
-        if current["status"] not in {"DRAFT", "SCHEDULED", "FAILED", "ENTERED_IN_ERROR"}:
-            if current["status"] in {"PREPARING", "SENDING", "AWAITING_DELIVERY"}:
-                execution_id = str(current["execution_id"])
-            else:
+        snapshot = self.repository.audience_snapshot(campaign_id)
+        if snapshot and snapshot.get("source_code") != "NEW_FROZEN":
+            raise CampaignExecutionError("LEGACY_AUDIENCE_NOT_EXECUTABLE")
+
+        if current["status"] in {"SENDING", "AWAITING_DELIVERY"}:
+            if not snapshot or snapshot["execution_id"] != current["execution_id"]:
                 raise CampaignExecutionError(
-                    f"campaign cannot be prepared from {current['status']}"
+                    "ACTIVE_CAMPAIGN_AUDIENCE_MISSING_OR_MISMATCHED"
                 )
-        else:
-            snapshot = self.repository.audience_snapshot(campaign_id)
-            execution_id = (
-                str(snapshot["execution_id"])
-                if snapshot
-                else "campaign-exec-" + uuid.uuid4().hex
+            return {
+                "campaign": campaign,
+                "lifecycle": current,
+                "snapshot": snapshot,
+                "members": self.repository.audience_members(
+                    campaign_id, assignment="TREATED"
+                ),
+            }
+        if current["status"] not in {
+            "DRAFT", "SCHEDULED", "FAILED", "ENTERED_IN_ERROR", "PREPARING"
+        }:
+            raise CampaignExecutionError(
+                f"campaign cannot be prepared from {current['status']}"
             )
-            current = self.repository.append_lifecycle(
-                campaign_id=campaign_id,
-                status="PREPARING",
-                actor_username=actor_username,
-                execution_id=execution_id,
-                expected_current_event_id=int(current["id"]),
-                idempotency_key=f"campaign:{campaign_id}:{execution_id}:preparing",
-                note="Execution preparation started; audience will be frozen once.",
-            )
-        snapshot = self.freeze_audience(
-            campaign_id,
-            execution_id=execution_id,
-            actor_username=actor_username,
+
+        execution_id = (
+            str(snapshot["execution_id"])
+            if snapshot
+            else str(current.get("execution_id") or "campaign-exec-" + uuid.uuid4().hex)
         )
-        current = self.repository.current_lifecycle(campaign_id)
-        if current["status"] == "PREPARING":
-            current = self.repository.append_lifecycle(
-                campaign_id=campaign_id,
-                status="SENDING",
-                actor_username=actor_username,
+        db = self._db()
+        if db.in_transaction:
+            raise CampaignExecutionError("CALLER_TRANSACTION_ACTIVE")
+        db.execute("BEGIN IMMEDIATE")
+        try:
+            current = self.repository.current_lifecycle(campaign_id)
+            if current["status"] != "PREPARING":
+                current = self.repository.append_lifecycle(
+                    campaign_id=campaign_id,
+                    status="PREPARING",
+                    actor_username=actor_username,
+                    execution_id=execution_id,
+                    expected_current_event_id=int(current["id"]),
+                    idempotency_key=(
+                        f"campaign:{campaign_id}:{execution_id}:preparing"
+                    ),
+                    note=(
+                        "Execution preparation started; audience and lifecycle "
+                        "advance atomically."
+                    ),
+                    commit=False,
+                )
+            snapshot = self.freeze_audience(
+                campaign_id,
                 execution_id=execution_id,
-                expected_current_event_id=int(current["id"]),
-                idempotency_key=f"campaign:{campaign_id}:{execution_id}:sending",
-                note="Frozen treated audience is ready for governed submission.",
+                actor_username=actor_username,
+                commit=False,
             )
+            current = self.repository.current_lifecycle(campaign_id)
+            if current["status"] == "PREPARING":
+                current = self.repository.append_lifecycle(
+                    campaign_id=campaign_id,
+                    status="SENDING",
+                    actor_username=actor_username,
+                    execution_id=execution_id,
+                    expected_current_event_id=int(current["id"]),
+                    idempotency_key=(
+                        f"campaign:{campaign_id}:{execution_id}:sending"
+                    ),
+                    note=(
+                        "Frozen treated audience is ready for governed submission."
+                    ),
+                    commit=False,
+                )
+            db.commit()
+        except Exception:
+            db.rollback()
+            raise
         return {
             "campaign": campaign,
             "lifecycle": current,
@@ -383,7 +433,10 @@ class CampaignEconomicsService:
             current = self.repository.current_wallet_grant(
                 int(campaign["id"]), int(message["patient_link_id"])
             )
-            if current:
+            if current and current["status"] == "ACTIVE":
+                db.commit()
+                return current
+            if current and current["status"] not in {"REVIEW_REQUIRED"}:
                 db.commit()
                 return current
             expires_at = None
@@ -423,6 +476,84 @@ class CampaignEconomicsService:
         except Exception:
             db.rollback()
             raise
+
+    def mark_wallet_grant_review(
+        self,
+        message_id: int,
+        *,
+        actor_username: str = "system:campaign-wallet-review",
+    ) -> dict | None:
+        db = self._db()
+        message = db.execute(
+            "SELECT * FROM sms_messages WHERE id=?",
+            (int(message_id),),
+        ).fetchone()
+        if not message or message["campaign_id"] is None:
+            return None
+        campaign = db.execute(
+            "SELECT * FROM sms_campaigns WHERE id=?",
+            (int(message["campaign_id"]),),
+        ).fetchone()
+        if not campaign or campaign["campaign_type"] != "wallet_credit":
+            return None
+        amount = int(campaign["credit_amount"] or 0)
+        if amount <= 0:
+            return None
+        current = self.repository.current_wallet_grant(
+            int(campaign["id"]), int(message["patient_link_id"])
+        )
+        if current:
+            return current
+        return self.repository.append_wallet_grant_event(
+            campaign_id=int(campaign["id"]),
+            patient_link_id=int(message["patient_link_id"]),
+            message_id=int(message_id),
+            event_type="GRANT_REVIEW_REQUIRED",
+            amount=amount,
+            actor_username=actor_username,
+            reason_code="SUBMISSION_OUTCOME_UNKNOWN",
+            note=(
+                "Provider submission outcome is ambiguous; no credit was granted "
+                "until a later provider result resolves the obligation."
+            ),
+            idempotency_key=(
+                f"campaign-wallet-review:grant:{campaign['id']}:"
+                f"{message['patient_link_id']}"
+            ),
+        )
+
+    def resolve_wallet_review_no_grant(
+        self,
+        message_id: int,
+        *,
+        actor_username: str = "system:campaign-wallet-review",
+    ) -> dict | None:
+        db = self._db()
+        message = db.execute(
+            "SELECT * FROM sms_messages WHERE id=?",
+            (int(message_id),),
+        ).fetchone()
+        if not message or message["campaign_id"] is None:
+            return None
+        current = self.repository.current_wallet_grant(
+            int(message["campaign_id"]), int(message["patient_link_id"])
+        )
+        if not current or current["status"] != "REVIEW_REQUIRED":
+            return current
+        return self.repository.append_wallet_grant_event(
+            campaign_id=int(message["campaign_id"]),
+            patient_link_id=int(message["patient_link_id"]),
+            message_id=int(message_id),
+            event_type="GRANT_NOT_REQUIRED",
+            amount=int(current["amount"]),
+            actor_username=actor_username,
+            reason_code="DEFINITIVE_NON_DELIVERY_NO_GRANT",
+            note="Provider later reported definitive non-delivery; no credit was issued.",
+            idempotency_key=(
+                f"campaign-wallet-review:no-grant:{message['campaign_id']}:"
+                f"{message['patient_link_id']}"
+            ),
+        )
 
     def compensate_wallet_for_message(
         self,
@@ -519,22 +650,40 @@ class CampaignEconomicsService:
         campaign = self.repository.campaign(campaign_id)
         if not campaign:
             raise LookupError("campaign not found")
-        for message in self.repository.campaign_messages(campaign_id):
-            status = str(message.get("status") or "")
-            if status in {"accepted", "delivered", "sent"}:
-                self.record_cost_for_message(
-                    int(message["id"]), actor_username=actor_username
-                )
-                self.ensure_wallet_grant(
-                    int(message["id"]), actor_username=actor_username
-                )
-            if str(message.get("delivery_status") or "") in {
-                "NumberBlackListed", "OperatorBlackList", "Canceled", "Failed",
-                "Undelivered", "StatusUnknown", "SubmissionUnknown",
-            }:
-                self.compensate_wallet_for_message(
-                    int(message["id"]), actor_username=actor_username
-                )
+        snapshot = self.repository.audience_snapshot(campaign_id)
+        trusted_execution = bool(
+            snapshot and snapshot.get("source_code") == "NEW_FROZEN"
+        )
+        if trusted_execution:
+            for message in self.repository.campaign_messages(campaign_id):
+                status = str(message.get("status") or "")
+                if status in {"accepted", "delivered", "sent"}:
+                    self.record_cost_for_message(
+                        int(message["id"]), actor_username=actor_username
+                    )
+                    self.ensure_wallet_grant(
+                        int(message["id"]), actor_username=actor_username
+                    )
+                delivery_status = str(message.get("delivery_status") or "")
+                if delivery_status == "SubmissionUnknown":
+                    self.mark_wallet_grant_review(
+                        int(message["id"]), actor_username=actor_username
+                    )
+                elif delivery_status in {
+                    "NumberBlackListed", "OperatorBlackList", "Canceled", "Failed",
+                    "Undelivered", "StatusUnknown",
+                }:
+                    current_grant = self.repository.current_wallet_grant(
+                        int(message["campaign_id"]), int(message["patient_link_id"])
+                    )
+                    if current_grant and current_grant["status"] == "REVIEW_REQUIRED":
+                        self.resolve_wallet_review_no_grant(
+                            int(message["id"]), actor_username=actor_username
+                        )
+                    else:
+                        self.compensate_wallet_for_message(
+                            int(message["id"]), actor_username=actor_username
+                        )
         counts = self.repository.message_state_counts(campaign_id)
         current = self.repository.current_lifecycle(campaign_id)
         if not current:
@@ -577,7 +726,20 @@ class CampaignEconomicsService:
                     if counts["failed"] == 0
                     else "PARTIAL_DELIVERY_FAILURE"
                 )
-            if current["status"] in {"SENDING", "AWAITING_DELIVERY"}:
+            if current["status"] == "SENDING":
+                current = self.repository.append_lifecycle(
+                    campaign_id=campaign_id,
+                    status="AWAITING_DELIVERY",
+                    actor_username=actor_username,
+                    execution_id=execution_id,
+                    outcome_code="DELIVERY_RECONCILED",
+                    expected_current_event_id=int(current["id"]),
+                    idempotency_key=(
+                        f"campaign:{campaign_id}:{execution_id}:"
+                        "awaiting-delivery:terminal-observed"
+                    ),
+                )
+            if current["status"] == "AWAITING_DELIVERY":
                 current = self.repository.append_lifecycle(
                     campaign_id=campaign_id,
                     status=target,

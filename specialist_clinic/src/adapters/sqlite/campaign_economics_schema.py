@@ -410,11 +410,11 @@ def ensure_campaign_economics_storage(db: sqlite3.Connection) -> None:
             patient_link_id INTEGER NOT NULL,
             message_id INTEGER NOT NULL,
             event_type TEXT NOT NULL CHECK (event_type IN (
-                'GRANTED','COMPENSATED','COMPENSATION_REVIEW_REQUIRED',
-                'ENTERED_IN_ERROR'
+                'GRANTED','GRANT_REVIEW_REQUIRED','GRANT_NOT_REQUIRED',
+                'COMPENSATED','COMPENSATION_REVIEW_REQUIRED','ENTERED_IN_ERROR'
             )),
             status TEXT NOT NULL CHECK (status IN (
-                'ACTIVE','COMPENSATED','REVIEW_REQUIRED','ENTERED_IN_ERROR'
+                'ACTIVE','NO_GRANT','COMPENSATED','REVIEW_REQUIRED','ENTERED_IN_ERROR'
             )),
             amount INTEGER NOT NULL CHECK (amount>0),
             wallet_transaction_id INTEGER,
@@ -431,6 +431,11 @@ def ensure_campaign_economics_storage(db: sqlite3.Connection) -> None:
             CHECK (
                 (event_type='GRANTED' AND status='ACTIVE' AND
                  wallet_transaction_id IS NOT NULL) OR
+                (event_type='GRANT_REVIEW_REQUIRED' AND
+                 status='REVIEW_REQUIRED') OR
+                (event_type='GRANT_NOT_REQUIRED' AND status='NO_GRANT' AND
+                 wallet_transaction_id IS NULL AND
+                 compensation_transaction_id IS NULL) OR
                 (event_type='COMPENSATED' AND status='COMPENSATED' AND
                  compensation_transaction_id IS NOT NULL) OR
                 (event_type='COMPENSATION_REVIEW_REQUIRED' AND
@@ -669,8 +674,11 @@ def ensure_campaign_economics_storage(db: sqlite3.Connection) -> None:
             SELECT 1 FROM campaign_wallet_grant_events event
             WHERE event.campaign_id=NEW.campaign_id
               AND event.patient_link_id=NEW.patient_link_id
-        ) AND (NEW.event_type<>'GRANTED' OR NEW.supersedes_event_id IS NOT NULL)
-        BEGIN SELECT RAISE(ABORT,'first campaign wallet event must grant'); END;
+        ) AND (
+            NEW.event_type NOT IN ('GRANTED','GRANT_REVIEW_REQUIRED')
+            OR NEW.supersedes_event_id IS NOT NULL
+        )
+        BEGIN SELECT RAISE(ABORT,'first campaign wallet event must grant or require review'); END;
         CREATE TRIGGER IF NOT EXISTS trg_campaign_wallet_linear
         BEFORE INSERT ON campaign_wallet_grant_events
         WHEN EXISTS (

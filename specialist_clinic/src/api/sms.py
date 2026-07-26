@@ -1,6 +1,6 @@
 from flask import Blueprint, render_template, request, redirect, url_for, flash, g, jsonify
 from src.api.auth import login_required
-from src.security.permissions import Permission, permission_required
+from src.security.permissions import Permission, has_permission, permission_required
 from src.adapters.sqlite.sms_repo import SmsRepository
 from src.adapters.sqlite.wallet_repo import WalletRepository
 from src.services.sms.campaign_service import (
@@ -122,11 +122,20 @@ def new_campaign():
 
     sched = jalali_to_gregorian_str(request.form.get("scheduled_date", ""))
     scheduled_at = f"{sched} {request.form.get('scheduled_time','09:00')}:00" if sched else None
-    cid = repo.create_campaign(name=name, body=body, segment=segment,
-                               campaign_type=campaign_type, credit_amount=credit_amount,
-                               credit_expires_days=credit_expires_days,
-                               holdout_percent=holdout_percent,
-                               scheduled_at=scheduled_at, created_by=g.user["username"])
+    from src.services.campaign_management_service import (
+        CampaignManagementService,
+    )
+    cid = CampaignManagementService().create(
+        name=name,
+        body=body,
+        segment=segment,
+        campaign_type=campaign_type,
+        credit_amount=credit_amount,
+        credit_expires_days=credit_expires_days,
+        holdout_percent=holdout_percent,
+        scheduled_at=scheduled_at,
+        created_by=g.user["username"],
+    )
     log_activity("campaign_create", f"ساخت کمپین: {name}")
     flash("کمپین ساخته شد" + (" و زمان‌بندی شد" if scheduled_at else ""), "success")
     return redirect(url_for("sms.campaign_detail", cid=cid))
@@ -140,21 +149,156 @@ def campaign_detail(cid):
     if not campaign:
         flash("کمپین یافت نشد")
         return redirect(url_for("sms.campaigns"))
-    messages = repo.list_messages(cid)
-    purpose = "CARE" if campaign.get("campaign_type") == "reminder" else "MARKETING"
-    recipients = resolve_segment(campaign['segment'], purpose=purpose)
-    total_credit = (campaign.get('credit_amount') or 0) * len(recipients) if campaign.get('campaign_type') == 'wallet_credit' else 0
-    from src.services.revenue_service import RevenueService
-    incrementality = RevenueService().campaign_incrementality(cid)
+    from src.adapters.sqlite.campaign_economics_repo import (
+        CampaignEconomicsRepository,
+    )
+    from src.services.campaign_economics_service import (
+        CampaignEconomicsService,
+    )
+    economics_repo = CampaignEconomicsRepository()
+    economics = CampaignEconomicsService(repository=economics_repo)
+    projection = economics.projection(cid)
+    messages = economics_repo.campaign_messages(cid)
+    audience_members = economics_repo.audience_members(cid)
+    purpose = economics.purpose_for_campaign(campaign)
+    dynamic_recipients = (
+        resolve_segment(campaign['segment'], purpose=purpose)
+        if not projection["audience"]["frozen"] else []
+    )
+    recipients_count = (
+        int(projection["audience"]["eligible_count"])
+        if projection["audience"]["frozen"] else len(dynamic_recipients)
+    )
+    treated_count = (
+        int(projection["audience"]["treated_count"])
+        if projection["audience"]["frozen"] else recipients_count
+    )
+    total_credit = (
+        int(campaign.get('credit_amount') or 0) * treated_count
+        if campaign.get('campaign_type') == 'wallet_credit' else 0
+    )
     from src.services.sms.delivery_service import status_label
-    return render_template("sms/campaign_detail.html", campaign=campaign, messages=messages,
-                           segments=SEGMENTS, campaign_types=CAMPAIGN_TYPES,
-                           recipients_count=len(recipients), total_credit=total_credit,
-                           incrementality=incrementality,
-                           provider_ready=repo.provider_configured(),
-                           hub_pending=_pending_count(),
-                           status_label=status_label,
-                           active_page='sms')
+    return render_template(
+        "sms/campaign_detail.html",
+        campaign=campaign,
+        messages=messages,
+        audience_members=audience_members,
+        economics=projection,
+        segments=SEGMENTS,
+        campaign_types=CAMPAIGN_TYPES,
+        recipients_count=recipients_count,
+        total_credit=total_credit,
+        incrementality=None,
+        provider_ready=repo.provider_configured(),
+        hub_pending=_pending_count(),
+        status_label=status_label,
+        show_economics=has_permission(Permission.SMS_CAMPAIGN_ECONOMICS_VIEW),
+        active_page='sms',
+    )
+
+
+@bp.post("/campaign/<int:cid>/response")
+@permission_required(Permission.SMS_CAMPAIGN_RESPONSE_RECORD)
+def campaign_response(cid: int):
+    import uuid
+    from src.adapters.sqlite.campaign_economics_repo import (
+        CampaignEconomicsConflict,
+        CampaignEconomicsValidationError,
+    )
+    from src.services.campaign_economics_service import CampaignEconomicsService
+
+    patient_id = request.form.get("patient_link_id", type=int)
+    if not patient_id:
+        flash("بیمار پاسخ‌دهنده مشخص نیست.", "error")
+        return redirect(url_for("sms.campaign_detail", cid=cid))
+    try:
+        event = CampaignEconomicsService().record_response(
+            campaign_id=cid,
+            patient_link_id=patient_id,
+            response_type=request.form.get("response_type") or "",
+            evidence_type=request.form.get("evidence_type") or "",
+            actor_username=g.user["username"],
+            idempotency_key=(
+                request.form.get("idempotency_key")
+                or f"campaign-response:{cid}:{patient_id}:{uuid.uuid4().hex}"
+            ),
+            message_id=request.form.get("message_id", type=int),
+            evidence_ref=request.form.get("evidence_ref"),
+            note=request.form.get("note"),
+            expected_current_event_id=request.form.get(
+                "expected_current_event_id", type=int
+            ),
+        )
+    except (LookupError, CampaignEconomicsConflict,
+            CampaignEconomicsValidationError, ValueError) as exc:
+        flash(f"پاسخ کمپین ثبت نشد: {exc}", "error")
+    else:
+        log_activity(
+            "campaign_response_record",
+            f"campaign={cid} patient={patient_id} response={event['response_type']}",
+            patient_link_id=patient_id,
+        )
+        flash("پاسخ بیمار به‌صورت افزایشی ثبت شد.", "success")
+    return redirect(url_for("sms.campaign_detail", cid=cid) + "#campaign-responses")
+
+
+@bp.post("/campaign/<int:cid>/cancel")
+@permission_required(Permission.SMS_CAMPAIGN_SEND)
+def cancel_campaign(cid: int):
+    from src.adapters.sqlite.campaign_economics_repo import (
+        CampaignEconomicsConflict,
+        CampaignEconomicsValidationError,
+    )
+    from src.services.campaign_management_service import CampaignManagementService
+
+    try:
+        CampaignManagementService().cancel(
+            cid,
+            actor_username=g.user["username"],
+            note=request.form.get("note") or "Campaign cancelled by operator.",
+            expected_current_event_id=request.form.get(
+                "expected_current_event_id", type=int
+            ),
+        )
+    except (LookupError, CampaignEconomicsConflict,
+            CampaignEconomicsValidationError, ValueError) as exc:
+        flash(f"کمپین لغو نشد: {exc}", "error")
+    else:
+        log_activity("campaign_cancel", f"لغو کمپین #{cid}")
+        flash("کمپین به‌صورت ممیزی‌شده لغو شد.", "success")
+    return redirect(url_for("sms.campaign_detail", cid=cid))
+
+
+@bp.post("/campaign/<int:cid>/attribution/<path:journey_id>/revoke")
+@permission_required(Permission.SMS_CAMPAIGN_ATTRIBUTION_CORRECT)
+def revoke_campaign_attribution(cid: int, journey_id: str):
+    import uuid
+    from src.adapters.sqlite.campaign_economics_repo import (
+        CampaignEconomicsConflict,
+        CampaignEconomicsRepository,
+        CampaignEconomicsValidationError,
+    )
+
+    try:
+        CampaignEconomicsRepository().revoke_journey_attribution(
+            journey_id=journey_id,
+            actor_username=g.user["username"],
+            idempotency_key=(
+                request.form.get("idempotency_key")
+                or f"campaign-attribution-revoke:{journey_id}:{uuid.uuid4().hex}"
+            ),
+            note=request.form.get("note") or "",
+            expected_current_event_id=request.form.get(
+                "expected_current_event_id", type=int
+            ),
+        )
+    except (LookupError, CampaignEconomicsConflict,
+            CampaignEconomicsValidationError, ValueError) as exc:
+        flash(f"اصلاح attribution انجام نشد: {exc}", "error")
+    else:
+        log_activity("campaign_attribution_revoke", f"journey={journey_id}")
+        flash("انتساب Journey لغو شد؛ تاریخچه حفظ شد.", "success")
+    return redirect(url_for("sms.campaign_detail", cid=cid) + "#campaign-economics")
 
 
 @bp.route("/messages")

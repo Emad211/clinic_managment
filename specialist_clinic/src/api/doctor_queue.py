@@ -6,6 +6,7 @@ Patient identity, work date, ownership and specialist enrollment are resolved se
 from flask import Blueprint, render_template, request, redirect, url_for, flash, g
 
 from src.api.auth import login_required
+from src.security.permissions import Permission, has_permission
 from src.services.doctor_queue_service import (
     DoctorQueueIdentityError,
     DoctorQueueService,
@@ -36,6 +37,10 @@ def _queue_error(exc: Exception) -> None:
         "SPECIALIST_APPOINTMENT_DATE_MISMATCH": "نوبت انتخاب‌شده متعلق به روز فعال صف نیست.",
         "ENCOUNTER_ALREADY_LINKED_TO_ANOTHER_APPOINTMENT": "این Encounter قبلاً به نوبت دیگری متصل شده است.",
         "APPOINTMENT_ALREADY_LINKED_TO_ANOTHER_ENCOUNTER": "این نوبت قبلاً به Encounter دیگری متصل شده است.",
+        "journey attribution requires a positive response event": "پاسخ انتخاب‌شده مثبت و معتبر نیست.",
+        "journey attribution requires the latest campaign response": "پاسخ انتخاب‌شده آخرین پاسخ بیمار نیست.",
+        "campaign journey patient mismatch": "پاسخ کمپین متعلق به این بیمار نیست.",
+        "campaign response is already attributed to another journey": "این پاسخ قبلاً به Journey دیگری متصل شده است.",
     }
     flash(labels.get(str(exc), f"عملیات متوقف شد: {exc}"), "error")
 
@@ -53,19 +58,33 @@ def index():
 @login_required
 def start(invoice_id):
     try:
+        response_event_id = request.form.get(
+            "campaign_response_event_id", type=int
+        )
+        if response_event_id and not has_permission(
+            Permission.SMS_CAMPAIGN_ATTRIBUTION_RECORD
+        ):
+            raise DoctorQueueIdentityError(
+                "مجوز ثبت انتساب کمپین برای این کاربر وجود ندارد."
+            )
         visit = DoctorQueueService().start(
             _snapshot(invoice_id),
             actor_username=g.user["username"],
             appointment_id=request.form.get("appointment_id", type=int),
+            campaign_response_event_id=response_event_id,
         )
         appointment_text = (
             f" appointment={visit['appointment_id']}"
             if visit.get("appointment_id")
             else " walk-in"
         )
+        response_text = (
+            f" campaign_response={visit['campaign_response_event_id']}"
+            if visit.get("campaign_response_event_id") else ""
+        )
         log_activity(
             "visit_start",
-            f"شروع ویزیت فاکتور #{invoice_id}{appointment_text}",
+            f"شروع ویزیت فاکتور #{invoice_id}{appointment_text}{response_text}",
             patient_link_id=visit.get("patient_link_id"),
         )
         return redirect(url_for("doctor_queue.visit", invoice_id=invoice_id))

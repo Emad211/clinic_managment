@@ -40,6 +40,8 @@ class DoctorQueueService:
         log = self.repo.log_map(work_day)
         appointments = AppointmentRepository()
         funnel = SpecialistFinancialFunnelRepository()
+        from src.services.campaign_economics_service import CampaignEconomicsService
+        campaign_economics = CampaignEconomicsService()
         waiting, done = [], []
         for invoice in opens:
             accounting_patient_id = int(invoice["patient_id"])
@@ -79,6 +81,10 @@ class DoctorQueueService:
                 "appointment_options": options,
                 "linked_appointment_id": (
                     int(link["appointment_id"]) if link else None
+                ),
+                "campaign_response_options": (
+                    campaign_economics.positive_response_options(patient_link_id)
+                    if patient_link_id else []
                 ),
             }
             (done if status == "done" else waiting).append(row)
@@ -164,6 +170,7 @@ class DoctorQueueService:
         snapshot: dict,
         actor_username: str | None = None,
         appointment_id: int | None = None,
+        campaign_response_event_id: int | None = None,
     ) -> dict:
         canonical = self.canonical_snapshot(snapshot["accounting_invoice_id"])
         actor = str(actor_username or "system:doctor-queue").strip()
@@ -208,6 +215,21 @@ class DoctorQueueService:
                 AppointmentRepository(db).set_status(
                     int(appointment_id), "done", commit=False
                 )
+            if campaign_response_event_id is not None:
+                from src.services.campaign_economics_service import (
+                    CampaignEconomicsService,
+                )
+                CampaignEconomicsService(db=db).attribute_response_to_journey(
+                    response_event_id=int(campaign_response_event_id),
+                    journey_id=encounter["journey_id"],
+                    actor_username=actor,
+                    idempotency_key=(
+                        f"doctor-queue-campaign-attribution:"
+                        f"{encounter['journey_id']}:"
+                        f"{int(campaign_response_event_id)}"
+                    ),
+                    commit=False,
+                )
             DoctorQueueRepository(db).start(
                 **self._repo_snapshot(canonical), commit=False
             )
@@ -215,6 +237,7 @@ class DoctorQueueService:
             canonical["encounter_id"] = encounter["encounter_id"]
             canonical["journey_id"] = encounter["journey_id"]
             canonical["appointment_id"] = appointment_id
+            canonical["campaign_response_event_id"] = campaign_response_event_id
             return canonical
         except Exception:
             db.rollback()

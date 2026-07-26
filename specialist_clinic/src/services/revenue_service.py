@@ -169,34 +169,91 @@ class RevenueService:
         }
 
     def campaign_revenue(self, ids_hint: list[int] | None = None) -> dict:
-        """Fail closed until campaign response is explicitly linked to a Journey."""
+        """Campaign economics from explicit Journey/invoice lineage only."""
+        from src.adapters.sqlite.campaign_economics_repo import (
+            CampaignEconomicsRepository,
+        )
+
+        repository = CampaignEconomicsRepository()
         rows = []
-        issued_credit = 0
+        attributable_total = 0
+        direct_cost_total = 0
+        net_total = 0
+        all_ready = True
         for campaign in self.finance.campaigns():
-            credit = self.finance.positive_campaign_credit(campaign["id"])
-            issued_credit += credit
+            projection = repository.campaign_projection(int(campaign["id"]))
+            ready = bool(
+                projection["safe_to_sum"]
+                and projection["measurement_status"] == "READY"
+            )
+            all_ready = all_ready and ready
+            if ready:
+                attributable_total += int(projection["finance"]["collected"])
+                direct_cost_total += int(projection["costs"]["direct_cost"])
+                net_total += int(projection["net_contribution"])
             rows.append(
                 {
-                    "id": campaign["id"],
+                    "id": int(campaign["id"]),
                     "name": campaign["name"],
                     "type": campaign["campaign_type"],
-                    "recipients": 0,
-                    "sent": int(campaign.get("sent_count") or 0),
-                    "delivered": int(campaign.get("delivered_count") or 0),
-                    "revenue": 0,
-                    "invoices": 0,
-                    "credit": credit,
-                    "measurement_status": "JOURNEY_LINK_REQUIRED",
+                    "recipients": int(
+                        projection["audience"].get("eligible_count") or 0
+                    ),
+                    "treated": int(
+                        projection["audience"].get("treated_count") or 0
+                    ),
+                    "control": int(
+                        projection["audience"].get("control_count") or 0
+                    ),
+                    "accepted": int(
+                        projection["messages"].get("provider_accepted") or 0
+                    ),
+                    "sent": int(
+                        projection["messages"].get("provider_accepted") or 0
+                    ),
+                    "delivered": int(projection["messages"]["delivered"]),
+                    "positive_responses": int(
+                        projection["responses"]["positive"]
+                    ),
+                    "journeys": int(projection["attributions"]["journeys"]),
+                    "revenue": (
+                        int(projection["finance"]["collected"])
+                        if ready else None
+                    ),
+                    "invoices": int(projection["finance"]["invoices"]),
+                    "direct_cost": (
+                        int(projection["costs"]["direct_cost"])
+                        if ready else None
+                    ),
+                    "net_contribution": (
+                        int(projection["net_contribution"]) if ready else None
+                    ),
+                    "roi_percent": projection["roi_percent"] if ready else None,
+                    "measurement_status": projection["measurement_status"],
+                    "safe_to_sum": ready,
                 }
             )
+        safe_to_sum = bool(rows) and all_ready
+        if not rows:
+            measurement_status = "JOURNEY_LINK_REQUIRED"
+        elif safe_to_sum:
+            measurement_status = "READY"
+        else:
+            measurement_status = "CAMPAIGN_ECONOMICS_INCOMPLETE"
         return {
             "rows": rows,
-            "attributed_total": 0,
-            "credit_distributed": issued_credit,
+            "attributed_total": attributable_total if safe_to_sum else 0,
+            "direct_cost_total": direct_cost_total if safe_to_sum else 0,
+            "net_contribution_total": net_total if safe_to_sum else 0,
+            "credit_distributed": 0,
             "window_days": None,
-            "safe_to_sum": False,
-            "measurement_status": "JOURNEY_LINK_REQUIRED",
+            "safe_to_sum": safe_to_sum,
+            "measurement_status": measurement_status,
+            "policy_version": "EXPLICIT_CAMPAIGN_JOURNEY_ROI_V1",
         }
 
     def campaign_incrementality(self, campaign_id: int) -> dict | None:
+        # No causal claim is published merely because a control group exists.
+        # A6 reports explicit attribution and ROI; causal inference needs a separate,
+        # adequately powered analysis contract.
         return None

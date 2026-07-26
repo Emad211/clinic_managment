@@ -94,7 +94,16 @@ class CampaignEconomicsRepository:
 
     def _db(self) -> sqlite3.Connection:
         db = self._connection or get_db()
-        ensure_campaign_economics_storage(db)
+        installed = db.execute(
+            "SELECT 1 FROM sqlite_master "
+            "WHERE type='table' AND name='campaign_lifecycle_events'"
+        ).fetchone()
+        if not installed:
+            if db.in_transaction:
+                raise RuntimeError(
+                    "campaign economics storage is missing inside a caller transaction"
+                )
+            ensure_campaign_economics_storage(db)
         return db
 
     @staticmethod
@@ -774,7 +783,19 @@ class CampaignEconomicsRepository:
 
     def current_campaign_attributions(self, campaign_id: int) -> list[dict]:
         rows = self._db().execute(
-            """SELECT attribution.*, journey.origin_type, journey.origin_ref
+            """SELECT attribution.*, journey.origin_type, journey.origin_ref,
+                      CASE WHEN attribution.response_event_id=(
+                          SELECT latest_response.id
+                          FROM campaign_response_events latest_response
+                          WHERE latest_response.campaign_id=attribution.campaign_id
+                            AND latest_response.patient_link_id=attribution.patient_link_id
+                          ORDER BY latest_response.recorded_at DESC,
+                                   latest_response.id DESC LIMIT 1
+                      ) AND EXISTS (
+                          SELECT 1 FROM campaign_response_events response
+                          WHERE response.id=attribution.response_event_id
+                            AND response.response_type='POSITIVE'
+                      ) THEN 1 ELSE 0 END AS response_current_positive
                FROM campaign_journey_attribution_events attribution
                JOIN care_journeys journey ON journey.journey_id=attribution.journey_id
                WHERE attribution.campaign_id=?
@@ -819,6 +840,8 @@ class CampaignEconomicsRepository:
         event = str(event_type or "").strip().upper()
         status_by_event = {
             "GRANTED": "ACTIVE",
+            "GRANT_REVIEW_REQUIRED": "REVIEW_REQUIRED",
+            "GRANT_NOT_REQUIRED": "NO_GRANT",
             "COMPENSATED": "COMPENSATED",
             "COMPENSATION_REVIEW_REQUIRED": "REVIEW_REQUIRED",
             "ENTERED_IN_ERROR": "ENTERED_IN_ERROR",
@@ -839,12 +862,26 @@ class CampaignEconomicsRepository:
                     db.commit()
                 return dict(existing)
             current = self.current_wallet_grant(campaign_id, patient_link_id)
+            if current and event == "GRANT_REVIEW_REQUIRED":
+                if current["status"] == "REVIEW_REQUIRED":
+                    if commit:
+                        db.commit()
+                    return current
+                raise CampaignEconomicsConflict("wallet grant stream already exists")
             if current and event == "GRANTED":
                 if current["status"] == "ACTIVE":
                     if commit:
                         db.commit()
                     return current
-                raise CampaignEconomicsConflict("wallet grant stream already exists")
+                if current["status"] != "REVIEW_REQUIRED":
+                    raise CampaignEconomicsConflict("wallet grant stream already exists")
+            if current and event == "GRANT_NOT_REQUIRED":
+                if current["status"] == "NO_GRANT":
+                    if commit:
+                        db.commit()
+                    return current
+                if current["status"] != "REVIEW_REQUIRED":
+                    raise CampaignEconomicsConflict("wallet grant stream is not under review")
             recorded = _time()
             occurred = _time(occurred_at or recorded)
             payload = {
@@ -1011,6 +1048,7 @@ class CampaignEconomicsRepository:
         result = {
             "messages": len(rows),
             "accepted": 0,
+            "provider_accepted": 0,
             "delivered": 0,
             "in_flight": 0,
             "failed": 0,
@@ -1019,6 +1057,8 @@ class CampaignEconomicsRepository:
             "nonterminal": 0,
         }
         for row in rows:
+            if str(row.get("status") or "") in {"accepted", "delivered", "sent"}:
+                result["provider_accepted"] += 1
             status = str(
                 row.get("current_delivery_status")
                 or row.get("delivery_status")
@@ -1065,6 +1105,19 @@ class CampaignEconomicsRepository:
                      WHERE head.journey_id=attribution.journey_id
                      ORDER BY head.recorded_at DESC,head.id DESC LIMIT 1
                  ) AND attribution.status='ATTRIBUTED'
+                 AND attribution.response_event_id=(
+                     SELECT latest_response.id
+                     FROM campaign_response_events latest_response
+                     WHERE latest_response.campaign_id=attribution.campaign_id
+                       AND latest_response.patient_link_id=attribution.patient_link_id
+                     ORDER BY latest_response.recorded_at DESC,
+                              latest_response.id DESC LIMIT 1
+                 )
+                 AND EXISTS (
+                     SELECT 1 FROM campaign_response_events positive_response
+                     WHERE positive_response.id=attribution.response_event_id
+                       AND positive_response.response_type='POSITIVE'
+                 )
                ORDER BY attribution.journey_id,observation.accounting_invoice_id""",
             (int(campaign_id),),
         ).fetchall()
@@ -1124,9 +1177,15 @@ class CampaignEconomicsRepository:
         negative = sum(1 for row in response_rows if row["response_type"] == "NEGATIVE")
         opt_out = sum(1 for row in response_rows if row["response_type"] == "OPT_OUT")
         attributions = self.current_campaign_attributions(campaign_id)
+        trusted_attributions = [
+            row for row in attributions if int(row["response_current_positive"] or 0) == 1
+        ]
+        stale_attributions = [
+            row for row in attributions if int(row["response_current_positive"] or 0) != 1
+        ]
         financial = self.financial_rows_for_campaign(campaign_id)
         observed_journeys = {row["journey_id"] for row in financial if row["accounting_invoice_id"] is not None}
-        attributed_journeys = {row["journey_id"] for row in attributions}
+        attributed_journeys = {row["journey_id"] for row in trusted_attributions}
         billed = sum(int(row["billed_amount"] or 0) for row in financial)
         collected = sum(int(row["collected_amount"] or 0) for row in financial)
         invoices = sum(1 for row in financial if row["accounting_invoice_id"] is not None)
@@ -1135,16 +1194,18 @@ class CampaignEconomicsRepository:
         net = collected - direct_cost
         roi = round((net / direct_cost) * 100, 2) if direct_cost > 0 else None
         trusted_audience = audience.get("source_code") == "NEW_FROZEN"
+        provider_accepted_messages = messages["provider_accepted"]
         cost_complete = (
-            messages["accepted"] == costs["costed_messages"]
-            if messages["accepted"]
-            else True
+            provider_accepted_messages == costs["costed_messages"]
+            if provider_accepted_messages
+            else messages["messages"] == 0
         )
         finance_complete = attributed_journeys <= observed_journeys
         safe_to_sum = bool(
             trusted_audience
             and cost_complete
             and finance_complete
+            and not stale_attributions
             and costs["wallet_review_required"] == 0
         )
         if not audience["frozen"]:
@@ -1155,6 +1216,8 @@ class CampaignEconomicsRepository:
             measurement_status = "DELIVERY_IN_PROGRESS"
         elif not cost_complete:
             measurement_status = "DIRECT_COST_INCOMPLETE"
+        elif stale_attributions:
+            measurement_status = "STALE_RESPONSE_ATTRIBUTION_REVIEW_REQUIRED"
         elif not finance_complete:
             measurement_status = "FINANCIAL_RECONCILIATION_INCOMPLETE"
         elif costs["wallet_review_required"]:
@@ -1176,6 +1239,7 @@ class CampaignEconomicsRepository:
             },
             "attributions": {
                 "journeys": len(attributed_journeys),
+                "stale": len(stale_attributions),
                 "rows": attributions,
             },
             "finance": {

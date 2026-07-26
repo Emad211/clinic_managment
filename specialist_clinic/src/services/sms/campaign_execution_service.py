@@ -3,6 +3,9 @@ from __future__ import annotations
 
 import uuid
 
+from src.adapters.sqlite.campaign_execution_claim_repo import (
+    CampaignExecutionClaimRepository,
+)
 from src.adapters.sqlite.sms_dispatch_repo import SmsDispatchRepository
 from src.adapters.sqlite.sms_repo import SmsRepository
 from src.adapters.sqlite.wallet_repo import WalletRepository
@@ -22,6 +25,7 @@ from src.services.sms.provider import OutgoingSms, UnconfiguredProvider, get_pro
 class GovernedCampaignExecutionService:
     def __init__(self):
         self.sms = SmsRepository()
+        self.claims = CampaignExecutionClaimRepository()
         self.economics = CampaignEconomicsService()
         self.dispatch = SmsDispatchRepository()
         self.governance = SmsGovernanceService()
@@ -99,7 +103,7 @@ class GovernedCampaignExecutionService:
             }
 
         claim_token = uuid.uuid4().hex
-        if not self.sms.claim_campaign(campaign_id, claim_token):
+        if not self.claims.claim(campaign_id, claim_token):
             return {
                 "error": "campaign already running",
                 "duplicate": True,
@@ -219,7 +223,7 @@ class GovernedCampaignExecutionService:
                 "FAILED": "failed",
                 "CANCELLED": "cancelled",
             }.get(current_status, "sending")
-            self.sms.release_campaign(campaign_id, claim_token, compat)
+            self.claims.release(campaign_id, claim_token)
             return {
                 "total": int(prepared["snapshot"]["treated_count"]),
                 "accepted": accepted + already_processed,
