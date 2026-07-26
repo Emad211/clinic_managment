@@ -1,15 +1,20 @@
 """Administrative dashboard; clinical interpretation belongs to Engine v2."""
-from flask import Blueprint, render_template
+from flask import Blueprint, flash, g, redirect, render_template, url_for
 
-from src.adapters import accounting_bridge
+from src.adapters import specialist_accounting_invoice_reader
 from src.adapters.sqlite.appointments_repo import AppointmentRepository
 from src.adapters.sqlite.core import get_db
 from src.adapters.sqlite.wallet_repo import WalletRepository
 from src.api.auth import login_required
 from src.common.utils import format_jalali_date, format_jalali_datetime, today_str
+from src.security.permissions import Permission, has_permission, permission_required
+from src.services.activity_logger import log_activity
 from src.services.control_room_service import ControlRoomService
 from src.services.followup_projection_service import FollowupProjectionService
 from src.services.revenue_service import RevenueService
+from src.services.specialist_financial_reconciliation_service import (
+    SpecialistFinancialReconciliationService,
+)
 
 
 bp = Blueprint("dashboard", __name__)
@@ -25,6 +30,32 @@ REASON_FA = {
     "screening": "غربالگری",
     "vaccine": "واکسن",
 }
+
+
+@bp.post("/finance/reconcile")
+@permission_required(Permission.OPERATIONAL_HEALTH_VIEW)
+def reconcile_finance():
+    result = SpecialistFinancialReconciliationService().reconcile_all()
+    log_activity(
+        "specialist_finance_reconcile",
+        "eligible={eligible} observed={observed} changed={changed} issues={issues}".format(
+            eligible=result["eligible"],
+            observed=result["observed"],
+            changed=result["changed"],
+            issues=len(result["issues"]),
+        ),
+    )
+    if result["issues"]:
+        flash(
+            f"همگام‌سازی مالی با {len(result['issues'])} خطا کامل نشد؛ اعداد حدسی نمایش داده نمی‌شوند.",
+            "error",
+        )
+    else:
+        flash(
+            f"{result['observed']} فاکتور واجد شرایط بررسی شد و {result['changed']} snapshot جدید ثبت شد.",
+            "success",
+        )
+    return redirect(url_for("dashboard.index"))
 
 
 @bp.route("/")
@@ -74,7 +105,12 @@ def index():
         revenue = RevenueService().dashboard()
     except Exception as exc:
         print(f"[dashboard] revenue error: {exc}")
-        revenue = {"available": False, "error_code": "DASHBOARD_REVENUE_ERROR"}
+        revenue = {
+            "available": False,
+            "error_code": "DASHBOARD_REVENUE_ERROR",
+            "scope": {},
+            "funnel": {},
+        }
 
     upcoming = AppointmentRepository().upcoming(limit=8)
     for appointment in upcoming:
@@ -89,7 +125,8 @@ def index():
         today_followups=today_followups,
         wallet_outstanding=wallet_outstanding,
         revenue=revenue,
-        bridge_ok=accounting_bridge.is_available(),
+        bridge_ok=specialist_accounting_invoice_reader.is_available(),
+        can_reconcile_finance=has_permission(Permission.OPERATIONAL_HEALTH_VIEW),
         upcoming=upcoming,
         projection_policy="UNIFIED_EVENT_AWARE_V1",
     )
