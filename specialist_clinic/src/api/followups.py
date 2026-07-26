@@ -11,6 +11,7 @@ from src.common.utils import iran_now, jalali_to_gregorian_str
 from src.security.permissions import Permission, has_permission, permission_required
 from src.services.activity_logger import log_activity
 from src.services.appointment_service import AppointmentService
+from src.services.clinical_alert_service import ClinicalAlertService
 from src.services.clinical_care_loop_service import (
     ClinicalCareLoopConflict,
     ClinicalCareLoopService,
@@ -122,6 +123,11 @@ def worklist():
         active_reason=reason,
         q=q,
         hub_pending=EngagementRepository().count_pending(),
+        alert_pending=(
+            len(ClinicalAlertService().list_open())
+            if has_permission(Permission.CLINICAL_ALERT_VIEW)
+            else 0
+        ),
         active_page="sms",
     )
 
@@ -132,10 +138,11 @@ def generate():
     """Synchronize due worklist routes through the canonical engagement engine."""
     result = FollowupService().generate()
     total = result["worklist"]
+    alerts_created = int(result.get("clinical_alerts") or 0)
     flash(
-        f"{total} پیگیریِ جدید ساخته شد"
-        if total
-        else "پیگیریِ جدیدِ سررسیده‌ای نبود",
+        f"{total} پیگیری و {alerts_created} هشدار بالینی جدید ساخته شد"
+        if total or alerts_created
+        else "پیگیری یا هشدار جدیدی نبود",
         "success",
     )
     if result["issues"]:

@@ -34,6 +34,9 @@ class Permission(StrEnum):
     FOLLOWUP_CONTACT_RECORD = "followup.contact.record"
     CLINICAL_TASK_TRANSITION = "clinical.task.transition"
     CLINICAL_OUTCOME_RECORD = "clinical.outcome.record"
+    CLINICAL_ALERT_VIEW = "clinical.alert.view"
+    CLINICAL_ALERT_ACKNOWLEDGE = "clinical.alert.acknowledge"
+    CLINICAL_ALERT_RESOLVE = "clinical.alert.resolve"
     RULE_REVIEW_CLINICAL = "rule.review.clinical"
     RULE_REVIEW_TECHNICAL = "rule.review.technical"
     RULE_ACTIVATE = "rule.activate"
@@ -51,6 +54,8 @@ _ROLE_DEFAULTS = {
             Permission.CLINICAL_DATA_RECORD,
             Permission.CLINICAL_TASK_VIEW,
             Permission.FOLLOWUP_CONTACT_RECORD,
+            Permission.CLINICAL_ALERT_VIEW,
+            Permission.CLINICAL_ALERT_ACKNOWLEDGE,
         }
     ),
 }

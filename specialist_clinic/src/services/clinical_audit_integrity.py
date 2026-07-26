@@ -20,10 +20,13 @@ from src.adapters.sqlite.core import get_db
 from src.adapters.sqlite.specialist_revenue_boundary_schema import (
     ensure_specialist_revenue_boundary_storage,
 )
+from src.adapters.sqlite.clinical_alert_schema import (
+    ensure_clinical_alert_storage,
+)
 from src.common.utils import iran_now
 
 
-SCOPE_VERSION = "1.4-clinical-task-contracts"
+SCOPE_VERSION = "1.5-clinical-alert-lifecycle"
 CRITICAL_TABLES = (
     "clinical_rule_versions",
     "clinical_rulesets",
@@ -49,6 +52,8 @@ CRITICAL_TABLES = (
     "followup_booking_requests",
     "clinical_task_contracts",
     "clinical_outcome_canonical_links",
+    "clinical_alerts",
+    "clinical_alert_events",
     "security_permission_events",
 )
 
@@ -99,6 +104,7 @@ class ClinicalAuditIntegrityService:
     def _db(self):
         db = self._connection or get_db()
         ensure_specialist_revenue_boundary_storage(db)
+        ensure_clinical_alert_storage(db)
         ensure_clinical_audit_integrity_storage(db)
         return db
 

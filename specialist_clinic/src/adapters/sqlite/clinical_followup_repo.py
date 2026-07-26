@@ -76,6 +76,39 @@ class ClinicalFollowupRepository(FollowupRepository):
         )
 
     @staticmethod
+    def _assert_decision_source(db, task: dict) -> int | None:
+        recommendation_event_id = int(task["source_recommendation_event_id"])
+        latest = db.execute(
+            """SELECT id, decision
+               FROM clinical_decision_events
+               WHERE recommendation_event_id=?
+               ORDER BY occurred_at DESC, id DESC LIMIT 1""",
+            (recommendation_event_id,),
+        ).fetchone()
+        supplied = task.get("source_decision_event_id")
+        supplied_id = int(supplied) if supplied is not None else None
+        requires = bool(task.get("requires_clinician_confirmation"))
+
+        if requires:
+            if not latest or latest["decision"] != "ACCEPTED":
+                raise RuntimeError("CLINICIAN_DECISION_NOT_ACCEPTED")
+            if supplied_id != int(latest["id"]):
+                raise RuntimeError("CLINICIAN_DECISION_STALE")
+            return int(latest["id"])
+
+        if latest and latest["decision"] != "ACCEPTED":
+            raise RuntimeError("CLINICIAN_DECISION_NOT_ACCEPTED")
+        if supplied_id is not None:
+            if (
+                not latest
+                or int(latest["id"]) != supplied_id
+                or latest["decision"] != "ACCEPTED"
+            ):
+                raise RuntimeError("CLINICIAN_DECISION_STALE")
+            return supplied_id
+        return int(latest["id"]) if latest else None
+
+    @staticmethod
     def _existing(db, task: dict):
         return db.execute(
             """SELECT root.id
@@ -118,6 +151,7 @@ class ClinicalFollowupRepository(FollowupRepository):
         db.execute("BEGIN IMMEDIATE")
         try:
             self._assert_current_source(db, task)
+            decision_event_id = self._assert_decision_source(db, task)
             existing = self._existing(db, task)
             if existing:
                 task_id = int(existing["id"])
@@ -126,10 +160,6 @@ class ClinicalFollowupRepository(FollowupRepository):
                     raise RuntimeError("EXISTING_CLINICAL_TASK_CONTRACT_MISSING")
                 db.commit()
                 return task_id, False
-            decision_event_id = ClinicalCareLoopRepository.latest_decision_event_id(
-                db,
-                int(task["source_recommendation_event_id"]),
-            )
             cursor = db.execute(
                 """INSERT INTO followup_tasks
                    (patient_link_id, reason, detail, due_date, fulfillment,
