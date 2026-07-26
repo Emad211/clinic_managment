@@ -11,17 +11,18 @@ text = text.replace(
     patient_id = int(PatientService().enroll_from_accounting(1, "pytest-a7"))
     repo = CareJourneyRepository()
 ''',
-    '''    from datetime import timedelta
-    from src.adapters.sqlite.care_journey_repo import CareJourneyRepository
+    '''    from src.adapters.sqlite.care_journey_repo import CareJourneyRepository
     from src.common.utils import iran_now
     from src.services.patient_service import PatientService
 
     patient_id = int(PatientService().enroll_from_accounting(1, "pytest-a7"))
-    # Event effective times must never be in the future relative to the repository's
-    # recorded_at timestamp.  Keep a deterministic ordering safely behind iran_now().
-    completed = iran_now() - timedelta(seconds=1)
-    active = completed - timedelta(minutes=20)
-    start = active - timedelta(minutes=1)
+    # The effective timestamp is captured after enrollment, so it is never before the
+    # specialist cutover. Repository recorded_at is generated afterwards, so the same
+    # timestamp also cannot be in the future. Equal effective times preserve event order
+    # through the append-only event IDs without relying on wall-clock sleeps.
+    start = iran_now()
+    active = start
+    completed = start
     repo = CareJourneyRepository()
 ''',
     1,
