@@ -1,19 +1,22 @@
 """Clinical follow-up projection from exact current Clinical Engine v2 runs.
 
-Administrative reminders remain a separate workflow.  This module has no v1 fallback:
-an inactive or invalid v2 rollout emits no rule-derived task.
+Administrative reminders remain separate. Rule-derived tasks require an explicit,
+versioned due/completion contract; an inactive/stale rollout or incomplete contract emits
+no mutation.
 """
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 import hashlib
 import json
 
 from src.adapters.sqlite.clinical_engine_fact_repo import (
     ClinicalEngineFactRepository,
 )
-from src.adapters.sqlite.clinical_followup_repo import (
-    ClinicalFollowupRepository,
+from src.adapters.sqlite.clinical_followup_repo import ClinicalFollowupRepository
+from src.adapters.sqlite.clinical_task_contract_repo import (
+    ClinicalTaskContractError,
+    normalize_contract,
 )
 from src.services.clinical_engine.runtime import (
     ClinicalEngineRuntimeError,
@@ -36,15 +39,32 @@ def _trace_fact_ids(node: dict) -> set[str]:
     return values
 
 
+def _due_at(as_of_at: str, params: dict) -> datetime:
+    base = datetime.fromisoformat(str(as_of_at))
+    has_hours = params.get("due_in_hours") is not None
+    has_days = params.get("due_in_days") is not None
+    if has_hours == has_days:
+        raise ClinicalTaskContractError(
+            "exactly one of due_in_hours or due_in_days is required"
+        )
+    if has_hours:
+        raw = params.get("due_in_hours")
+        if isinstance(raw, bool) or not isinstance(raw, int) or not 0 <= raw <= 8760:
+            raise ClinicalTaskContractError("invalid due_in_hours")
+        return base + timedelta(hours=raw)
+    raw = params.get("due_in_days")
+    if isinstance(raw, bool) or not isinstance(raw, int) or not 0 <= raw <= 3650:
+        raise ClinicalTaskContractError("invalid due_in_days")
+    return base + timedelta(days=raw)
+
+
 class ClinicalV2FollowupService:
     """Project current audited FIRED due rules into idempotent internal tasks."""
 
     def __init__(self, *, facts=None, repo=None, runtime=None):
         self.facts = facts or ClinicalEngineFactRepository()
         self.repo = repo or ClinicalFollowupRepository()
-        self.runtime = runtime or ClinicalEngineRuntimeService(
-            facts=self.facts
-        )
+        self.runtime = runtime or ClinicalEngineRuntimeService(facts=self.facts)
 
     def enabled_for(self, patient_link_id: int) -> bool:
         mode = self.facts.get_mode()
@@ -66,19 +86,14 @@ class ClinicalV2FollowupService:
             return {
                 "enabled": True,
                 "tasks": [],
-                "issues": [
-                    {"code": "CURRENT_RUN_STALE", "rule_code": None}
-                ],
+                "issues": [{"code": "CURRENT_RUN_STALE", "rule_code": None}],
             }
         except ClinicalEngineRuntimeError:
             return {
                 "enabled": True,
                 "tasks": [],
                 "issues": [
-                    {
-                        "code": "CURRENT_RUN_UNAVAILABLE",
-                        "rule_code": None,
-                    }
+                    {"code": "CURRENT_RUN_UNAVAILABLE", "rule_code": None}
                 ],
             }
         if not ensured:
@@ -88,9 +103,7 @@ class ClinicalV2FollowupService:
             return {
                 "enabled": True,
                 "tasks": [],
-                "issues": [
-                    {"code": "SAFETY_NOT_CLEARED", "rule_code": None}
-                ],
+                "issues": [{"code": "SAFETY_NOT_CLEARED", "rule_code": None}],
             }
 
         tasks: list[dict] = []
@@ -166,20 +179,34 @@ class ClinicalV2FollowupService:
                     }
                 )
                 continue
-            try:
-                due_date = datetime.fromisoformat(
-                    str(run.get("as_of_at"))
-                ).date().isoformat()
-            except (TypeError, ValueError):
+
+            params = recommendation.get("params") or {}
+            raw_task_contract = params.get("task_contract")
+            if not isinstance(raw_task_contract, dict):
                 issues.append(
                     {
-                        "code": "TASK_DUE_DATE_INVALID",
+                        "code": "TASK_CONTRACT_MISSING",
                         "rule_code": evaluation.get("rule_code"),
                     }
                 )
                 continue
+            try:
+                due = _due_at(str(run.get("as_of_at")), params)
+                task_contract = normalize_contract(
+                    raw_task_contract,
+                    due_at=due.isoformat(sep=" ", timespec="seconds"),
+                )
+            except (TypeError, ValueError, ClinicalTaskContractError) as exc:
+                issues.append(
+                    {
+                        "code": "TASK_CONTRACT_INVALID",
+                        "rule_code": evaluation.get("rule_code"),
+                        "error": str(exc),
+                    }
+                )
+                continue
 
-            params = recommendation.get("params") or {}
+            due_date = due.date().isoformat()
             due_period = str(
                 params.get("due_period") or due_date
             ).strip()
@@ -190,14 +217,13 @@ class ClinicalV2FollowupService:
                     "due_period": due_period,
                     "evidence_fact_ids": evidence_ids,
                     "context_hash": contract.context_hash,
+                    "task_contract": task_contract,
                 },
                 ensure_ascii=False,
                 sort_keys=True,
                 separators=(",", ":"),
             )
-            task_key = hashlib.sha256(
-                identity.encode("utf-8")
-            ).hexdigest()
+            task_key = hashlib.sha256(identity.encode("utf-8")).hexdigest()
             tasks.append(
                 {
                     "patient_link_id": int(patient_link_id),
@@ -208,6 +234,7 @@ class ClinicalV2FollowupService:
                     ),
                     "due_date": due_date,
                     "due_period": due_period,
+                    "task_contract": task_contract,
                     "source_rule": evaluation.get("rule_code"),
                     "source_run_id": run["run_id"],
                     "source_recommendation_event_id": int(event["id"]),
@@ -231,9 +258,7 @@ class ClinicalV2FollowupService:
         issues = list(projection["issues"])
         for task in projection["tasks"]:
             try:
-                task_id, was_created = self.repo.create_clinical_task_once(
-                    task
-                )
+                task_id, was_created = self.repo.create_clinical_task_once(task)
             except RuntimeError as exc:
                 if str(exc) == "STALE_CLINICAL_TASK_SOURCE":
                     issues.append(

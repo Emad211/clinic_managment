@@ -79,7 +79,7 @@
         "suggestion_only": {"const": true},
         "requires_clinician_confirmation": {"type": "boolean"},
         "may_create_internal_task": {"type": "boolean"},
-        "params": {"type": "object"},
+        "params": {"$ref": "#/$defs/recommendationParams"},
         "explanation_template_fa": {"type": "string"}
       },
       "additionalProperties": false
@@ -118,6 +118,39 @@
   },
   "additionalProperties": false,
   "$defs": {
+    "recommendationParams": {
+      "type": "object",
+      "properties": {
+        "due_in_hours": {"type": "integer", "minimum": 0, "maximum": 8760},
+        "due_in_days": {"type": "integer", "minimum": 0, "maximum": 3650},
+        "due_period": {"type": "string", "minLength": 1, "maxLength": 120},
+        "task_contract": {
+          "type": "object",
+          "required": ["allowed_outcome_types", "minimum_verification", "canonical_ingestion"],
+          "properties": {
+            "urgency": {"enum": ["ROUTINE", "PRIORITY", "URGENT", "CRITICAL"]},
+            "allowed_outcome_types": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": {"enum": ["OBSERVATION", "PATIENT_REPORTED", "ENCOUNTER_COMPLETED", "PROCEDURE_COMPLETED", "LAB_COMPLETED", "OTHER"]}
+            },
+            "required_fact_keys": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": {"type": "string", "pattern": "^(observation|lab)\\.[a-z0-9][a-z0-9._-]*$"}
+            },
+            "minimum_verification": {"enum": ["CONFIRMED", "PROVISIONAL", "UNVERIFIED"]},
+            "canonical_ingestion": {"enum": ["NONE", "OPTIONAL", "REQUIRED"]},
+            "requires_acknowledgement": {"type": "boolean"}
+          },
+          "additionalProperties": false
+        },
+        "do_not_auto_refer": {"type": "boolean"},
+        "do_not_auto_message": {"type": "boolean"}
+      },
+      "additionalProperties": true
+    },
     "expression": {
       "oneOf": [
         {"type": "object", "required": ["node_id", "all"], "properties": {"node_id": {"type": "string", "minLength": 1}, "all": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/expression"}}}, "additionalProperties": false},

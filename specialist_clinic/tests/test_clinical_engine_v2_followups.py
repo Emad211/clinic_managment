@@ -141,9 +141,27 @@ def _run(
             "requires_clinician_confirmation": False,
             "presentation": "NON_INTERRUPTIVE",
             "may_create_internal_task": True,
-            "params": {},
+            "params": {
+                "due_in_days": 0,
+                "task_contract": {
+                    "urgency": "ROUTINE",
+                    "allowed_outcome_types": [
+                        "OBSERVATION", "PATIENT_REPORTED",
+                        "ENCOUNTER_COMPLETED", "PROCEDURE_COMPLETED",
+                        "LAB_COMPLETED", "OTHER"
+                    ],
+                    "required_fact_keys": [],
+                    "minimum_verification": "UNVERIFIED",
+                    "canonical_ingestion": "OPTIONAL",
+                    "requires_acknowledgement": False,
+                },
+            },
         }
-        recommendation.update(recommendation_overrides or {})
+        overrides = deepcopy(recommendation_overrides or {})
+        params_override = overrides.pop("params", None)
+        if params_override is not None:
+            recommendation["params"].update(params_override)
+        recommendation.update(overrides)
     predicate = (
         PredicateState.TRUE
         if outcome == "FIRED"

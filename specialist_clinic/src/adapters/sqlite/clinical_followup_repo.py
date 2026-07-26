@@ -18,14 +18,21 @@ from src.adapters.sqlite.clinical_engine_current_contract import (
 from src.adapters.sqlite.clinical_engine_runtime_schema import (
     ensure_runtime_schema,
 )
+from src.adapters.sqlite.clinical_task_contract_repo import (
+    ClinicalTaskContractRepository,
+)
+from src.adapters.sqlite.clinical_task_contract_schema import (
+    ensure_clinical_task_contract_storage,
+)
 from src.adapters.sqlite.core import get_db
 from src.adapters.sqlite.followups_repo import FollowupRepository
 
 
 class ClinicalFollowupRepository(FollowupRepository):
-    """Create a clinical task and its immutable CREATED event in one transaction."""
+    """Create a clinical task, immutable contract and CREATED event atomically."""
 
     def __init__(self, *, activation=None):
+        super().__init__()
         self.activation = activation or ClinicalEngineActivationRepository()
 
     def _assert_current_source(self, db, task: dict) -> None:
@@ -56,9 +63,7 @@ class ClinicalFollowupRepository(FollowupRepository):
         assert_current_rollout_contract(
             db,
             context=context,
-            patient_revision=int(
-                context["clinical_data_revision"] or 0
-            ),
+            patient_revision=int(context["clinical_data_revision"] or 0),
             mode=str(task["source_mode"]),
             engine_version=str(task["source_engine_version"]),
             ruleset_id=task.get("source_ruleset_id"),
@@ -103,19 +108,24 @@ class ClinicalFollowupRepository(FollowupRepository):
             ),
         ).fetchone()
 
-    def create_clinical_task_once(
-        self, task: dict
-    ) -> tuple[int, bool]:
+    def create_clinical_task_once(self, task: dict) -> tuple[int, bool]:
+        if not isinstance(task.get("task_contract"), dict):
+            raise RuntimeError("CLINICAL_TASK_CONTRACT_MISSING")
         db = get_db()
         ensure_runtime_schema(db)
         ensure_clinical_care_loop_storage(db)
+        ensure_clinical_task_contract_storage(db)
         db.execute("BEGIN IMMEDIATE")
         try:
             self._assert_current_source(db, task)
             existing = self._existing(db, task)
             if existing:
+                task_id = int(existing["id"])
+                contract = ClinicalTaskContractRepository(db).get(task_id)
+                if not contract:
+                    raise RuntimeError("EXISTING_CLINICAL_TASK_CONTRACT_MISSING")
                 db.commit()
-                return int(existing["id"]), False
+                return task_id, False
             decision_event_id = ClinicalCareLoopRepository.latest_decision_event_id(
                 db,
                 int(task["source_recommendation_event_id"]),
@@ -145,11 +155,22 @@ class ClinicalFollowupRepository(FollowupRepository):
                 ),
             )
             task_id = int(cursor.lastrowid)
+            contract = ClinicalTaskContractRepository(db).create_once(
+                task_id=task_id,
+                source_recommendation_event_id=int(
+                    task["source_recommendation_event_id"]
+                ),
+                contract=task["task_contract"],
+                created_by=str(task.get("source_actor") or "clinical-followup"),
+                commit=False,
+            )
             ClinicalCareLoopRepository.create_initial_event(
                 db,
                 task_id=task_id,
-                due_at=task.get("due_date"),
-                actor_username=str(task.get("source_actor") or "clinical-followup"),
+                due_at=contract["due_at"],
+                actor_username=str(
+                    task.get("source_actor") or "clinical-followup"
+                ),
                 actor_user_id=task.get("source_actor_user_id"),
             )
             db.commit()

@@ -1,7 +1,7 @@
 """Pure suggestion-only recommendation composition for Clinical Engine v2."""
-
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any
 
 from src.domain.clinical_engine import (
@@ -20,6 +20,15 @@ _PRESENTATION = {
 }
 
 
+def _json_value(value: Any) -> Any:
+    """Thaw compiler-frozen JSON into a serializable audit payload."""
+    if isinstance(value, Mapping):
+        return {str(key): _json_value(item) for key, item in value.items()}
+    if isinstance(value, tuple):
+        return [_json_value(item) for item in value]
+    return value
+
+
 def recommendation_payload(
     recommendation: Recommendation | None,
     *,
@@ -35,9 +44,12 @@ def recommendation_payload(
         "action_type": recommendation.action_type.value,
         "text_fa": recommendation.text_fa,
         "suggestion_only": recommendation.suggestion_only,
-        "requires_clinician_confirmation": recommendation.requires_clinician_confirmation,
+        "requires_clinician_confirmation": (
+            recommendation.requires_clinician_confirmation
+        ),
         "presentation": recommendation.presentation.value,
         "may_create_internal_task": recommendation.may_create_internal_task,
+        "params": _json_value(recommendation.params),
     }
     if title_fa is not None:
         payload["title_fa"] = title_fa
@@ -60,7 +72,9 @@ class RecommendationComposer:
         definition = compiled.definition
         policy = definition.recommendation
         required = {
-            "text_fa", "requires_clinician_confirmation", "may_create_internal_task"
+            "text_fa",
+            "requires_clinician_confirmation",
+            "may_create_internal_task",
         }
         if not hasattr(policy, "keys") or not required.issubset(policy.keys()):
             return None
@@ -78,4 +92,5 @@ class RecommendationComposer:
                 definition.action_type, Presentation.NON_INTERRUPTIVE
             ),
             may_create_internal_task=bool(policy["may_create_internal_task"]),
+            params=policy.get("params") or {},
         )
