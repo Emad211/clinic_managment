@@ -296,4 +296,5 @@ def test_health_is_phi_free_and_permission_protected(secure_app):
         "audit",
         "worker",
         "revenue_scope",
+        "finance_projection",
     }

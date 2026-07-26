@@ -23,10 +23,13 @@ from src.adapters.sqlite.specialist_revenue_boundary_schema import (
 from src.adapters.sqlite.clinical_alert_schema import (
     ensure_clinical_alert_storage,
 )
+from src.adapters.sqlite.specialist_financial_funnel_schema import (
+    ensure_specialist_financial_funnel_storage,
+)
 from src.common.utils import iran_now
 
 
-SCOPE_VERSION = "1.5-clinical-alert-lifecycle"
+SCOPE_VERSION = "1.6-specialist-attendance-collection"
 CRITICAL_TABLES = (
     "clinical_rule_versions",
     "clinical_rulesets",
@@ -54,6 +57,9 @@ CRITICAL_TABLES = (
     "clinical_outcome_canonical_links",
     "clinical_alerts",
     "clinical_alert_events",
+    "encounter_appointment_links",
+    "encounter_appointment_link_events",
+    "specialist_financial_observations",
     "security_permission_events",
 )
 
@@ -105,6 +111,7 @@ class ClinicalAuditIntegrityService:
         db = self._connection or get_db()
         ensure_specialist_revenue_boundary_storage(db)
         ensure_clinical_alert_storage(db)
+        ensure_specialist_financial_funnel_storage(db)
         ensure_clinical_audit_integrity_storage(db)
         return db
 

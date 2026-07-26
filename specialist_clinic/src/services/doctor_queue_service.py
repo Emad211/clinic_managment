@@ -1,16 +1,24 @@
 """Physician queue with canonical accounting identity and specialist journeys.
 
 Accounting is always read-only. Posted hidden fields are never trusted for patient,
-invoice, work-date, or revenue attribution.
+invoice, work-date, or revenue attribution. An optional appointment id is validated
+server-side and linked to the Encounter in the same transaction that records attendance.
 """
 from __future__ import annotations
 
 from src.adapters import accounting_bridge, specialist_accounting_revenue
+from src.adapters.sqlite.appointments_repo import AppointmentRepository
 from src.adapters.sqlite.care_journey_repo import CareJourneyRepository
 from src.adapters.sqlite.core import get_db
 from src.adapters.sqlite.doctor_queue_repo import DoctorQueueRepository
 from src.adapters.sqlite.specialist_enrollment_repo import (
     SpecialistEnrollmentRepository,
+)
+from src.adapters.sqlite.specialist_financial_funnel_repo import (
+    SpecialistFinancialFunnelRepository,
+)
+from src.adapters.sqlite.specialist_financial_funnel_schema import (
+    ensure_specialist_financial_funnel_storage,
 )
 from src.common.utils import iran_now, today_str
 from src.services.care_journey_service import CareJourneyService
@@ -30,6 +38,8 @@ class DoctorQueueService:
         work_day = work_date or self.work_date_provider()
         opens = accounting_bridge.fetch_open_visit_invoices(work_date=work_day)
         log = self.repo.log_map(work_day)
+        appointments = AppointmentRepository()
+        funnel = SpecialistFinancialFunnelRepository()
         waiting, done = [], []
         for invoice in opens:
             accounting_patient_id = int(invoice["patient_id"])
@@ -38,6 +48,22 @@ class DoctorQueueService:
             )
             entry = log.get(int(invoice["invoice_id"])) or {}
             status = entry.get("status", "waiting")
+            patient_link_id = (
+                int(enrollment["patient_link_id"]) if enrollment else None
+            )
+            encounter = CareJourneyRepository().encounter_for_invoice(
+                int(invoice["invoice_id"])
+            )
+            link = (
+                funnel.appointment_link_for_encounter(encounter["encounter_id"])
+                if encounter
+                else None
+            )
+            options = (
+                appointments.scheduled_for_patient_date(patient_link_id, work_day)
+                if patient_link_id and not link
+                else []
+            )
             row = {
                 "invoice_id": int(invoice["invoice_id"]),
                 "accounting_patient_id": accounting_patient_id,
@@ -47,11 +73,13 @@ class DoctorQueueService:
                 "opened_at": invoice.get("opened_at"),
                 "work_date": invoice.get("work_date") or work_day,
                 "status": status,
-                "patient_link_id": (
-                    int(enrollment["patient_link_id"]) if enrollment else None
-                ),
+                "patient_link_id": patient_link_id,
                 "enrolled": bool(enrollment),
                 "done_by": entry.get("done_by"),
+                "appointment_options": options,
+                "linked_appointment_id": (
+                    int(link["appointment_id"]) if link else None
+                ),
             }
             (done if status == "done" else waiting).append(row)
         return {"waiting": waiting, "done": done, "work_date": work_day}
@@ -102,11 +130,41 @@ class DoctorQueueService:
         )
         if not current or current["event_type"] != "STARTED":
             raise DoctorQueueIdentityError("SPECIALIST_VISIT_NOT_ACTIVE")
+        link = SpecialistFinancialFunnelRepository().appointment_link_for_encounter(
+            encounter["encounter_id"]
+        )
         canonical["encounter_id"] = encounter["encounter_id"]
         canonical["journey_id"] = encounter["journey_id"]
+        canonical["appointment_id"] = (
+            int(link["appointment_id"]) if link else None
+        )
         return canonical
 
-    def start(self, snapshot: dict, actor_username: str | None = None) -> dict:
+    @staticmethod
+    def _validate_appointment(
+        db,
+        *,
+        appointment_id: int,
+        patient_link_id: int,
+        work_date: str,
+    ) -> dict:
+        appointment = AppointmentRepository(db).get(int(appointment_id))
+        if not appointment:
+            raise DoctorQueueIdentityError("SPECIALIST_APPOINTMENT_NOT_FOUND")
+        if int(appointment["patient_link_id"]) != int(patient_link_id):
+            raise DoctorQueueIdentityError("SPECIALIST_APPOINTMENT_PATIENT_MISMATCH")
+        if str(appointment.get("status") or "") != "scheduled":
+            raise DoctorQueueIdentityError("SPECIALIST_APPOINTMENT_NOT_SCHEDULED")
+        if str(appointment.get("scheduled_at") or "")[:10] != str(work_date):
+            raise DoctorQueueIdentityError("SPECIALIST_APPOINTMENT_DATE_MISMATCH")
+        return appointment
+
+    def start(
+        self,
+        snapshot: dict,
+        actor_username: str | None = None,
+        appointment_id: int | None = None,
+    ) -> dict:
         canonical = self.canonical_snapshot(snapshot["accounting_invoice_id"])
         actor = str(actor_username or "system:doctor-queue").strip()
         if str(canonical["work_date"]) != str(self.work_date_provider()):
@@ -118,9 +176,17 @@ class DoctorQueueService:
             return canonical
 
         db = get_db()
+        ensure_specialist_financial_funnel_storage(db)
         db.execute("BEGIN IMMEDIATE")
         try:
-            CareJourneyService(db=db).start_accounting_visit(
+            if appointment_id is not None:
+                self._validate_appointment(
+                    db,
+                    appointment_id=int(appointment_id),
+                    patient_link_id=int(canonical["patient_link_id"]),
+                    work_date=str(canonical["work_date"]),
+                )
+            started = CareJourneyService(db=db).start_accounting_visit(
                 patient_link_id=canonical["patient_link_id"],
                 accounting_invoice_id=canonical["accounting_invoice_id"],
                 actor_username=actor,
@@ -128,10 +194,27 @@ class DoctorQueueService:
                 effective_at=iran_now(),
                 commit=False,
             )
+            encounter = started["encounter"]
+            if appointment_id is not None:
+                SpecialistFinancialFunnelRepository(db).link_appointment_once(
+                    appointment_id=int(appointment_id),
+                    encounter_id=encounter["encounter_id"],
+                    patient_link_id=int(canonical["patient_link_id"]),
+                    journey_id=encounter["journey_id"],
+                    actor_username=actor,
+                    effective_at=iran_now(),
+                    commit=False,
+                )
+                AppointmentRepository(db).set_status(
+                    int(appointment_id), "done", commit=False
+                )
             DoctorQueueRepository(db).start(
                 **self._repo_snapshot(canonical), commit=False
             )
             db.commit()
+            canonical["encounter_id"] = encounter["encounter_id"]
+            canonical["journey_id"] = encounter["journey_id"]
+            canonical["appointment_id"] = appointment_id
             return canonical
         except Exception:
             db.rollback()
@@ -180,7 +263,7 @@ class DoctorQueueService:
                 commit=False,
                 **self._repo_snapshot(canonical),
             )
-            CareJourneyService(db=db).complete_accounting_visit(
+            completed = CareJourneyService(db=db).complete_accounting_visit(
                 accounting_invoice_id=canonical["accounting_invoice_id"],
                 actor_username=done_by,
                 effective_at=iran_now(),
@@ -188,6 +271,8 @@ class DoctorQueueService:
                 commit=False,
             )
             db.commit()
+            canonical["encounter_id"] = completed["encounter"]["encounter_id"]
+            canonical["journey_id"] = completed["encounter"]["journey_id"]
             return canonical
         except Exception:
             db.rollback()

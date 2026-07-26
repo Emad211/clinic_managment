@@ -74,6 +74,32 @@ class AppointmentRepository:
             ).fetchall()
         ]
 
+    def scheduled_for_patient_date(self, pid: int, work_date: str) -> list[dict]:
+        """Explicit candidates only; no fuzzy time or identity matching."""
+        rows = self._db().execute(
+            """SELECT appointment.*
+               FROM appointments appointment
+               WHERE appointment.patient_link_id=?
+                 AND appointment.status='scheduled'
+                 AND date(appointment.scheduled_at)=date(?)
+                 AND NOT EXISTS (
+                     SELECT 1 FROM encounter_appointment_links link
+                     JOIN encounter_appointment_link_events event
+                       ON event.link_id=link.link_id
+                     WHERE link.appointment_id=appointment.id
+                       AND event.id=(
+                           SELECT head.id
+                           FROM encounter_appointment_link_events head
+                           WHERE head.link_id=link.link_id
+                           ORDER BY head.recorded_at DESC, head.id DESC LIMIT 1
+                       )
+                       AND event.status='LINKED'
+                 )
+               ORDER BY appointment.scheduled_at, appointment.id""",
+            (int(pid), str(work_date)),
+        ).fetchall()
+        return [dict(row) for row in rows]
+
     def upcoming(self, limit: int = 50) -> list[dict]:
         return [
             dict(row)
@@ -114,8 +140,7 @@ class AppointmentRepository:
     def mark_reminder_sent(self, appt_id: int, *, commit: bool = True):
         db = self._db()
         db.execute(
-            "UPDATE appointments SET reminder_sent=1 WHERE id=?",
-            (int(appt_id),),
+            "UPDATE appointments SET reminder_sent=1 WHERE id=?", (int(appt_id),)
         )
         if commit:
             db.commit()

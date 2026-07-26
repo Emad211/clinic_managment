@@ -1,23 +1,24 @@
-"""Authoritative specialist-clinic revenue projection.
+"""Authoritative specialist-clinic revenue and conversion projection.
 
-Accounting remains read-only and continues to expose the patient's complete historical
-visit record.  Financial KPIs in this service are intentionally narrower: only CLOSED
-accounting invoices carrying a current, explicit ATTRIBUTED event tied to a specialist
-CareJourney/Encounter are included.  Enrollment time alone never attributes revenue.
+Accounting remains read-only and exposes complete patient history. Financial KPIs are
+computed only from latest append-only observations of invoices that are explicitly
+attributed to a COMPLETED specialist Encounter. Booking, attendance, service completion,
+invoice closure and collection remain distinct stages.
 """
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 import jdatetime
 
-from src.adapters import specialist_accounting_revenue as accounting_revenue
+from src.adapters import specialist_accounting_invoice_reader as accounting_reader
 from src.adapters.sqlite.care_journey_repo import CareJourneyRepository
 from src.adapters.sqlite.specialist_enrollment_repo import (
     SpecialistEnrollmentRepository,
 )
-from src.adapters.sqlite.specialist_finance_repo import (
-    SpecialistFinanceRepository,
+from src.adapters.sqlite.specialist_finance_repo import SpecialistFinanceRepository
+from src.adapters.sqlite.specialist_financial_funnel_repo import (
+    SpecialistFinancialFunnelRepository,
 )
 from src.common.utils import format_jalali_date, iran_now
 
@@ -29,9 +30,10 @@ def _jalali_month_start_gregorian() -> str:
 
 
 class RevenueService:
-    """Read-only financial projection with an explicit specialist scope."""
+    """Audited financial projection with explicit completed-Encounter scope."""
 
-    POLICY_VERSION = "EXPLICIT_SPECIALIST_ATTRIBUTION_V1"
+    POLICY_VERSION = "COMPLETED_ENCOUNTER_OBSERVATION_V2"
+    FRESHNESS_MINUTES = 15
 
     def __init__(
         self,
@@ -39,63 +41,102 @@ class RevenueService:
         journeys: CareJourneyRepository | None = None,
         enrollments: SpecialistEnrollmentRepository | None = None,
         finance: SpecialistFinanceRepository | None = None,
+        funnel: SpecialistFinancialFunnelRepository | None = None,
         accounting=None,
         clock=None,
     ):
         self.journeys = journeys or CareJourneyRepository()
         self.enrollments = enrollments or SpecialistEnrollmentRepository()
         self.finance = finance or SpecialistFinanceRepository()
-        self.accounting = accounting or accounting_revenue
+        self.funnel = funnel or SpecialistFinancialFunnelRepository()
+        self.accounting = accounting or accounting_reader
         self.clock = clock or iran_now
+
+    @staticmethod
+    def _naive(value: datetime) -> datetime:
+        return value.replace(tzinfo=None) if value.tzinfo is not None else value
 
     def dashboard(self) -> dict:
         now = self.clock()
-        scope = self.journeys.scope_summary()
-        scope.update(
-            {
-                "policy_version": self.POLICY_VERSION,
-                "history_visible_but_excluded": True,
-                "time_only_attribution": False,
-                "as_of": now.isoformat(sep=" ", timespec="seconds"),
-            }
-        )
+        now_naive = self._naive(now)
+        journey_scope = self.journeys.scope_summary()
+        reconciliation = self.funnel.reconciliation_scope()
+        funnel = self.funnel.funnel_summary()
+        scope = {
+            **journey_scope,
+            **reconciliation,
+            "policy_version": self.POLICY_VERSION,
+            "history_visible_but_excluded": True,
+            "time_only_attribution": False,
+            "completed_encounter_required": True,
+            "payment_evidence": "ITEM_PAID_FLAGS",
+            "as_of": now.isoformat(sep=" ", timespec="seconds"),
+        }
 
-        if not self.accounting.is_available():
-            return {
-                "available": False,
-                "error_code": "ACCOUNTING_DATABASE_UNAVAILABLE",
-                "scope": scope,
-            }
         if scope["linked_patients_missing_cutover"]:
             return {
                 "available": False,
                 "error_code": "SPECIALIST_CUTOVER_MISSING",
                 "scope": scope,
+                "funnel": funnel,
             }
-
-        invoice_ids = self.journeys.attributed_invoice_ids()
-        try:
-            total = self.accounting.revenue_for_invoice_ids(invoice_ids)
-            month = self.accounting.revenue_for_invoice_ids(
-                invoice_ids,
-                floor=_jalali_month_start_gregorian(),
-            )
-            today = now.date()
-            start = today - timedelta(days=29)
-            daily = self.accounting.daily_revenue_for_invoice_ids(
-                invoice_ids,
-                start.strftime("%Y-%m-%d"),
-                today.strftime("%Y-%m-%d"),
-            )
-        except (
-            accounting_revenue.AccountingRevenueUnavailable,
-            accounting_revenue.AccountingRevenueSchemaError,
-        ) as exc:
+        if not self.accounting.is_available():
             return {
                 "available": False,
-                "error_code": type(exc).__name__.upper(),
+                "error_code": "ACCOUNTING_DATABASE_UNAVAILABLE",
                 "scope": scope,
+                "funnel": funnel,
             }
+        if reconciliation["missing_observations"]:
+            return {
+                "available": False,
+                "error_code": "FINANCIAL_RECONCILIATION_INCOMPLETE",
+                "scope": scope,
+                "funnel": funnel,
+            }
+
+        latest_at = reconciliation.get("latest_observed_at")
+        if reconciliation["eligible_invoices"] and not latest_at:
+            return {
+                "available": False,
+                "error_code": "FINANCIAL_OBSERVATION_MISSING",
+                "scope": scope,
+                "funnel": funnel,
+            }
+        if latest_at:
+            try:
+                observed = datetime.fromisoformat(str(latest_at))
+            except ValueError:
+                return {
+                    "available": False,
+                    "error_code": "FINANCIAL_OBSERVATION_TIMESTAMP_INVALID",
+                    "scope": scope,
+                    "funnel": funnel,
+                }
+            age_minutes = max(
+                int((now_naive - observed).total_seconds() // 60), 0
+            )
+            scope["observation_age_minutes"] = age_minutes
+            if age_minutes > self.FRESHNESS_MINUTES:
+                return {
+                    "available": False,
+                    "error_code": "FINANCIAL_OBSERVATION_STALE",
+                    "scope": scope,
+                    "funnel": funnel,
+                }
+        else:
+            scope["observation_age_minutes"] = 0
+            scope["freshness_status"] = "NO_COMPLETED_ENCOUNTERS"
+
+        total = self.funnel.finance_totals()
+        month = self.funnel.finance_totals(
+            floor=_jalali_month_start_gregorian()
+        )
+        today = now.date()
+        start = today - timedelta(days=29)
+        daily = self.funnel.daily_totals(
+            start.strftime("%Y-%m-%d"), today.strftime("%Y-%m-%d")
+        )
 
         labels: list[str] = []
         billed_values: list[int] = []
@@ -108,7 +149,9 @@ class RevenueService:
             billed_values.append(int(bucket["billed"] or 0))
             collected_values.append(int(bucket["collected"] or 0))
 
-        scope["attributed_invoices"] = len(invoice_ids)
+        scope["financially_observed_invoices"] = reconciliation[
+            "observed_invoices"
+        ]
         return {
             "available": True,
             "enrolled": self.enrollments.count(),
@@ -118,21 +161,15 @@ class RevenueService:
                 "labels": labels,
                 "billed_values": billed_values,
                 "collected_values": collected_values,
-                # Backward-compatible key; now intentionally means collected cash.
                 "values": collected_values,
             },
+            "funnel": funnel,
             "campaigns": self.campaign_revenue(),
             "scope": scope,
         }
 
     def campaign_revenue(self, ids_hint: list[int] | None = None) -> dict:
-        """Fail-closed campaign projection until campaigns create explicit journeys.
-
-        The previous time-window-only estimate could count unrelated general-clinic
-        visits and could count the same invoice for multiple campaigns.  Returning zero
-        with a machine-readable status is safer than publishing a persuasive false KPI.
-        Tranche A2 will bind campaign response -> journey -> encounter -> invoice.
-        """
+        """Fail closed until campaign response is explicitly linked to a Journey."""
         rows = []
         issued_credit = 0
         for campaign in self.finance.campaigns():
@@ -162,6 +199,4 @@ class RevenueService:
         }
 
     def campaign_incrementality(self, campaign_id: int) -> dict | None:
-        # No causal/incremental figure is published before an explicit campaign journey
-        # and exclusive invoice assignment exist.
         return None
