@@ -1,25 +1,13 @@
 from __future__ import annotations
 
 from pathlib import Path
+import re
 
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
-for relative in (
-    "specialist_clinic/tests/test_invoice_outreach.py",
-    "specialist_clinic/tests/test_invoice_outreach_retry.py",
-    "specialist_clinic/tests/test_visit_invites.py",
-):
-    path = ROOT / relative
-    text = path.read_text(encoding="utf-8")
-    old = '''def _set_acc_path(path: str):
-    """Hot-swap Config.ACCOUNTING_DB_PATH so the next bridge call uses the new path."""
-    os.environ["ACCOUNTING_DB_PATH"] = path
-    import src.config.settings as cfg_mod
-    cfg_mod.Config.ACCOUNTING_DB_PATH = path
-'''
-    new = '''def _set_acc_path(path: str):
+standard_helper = '''def _set_acc_path(path: str):
     """Hot-swap the exact active test application's read-only accounting path."""
     os.environ["ACCOUNTING_DB_PATH"] = path
     import src.config.settings as cfg_mod
@@ -27,10 +15,22 @@ for relative in (
     from flask import current_app
     current_app.config["ACCOUNTING_DB_PATH"] = path
 '''
-    if new not in text:
-        if old not in text:
+pattern = re.compile(
+    r"def _set_acc_path\(path: str\):\n.*?(?=\n\n(?:def |@pytest|#))",
+    re.DOTALL,
+)
+for relative in (
+    "specialist_clinic/tests/test_invoice_outreach.py",
+    "specialist_clinic/tests/test_invoice_outreach_retry.py",
+    "specialist_clinic/tests/test_visit_invites.py",
+):
+    path = ROOT / relative
+    text = path.read_text(encoding="utf-8")
+    if standard_helper not in text:
+        updated, count = pattern.subn(standard_helper.rstrip(), text, count=1)
+        if count != 1:
             raise AssertionError(f"accounting hot-swap helper missing: {relative}")
-        path.write_text(text.replace(old, new, 1), encoding="utf-8")
+        path.write_text(updated, encoding="utf-8")
 
 # A4 fixture explicitly supplies its accounting database to the app instance. Module
 # flushing elsewhere in the suite can no longer replace the Config class it imported.
