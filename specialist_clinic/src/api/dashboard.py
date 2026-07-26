@@ -8,6 +8,7 @@ from src.adapters.sqlite.wallet_repo import WalletRepository
 from src.api.auth import login_required
 from src.common.utils import format_jalali_date, format_jalali_datetime, today_str
 from src.services.control_room_service import ControlRoomService
+from src.services.followup_projection_service import FollowupProjectionService
 from src.services.revenue_service import RevenueService
 
 
@@ -29,36 +30,22 @@ REASON_FA = {
 @bp.route("/")
 @login_required
 def index():
-    """Daily launchpad with operational counts and no measurement grading."""
+    """Daily launchpad using one event-aware follow-up projection."""
     db = get_db()
     today = today_str()
+    followup = FollowupProjectionService().summary(as_of=today)
     population = ControlRoomService().panel(show_value=False)["summary"]
 
-    rows = db.execute(
-        """SELECT f.id, f.reason, f.detail, f.due_date,
-                  p.id AS pid, p.full_name, p.phone_number
-           FROM followup_tasks f
-           JOIN patient_links p ON p.id=f.patient_link_id
-           WHERE f.status='open'
-             AND (f.due_date IS NULL OR f.due_date <= ?)
-           ORDER BY (f.due_date IS NULL), f.due_date
-           LIMIT 12""",
-        (today,),
-    ).fetchall()
-    today_followups = [dict(row) for row in rows]
-    for item in today_followups:
+    today_followups = []
+    for source in followup["due"][:12]:
+        item = dict(source)
+        item["pid"] = int(item["patient_link_id"])
+        item["full_name"] = item.get("patient_name") or "—"
         item["reason_fa"] = REASON_FA.get(item["reason"], item["reason"])
-        item["due_fa"] = (
-            format_jalali_date(item["due_date"])
-            if item["due_date"]
-            else "—"
-        )
+        due = item.get("current_due_at")
+        item["due_fa"] = format_jalali_date(due) if due else "—"
+        today_followups.append(item)
 
-    followups_today = db.execute(
-        """SELECT COUNT(*) AS count FROM followup_tasks
-           WHERE status='open' AND (due_date IS NULL OR due_date <= ?)""",
-        (today,),
-    ).fetchone()["count"]
     refills_due = db.execute(
         """SELECT COUNT(*) AS count FROM patient_medications
            WHERE is_active=1 AND refill_due_date IS NOT NULL
@@ -71,15 +58,14 @@ def index():
         "appointments_open": db.execute(
             "SELECT COUNT(*) AS count FROM appointments WHERE status='scheduled'"
         ).fetchone()["count"],
-        "followups_open": db.execute(
-            "SELECT COUNT(*) AS count FROM followup_tasks WHERE status='open'"
-        ).fetchone()["count"],
+        "followups_open": followup["open_tasks"],
         "action_required": population["action_required"],
-        "followups_today": followups_today,
+        "followups_today": followup["due_tasks"],
+        "due_callbacks": followup["due_callbacks"],
         "lapsed": population["lapsed"],
         "with_observation": population["with_observation"],
         "refills_due": refills_due,
-        "open_followup_patients": population["open_followup_patients"],
+        "open_followup_patients": followup["open_patients"],
         "no_show_patients": population["no_show_patients"],
     }
     wallet_outstanding = WalletRepository().total_outstanding()
@@ -88,7 +74,7 @@ def index():
         revenue = RevenueService().dashboard()
     except Exception as exc:
         print(f"[dashboard] revenue error: {exc}")
-        revenue = {"available": False}
+        revenue = {"available": False, "error_code": "DASHBOARD_REVENUE_ERROR"}
 
     upcoming = AppointmentRepository().upcoming(limit=8)
     for appointment in upcoming:
@@ -105,5 +91,5 @@ def index():
         revenue=revenue,
         bridge_ok=accounting_bridge.is_available(),
         upcoming=upcoming,
-        projection_policy="ADMINISTRATIVE_ONLY",
+        projection_policy="UNIFIED_EVENT_AWARE_V1",
     )
