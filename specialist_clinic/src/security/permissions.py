@@ -46,6 +46,10 @@ class Permission(StrEnum):
     SMS_DELIVERY_RECONCILE = "sms.delivery.reconcile"
     SMS_SETTINGS_MANAGE = "sms.settings.manage"
     SMS_CONSENT_MANAGE = "sms.consent.manage"
+    SMS_CAMPAIGN_RESPONSE_RECORD = "sms.campaign.response.record"
+    SMS_CAMPAIGN_ATTRIBUTION_RECORD = "sms.campaign.attribution.record"
+    SMS_CAMPAIGN_ATTRIBUTION_CORRECT = "sms.campaign.attribution.correct"
+    SMS_CAMPAIGN_ECONOMICS_VIEW = "sms.campaign.economics.view"
     RULE_REVIEW_CLINICAL = "rule.review.clinical"
     RULE_REVIEW_TECHNICAL = "rule.review.technical"
     RULE_ACTIVATE = "rule.activate"
@@ -70,6 +74,8 @@ _ROLE_DEFAULTS = {
             Permission.SMS_SINGLE_SEND,
             Permission.SMS_DELIVERY_RECONCILE,
             Permission.SMS_CONSENT_MANAGE,
+            Permission.SMS_CAMPAIGN_RESPONSE_RECORD,
+            Permission.SMS_CAMPAIGN_ATTRIBUTION_RECORD,
         }
     ),
 }

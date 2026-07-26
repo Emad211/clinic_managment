@@ -39,6 +39,9 @@ from src.adapters.sqlite.specialist_financial_funnel_repo import (
 from src.adapters.sqlite.sms_governance_schema import (
     ensure_sms_governance_storage,
 )
+from src.adapters.sqlite.campaign_economics_schema import (
+    ensure_campaign_economics_storage,
+)
 from src.adapters.sqlite.clinical_validation_schema import (
     ensure_clinical_validation_storage,
 )
@@ -87,6 +90,13 @@ _REQUIRED_TABLES = frozenset(
         "sms_consent_events",
         "sms_message_governance",
         "sms_delivery_events",
+        "campaign_lifecycle_events",
+        "campaign_audience_snapshots",
+        "campaign_audience_members",
+        "campaign_response_events",
+        "campaign_journey_attribution_events",
+        "campaign_wallet_grant_events",
+        "campaign_message_cost_events",
     }
 )
 
@@ -101,6 +111,7 @@ def _readiness_checks() -> dict[str, bool]:
     ensure_clinical_alert_storage(db)
     ensure_specialist_financial_funnel_storage(db)
     ensure_sms_governance_storage(db)
+    ensure_campaign_economics_storage(db)
     ensure_clinical_validation_storage(db)
     ensure_clinical_audit_integrity_storage(db)
 
@@ -158,6 +169,24 @@ def _readiness_checks() -> dict[str, bool]:
            )"""
     ).fetchone()["count"]
     sms_governance_ok = int(ungoverned_messages or 0) == 0
+    inconsistent_campaign = db.execute(
+        """SELECT 1 FROM campaign_lifecycle_events lifecycle
+           WHERE lifecycle.id=(
+               SELECT head.id FROM campaign_lifecycle_events head
+               WHERE head.campaign_id=lifecycle.campaign_id
+               ORDER BY head.recorded_at DESC,head.id DESC LIMIT 1
+           )
+             AND lifecycle.status IN (
+                 'PREPARING','SENDING','AWAITING_DELIVERY'
+             )
+             AND NOT EXISTS (
+                 SELECT 1 FROM campaign_audience_snapshots audience
+                 WHERE audience.campaign_id=lifecycle.campaign_id
+                   AND audience.execution_id=lifecycle.execution_id
+             )
+           LIMIT 1"""
+    ).fetchone()
+    campaign_economics_ok = inconsistent_campaign is None
 
     return {
         "database": integrity_ok,
@@ -168,6 +197,7 @@ def _readiness_checks() -> dict[str, bool]:
         "revenue_scope": revenue_scope_ok,
         "finance_projection": finance_projection_ok,
         "sms_governance": sms_governance_ok,
+        "campaign_economics": campaign_economics_ok,
     }
 
 
@@ -190,6 +220,7 @@ def ready():
             "revenue_scope": False,
             "finance_projection": False,
             "sms_governance": False,
+            "campaign_economics": False,
         }
     is_ready = all(checks.values())
     # Public readiness discloses no table, patient, path, mode, secret or exception.
@@ -214,6 +245,7 @@ def details():
             "revenue_scope": False,
             "finance_projection": False,
             "sms_governance": False,
+            "campaign_economics": False,
         }
         error = "health_check_failed"
     is_ready = all(checks.values())

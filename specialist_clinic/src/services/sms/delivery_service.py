@@ -174,13 +174,29 @@ class DeliveryService:
                     identifier,
                 )
 
+        lifecycle_errors = 0
         for campaign_id_value in affected:
             self.legacy_repo.refresh_campaign_counts(campaign_id_value)
+            try:
+                from src.services.campaign_economics_service import (
+                    CampaignEconomicsService,
+                )
+                CampaignEconomicsService().reconcile_campaign_state(
+                    int(campaign_id_value),
+                    actor_username="system:sms-delivery-reconciliation",
+                )
+            except Exception:
+                lifecycle_errors += 1
+                logger.exception(
+                    "campaign economics reconciliation failed campaign=%s",
+                    campaign_id_value,
+                )
         return {
             "checked": checked,
             "updated": updated,
-            "errors": errors,
+            "errors": errors + lifecycle_errors,
             "provider_errors": dict(provider_errors),
+            "campaign_lifecycle_errors": lifecycle_errors,
         }
 
 

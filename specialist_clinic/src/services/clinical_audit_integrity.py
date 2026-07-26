@@ -29,10 +29,13 @@ from src.adapters.sqlite.specialist_financial_funnel_schema import (
 from src.adapters.sqlite.sms_governance_schema import (
     ensure_sms_governance_storage,
 )
+from src.adapters.sqlite.campaign_economics_schema import (
+    ensure_campaign_economics_storage,
+)
 from src.common.utils import iran_now
 
 
-SCOPE_VERSION = "1.7-sms-governance"
+SCOPE_VERSION = "1.8-campaign-economics"
 CRITICAL_TABLES = (
     "clinical_rule_versions",
     "clinical_rulesets",
@@ -66,6 +69,13 @@ CRITICAL_TABLES = (
     "sms_consent_events",
     "sms_message_governance",
     "sms_delivery_events",
+    "campaign_lifecycle_events",
+    "campaign_audience_snapshots",
+    "campaign_audience_members",
+    "campaign_response_events",
+    "campaign_journey_attribution_events",
+    "campaign_wallet_grant_events",
+    "campaign_message_cost_events",
     "security_permission_events",
 )
 
@@ -119,6 +129,7 @@ class ClinicalAuditIntegrityService:
         ensure_clinical_alert_storage(db)
         ensure_specialist_financial_funnel_storage(db)
         ensure_sms_governance_storage(db)
+        ensure_campaign_economics_storage(db)
         ensure_clinical_audit_integrity_storage(db)
         return db
 

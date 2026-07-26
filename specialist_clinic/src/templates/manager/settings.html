@@ -154,6 +154,32 @@
         </div>
     </details>
 
+    <div class="card" style="margin-top:var(--s4);">
+        <div class="section-title">
+            <svg class="icon"><use href="#i-banknote"></use></svg>
+            <span>هزینه مستقیم پیامک برای سنجش کمپین</span>
+            <span class="section-sub">تومان برای هر بخش؛ صرفاً برآورد تنظیم‌شده</span>
+        </div>
+        <div class="alert-banner alert-info">
+            این نرخ «هزینه واقعی گزارش‌شده توسط پنل» نیست. تا زمانی که نرخ معتبر وارد نشود، ROI کمپین عمداً نمایش داده نمی‌شود.
+        </div>
+        <div class="grid grid-2" style="margin-top:var(--s3);">
+            <div class="fld">
+                <label>کاوه‌نگار — تومان برای هر بخش</label>
+                <input type="number" min="0" name="sms_cost_per_part_kavenegar_toman"
+                       value="{{ data.sms_cost_per_part_kavenegar_toman }}"
+                       placeholder="خالی = هزینه نامشخص">
+            </div>
+            <div class="fld">
+                <label>مدیانا — تومان برای هر بخش</label>
+                <input type="number" min="0" name="sms_cost_per_part_mediana_toman"
+                       value="{{ data.sms_cost_per_part_mediana_toman }}"
+                       placeholder="خالی = هزینه نامشخص">
+            </div>
+        </div>
+        <div class="help">پیام فارسی تک‌بخشی تا ۷۰ نویسه و چندبخشی با ظرفیت ۶۷ نویسه برای هر بخش برآورد می‌شود؛ پیام لاتین به‌ترتیب ۱۶۰/۱۵۳.</div>
+    </div>
+
     <!-- متنِ یادآوری -->
     <div class="card" style="margin-top:var(--s4);">
         <div class="section-title">

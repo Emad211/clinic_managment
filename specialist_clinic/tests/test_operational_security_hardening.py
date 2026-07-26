@@ -298,4 +298,5 @@ def test_health_is_phi_free_and_permission_protected(secure_app):
         "revenue_scope",
         "finance_projection",
         "sms_governance",
+        "campaign_economics",
     }
