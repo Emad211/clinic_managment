@@ -21,6 +21,9 @@ from src.adapters.sqlite.specialist_enrollment_repo import (
 from src.adapters.sqlite.specialist_revenue_boundary_schema import (
     ensure_specialist_revenue_boundary_storage,
 )
+from src.adapters.sqlite.followup_operations_schema import (
+    ensure_followup_operations_storage,
+)
 from src.adapters.sqlite.clinical_validation_schema import (
     ensure_clinical_validation_storage,
 )
@@ -57,6 +60,8 @@ _REQUIRED_TABLES = frozenset(
         "care_encounters",
         "care_encounter_events",
         "accounting_invoice_attribution_events",
+        "followup_contact_events",
+        "followup_booking_requests",
     }
 )
 
@@ -66,6 +71,7 @@ def _readiness_checks() -> dict[str, bool]:
     ensure_security_permission_storage(db)
     ensure_operational_lease_storage(db)
     ensure_specialist_revenue_boundary_storage(db)
+    ensure_followup_operations_storage(db)
     ensure_clinical_validation_storage(db)
     ensure_clinical_audit_integrity_storage(db)
 

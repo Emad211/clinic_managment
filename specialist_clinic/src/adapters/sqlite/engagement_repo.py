@@ -165,11 +165,8 @@ class EngagementRepository:
             SUM(CASE WHEN status='approved' THEN 1 ELSE 0 END) approved,
             SUM(CASE WHEN status IN ('failed','unknown') THEN 1 ELSE 0 END) failed
             FROM engagement_approvals""").fetchone()
-        worklist = db.execute("""SELECT
-            SUM(CASE WHEN status='open' THEN 1 ELSE 0 END) open,
-            SUM(CASE WHEN status='open' AND due_date <= date('now','+3 hours','+30 minutes')
-                     THEN 1 ELSE 0 END) due
-            FROM followup_tasks""").fetchone()
+        from src.services.followup_projection_service import FollowupProjectionService
+        worklist = FollowupProjectionService().summary(as_of=iran_now())
         delivery = db.execute("""SELECT
             SUM(CASE WHEN source_type='engagement' THEN 1 ELSE 0 END) total,
             SUM(CASE WHEN source_type='engagement' AND delivery_status='Delivered' THEN 1 ELSE 0 END) delivered,
@@ -180,8 +177,9 @@ class EngagementRepository:
             'pending_approvals': approval['pending'] or 0,
             'approved': approval['approved'] or 0,
             'approval_errors': approval['failed'] or 0,
-            'open_worklist': worklist['open'] or 0,
-            'due_worklist': worklist['due'] or 0,
+            'open_worklist': worklist['open_tasks'],
+            'due_worklist': worklist['due_tasks'],
+            'due_callbacks': worklist['due_callbacks'],
             'engagement_messages': delivery['total'] or 0,
             'delivered': delivery['delivered'] or 0,
             'in_flight': delivery['in_flight'] or 0,

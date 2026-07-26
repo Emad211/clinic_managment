@@ -13,6 +13,7 @@ from src.adapters import specialist_accounting_revenue
 from src.adapters.sqlite.care_journey_repo import CareJourneyRepository
 from src.adapters.sqlite.core import get_db
 from src.common.utils import format_jalali_date, iran_now
+from src.services.followup_projection_service import FollowupProjectionService
 
 
 LAPSED_DAYS = 120
@@ -111,6 +112,7 @@ class ControlRoomService:
                 median_revenue = 0
                 value_error = type(exc).__name__.upper()
 
+        open_followup_counts = FollowupProjectionService().open_counts_by_patient()
         patients: list[dict] = []
         summary = {
             "total": len(rows),
@@ -135,7 +137,7 @@ class ControlRoomService:
                 except ValueError:
                     days_since_data = None
             lapsed = days_since_data is None or days_since_data > LAPSED_DAYS
-            open_followups = int(row["open_fu"] or 0)
+            open_followups = int(open_followup_counts.get(patient_id, 0))
             refill_due = int(row["refill_due"] or 0)
             no_show = int(row["no_show"] or 0)
             upcoming = bool(row["upcoming"])

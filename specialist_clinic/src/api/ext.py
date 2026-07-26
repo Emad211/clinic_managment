@@ -75,19 +75,17 @@ def pending():
         return jsonify({"ok": False, "error": "unauthorized"}), 401
 
     db = get_db()
-    rows = db.execute(
-        """SELECT f.id AS followup_id, p.id AS patient_link_id,
-                  p.national_id, p.full_name
-           FROM followup_tasks f
-           JOIN patient_links p ON p.id=f.patient_link_id
-           WHERE f.status='open' AND f.fulfillment='remote'
-             AND COALESCE(f.source_engine,'')<>'clinical_v2'
-           ORDER BY f.due_date IS NULL, f.due_date
-           LIMIT 200"""
-    ).fetchall()
+    from src.services.followup_projection_service import FollowupProjectionService
+    rows = [
+        task for task in FollowupProjectionService().open_tasks()
+        if task.get("fulfillment") == "remote"
+        and task.get("source_engine") != "clinical_v2"
+    ][:200]
     items = []
     for row in rows:
         item = dict(row)
+        item["followup_id"] = int(item["id"])
+        item["full_name"] = item.get("patient_name")
         medications = db.execute(
             """SELECT drug_name, dose, schedule
                FROM patient_medications

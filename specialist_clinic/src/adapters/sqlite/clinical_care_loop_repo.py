@@ -83,7 +83,9 @@ class ClinicalCareLoopRepository:
         self._connection = db
 
     def _db(self):
-        db = self._connection or get_db()
+        if self._connection is not None:
+            return self._connection
+        db = get_db()
         ensure_clinical_care_loop_storage(db)
         return db
 
@@ -251,6 +253,7 @@ class ClinicalCareLoopRepository:
         source_record_id: str | None = None,
         note: str | None = None,
         recorded_at: datetime | None = None,
+        commit: bool = True,
     ) -> dict:
         db = self._db()
         actor = _clean(actor_username, limit=200)
@@ -289,7 +292,8 @@ class ClinicalCareLoopRepository:
             "source_record_id": _clean(source_record_id, limit=200),
             "note": _clean(note),
         }
-        db.execute("BEGIN IMMEDIATE")
+        if commit:
+            db.execute("BEGIN IMMEDIATE")
         try:
             self._task(db, task_id)
             head = self._head(db, task_id)
@@ -325,10 +329,12 @@ class ClinicalCareLoopRepository:
                 "SELECT * FROM clinical_outcome_events WHERE id=?",
                 (cursor.lastrowid,),
             ).fetchone()
-            db.commit()
+            if commit:
+                db.commit()
             return dict(row)
         except Exception:
-            db.rollback()
+            if commit:
+                db.rollback()
             raise
 
     def append_task_event(
@@ -347,6 +353,7 @@ class ClinicalCareLoopRepository:
         note: str | None = None,
         effective_at: datetime | None = None,
         recorded_at: datetime | None = None,
+        commit: bool = True,
     ) -> dict:
         db = self._db()
         actor = _clean(actor_username, limit=200)
