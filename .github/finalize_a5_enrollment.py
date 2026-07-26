@@ -156,4 +156,35 @@ replace_once(
 ''',
 )
 
+# Direct-SQL test fixtures explicitly materialize the same defaults enrollment would.
+for relative in (
+    "specialist_clinic/tests/test_sms_delivery_lifecycle.py",
+    "specialist_clinic/tests/test_sms_governance_a5.py",
+):
+    path = ROOT / relative
+    text = path.read_text(encoding="utf-8")
+    if relative.endswith("test_sms_delivery_lifecycle.py"):
+        old = '''    db.commit()
+    return int(patient_id)
+'''
+        new = '''    db.commit()
+    from src.adapters.sqlite.sms_governance_repo import SmsGovernanceRepository
+    SmsGovernanceRepository(db).ensure_patient_defaults(int(patient_id))
+    return int(patient_id)
+'''
+    else:
+        old = '''    db.commit()
+    return int(cursor.lastrowid)
+'''
+        new = '''    db.commit()
+    patient_id = int(cursor.lastrowid)
+    from src.adapters.sqlite.sms_governance_repo import SmsGovernanceRepository
+    SmsGovernanceRepository(db).ensure_patient_defaults(patient_id)
+    return patient_id
+'''
+    if new not in text:
+        if old not in text:
+            raise AssertionError(f"A5 test fixture anchor missing: {relative}")
+        path.write_text(text.replace(old, new, 1), encoding="utf-8")
+
 Path(__file__).unlink()
