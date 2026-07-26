@@ -337,17 +337,17 @@ def _service_rows(
         description = "'ویزیت' AS description"
         quantity = "1 AS quantity"
         unit_amount = f"item.{amount_column} AS unit_amount"
+        doctor_id = "item.doctor_id" if "doctor_id" in columns else "NULL"
+        doctor_name = (
+            "item.doctor_name" if "doctor_name" in columns else "NULL"
+        )
         performer_type = (
-            "CASE WHEN item.doctor_id IS NOT NULL OR "
-            "length(trim(COALESCE(item.doctor_name,'')))>0 THEN 'doctor' END "
-            "AS performer_type"
-            if {"doctor_id", "doctor_name"} & columns
-            else "NULL AS performer_type"
+            f"CASE WHEN {doctor_id} IS NOT NULL OR "
+            f"length(trim(COALESCE({doctor_name},'')))>0 "
+            "THEN 'doctor' END AS performer_type"
         )
-        performer_id = _optional_column(columns, "doctor_id", alias="performer_id")
-        performer_name = _optional_column(
-            columns, "doctor_name", alias="performer_name"
-        )
+        performer_id = f"{doctor_id} AS performer_id"
+        performer_name = f"{doctor_name} AS performer_name"
     elif item_type == "INJECTION":
         description = (
             "COALESCE(NULLIF(trim(item.injection_type),''),'تزریق') AS description"
@@ -367,9 +367,7 @@ def _service_rows(
                 f"CASE WHEN {nurse} IS NOT NULL THEN 'nurse' "
                 f"WHEN {doctor} IS NOT NULL THEN 'doctor' END AS performer_type"
             )
-            performer_id = (
-                f"COALESCE({nurse},{doctor}) AS performer_id"
-            )
+            performer_id = f"COALESCE({nurse},{doctor}) AS performer_id"
         else:
             performer_type = "NULL AS performer_type"
             performer_id = "NULL AS performer_id"
@@ -488,7 +486,6 @@ def _service_snapshot(
     )
     for sequence, line in enumerate(lines, start=1):
         line["line_sequence"] = sequence
-        # Sequence is part of the immutable accounting ordering evidence.
         line["source_fingerprint"] = _canonical_hash(line)
 
     expected_count = int(financial["billable_item_count"])
