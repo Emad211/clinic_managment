@@ -180,9 +180,11 @@ def test_freeze_rejects_same_codes_with_different_content_hashes():
 
     service = ClinicalRulePackageService(rules=FakeRules())
     with pytest.raises(ValueError, match="immutable"):
-        service.approve_and_freeze(
+        service.review_rules(
             1,
-            reviewer="physician-a",
-            attested_codes=list(package.rule_codes),
+            role="clinical",
+            decisions={code: "APPROVE" for code in package.rule_codes},
+            actor_username="physician-a",
+            reviewer_display_name="Physician A",
             note="reviewed",
         )

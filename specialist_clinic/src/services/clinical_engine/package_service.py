@@ -26,6 +26,9 @@ _FACT_LABELS = {
     "observation.bp_systolic": "آخرین فشار خون سیستولیک",
     "observation.bp_diastolic": "آخرین فشار خون دیاستولیک",
     "observation.egfr": "آخرین eGFR",
+    "observation.hba1c": "آخرین HbA1c",
+    "observation.uacr": "آخرین نسبت آلبومین به کراتینین ادرار",
+    "observation.keys": "فهرست آزمایش‌های ثبت‌شده",
     "medication.classes": "فهرست داروهای فعال",
 }
 _OPERATOR_LABELS = {
@@ -36,6 +39,7 @@ _OPERATOR_LABELS = {
     "<": "کمتر از",
     "<=": "کمتر یا مساوی",
     "has": "شامل",
+    "not_has": "شامل نیست",
 }
 _VALUE_LABELS = {
     True: "تأییدشده",
@@ -150,12 +154,7 @@ class ClinicalRulePackageService:
         )
         return self.rules.get_ruleset(ruleset_id)
 
-    def approve_and_freeze(self, ruleset_id: int, *, reviewer: str,
-                           attested_codes: list[str], note: str) -> dict:
-        reviewer = (reviewer or "").strip()
-        note = (note or "").strip()
-        if not reviewer or not note:
-            raise ValueError("نام بازبین و یادداشت بالینی الزامی است")
+    def _current_package_and_ruleset(self, ruleset_id: int):
         package = load_rule_package(
             _package_dir(),
             expected_version=PACKAGE_VERSION,
@@ -168,7 +167,7 @@ class ClinicalRulePackageService:
         if base_ruleset_version(ruleset.get("version")) != PACKAGE_VERSION:
             raise ValueError("این بسته قدیمی است؛ ابتدا بستهٔ اصلاح‌شدهٔ فعلی را آماده کنید")
         if ruleset["status"] != "DRAFT":
-            raise ValueError("فقط بستهٔ درحال بازبینی قابل تأیید است")
+            raise ValueError("فقط بستهٔ DRAFT قابل بازبینی یا فریز است")
         expected_hashes = {
             compiled.definition.rule_code: compiled.content_hash
             for compiled in package.compiled_rules
@@ -179,18 +178,68 @@ class ClinicalRulePackageService:
         }
         if stored_hashes != expected_hashes:
             raise ValueError("اعضای بستهٔ ذخیره‌شده با بستهٔ immutable برنامه یکسان نیستند")
-        expected = set(expected_hashes)
-        if set(attested_codes or []) != expected:
-            raise ValueError("هر قاعده باید جداگانه مطالعه و علامت‌گذاری شود")
+        return package, ruleset
+
+    def review_rules(
+        self,
+        ruleset_id: int,
+        *,
+        role: str,
+        decisions: dict[str, str],
+        actor_username: str,
+        reviewer_display_name: str,
+        note: str,
+    ) -> dict:
+        package, ruleset = self._current_package_and_ruleset(int(ruleset_id))
+        summary = self.rules.append_package_reviews(
+            int(ruleset["id"]),
+            role=role,
+            decisions=decisions,
+            package_hash=package.package_hash,
+            case_bundle_hash=package.case_bundle_hash,
+            reviewer_username=actor_username,
+            reviewer_display_name=reviewer_display_name,
+            note=note,
+        )
+        log_activity(
+            "clinical_v2_rule_review",
+            f"Recorded {str(role).upper()} review for ruleset {ruleset_id}; "
+            f"package={package.package_hash}; cases={package.case_bundle_hash}",
+            user_id=0,
+            username=str(actor_username or "").strip(),
+        )
+        return summary
+
+    def freeze_reviewed_package(
+        self,
+        ruleset_id: int,
+        *,
+        activated_by: str,
+        note: str,
+    ) -> dict:
+        actor = str(activated_by or "").strip()
+        freeze_note = str(note or "").strip()
+        if not actor or not freeze_note:
+            raise ValueError("نام فعال‌ساز و یادداشت فریز الزامی است")
+        package, ruleset = self._current_package_and_ruleset(int(ruleset_id))
+        summary = self.rules.rule_review_summary(int(ruleset["id"]))
+        if not summary["ready_to_freeze"]:
+            raise ValueError(
+                "بسته هنوز دو بازبینی مستقل و کامل ندارد: "
+                + "؛ ".join(summary["blockers"])
+            )
+        clinical = summary["roles"]["clinical"]["reviewer_username"]
+        technical = summary["roles"]["technical"]["reviewer_username"]
+        approved_by = f"clinical={clinical};technical={technical}"
         for member in ruleset["members"]:
             if member["lifecycle_status"] == "VALIDATED":
                 self.rules.approve_rule_version(
-                    int(member["rule_version_id"]), approved_by=reviewer,
+                    int(member["rule_version_id"]), approved_by=approved_by,
                 )
             elif member["lifecycle_status"] not in {"APPROVED", "SILENT", "ACTIVE"}:
-                raise ValueError(f"قاعدهٔ {member['rule_code']} آمادهٔ تأیید نیست")
+                raise ValueError(f"قاعدهٔ {member['rule_code']} آمادهٔ فریز نیست")
         self.rules.activate_ruleset(
-            int(ruleset["id"]), activated_by=reviewer, silent=True,
+            int(ruleset["id"]), activated_by=actor, silent=True,
         )
         for key in (
             "last_report", "approval_clinical", "approval_technical",
@@ -200,11 +249,18 @@ class ClinicalRulePackageService:
         self.activation.set_raw_mode("off")
         log_activity(
             "clinical_v2_package_freeze",
-            f"Clinically approved and froze ruleset {ruleset_id}: {note}; "
+            f"Dual-reviewed and froze ruleset {ruleset_id}: {freeze_note}; "
+            f"clinical={clinical}; technical={technical}; "
             f"package={package.package_hash}; cases={package.case_bundle_hash}",
-            user_id=0, username=reviewer,
+            user_id=0,
+            username=actor,
         )
         return self.rules.get_ruleset(int(ruleset_id))
+
+    def approve_and_freeze(self, *args, **kwargs):
+        raise ValueError(
+            "مسیر تأیید تک‌نفره حذف شده است؛ بازبینی بالینی و فنی مستقل و سپس فریز لازم است"
+        )
 
     def reset(self, *, actor: str, reason: str) -> dict:
         actor = (actor or "").strip()
@@ -237,6 +293,20 @@ class ClinicalRulePackageService:
         return reset_record
 
     def projection(self) -> dict:
+        bundled = load_rule_package(
+            _package_dir(),
+            expected_version=PACKAGE_VERSION,
+            expected_ruleset_code=RULESET_CODE,
+            compiler=self.compiler,
+        )
+        expected_rules = [
+            {
+                "code": compiled.definition.rule_code,
+                "title": compiled.definition.title,
+                "phase": compiled.definition.phase.value,
+            }
+            for compiled in bundled.compiled_rules
+        ]
         ruleset = self.rules.latest_ruleset(RULESET_CODE)
         same_package = bool(
             ruleset
@@ -252,7 +322,11 @@ class ClinicalRulePackageService:
                 # upgrade warning. Only a genuinely older package is upgrade_from.
                 "upgrade_from": ruleset if ruleset and not same_package else None,
                 "expected_version": PACKAGE_VERSION,
+                "expected_rules": expected_rules,
+                "expected_rule_count": len(expected_rules),
+                "review": None,
             }
+        review = self.rules.rule_review_summary(int(ruleset["id"]))
         rules = []
         for member in ruleset["members"]:
             raw = json.loads(member["rule_json"])
@@ -277,6 +351,9 @@ class ClinicalRulePackageService:
                 "source_url": raw["evidence"].get("source_url"),
                 "validation_status": raw["evidence"]["local_validation_status"],
                 "lifecycle_status": member["lifecycle_status"],
+                "reviews": review["rules"].get(
+                    raw["rule_code"], {"clinical": None, "technical": None}
+                ),
             })
         state = "review" if ruleset["status"] == "DRAFT" else "frozen"
         return {
@@ -285,4 +362,7 @@ class ClinicalRulePackageService:
             "rules": rules,
             "upgrade_from": None,
             "expected_version": PACKAGE_VERSION,
+            "expected_rules": expected_rules,
+            "expected_rule_count": len(expected_rules),
+            "review": review,
         }

@@ -55,7 +55,7 @@
 {% endmacro %}
 
 <ol class="engine-steps engine-steps-simple" aria-label="مراحل راه‌اندازی">
-    {% for number, title in [(1,'آماده‌سازی قواعد'),(2,'بازبینی پزشک'),(3,'آزمون ایمنی'),(4,'تأیید گزارش'),(5,'انتشار محدود'),(6,'پایش'),(7,'انتشار عمومی')] %}
+    {% for number, title in [(1,'آماده‌سازی قواعد'),(2,'بازبینی دوگانه قواعد'),(3,'آزمون ایمنی'),(4,'تأیید گزارش'),(5,'انتشار محدود'),(6,'پایش'),(7,'انتشار عمومی')] %}
     <li class="engine-step{% if current_step > number %} is-done{% elif current_step == number %} is-current{% endif %}{% if view_step == number %} is-viewing{% endif %}">
         {% if number <= current_step %}<a href="{{ url_for('manager.clinical_engine', step=number) }}#engine-actions" aria-label="مشاهدهٔ مرحلهٔ {{ number|fa_num }}: {{ title }}">{% else %}<span class="engine-step-unavailable" aria-disabled="true">{% endif %}
         <span class="engine-step-marker">{% if current_step > number %}<svg class="icon icon-sm"><use href="#i-check"></use></svg>{% else %}{{ number|fa_num }}{% endif %}</span>
@@ -115,11 +115,12 @@
         <div class="alert-banner alert-warn"><svg class="icon"><use href="#i-info"></use></svg><span>پس از آماده‌سازی نسخهٔ اصلاح‌شده، بازبینی پزشک و آزمون ایمنی باید دوباره انجام شود.</span></div>
         {% else %}
         <h2 id="task-title">بستهٔ اولیهٔ قواعد را آماده کنید</h2>
-        <p>برنامه دو قاعدهٔ ایمنی آزمایشی را از فایل‌های همراه خودش وارد و از نظر ساختار فنی بررسی می‌کند. در این مرحله هیچ پیشنهادی به بیمار نمایش داده نمی‌شود.</p>
+        <p>برنامه {{ package.expected_rule_count|fa_num }} قاعدهٔ پیش‌نویس نسخهٔ جاری را از artifactهای immutable وارد و از نظر ساختار فنی بررسی می‌کند. در این مرحله هیچ پیشنهادی به بیمار نمایش داده نمی‌شود.</p>
         {% endif %}
         <ul class="engine-plain-list">
-            <li><svg class="icon icon-sm"><use href="#i-check"></use></svg> هشدار فشار خون بسیار بالا</li>
-            <li><svg class="icon icon-sm"><use href="#i-check"></use></svg> هشدار ایمنی متفورمین در eGFR پایین</li>
+            {% for expected in package.expected_rules %}
+            <li><svg class="icon icon-sm"><use href="#i-check"></use></svg> {{ expected.title }} <code>{{ expected.code }}</code></li>
+            {% endfor %}
         </ul>
         <div class="alert-banner alert-warn"><svg class="icon"><use href="#i-info"></use></svg><span><b>این بسته کامل نیست.</b> فقط برای راه‌اندازی و آزمون مسیر ایمنی است؛ توسعهٔ قواعد بیماری‌ها تا پایان سخت‌سازی runtime به تعویق افتاده است.</span></div>
         <form method="post" action="{{ url_for('manager.clinical_engine_action', action='prepare-rules') }}" data-loading-form>
@@ -129,34 +130,80 @@
     </section>
 
 {% elif package.state == 'review' %}
+    {% set review = package.review %}
     <section class="card engine-review-card" aria-labelledby="task-title">
         <div class="engine-task-number">مرحلهٔ ۲ از ۷</div>
-        <div class="engine-section-head"><div><span class="engine-section-icon"><svg class="icon"><use href="#i-stethoscope"></use></svg></span><div><h2 id="task-title">متن هر قاعده را بررسی و تأیید کنید</h2><p>واجدشرایط‌بودن بیمار، شرط فعال‌شدن و متن پیشنهاد سه بخش جدا هستند؛ هر سه را بخوانید.</p></div></div></div>
-        <form method="post" action="{{ url_for('manager.clinical_engine_action', action='approve-rules') }}" class="engine-review-form">
-            <input type="hidden" name="ruleset_id" value="{{ package.ruleset.id }}">
-            <div class="engine-rule-list">
-            {% for rule in package.rules %}
-                <article class="engine-rule-review">
-                    <div class="engine-rule-head"><div><span class="badge badge-danger">ایمنی حیاتی</span><code>{{ rule.code }}</code></div><h3>{{ rule.title }}</h3></div>
-                    <div class="engine-rule-grid">
-                        <div><span>جمعیت توصیفی</span><p>{{ rule.population }}</p></div>
-                        <div><span>چه داده‌ای لازم است؟</span><ul>{% for item in rule.required_inputs %}<li>{{ item }}</li>{% endfor %}</ul></div>
-                    </div>
-                    {{ condition_box('۱. بیمار چه زمانی وارد دامنهٔ قاعده می‌شود؟', rule.eligibility_mode, rule.eligibility_conditions) }}
-                    {{ condition_box('۲. قاعده دقیقاً چه زمانی فعال می‌شود؟', rule.trigger_mode, rule.trigger_conditions) }}
-                    <div class="engine-recommendation"><span>۳. پیشنهاد سیستم</span><p>{{ rule.recommendation }}</p></div>
-                    <div class="engine-automation-limit"><svg class="icon icon-sm"><use href="#i-shield"></use></svg><span>{{ rule.automation_limit }}</span></div>
-                    <details class="engine-evidence"><summary>مشاهدهٔ محدوده‌های خارج از قاعده، منبع و وضعیت شواهد</summary>{% if rule.out_of_scope %}<p><b>خارج از محدوده:</b> {{ rule.out_of_scope|join('، ') }}</p>{% endif %}<p><b>{{ rule.source_title }}</b></p><p>{{ rule.source_locator }}</p>{% if rule.source_url %}<p><a href="{{ rule.source_url }}" target="_blank" rel="noopener noreferrer">بازکردن منبع اصلی</a></p>{% endif %}<span class="badge badge-warn">بازبینی محلی: انجام نشده</span></details>
-                    <label class="engine-rule-attest"><input type="checkbox" name="attested_rule" value="{{ rule.code }}" required><span>شرایط ورود بیمار، شرط فعال‌شدن، محدودهٔ کاربرد و متن پیشنهاد را مطالعه کردم و برای آزمون محدود تأیید می‌کنم.</span></label>
-                </article>
-            {% endfor %}
-            </div>
-            <div class="engine-review-signoff">
-                <label><span>نام مسئول بالینی</span><input name="reviewer" required value="{{ g.user.full_name or g.user.username }}"></label>
-                <label><span>یادداشت بازبینی</span><textarea name="note" rows="3" required placeholder="مثلاً: eligibility، آستانه‌ها و متن هشدار با فرایند درمانگاه تطبیق داده شد."></textarea></label>
-                <button class="btn btn-lg engine-primary-action" type="submit"><svg class="icon"><use href="#i-check"></use></svg> تأیید قواعد و رفتن به آزمون ایمنی</button>
-            </div>
-        </form>
+        <div class="engine-section-head"><div><span class="engine-section-icon"><svg class="icon"><use href="#i-stethoscope"></use></svg></span><div><h2 id="task-title">بازبینی مستقل بالینی و فنی</h2><p>هر قاعده باید توسط دو حساب کاربری مستقل، با تصمیم صریح و ثبت append-only بررسی شود. هیچ فرم تک‌نفره‌ای بسته را فریز نمی‌کند.</p></div></div></div>
+        <div class="engine-result-summary">
+            <span><b>{{ review.roles.technical.approved_count|fa_num }}/{{ review.roles.technical.total|fa_num }}</b> تأیید فنی</span>
+            <span><b>{{ review.roles.clinical.approved_count|fa_num }}/{{ review.roles.clinical.total|fa_num }}</b> تأیید بالینی</span>
+            <span><b>{{ 'آماده' if review.ready_to_freeze else 'مسدود' }}</b> فریز SILENT</span>
+        </div>
+        <div class="engine-rule-list">
+        {% for rule in package.rules %}
+            <article class="engine-rule-review">
+                <div class="engine-rule-head"><div><span class="badge {{ 'badge-danger' if rule.phase in ['PREFLIGHT','SAFETY'] else 'badge-warn' }}">{{ rule.phase }}</span><code>{{ rule.code }}</code></div><h3>{{ rule.title }}</h3></div>
+                <div class="engine-rule-grid">
+                    <div><span>جمعیت توصیفی</span><p>{{ rule.population }}</p></div>
+                    <div><span>چه داده‌ای لازم است؟</span><ul>{% for item in rule.required_inputs %}<li>{{ item }}</li>{% endfor %}</ul></div>
+                </div>
+                {{ condition_box('۱. بیمار چه زمانی وارد دامنهٔ قاعده می‌شود؟', rule.eligibility_mode, rule.eligibility_conditions) }}
+                {{ condition_box('۲. قاعده دقیقاً چه زمانی فعال می‌شود؟', rule.trigger_mode, rule.trigger_conditions) }}
+                <div class="engine-recommendation"><span>۳. پیشنهاد سیستم</span><p>{{ rule.recommendation }}</p></div>
+                <div class="engine-automation-limit"><svg class="icon icon-sm"><use href="#i-shield"></use></svg><span>{{ rule.automation_limit }}</span></div>
+                <details class="engine-evidence"><summary>محدوده، منبع و وضعیت شواهد</summary>{% if rule.out_of_scope %}<p><b>خارج از محدوده:</b> {{ rule.out_of_scope|join('، ') }}</p>{% endif %}<p><b>{{ rule.source_title }}</b></p><p>{{ rule.source_locator }}</p>{% if rule.source_url %}<p><a href="{{ rule.source_url }}" target="_blank" rel="noopener noreferrer">بازکردن منبع اصلی</a></p>{% endif %}<span class="badge badge-warn">بازبینی محلی: {{ rule.validation_status }}</span></details>
+                <div class="engine-history-list">
+                    {% for role, label in [('technical','فنی'),('clinical','بالینی')] %}
+                    {% set event = rule.reviews[role] %}
+                    <span>{{ label }}: {% if event %}<b>{{ 'تأیید' if event.decision == 'APPROVE' else 'نیازمند اصلاح' }}</b> · {{ event.reviewer_display_name }}{% else %}<b>ثبت نشده</b>{% endif %}</span>
+                    {% endfor %}
+                </div>
+            </article>
+        {% endfor %}
+        </div>
+
+        {% for role, role_title in [('technical','فنی'),('clinical','بالینی')] %}
+        {% set role_state = review.roles[role] %}
+        <section class="card engine-task-card engine-task-wide">
+            <h3>فرم بازبینی {{ role_title }}</h3>
+            {% if role_state.complete %}<div class="alert-banner alert-ok"><span>همهٔ قواعد توسط {{ role_state.reviewer_display_name }} تأیید شده‌اند. ارسال دوباره فقط یک رویداد اصلاحی append-only می‌سازد.</span></div>{% endif %}
+            {% if engine.rule_review_permissions[role] %}
+            <form method="post" action="{{ url_for('manager.clinical_engine_action', action='review-rules') }}" class="engine-review-form">
+                <input type="hidden" name="ruleset_id" value="{{ package.ruleset.id }}">
+                <input type="hidden" name="role" value="{{ role }}">
+                <div class="engine-rule-list">
+                {% for rule in package.rules %}
+                    {% set event = rule.reviews[role] %}
+                    <label class="engine-rule-attest"><span><b>{{ rule.code }}</b> · {{ rule.title }}</span><select name="decision__{{ rule.code }}" required><option value="">انتخاب تصمیم</option><option value="APPROVE"{% if event and event.decision == 'APPROVE' %} selected{% endif %}>تأیید برای ادامهٔ validation</option><option value="REQUEST_CHANGES"{% if event and event.decision == 'REQUEST_CHANGES' %} selected{% endif %}>نیازمند اصلاح artifact</option></select></label>
+                {% endfor %}
+                </div>
+                <div class="engine-review-signoff">
+                    <label><span>هویت احرازشدهٔ بازبین</span><input value="{{ g.user.full_name or g.user.username }} ({{ g.user.username }})" readonly></label>
+                    <label><span>یادداشت بازبینی {{ role_title }}</span><textarea name="note" rows="3" required placeholder="موارد بررسی‌شده و علت تصمیم‌ها را ثبت کنید."></textarea></label>
+                    <button class="btn btn-lg engine-primary-action" type="submit">ثبت append-only بازبینی {{ role_title }}</button>
+                </div>
+            </form>
+            {% else %}<div class="alert-banner alert-warn"><span>حساب فعلی مجوز ثبت بازبینی {{ role_title }} را ندارد.</span></div>{% endif %}
+        </section>
+        {% endfor %}
+
+        {% if review.ready_to_freeze %}
+        <section class="card engine-task-card">
+            <div class="engine-task-icon is-ok"><svg class="icon icon-lg"><use href="#i-check"></use></svg></div>
+            <h3>دو بازبینی مستقل کامل است</h3>
+            <p>فریز فقط content hashهای همین package و case bundle را به SILENT می‌برد؛ موتور برای بیمار واقعی روشن نمی‌شود.</p>
+            {% if engine.rule_review_permissions.activate %}
+            <form method="post" action="{{ url_for('manager.clinical_engine_action', action='freeze-rules') }}" class="engine-signoff-form">
+                <input type="hidden" name="ruleset_id" value="{{ package.ruleset.id }}">
+                <label><span>یادداشت فریز</span><textarea name="note" rows="3" required></textarea></label>
+                <button class="btn btn-lg engine-primary-action" type="submit">فریز بستهٔ دوگانه‌بازبینی‌شده</button>
+            </form>
+            {% else %}<div class="alert-banner alert-warn"><span>برای فریز، مجوز مستقل فعال‌سازی لازم است.</span></div>{% endif %}
+        </section>
+        {% else %}
+        <div class="engine-inline-problems" role="alert"><b>فریز مسدود است:</b><ul>{% for blocker in review.blockers %}<li>{{ blocker }}</li>{% endfor %}</ul></div>
+        {% endif %}
+        <small class="engine-safe-note"><svg class="icon icon-sm"><use href="#i-shield"></use></svg>یک حساب نمی‌تواند هر دو نقش را ثبت کند؛ نام نمایشی فرم قابل ویرایش نیست و هویت username در رویداد ذخیره می‌شود.</small>
     </section>
 
 {% elif not engine.report_ok %}
