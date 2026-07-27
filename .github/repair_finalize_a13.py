@@ -41,6 +41,33 @@ replacements = (
         'write(\n'
         '    SPECIALIST / "tests/test_clinical_rule_review_governance_a13.py",',
     ),
+    (
+        '                prior = db.execute(\n'
+        '                    """SELECT id FROM clinical_rule_review_events\n'
+        '                       WHERE ruleset_id=? AND rule_version_id=? AND role=?\n'
+        '                       ORDER BY id DESC LIMIT 1""",\n'
+        '                    (int(ruleset_id), rule_version_id, normalized_role),\n'
+        '                ).fetchone()\n'
+        '                identity = {\n',
+        '                prior = db.execute(\n'
+        '                    """SELECT * FROM clinical_rule_review_events\n'
+        '                       WHERE ruleset_id=? AND rule_version_id=? AND role=?\n'
+        '                       ORDER BY id DESC LIMIT 1""",\n'
+        '                    (int(ruleset_id), rule_version_id, normalized_role),\n'
+        '                ).fetchone()\n'
+        '                if prior and all((\n'
+        '                    str(prior["decision"]) == normalized_decisions[rule_code],\n'
+        '                    str(prior["ruleset_content_hash"]) == str(ruleset["content_hash"]),\n'
+        '                    str(prior["rule_content_hash"]) == str(member["content_hash"]),\n'
+        '                    str(prior["package_hash"]) == package_digest,\n'
+        '                    str(prior["case_bundle_hash"]) == case_digest,\n'
+        '                    str(prior["reviewer_username"]) == username,\n'
+        '                    str(prior["reviewer_display_name"]) == display_name,\n'
+        '                    str(prior["note"]) == review_note,\n'
+        '                )):\n'
+        '                    continue\n'
+        '                identity = {\n',
+    ),
 )
 
 for old, new in replacements:
