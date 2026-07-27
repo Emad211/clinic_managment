@@ -91,19 +91,24 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
-      - name: Publish exact tested product tree
+      - name: Publish clean exact-tested product tree
         shell: bash
         run: |
           set -euo pipefail
+          rm -f specialist_clinic/pytest-specialist-a11.xml
+          rm -f webapp/pytest-accounting-a11.xml
+          find webapp/src -type d -name __pycache__ -prune -exec rm -rf {} +
+          rm -f .github/finalize_a11.py
+          rm -f .github/workflows/specialist-a11-gate.yml
           git add -A
           git diff --cached --check
           if git diff --cached --quiet; then
-            echo "A11 product tree already published"
+            echo "A11 product tree already clean"
             exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -m "govern clinical rule package intake"
+          git commit -m "remove temporary A11 release gate"
           git push \
             --force-with-lease=refs/heads/agent/specialist-rule-library-intake-a11:${START_SHA} \
             origin HEAD:refs/heads/agent/specialist-rule-library-intake-a11
