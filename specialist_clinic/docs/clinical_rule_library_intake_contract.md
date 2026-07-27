@@ -23,14 +23,14 @@ import و validation هر دو از `package_contract.py` استفاده می‌
 
 - version و `ruleset_code` باید دقیقاً با runtime جاری برابر باشند.
 - artifact bundled همیشه `DRAFT / NOT_APPROVED` می‌ماند؛ approval واقعی داخل فایل JSON جاسازی نمی‌شود.
-- filename امن و داخل همان package، sort order یکتا و phase منطبق الزامی است.
+- filename امن و داخل همان package، `sort_order` عدد صحیح مثبت و یکتا، و phase منطبق الزامی است.
 - `rule_code` و `semantic_key` در یک بسته یکتا هستند.
 - evidence دارای منبع، سازمان، نسخه، locator، URL امن و وضعیت validation صریح است.
 - هر golden case نتیجهٔ تمام Ruleهای manifest را مشخص می‌کند.
 - `ERROR` نتیجهٔ مورد انتظار قابل قبول نیست.
 - categoryهای positive، negative، borderline، missing-data، conflict، historical، contraindication و suppression پوشش داده می‌شوند.
 - هر Rule حداقل یک positive و یک non-positive case دارد.
-- import بستهٔ ذخیره‌شده را با package immutable برنامه دوباره تطبیق می‌دهد.
+- پیش از freeze، عضویت بستهٔ ذخیره‌شده با زوج دقیق `rule_code + content_hash` در package immutable برنامه تطبیق داده می‌شود.
 
 ## مرز ایمنی
 
