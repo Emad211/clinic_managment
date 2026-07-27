@@ -1,0 +1,170 @@
+{
+  "schema_version": "2.0",
+  "dsl_version": "2.0",
+  "rule_code": "T2-SAFE-MET-REVIEW",
+  "version": "2.0.0-draft.3",
+  "title": "بازبینی فایده و خطر متفورمین در eGFR کمتر از ۴۵",
+  "phase": "SAFETY",
+  "action_type": "safety_alert",
+  "severity": "WARN",
+  "priority": 15,
+  "semantic_key": "diabetes:safety:metformin-egfr-review",
+  "scope": {
+    "population": "بزرگسال مبتلا به دیابت نوع ۲ و مصرف‌کنندهٔ متفورمین",
+    "age_min": 18,
+    "age_max": null,
+    "sex": [
+      "any"
+    ],
+    "care_settings": [
+      "outpatient",
+      "primary_care",
+      "specialty_clinic"
+    ],
+    "encounter_types": [
+      "office_visit",
+      "followup"
+    ],
+    "condition_codes": [
+      "diabetes"
+    ],
+    "out_of_scope": [
+      "inpatient care",
+      "dialysis protocol",
+      "acute kidney injury protocol"
+    ]
+  },
+  "required_facts": [
+    {
+      "key": "condition.codes",
+      "criticality": "CRITICAL",
+      "max_age_days": null,
+      "minimum_verification": "CONFIRMED",
+      "on_unusable": "NEEDS_DATA",
+      "prompt_fa": "فهرست تشخیص‌های فعال بیمار باید بازبینی و قابل استفاده باشد."
+    },
+    {
+      "key": "demographic.age_years",
+      "criticality": "REQUIRED",
+      "max_age_days": null,
+      "minimum_verification": "CONFIRMED",
+      "on_unusable": "NEEDS_DATA",
+      "prompt_fa": "تاریخ تولد کامل برای احراز بزرگسال‌بودن لازم است."
+    },
+    {
+      "key": "medication.classes",
+      "criticality": "CRITICAL",
+      "max_age_days": 30,
+      "minimum_verification": "CONFIRMED",
+      "on_unusable": "NEEDS_DATA",
+      "prompt_fa": "فهرست داروهای فعال باید در ۳۰ روز اخیر تطبیق داده شود."
+    },
+    {
+      "key": "observation.egfr",
+      "criticality": "CRITICAL",
+      "max_age_days": 90,
+      "minimum_verification": "CONFIRMED",
+      "on_unusable": "NEEDS_DATA",
+      "prompt_fa": "eGFR تأییدشده و حداکثر ۹۰ روزه برای بازبینی ایمنی متفورمین لازم است."
+    }
+  ],
+  "eligibility": {
+    "node_id": "met-review-eligibility",
+    "all": [
+      {
+        "node_id": "met-review-diabetes",
+        "fact": "condition.codes",
+        "selector": {
+          "aggregation": "single"
+        },
+        "op": "has",
+        "value": "diabetes",
+        "unit": null
+      },
+      {
+        "node_id": "met-review-adult",
+        "fact": "demographic.age_years",
+        "selector": {
+          "aggregation": "single"
+        },
+        "op": ">=",
+        "value": 18,
+        "unit": null
+      },
+      {
+        "node_id": "met-review-metformin",
+        "fact": "medication.classes",
+        "selector": {
+          "aggregation": "single"
+        },
+        "op": "has",
+        "value": "metformin",
+        "unit": null
+      }
+    ]
+  },
+  "condition": {
+    "node_id": "met-review-range",
+    "all": [
+      {
+        "node_id": "met-review-lower",
+        "fact": "observation.egfr",
+        "selector": {
+          "aggregation": "latest",
+          "within_days": 90
+        },
+        "op": ">=",
+        "value": 30,
+        "unit": "mL/min/{1.73_m2}"
+      },
+      {
+        "node_id": "met-review-upper",
+        "fact": "observation.egfr",
+        "selector": {
+          "aggregation": "latest",
+          "within_days": 90
+        },
+        "op": "<",
+        "value": 45,
+        "unit": "mL/min/{1.73_m2}"
+      }
+    ]
+  },
+  "safety": {
+    "redflag_exclusions": [],
+    "hard_exclusions": [],
+    "on_safety_error": "BLOCK_ROUTINE_OUTPUTS"
+  },
+  "recommendation": {
+    "text_fa": "فایده و خطر ادامهٔ متفورمین باید توسط پزشک بازبینی شود. این هشدار نسخه، تغییر دوز یا دستور قطع خودکار ایجاد نمی‌کند.",
+    "suggestion_only": true,
+    "requires_clinician_confirmation": false,
+    "may_create_internal_task": false,
+    "params": {
+      "do_not_modify_medication": true,
+      "requires_medication_review": true,
+      "do_not_auto_message": true
+    }
+  },
+  "evidence": {
+    "source_title": "ADA Standards of Care in Diabetes — 2026: Chronic Kidney Disease and Risk Management",
+    "issuing_organization": "American Diabetes Association",
+    "publication_date": "2026-01-01",
+    "source_version": "2026",
+    "source_locator": "Section 11, metformin/FDA eGFR guidance: reassess benefits and risks when eGFR falls below 45; contraindicated below 30.",
+    "source_url": "https://diabetesjournals.org/care/article/49/Supplement_1/S246/163914/11-Chronic-Kidney-Disease-and-Risk-Management",
+    "evidence_certainty": "NOT_GRADED",
+    "recommendation_strength": "NOT_GRADED",
+    "local_validation_status": "NOT_REVIEWED",
+    "local_adaptation_note": "پیش‌نویس ایمنی برای validation و shadow؛ هیچ تغییر دارویی خودکار مجاز نیست."
+  },
+  "governance": {
+    "status": "DRAFT",
+    "author": "clinical-engine-v2",
+    "clinical_reviewer": null,
+    "technical_reviewer": "pending",
+    "review_due_date": "2026-09-30",
+    "supersedes": null,
+    "change_note": "Add a non-prescriptive review band distinct from the existing eGFR<30 stop alert."
+  }
+}
