@@ -42,6 +42,8 @@ jobs:
         run: |
           set -euo pipefail
           if ! {
+            python -m py_compile .github/repair_finalize_a13.py
+            python .github/repair_finalize_a13.py
             python -m py_compile .github/finalize_a13.py
             python .github/finalize_a13.py
             python -m compileall -q specialist_clinic/src specialist_clinic/tests
@@ -107,6 +109,7 @@ jobs:
           rm -f .github/a13-finalizer.log
           rm -f specialist_clinic/pytest-specialist-a13.xml
           rm -f webapp/pytest-accounting-a13.xml
+          rm -f .github/repair_finalize_a13.py
           rm -f .github/finalize_a13.py
           rm -f .github/workflows/specialist-a13-gate.yml
           git add -A
