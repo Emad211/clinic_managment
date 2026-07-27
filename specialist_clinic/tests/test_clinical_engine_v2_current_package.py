@@ -15,6 +15,7 @@ if tests_path not in sys.path:
 
 from test_clinical_engine_v2_evaluator import fact, snapshot
 from src.domain.clinical_engine import RuleOutcome
+from src.domain.clinical_engine.release import CURRENT_BUNDLED_PACKAGE_VERSION
 from src.services.clinical_engine.compiler import RuleCompiler
 from src.services.clinical_engine.safety import SafetyKernel
 
@@ -25,15 +26,20 @@ CURRENT_PACKAGE = (
     / "domain"
     / "clinical_engine"
     / "rule_artifacts"
-    / "2026.1-draft.2"
+    / CURRENT_BUNDLED_PACKAGE_VERSION
 )
 
 
 def _rules():
     compiler = RuleCompiler()
+    manifest = json.loads(
+        (CURRENT_PACKAGE / "manifest.json").read_text(encoding="utf-8")
+    )
     return [
-        compiler.compile(json.loads((CURRENT_PACKAGE / filename).read_text(encoding="utf-8")))
-        for filename in ("T2-REDFLAG-BP.json", "T2-SAFE-MET-STOP.json")
+        compiler.compile(
+            json.loads((CURRENT_PACKAGE / item["file"]).read_text(encoding="utf-8"))
+        )
+        for item in manifest["rules"]
     ]
 
 

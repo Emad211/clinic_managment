@@ -10,6 +10,7 @@ from src.adapters.sqlite.clinical_engine_rules_repo import ClinicalEngineRulesRe
 from src.adapters.sqlite.clinical_engine_activation_repo import ClinicalEngineActivationRepository
 from src.services.activity_logger import log_activity
 from src.services.clinical_engine.compiler import RuleCompiler
+from src.services.clinical_engine.package_contract import load_rule_package
 from src.common.utils import iran_now
 from src.domain.clinical_engine.release import (
     CURRENT_BUNDLED_PACKAGE_VERSION as PACKAGE_VERSION,
@@ -104,11 +105,13 @@ class ClinicalRulePackageService:
         actor = (actor or "").strip()
         if not actor:
             raise ValueError("نام کاربر آماده‌ساز الزامی است")
-        package_dir = _package_dir()
-        manifest_path = package_dir / "manifest.json"
-        if not manifest_path.exists():
-            raise LookupError("فایل بستهٔ قواعد در برنامه پیدا نشد")
-        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        package = load_rule_package(
+            _package_dir(),
+            expected_version=PACKAGE_VERSION,
+            expected_ruleset_code=RULESET_CODE,
+            compiler=self.compiler,
+        )
+        manifest = package.manifest
         latest = self.rules.latest_ruleset(RULESET_CODE)
         same_package = bool(
             latest
@@ -118,9 +121,9 @@ class ClinicalRulePackageService:
             return latest
 
         members = []
-        for item in manifest.get("rules") or []:
-            raw = json.loads((package_dir / item["file"]).read_text(encoding="utf-8"))
-            compiled = self.compiler.compile(raw)
+        for item, compiled in zip(
+            manifest.get("rules") or [], package.compiled_rules, strict=True
+        ):
             rule_id = self.rules.create_rule_version(
                 compiled, created_by=actor,
                 change_note="Imported by the guided clinical package workflow",
@@ -153,6 +156,12 @@ class ClinicalRulePackageService:
         note = (note or "").strip()
         if not reviewer or not note:
             raise ValueError("نام بازبین و یادداشت بالینی الزامی است")
+        package = load_rule_package(
+            _package_dir(),
+            expected_version=PACKAGE_VERSION,
+            expected_ruleset_code=RULESET_CODE,
+            compiler=self.compiler,
+        )
         ruleset = self.rules.get_ruleset(int(ruleset_id))
         if not ruleset or ruleset["ruleset_code"] != RULESET_CODE:
             raise LookupError("بستهٔ قواعد پیدا نشد")
@@ -160,7 +169,17 @@ class ClinicalRulePackageService:
             raise ValueError("این بسته قدیمی است؛ ابتدا بستهٔ اصلاح‌شدهٔ فعلی را آماده کنید")
         if ruleset["status"] != "DRAFT":
             raise ValueError("فقط بستهٔ درحال بازبینی قابل تأیید است")
-        expected = {member["rule_code"] for member in ruleset["members"]}
+        expected_hashes = {
+            compiled.definition.rule_code: compiled.content_hash
+            for compiled in package.compiled_rules
+        }
+        stored_hashes = {
+            str(member["rule_code"]): str(member["content_hash"])
+            for member in ruleset["members"]
+        }
+        if stored_hashes != expected_hashes:
+            raise ValueError("اعضای بستهٔ ذخیره‌شده با بستهٔ immutable برنامه یکسان نیستند")
+        expected = set(expected_hashes)
         if set(attested_codes or []) != expected:
             raise ValueError("هر قاعده باید جداگانه مطالعه و علامت‌گذاری شود")
         for member in ruleset["members"]:
@@ -181,7 +200,8 @@ class ClinicalRulePackageService:
         self.activation.set_raw_mode("off")
         log_activity(
             "clinical_v2_package_freeze",
-            f"Clinically approved and froze ruleset {ruleset_id}: {note}",
+            f"Clinically approved and froze ruleset {ruleset_id}: {note}; "
+            f"package={package.package_hash}; cases={package.case_bundle_hash}",
             user_id=0, username=reviewer,
         )
         return self.rules.get_ruleset(int(ruleset_id))
