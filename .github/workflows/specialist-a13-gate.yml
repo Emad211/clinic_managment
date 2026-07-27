@@ -40,19 +40,22 @@ jobs:
       - name: Apply deterministic A13 finalizer
         shell: bash
         run: |
-          set -euo pipefail
-          if ! {
+          set +e
+          (
+            set -euo pipefail
             python -m py_compile .github/repair_finalize_a13.py
             python .github/repair_finalize_a13.py
             python -m py_compile .github/finalize_a13.py
             python .github/finalize_a13.py
             python -m compileall -q specialist_clinic/src specialist_clinic/tests
             git diff --check
-          } > .github/a13-finalizer.log 2>&1; then
-            cat .github/a13-finalizer.log
-            exit 1
-          fi
+          ) > .github/a13-finalizer.log 2>&1
+          status=$?
+          set -e
           cat .github/a13-finalizer.log
+          if [ "$status" -ne 0 ]; then
+            exit "$status"
+          fi
 
       - name: Install specialist dependencies
         working-directory: specialist_clinic
