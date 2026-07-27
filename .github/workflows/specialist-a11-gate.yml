@@ -14,7 +14,7 @@ permissions:
 
 concurrency:
   group: specialist-a11-rule-library-intake
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   exact-head-gate:
