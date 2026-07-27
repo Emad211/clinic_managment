@@ -44,8 +44,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python -m py_compile .github/finalize_a12.py
+          python -m py_compile .github/finalize_a12.py .github/patch_a12.py
           python .github/finalize_a12.py
+          python .github/patch_a12.py
           python -m compileall -q specialist_clinic/src specialist_clinic/tests
           git diff --check
 
@@ -102,6 +103,7 @@ jobs:
           rm -f specialist_clinic/pytest-specialist-a12.xml
           rm -f webapp/pytest-accounting-a12.xml
           rm -f .github/finalize_a12.py
+          rm -f .github/patch_a12.py
           rm -f .github/workflows/specialist-a12-gate.yml
           git add -A
           git diff --cached --check
