@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - agent/specialist-rule-library-intake-a11
+  pull_request:
+    branches:
+      - main
   workflow_dispatch:
 
 permissions:
@@ -15,6 +18,9 @@ concurrency:
 
 jobs:
   exact-head-gate:
+    if: >-
+      github.event_name != 'pull_request' ||
+      github.head_ref == 'agent/specialist-rule-library-intake-a11'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
