@@ -1,0 +1,97 @@
+name: Specialist A11 Rule Library Intake Gate
+
+on:
+  push:
+    branches:
+      - agent/specialist-rule-library-intake-a11
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: specialist-a11-rule-library-intake
+  cancel-in-progress: false
+
+jobs:
+  exact-head-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/specialist-rule-library-intake-a11
+          fetch-depth: 0
+
+      - name: Capture branch lease
+        shell: bash
+        run: echo "START_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: |
+            specialist_clinic/requirements.txt
+            webapp/requirements.txt
+
+      - name: Apply deterministic A11 product finalizer
+        shell: bash
+        run: |
+          set -euo pipefail
+          python .github/finalize_a11.py
+          python -m compileall -q specialist_clinic/src specialist_clinic/tests
+          git diff --check
+
+      - name: Install specialist dependencies
+        working-directory: specialist_clinic
+        run: python -m pip install -r requirements.txt pytest
+
+      - name: Run specialist full suite
+        working-directory: specialist_clinic
+        env:
+          PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
+          PYTHONIOENCODING: utf-8
+        run: >-
+          python -m pytest tests -q --tb=short
+          --junitxml=pytest-specialist-a11.xml
+
+      - name: Install accounting dependencies
+        working-directory: webapp
+        run: python -m pip install -r requirements.txt
+
+      - name: Run accounting regression suite
+        working-directory: webapp
+        env:
+          PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
+          PYTHONIOENCODING: utf-8
+        run: >-
+          python -m pytest tests -q --tb=short
+          --junitxml=pytest-accounting-a11.xml
+
+      - name: Upload A11 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: specialist-a11-rule-library-intake-evidence
+          path: |
+            specialist_clinic/pytest-specialist-a11.xml
+            webapp/pytest-accounting-a11.xml
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Publish exact tested product tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          git add -A
+          git diff --cached --check
+          if git diff --cached --quiet; then
+            echo "A11 product tree already published"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "govern clinical rule package intake"
+          git push \
+            --force-with-lease=refs/heads/agent/specialist-rule-library-intake-a11:${START_SHA} \
+            origin HEAD:refs/heads/agent/specialist-rule-library-intake-a11
