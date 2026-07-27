@@ -156,6 +156,7 @@ def specialist_app(tmp_dir):
     app = create_app({
         "TESTING": True,
         "DATABASE_PATH": spec_db,
+        "ACCOUNTING_DB_PATH": _REAL_ACC_DB,
         "PROPAGATE_EXCEPTIONS": True,
         "SECRET_KEY": "test-secret",
         "BACKUP_FOLDER": os.path.join(tmp_dir, "backups"),
@@ -206,6 +207,9 @@ def _set_acc_path(path: str):
     os.environ["ACCOUNTING_DB_PATH"] = path
     import src.config.settings as cfg_mod
     cfg_mod.Config.ACCOUNTING_DB_PATH = path
+    from flask import current_app, has_app_context
+    if has_app_context():
+        current_app.config["ACCOUNTING_DB_PATH"] = path
 
 
 def _reset_cursor(app_ctx_app):
@@ -231,15 +235,15 @@ class TestScenario1Bootstrap:
         assert row is not None, "processed_invoices table should exist after bootstrap"
 
     def test_busy_timeout_is_set(self, specialist_app):
-        """get_db() sets PRAGMA busy_timeout = 3000 on every specialist connection."""
+        """get_db() sets the current 10-second write-contention guard."""
         app, spec_db, _ = specialist_app
         from src.adapters.sqlite.core import get_db
         db = get_db()
         row = db.execute("PRAGMA busy_timeout").fetchone()
         # SQLite returns the current busy_timeout value
         timeout_val = row[0] if row else None
-        assert timeout_val == 3000, (
-            f"PRAGMA busy_timeout should be 3000, got {timeout_val}"
+        assert timeout_val == 10000, (
+            f"PRAGMA busy_timeout should be 10000, got {timeout_val}"
         )
 
 

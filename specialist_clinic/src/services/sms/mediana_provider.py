@@ -81,7 +81,8 @@ class MedianaProvider(SmsProvider):
         response = requests.post(
             url,
             json=payload,
-            headers={"X-API-KEY": self.api_key, "Content-Type": "application/json"},
+            headers={"X-API-KEY": self.api_key, "Content-Type": "application/json",
+                     "User-Agent": "SpecialistClinic/1.0"},
             timeout=self.timeout,
         )
         try:
@@ -93,7 +94,8 @@ class MedianaProvider(SmsProvider):
     def _get(self, path: str) -> tuple[int, dict]:
         response = requests.get(
             BASE_URL + path,
-            headers={"X-API-KEY": self.api_key, "Accept": "application/json"},
+            headers={"X-API-KEY": self.api_key, "Accept": "application/json",
+                     "User-Agent": "SpecialistClinic/1.0"},
             timeout=self.timeout,
         )
         try:
@@ -103,9 +105,26 @@ class MedianaProvider(SmsProvider):
         return response.status_code, parsed
 
     @staticmethod
-    def _error_message(payload: dict) -> str:
-        code = _field(payload, "ErrorCode")
-        message = _field(payload, "Message") or _field(payload, "ErrorMessage")
+    def _errors(payload: dict) -> list[dict]:
+        if not isinstance(payload, dict):
+            return []
+        containers = [payload]
+        for key in ("Meta", "meta", "Data", "data"):
+            value = payload.get(key)
+            if isinstance(value, dict):
+                containers.append(value)
+        for container in containers:
+            value = _field(container, "Errors")
+            if isinstance(value, list):
+                return [item for item in value if isinstance(item, dict)]
+        return []
+
+    @classmethod
+    def _error_message(cls, payload: dict) -> str:
+        first = cls._errors(payload)
+        source = first[0] if first else payload
+        code = _field(source, "ErrorCode")
+        message = _field(source, "Message") or _field(source, "ErrorMessage")
         try:
             numeric = int(code) if code is not None else None
         except (TypeError, ValueError):
@@ -124,8 +143,10 @@ class MedianaProvider(SmsProvider):
                 item = value
                 break
         status = _field(item, "Status") or _field(item, "StatusText")
-        status_int = _field(item, "StatusId") or _field(item, "StatusCode")
-        provider_msgid = _field(item, "SmsId") or _field(item, "MessageId")
+        status_int = (_field(item, "StatusInt") or _field(item, "StatusId")
+                      or _field(item, "StatusCode"))
+        provider_msgid = (_field(item, "SmsItemId") or _field(item, "SmsId")
+                          or _field(item, "MessageId"))
         try:
             status_int = int(status_int) if status_int is not None else None
         except (TypeError, ValueError):
@@ -172,19 +193,41 @@ class MedianaProvider(SmsProvider):
                 error=f"خطای ارتباط با مدیانا: {exc}",
             )
         if http_status < 200 or http_status >= 300:
+            error = self._error_message(result)
+            if not result:
+                error = f"HTTP {http_status}: پاسخ نامعتبر از پنل مدیانا"
+            else:
+                error = f"HTTP {http_status}: {error}"
+            return SendResult(ok=False, delivery_status="Failed", error=error)
+        errors = self._errors(result)
+        if errors:
+            code = _field(errors[0], "ErrorCode")
+            try:
+                numeric = int(code)
+            except (TypeError, ValueError):
+                numeric = None
+            retryable = numeric in {1042, 1062}
             return SendResult(
                 ok=False,
-                delivery_status="Failed",
+                retryable=retryable,
+                delivery_status="RetryableFailure" if retryable else "Failed",
                 error=self._error_message(result),
             )
-        request_id = _field(result, "RequestId") or _field(result, "SendRequestId")
         data = _field(result, "Data", {})
+        request_id = (_field(data, "RequestId") or _field(data, "SendRequestId")
+                      or _field(result, "RequestId") or _field(result, "SendRequestId"))
         provider_msgid = None
-        if isinstance(data, list) and data:
-            provider_msgid = _field(data[0], "SmsId") or _field(data[0], "MessageId")
+        items = _field(data, "SmsItems") if isinstance(data, dict) else None
+        if isinstance(items, list) and items:
+            provider_msgid = (_field(items[0], "SmsItemId") or _field(items[0], "SmsId")
+                              or _field(items[0], "MessageId"))
+        elif isinstance(data, list) and data:
+            provider_msgid = (_field(data[0], "SmsItemId") or _field(data[0], "SmsId")
+                              or _field(data[0], "MessageId"))
         elif isinstance(data, dict):
-            provider_msgid = _field(data, "SmsId") or _field(data, "MessageId")
-        status, status_int, detected_msgid = self._status_payload(result)
+            provider_msgid = (_field(data, "SmsItemId") or _field(data, "SmsId")
+                              or _field(data, "MessageId"))
+        status, status_int, detected_msgid = self._status_payload(data or result)
         return SendResult(
             ok=True,
             provider_request_id=str(request_id).strip() if request_id else None,
@@ -213,13 +256,15 @@ class MedianaProvider(SmsProvider):
         if http_status < 200 or http_status >= 300:
             raise RuntimeError(self._error_message(payload))
         data = _field(payload, "Data", payload)
-        items = data if isinstance(data, list) else [data]
+        nested = _field(data, "SmsItems") if isinstance(data, dict) else None
+        items = nested if isinstance(nested, list) else data if isinstance(data, list) else [data]
         updates = []
         for item in items:
             if not isinstance(item, dict):
                 continue
             status = _field(item, "Status") or _field(item, "StatusText") or "StatusUnknown"
-            status_int = _field(item, "StatusId") or _field(item, "StatusCode")
+            status_int = (_field(item, "StatusInt") or _field(item, "StatusId")
+                          or _field(item, "StatusCode"))
             try:
                 status_int = int(status_int) if status_int is not None else None
             except (TypeError, ValueError):
@@ -233,8 +278,10 @@ class MedianaProvider(SmsProvider):
                         else None
                     ),
                     provider_msgid=(
-                        str(_field(item, "SmsId") or _field(item, "MessageId") or message_id).strip()
-                        if (_field(item, "SmsId") or _field(item, "MessageId") or message_id)
+                        str(_field(item, "SmsItemId") or _field(item, "SmsId")
+                            or _field(item, "MessageId") or message_id).strip()
+                        if (_field(item, "SmsItemId") or _field(item, "SmsId")
+                            or _field(item, "MessageId") or message_id)
                         else None
                     ),
                     recipient=(
