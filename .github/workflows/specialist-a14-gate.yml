@@ -41,8 +41,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python -m py_compile .github/finalize_a14.py
+          python -m py_compile .github/finalize_a14.py .github/repair_a14_output.py
           python .github/finalize_a14.py
+          python .github/repair_a14_output.py
           python -m compileall -q specialist_clinic/src specialist_clinic/tests
           git diff --check
 
@@ -92,6 +93,7 @@ jobs:
           find specialist_clinic -type d -name __pycache__ -prune -exec rm -rf {} +
           rm -f specialist_clinic/pytest-specialist-a14.xml
           rm -f webapp/pytest-accounting-a14.xml
+          rm -f .github/repair_a14_output.py
           rm -f .github/finalize_a14.py
           rm -f .github/workflows/specialist-a14-gate.yml
           git add -A
