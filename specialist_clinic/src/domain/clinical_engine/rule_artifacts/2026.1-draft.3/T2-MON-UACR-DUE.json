@@ -1,0 +1,170 @@
+{
+  "schema_version": "2.0",
+  "dsl_version": "2.0",
+  "rule_code": "T2-MON-UACR-DUE",
+  "version": "2.0.0-draft.3",
+  "title": "سررسید پایش UACR در دیابت نوع ۲",
+  "phase": "ROUTINE",
+  "action_type": "schedule_screening",
+  "severity": "WARN",
+  "priority": 120,
+  "semantic_key": "diabetes:monitoring:uacr-due",
+  "scope": {
+    "population": "بزرگسال مبتلا به دیابت نوع ۲ در درمانگاه سرپایی",
+    "age_min": 18,
+    "age_max": null,
+    "sex": [
+      "any"
+    ],
+    "care_settings": [
+      "outpatient",
+      "primary_care",
+      "specialty_clinic"
+    ],
+    "encounter_types": [
+      "office_visit",
+      "followup"
+    ],
+    "condition_codes": [
+      "diabetes"
+    ],
+    "out_of_scope": [
+      "inpatient care",
+      "pregnancy-specific protocols"
+    ]
+  },
+  "required_facts": [
+    {
+      "key": "condition.codes",
+      "criticality": "CRITICAL",
+      "max_age_days": null,
+      "minimum_verification": "CONFIRMED",
+      "on_unusable": "NEEDS_DATA",
+      "prompt_fa": "فهرست تشخیص‌های فعال بیمار باید بازبینی و قابل استفاده باشد."
+    },
+    {
+      "key": "demographic.age_years",
+      "criticality": "REQUIRED",
+      "max_age_days": null,
+      "minimum_verification": "CONFIRMED",
+      "on_unusable": "NEEDS_DATA",
+      "prompt_fa": "تاریخ تولد کامل برای احراز بزرگسال‌بودن لازم است."
+    },
+    {
+      "key": "observation.keys",
+      "criticality": "CRITICAL",
+      "max_age_days": null,
+      "minimum_verification": "CONFIRMED",
+      "on_unusable": "NEEDS_DATA",
+      "prompt_fa": "فهرست داده‌های آزمایشگاهی ثبت‌شده باید قابل استفاده باشد."
+    },
+    {
+      "key": "observation.uacr",
+      "criticality": "OPTIONAL",
+      "max_age_days": 365,
+      "minimum_verification": "CONFIRMED",
+      "on_unusable": "CONTINUE_WITH_WARNING",
+      "prompt_fa": "یک نتیجهٔ UACR تأییدشده در ۳۶۵ روز اخیر لازم است."
+    }
+  ],
+  "eligibility": {
+    "node_id": "t2-mon-uacr-due-eligibility",
+    "all": [
+      {
+        "node_id": "t2-mon-uacr-due-diabetes",
+        "fact": "condition.codes",
+        "selector": {
+          "aggregation": "single"
+        },
+        "op": "has",
+        "value": "diabetes",
+        "unit": null
+      },
+      {
+        "node_id": "t2-mon-uacr-due-adult",
+        "fact": "demographic.age_years",
+        "selector": {
+          "aggregation": "single"
+        },
+        "op": ">=",
+        "value": 18,
+        "unit": null
+      }
+    ]
+  },
+  "condition": {
+    "node_id": "t2-mon-uacr-due-due",
+    "any": [
+      {
+        "node_id": "t2-mon-uacr-due-never-recorded",
+        "fact": "observation.keys",
+        "selector": {
+          "aggregation": "single"
+        },
+        "op": "not_has",
+        "value": "uacr",
+        "unit": null
+      },
+      {
+        "node_id": "t2-mon-uacr-due-no-recent-result",
+        "fact": "observation.uacr",
+        "selector": {
+          "aggregation": "count_within_days",
+          "within_days": 365
+        },
+        "op": "==",
+        "value": 0,
+        "unit": null
+      }
+    ]
+  },
+  "safety": {
+    "redflag_exclusions": [],
+    "hard_exclusions": [],
+    "on_safety_error": "BLOCK_ROUTINE_OUTPUTS"
+  },
+  "recommendation": {
+    "text_fa": "پایش نسبت آلبومین به کراتینین ادرار سررسید شده است. پس از تأیید پزشک، نتیجه باید به‌صورت canonical در پرونده ثبت شود.",
+    "suggestion_only": true,
+    "requires_clinician_confirmation": true,
+    "may_create_internal_task": true,
+    "params": {
+      "due_in_days": 30,
+      "task_contract": {
+        "urgency": "ROUTINE",
+        "allowed_outcome_types": [
+          "LAB_COMPLETED",
+          "OBSERVATION"
+        ],
+        "required_fact_keys": [
+          "observation.uacr"
+        ],
+        "minimum_verification": "CONFIRMED",
+        "canonical_ingestion": "REQUIRED",
+        "requires_acknowledgement": true
+      },
+      "do_not_auto_message": true
+    }
+  },
+  "evidence": {
+    "source_title": "ADA Standards of Care in Diabetes — 2026: Chronic Kidney Disease and Risk Management",
+    "issuing_organization": "American Diabetes Association",
+    "publication_date": "2026-01-01",
+    "source_version": "2026",
+    "source_locator": "Recommendation 11.1a: assess urinary albumin-to-creatinine ratio at least annually in all people with type 2 diabetes; evidence grade B.",
+    "source_url": "https://diabetesjournals.org/care/article/49/Supplement_1/S246/163914/11-Chronic-Kidney-Disease-and-Risk-Management",
+    "evidence_certainty": "LEGACY_ADA_B",
+    "recommendation_strength": "NOT_GRADED",
+    "local_validation_status": "NOT_REVIEWED",
+    "local_adaptation_note": "پیش‌نویس فنی برای validation و shadow. سررسید فقط از Fact canonical، زمان as-of و نتیجهٔ تأییدشده محاسبه می‌شود؛ ساخت task منوط به تأیید پزشک است."
+  },
+  "governance": {
+    "status": "DRAFT",
+    "author": "clinical-engine-v2",
+    "clinical_reviewer": null,
+    "technical_reviewer": "pending",
+    "review_due_date": "2026-09-30",
+    "supersedes": null,
+    "change_note": "First governed monitoring tranche; no active clinical rollout."
+  }
+}

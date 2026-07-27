@@ -71,6 +71,8 @@ def test_guided_package_prepare_then_clinical_review_and_freeze(manager_ui_app):
         assert package["status"] == "DRAFT"
         assert {item["lifecycle_status"] for item in package["members"]} == {"VALIDATED"}
         ruleset_id = package["id"]
+        rule_codes = [item["rule_code"] for item in package["members"]]
+        rule_count = len(rule_codes)
 
     incomplete = client.post(
         "/manager/clinical-engine/approve-rules",
@@ -83,11 +85,11 @@ def test_guided_package_prepare_then_clinical_review_and_freeze(manager_ui_app):
     approved = client.post(
         "/manager/clinical-engine/approve-rules",
         data={"ruleset_id": ruleset_id, "reviewer": "doctor", "note": "reviewed",
-              "attested_rule": ["T2-REDFLAG-BP", "T2-SAFE-MET-STOP"]},
+              "attested_rule": rule_codes},
         follow_redirects=True,
     )
     html = approved.get_data(as_text=True)
-    assert "هر 2 قاعده تأیید" in html
+    assert f"هر {rule_count} قاعده تأیید" in html
     assert "۱۰ پروندهٔ نمونهٔ کامل" in html
     with manager_ui_app.app_context():
         package = ClinicalEngineRulesRepository().latest_ruleset("general-outpatient")

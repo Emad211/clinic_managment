@@ -8,7 +8,7 @@ from __future__ import annotations
 
 
 RULESET_CODE = "general-outpatient"
-CURRENT_BUNDLED_PACKAGE_VERSION = "2026.1-draft.2"
+CURRENT_BUNDLED_PACKAGE_VERSION = "2026.1-draft.3"
 CURRENT_ENGINE_VERSION = "2.8.0-validation-release"
 
 

@@ -1,0 +1,38 @@
+{
+  "ruleset_code": "general-outpatient",
+  "version": "2026.1-draft.3",
+  "status": "DRAFT",
+  "clinical_use": "NOT_APPROVED",
+  "rules": [
+    {
+      "file": "T2-REDFLAG-BP.json",
+      "phase": "PREFLIGHT",
+      "sort_order": 10
+    },
+    {
+      "file": "T2-SAFE-MET-STOP.json",
+      "phase": "SAFETY",
+      "sort_order": 20
+    },
+    {
+      "file": "T2-SAFE-MET-REVIEW.json",
+      "phase": "SAFETY",
+      "sort_order": 30
+    },
+    {
+      "file": "T2-MON-A1C-DUE.json",
+      "phase": "ROUTINE",
+      "sort_order": 100
+    },
+    {
+      "file": "T2-MON-EGFR-DUE.json",
+      "phase": "ROUTINE",
+      "sort_order": 110
+    },
+    {
+      "file": "T2-MON-UACR-DUE.json",
+      "phase": "ROUTINE",
+      "sort_order": 120
+    }
+  ]
+}

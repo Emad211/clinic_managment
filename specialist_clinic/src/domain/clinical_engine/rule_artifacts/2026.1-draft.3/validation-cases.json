@@ -1,0 +1,1054 @@
+{
+  "schema_version": "1.0",
+  "package_version": "2026.1-draft.3",
+  "description": "A12 technical golden matrix for the first governed diabetes monitoring tranche. Clinical approval remains a separate append-only gate.",
+  "cases": [
+    {
+      "case_id": "GC-POS-001",
+      "title": "Active severe-pressure red flag suppresses due routine outputs",
+      "categories": [
+        "positive",
+        "contraindication",
+        "suppression"
+      ],
+      "as_of_at": "2026-07-21 12:00:00",
+      "context": {
+        "evaluation_mode": "ENCOUNTER",
+        "care_setting": "specialty_clinic",
+        "encounter_type": "followup"
+      },
+      "facts": [
+        {
+          "key": "condition.codes",
+          "value": [
+            "diabetes"
+          ],
+          "fact_id": "condition"
+        },
+        {
+          "key": "demographic.age_years",
+          "value": 58,
+          "fact_id": "age"
+        },
+        {
+          "key": "observation.keys",
+          "value": [
+            "bp_systolic",
+            "bp_diastolic",
+            "egfr"
+          ],
+          "fact_id": "observation-keys"
+        },
+        {
+          "key": "observation.bp_systolic",
+          "value": 185,
+          "fact_id": "sbp",
+          "unit": "mm[Hg]"
+        },
+        {
+          "key": "observation.bp_diastolic",
+          "value": 92,
+          "fact_id": "dbp",
+          "unit": "mm[Hg]"
+        },
+        {
+          "key": "medication.classes",
+          "value": [
+            "metformin"
+          ],
+          "fact_id": "medications"
+        },
+        {
+          "key": "observation.egfr",
+          "value": 24,
+          "fact_id": "lab-egfr",
+          "unit": "mL/min/{1.73_m2}"
+        }
+      ],
+      "expected": {
+        "outcomes": {
+          "T2-REDFLAG-BP": "FIRED",
+          "T2-SAFE-MET-STOP": "FIRED",
+          "T2-SAFE-MET-REVIEW": "NOT_FIRED",
+          "T2-MON-A1C-DUE": "SUPPRESSED",
+          "T2-MON-EGFR-DUE": "NOT_FIRED",
+          "T2-MON-UACR-DUE": "SUPPRESSED"
+        },
+        "redflag_rule_codes": [
+          "T2-REDFLAG-BP"
+        ],
+        "suppression_reasons": {
+          "T2-MON-A1C-DUE": "ACTIVE_REDFLAG",
+          "T2-MON-UACR-DUE": "ACTIVE_REDFLAG"
+        }
+      }
+    },
+    {
+      "case_id": "GC-NEG-001",
+      "title": "All monitoring is current and no metformin safety population applies",
+      "categories": [
+        "negative"
+      ],
+      "as_of_at": "2026-07-21 12:00:00",
+      "context": {
+        "evaluation_mode": "ENCOUNTER",
+        "care_setting": "specialty_clinic",
+        "encounter_type": "followup"
+      },
+      "facts": [
+        {
+          "key": "condition.codes",
+          "value": [
+            "diabetes"
+          ],
+          "fact_id": "condition"
+        },
+        {
+          "key": "demographic.age_years",
+          "value": 58,
+          "fact_id": "age"
+        },
+        {
+          "key": "observation.keys",
+          "value": [
+            "bp_systolic",
+            "bp_diastolic",
+            "hba1c",
+            "egfr",
+            "uacr"
+          ],
+          "fact_id": "observation-keys"
+        },
+        {
+          "key": "observation.bp_systolic",
+          "value": 130,
+          "fact_id": "sbp",
+          "unit": "mm[Hg]"
+        },
+        {
+          "key": "observation.bp_diastolic",
+          "value": 80,
+          "fact_id": "dbp",
+          "unit": "mm[Hg]"
+        },
+        {
+          "key": "medication.classes",
+          "value": [],
+          "fact_id": "medications"
+        },
+        {
+          "key": "observation.hba1c",
+          "value": 6.8,
+          "fact_id": "lab-hba1c",
+          "unit": "%"
+        },
+        {
+          "key": "observation.egfr",
+          "value": 75,
+          "fact_id": "lab-egfr",
+          "unit": "mL/min/{1.73_m2}"
+        },
+        {
+          "key": "observation.uacr",
+          "value": 12,
+          "fact_id": "lab-uacr",
+          "unit": "mg/g"
+        }
+      ],
+      "expected": {
+        "outcomes": {
+          "T2-REDFLAG-BP": "NOT_FIRED",
+          "T2-SAFE-MET-STOP": "NOT_APPLICABLE",
+          "T2-SAFE-MET-REVIEW": "NOT_APPLICABLE",
+          "T2-MON-A1C-DUE": "NOT_FIRED",
+          "T2-MON-EGFR-DUE": "NOT_FIRED",
+          "T2-MON-UACR-DUE": "NOT_FIRED"
+        },
+        "redflag_rule_codes": []
+      }
+    },
+    {
+      "case_id": "GC-BORDER-001",
+      "title": "Inclusive monitoring windows and exact metformin review lower boundary",
+      "categories": [
+        "borderline",
+        "positive"
+      ],
+      "as_of_at": "2026-07-21 12:00:00",
+      "context": {
+        "evaluation_mode": "ENCOUNTER",
+        "care_setting": "specialty_clinic",
+        "encounter_type": "followup"
+      },
+      "facts": [
+        {
+          "key": "condition.codes",
+          "value": [
+            "diabetes"
+          ],
+          "fact_id": "condition"
+        },
+        {
+          "key": "demographic.age_years",
+          "value": 40,
+          "fact_id": "age"
+        },
+        {
+          "key": "observation.keys",
+          "value": [
+            "bp_systolic",
+            "bp_diastolic",
+            "hba1c",
+            "egfr",
+            "uacr"
+          ],
+          "fact_id": "observation-keys"
+        },
+        {
+          "key": "observation.bp_systolic",
+          "value": 180,
+          "fact_id": "sbp",
+          "unit": "mm[Hg]"
+        },
+        {
+          "key": "observation.bp_diastolic",
+          "value": 80,
+          "fact_id": "dbp",
+          "unit": "mm[Hg]"
+        },
+        {
+          "key": "medication.classes",
+          "value": [
+            "metformin"
+          ],
+          "fact_id": "medications"
+        },
+        {
+          "key": "observation.hba1c",
+          "value": 7.1,
+          "fact_id": "lab-hba1c",
+          "unit": "%",
+          "effective_days_before": 183,
+          "recorded_days_before": 183
+        },
+        {
+          "key": "observation.egfr",
+          "value": 30,
+          "fact_id": "lab-egfr",
+          "unit": "mL/min/{1.73_m2}"
+        },
+        {
+          "key": "observation.uacr",
+          "value": 22,
+          "fact_id": "lab-uacr",
+          "unit": "mg/g",
+          "effective_days_before": 365,
+          "recorded_days_before": 365
+        }
+      ],
+      "expected": {
+        "outcomes": {
+          "T2-REDFLAG-BP": "FIRED",
+          "T2-SAFE-MET-STOP": "NOT_FIRED",
+          "T2-SAFE-MET-REVIEW": "FIRED",
+          "T2-MON-A1C-DUE": "NOT_FIRED",
+          "T2-MON-EGFR-DUE": "NOT_FIRED",
+          "T2-MON-UACR-DUE": "NOT_FIRED"
+        },
+        "redflag_rule_codes": [
+          "T2-REDFLAG-BP"
+        ]
+      }
+    },
+    {
+      "case_id": "GC-A1C-DUE-001",
+      "title": "Confirmed HbA1c older than 183 days is due",
+      "categories": [
+        "positive",
+        "historical-as-of"
+      ],
+      "as_of_at": "2026-07-21 12:00:00",
+      "context": {
+        "evaluation_mode": "ENCOUNTER",
+        "care_setting": "specialty_clinic",
+        "encounter_type": "followup"
+      },
+      "facts": [
+        {
+          "key": "condition.codes",
+          "value": [
+            "diabetes"
+          ],
+          "fact_id": "condition"
+        },
+        {
+          "key": "demographic.age_years",
+          "value": 58,
+          "fact_id": "age"
+        },
+        {
+          "key": "observation.keys",
+          "value": [
+            "bp_systolic",
+            "bp_diastolic",
+            "hba1c",
+            "egfr",
+            "uacr"
+          ],
+          "fact_id": "observation-keys"
+        },
+        {
+          "key": "observation.bp_systolic",
+          "value": 130,
+          "fact_id": "sbp",
+          "unit": "mm[Hg]"
+        },
+        {
+          "key": "observation.bp_diastolic",
+          "value": 80,
+          "fact_id": "dbp",
+          "unit": "mm[Hg]"
+        },
+        {
+          "key": "medication.classes",
+          "value": [],
+          "fact_id": "medications"
+        },
+        {
+          "key": "observation.hba1c",
+          "value": 7.4,
+          "fact_id": "lab-hba1c",
+          "unit": "%",
+          "effective_days_before": 184,
+          "recorded_days_before": 184
+        },
+        {
+          "key": "observation.egfr",
+          "value": 80,
+          "fact_id": "lab-egfr",
+          "unit": "mL/min/{1.73_m2}"
+        },
+        {
+          "key": "observation.uacr",
+          "value": 18,
+          "fact_id": "lab-uacr",
+          "unit": "mg/g"
+        }
+      ],
+      "expected": {
+        "outcomes": {
+          "T2-REDFLAG-BP": "NOT_FIRED",
+          "T2-SAFE-MET-STOP": "NOT_APPLICABLE",
+          "T2-SAFE-MET-REVIEW": "NOT_APPLICABLE",
+          "T2-MON-A1C-DUE": "FIRED",
+          "T2-MON-EGFR-DUE": "NOT_FIRED",
+          "T2-MON-UACR-DUE": "NOT_FIRED"
+        }
+      }
+    },
+    {
+      "case_id": "GC-EGFR-DUE-001",
+      "title": "Confirmed eGFR older than 365 days is due",
+      "categories": [
+        "positive",
+        "historical-as-of"
+      ],
+      "as_of_at": "2026-07-21 12:00:00",
+      "context": {
+        "evaluation_mode": "ENCOUNTER",
+        "care_setting": "specialty_clinic",
+        "encounter_type": "followup"
+      },
+      "facts": [
+        {
+          "key": "condition.codes",
+          "value": [
+            "diabetes"
+          ],
+          "fact_id": "condition"
+        },
+        {
+          "key": "demographic.age_years",
+          "value": 58,
+          "fact_id": "age"
+        },
+        {
+          "key": "observation.keys",
+          "value": [
+            "bp_systolic",
+            "bp_diastolic",
+            "hba1c",
+            "egfr",
+            "uacr"
+          ],
+          "fact_id": "observation-keys"
+        },
+        {
+          "key": "observation.bp_systolic",
+          "value": 130,
+          "fact_id": "sbp",
+          "unit": "mm[Hg]"
+        },
+        {
+          "key": "observation.bp_diastolic",
+          "value": 80,
+          "fact_id": "dbp",
+          "unit": "mm[Hg]"
+        },
+        {
+          "key": "medication.classes",
+          "value": [],
+          "fact_id": "medications"
+        },
+        {
+          "key": "observation.hba1c",
+          "value": 6.9,
+          "fact_id": "lab-hba1c",
+          "unit": "%"
+        },
+        {
+          "key": "observation.egfr",
+          "value": 76,
+          "fact_id": "lab-egfr",
+          "unit": "mL/min/{1.73_m2}",
+          "effective_days_before": 366,
+          "recorded_days_before": 366
+        },
+        {
+          "key": "observation.uacr",
+          "value": 11,
+          "fact_id": "lab-uacr",
+          "unit": "mg/g"
+        }
+      ],
+      "expected": {
+        "outcomes": {
+          "T2-REDFLAG-BP": "NOT_FIRED",
+          "T2-SAFE-MET-STOP": "NOT_APPLICABLE",
+          "T2-SAFE-MET-REVIEW": "NOT_APPLICABLE",
+          "T2-MON-A1C-DUE": "NOT_FIRED",
+          "T2-MON-EGFR-DUE": "FIRED",
+          "T2-MON-UACR-DUE": "NOT_FIRED"
+        }
+      }
+    },
+    {
+      "case_id": "GC-UACR-DUE-001",
+      "title": "Confirmed UACR older than 365 days is due",
+      "categories": [
+        "positive",
+        "historical-as-of"
+      ],
+      "as_of_at": "2026-07-21 12:00:00",
+      "context": {
+        "evaluation_mode": "ENCOUNTER",
+        "care_setting": "specialty_clinic",
+        "encounter_type": "followup"
+      },
+      "facts": [
+        {
+          "key": "condition.codes",
+          "value": [
+            "diabetes"
+          ],
+          "fact_id": "condition"
+        },
+        {
+          "key": "demographic.age_years",
+          "value": 58,
+          "fact_id": "age"
+        },
+        {
+          "key": "observation.keys",
+          "value": [
+            "bp_systolic",
+            "bp_diastolic",
+            "hba1c",
+            "egfr",
+            "uacr"
+          ],
+          "fact_id": "observation-keys"
+        },
+        {
+          "key": "observation.bp_systolic",
+          "value": 130,
+          "fact_id": "sbp",
+          "unit": "mm[Hg]"
+        },
+        {
+          "key": "observation.bp_diastolic",
+          "value": 80,
+          "fact_id": "dbp",
+          "unit": "mm[Hg]"
+        },
+        {
+          "key": "medication.classes",
+          "value": [],
+          "fact_id": "medications"
+        },
+        {
+          "key": "observation.hba1c",
+          "value": 6.9,
+          "fact_id": "lab-hba1c",
+          "unit": "%"
+        },
+        {
+          "key": "observation.egfr",
+          "value": 76,
+          "fact_id": "lab-egfr",
+          "unit": "mL/min/{1.73_m2}"
+        },
+        {
+          "key": "observation.uacr",
+          "value": 11,
+          "fact_id": "lab-uacr",
+          "unit": "mg/g",
+          "effective_days_before": 366,
+          "recorded_days_before": 366
+        }
+      ],
+      "expected": {
+        "outcomes": {
+          "T2-REDFLAG-BP": "NOT_FIRED",
+          "T2-SAFE-MET-STOP": "NOT_APPLICABLE",
+          "T2-SAFE-MET-REVIEW": "NOT_APPLICABLE",
+          "T2-MON-A1C-DUE": "NOT_FIRED",
+          "T2-MON-EGFR-DUE": "NOT_FIRED",
+          "T2-MON-UACR-DUE": "FIRED"
+        }
+      }
+    },
+    {
+      "case_id": "GC-MISSING-AGE-001",
+      "title": "Adult applicability cannot be established",
+      "categories": [
+        "missing-data"
+      ],
+      "as_of_at": "2026-07-21 12:00:00",
+      "context": {
+        "evaluation_mode": "ENCOUNTER",
+        "care_setting": "specialty_clinic",
+        "encounter_type": "followup"
+      },
+      "facts": [
+        {
+          "key": "condition.codes",
+          "value": [
+            "diabetes"
+          ],
+          "fact_id": "condition"
+        },
+        {
+          "key": "observation.keys",
+          "value": [
+            "bp_systolic",
+            "bp_diastolic",
+            "hba1c",
+            "egfr",
+            "uacr"
+          ],
+          "fact_id": "observation-keys"
+        },
+        {
+          "key": "observation.bp_systolic",
+          "value": 130,
+          "fact_id": "sbp",
+          "unit": "mm[Hg]"
+        },
+        {
+          "key": "observation.bp_diastolic",
+          "value": 80,
+          "fact_id": "dbp",
+          "unit": "mm[Hg]"
+        },
+        {
+          "key": "medication.classes",
+          "value": [
+            "metformin"
+          ],
+          "fact_id": "medications"
+        },
+        {
+          "key": "observation.hba1c",
+          "value": 7.0,
+          "fact_id": "lab-hba1c",
+          "unit": "%"
+        },
+        {
+          "key": "observation.egfr",
+          "value": 40,
+          "fact_id": "lab-egfr",
+          "unit": "mL/min/{1.73_m2}"
+        },
+        {
+          "key": "observation.uacr",
+          "value": 10,
+          "fact_id": "lab-uacr",
+          "unit": "mg/g"
+        }
+      ],
+      "expected": {
+        "outcomes": {
+          "T2-REDFLAG-BP": "NEEDS_DATA",
+          "T2-SAFE-MET-STOP": "NEEDS_DATA",
+          "T2-SAFE-MET-REVIEW": "NEEDS_DATA",
+          "T2-MON-A1C-DUE": "NEEDS_DATA",
+          "T2-MON-EGFR-DUE": "NEEDS_DATA",
+          "T2-MON-UACR-DUE": "NEEDS_DATA"
+        },
+        "required_missing_facts": {
+          "T2-REDFLAG-BP": [
+            "demographic.age_years"
+          ],
+          "T2-SAFE-MET-STOP": [
+            "demographic.age_years"
+          ],
+          "T2-SAFE-MET-REVIEW": [
+            "demographic.age_years"
+          ],
+          "T2-MON-A1C-DUE": [
+            "demographic.age_years"
+          ],
+          "T2-MON-EGFR-DUE": [
+            "demographic.age_years"
+          ],
+          "T2-MON-UACR-DUE": [
+            "demographic.age_years"
+          ]
+        }
+      }
+    },
+    {
+      "case_id": "GC-CONFLICT-001",
+      "title": "Conflicting condition collection cannot establish diabetes eligibility",
+      "categories": [
+        "conflict"
+      ],
+      "as_of_at": "2026-07-21 12:00:00",
+      "context": {
+        "evaluation_mode": "ENCOUNTER",
+        "care_setting": "specialty_clinic",
+        "encounter_type": "followup"
+      },
+      "facts": [
+        {
+          "key": "condition.codes",
+          "value": null,
+          "fact_id": "condition-conflict",
+          "status": "UNKNOWN",
+          "verification": "UNVERIFIED",
+          "conflict": "PRESENT"
+        },
+        {
+          "key": "demographic.age_years",
+          "value": 63,
+          "fact_id": "age"
+        },
+        {
+          "key": "observation.keys",
+          "value": [
+            "bp_systolic",
+            "bp_diastolic",
+            "hba1c",
+            "egfr",
+            "uacr"
+          ],
+          "fact_id": "observation-keys"
+        },
+        {
+          "key": "observation.bp_systolic",
+          "value": 130,
+          "fact_id": "sbp",
+          "unit": "mm[Hg]"
+        },
+        {
+          "key": "observation.bp_diastolic",
+          "value": 80,
+          "fact_id": "dbp",
+          "unit": "mm[Hg]"
+        },
+        {
+          "key": "medication.classes",
+          "value": [
+            "metformin"
+          ],
+          "fact_id": "medications"
+        },
+        {
+          "key": "observation.hba1c",
+          "value": 7.0,
+          "fact_id": "lab-hba1c",
+          "unit": "%"
+        },
+        {
+          "key": "observation.egfr",
+          "value": 40,
+          "fact_id": "lab-egfr",
+          "unit": "mL/min/{1.73_m2}"
+        },
+        {
+          "key": "observation.uacr",
+          "value": 10,
+          "fact_id": "lab-uacr",
+          "unit": "mg/g"
+        }
+      ],
+      "expected": {
+        "outcomes": {
+          "T2-REDFLAG-BP": "NEEDS_DATA",
+          "T2-SAFE-MET-STOP": "NEEDS_DATA",
+          "T2-SAFE-MET-REVIEW": "NEEDS_DATA",
+          "T2-MON-A1C-DUE": "NEEDS_DATA",
+          "T2-MON-EGFR-DUE": "NEEDS_DATA",
+          "T2-MON-UACR-DUE": "NEEDS_DATA"
+        },
+        "required_missing_facts": {
+          "T2-REDFLAG-BP": [
+            "condition.codes"
+          ],
+          "T2-SAFE-MET-STOP": [
+            "condition.codes"
+          ],
+          "T2-SAFE-MET-REVIEW": [
+            "condition.codes"
+          ],
+          "T2-MON-A1C-DUE": [
+            "condition.codes"
+          ],
+          "T2-MON-EGFR-DUE": [
+            "condition.codes"
+          ],
+          "T2-MON-UACR-DUE": [
+            "condition.codes"
+          ]
+        }
+      }
+    },
+    {
+      "case_id": "GC-OBS-SOURCE-001",
+      "title": "Unavailable observation collection blocks monitoring without false due tasks",
+      "categories": [
+        "missing-data"
+      ],
+      "as_of_at": "2026-07-21 12:00:00",
+      "context": {
+        "evaluation_mode": "ENCOUNTER",
+        "care_setting": "specialty_clinic",
+        "encounter_type": "followup"
+      },
+      "facts": [
+        {
+          "key": "condition.codes",
+          "value": [
+            "diabetes"
+          ],
+          "fact_id": "condition"
+        },
+        {
+          "key": "demographic.age_years",
+          "value": 58,
+          "fact_id": "age"
+        },
+        {
+          "key": "medication.classes",
+          "value": [],
+          "fact_id": "medications"
+        }
+      ],
+      "expected": {
+        "outcomes": {
+          "T2-REDFLAG-BP": "NEEDS_DATA",
+          "T2-SAFE-MET-STOP": "NOT_APPLICABLE",
+          "T2-SAFE-MET-REVIEW": "NOT_APPLICABLE",
+          "T2-MON-A1C-DUE": "NEEDS_DATA",
+          "T2-MON-EGFR-DUE": "NEEDS_DATA",
+          "T2-MON-UACR-DUE": "NEEDS_DATA"
+        },
+        "required_missing_facts": {
+          "T2-MON-A1C-DUE": [
+            "observation.keys"
+          ],
+          "T2-MON-EGFR-DUE": [
+            "observation.keys"
+          ],
+          "T2-MON-UACR-DUE": [
+            "observation.keys"
+          ]
+        }
+      }
+    },
+    {
+      "case_id": "GC-SCOPE-001",
+      "title": "Non-diabetic patient is outside the tranche population",
+      "categories": [
+        "negative"
+      ],
+      "as_of_at": "2026-07-21 12:00:00",
+      "context": {
+        "evaluation_mode": "ENCOUNTER",
+        "care_setting": "specialty_clinic",
+        "encounter_type": "followup"
+      },
+      "facts": [
+        {
+          "key": "condition.codes",
+          "value": [
+            "hypertension"
+          ],
+          "fact_id": "condition"
+        },
+        {
+          "key": "demographic.age_years",
+          "value": 58,
+          "fact_id": "age"
+        },
+        {
+          "key": "observation.keys",
+          "value": [
+            "bp_systolic",
+            "bp_diastolic",
+            "hba1c",
+            "egfr",
+            "uacr"
+          ],
+          "fact_id": "observation-keys"
+        },
+        {
+          "key": "observation.bp_systolic",
+          "value": 190,
+          "fact_id": "sbp",
+          "unit": "mm[Hg]"
+        },
+        {
+          "key": "observation.bp_diastolic",
+          "value": 120,
+          "fact_id": "dbp",
+          "unit": "mm[Hg]"
+        },
+        {
+          "key": "medication.classes",
+          "value": [
+            "metformin"
+          ],
+          "fact_id": "medications"
+        },
+        {
+          "key": "observation.hba1c",
+          "value": 9.0,
+          "fact_id": "lab-hba1c",
+          "unit": "%",
+          "effective_days_before": 400,
+          "recorded_days_before": 400
+        },
+        {
+          "key": "observation.egfr",
+          "value": 20,
+          "fact_id": "lab-egfr",
+          "unit": "mL/min/{1.73_m2}",
+          "effective_days_before": 400,
+          "recorded_days_before": 400
+        },
+        {
+          "key": "observation.uacr",
+          "value": 400,
+          "fact_id": "lab-uacr",
+          "unit": "mg/g",
+          "effective_days_before": 400,
+          "recorded_days_before": 400
+        }
+      ],
+      "expected": {
+        "outcomes": {
+          "T2-REDFLAG-BP": "NOT_APPLICABLE",
+          "T2-SAFE-MET-STOP": "NOT_APPLICABLE",
+          "T2-SAFE-MET-REVIEW": "NOT_APPLICABLE",
+          "T2-MON-A1C-DUE": "NOT_APPLICABLE",
+          "T2-MON-EGFR-DUE": "NOT_APPLICABLE",
+          "T2-MON-UACR-DUE": "NOT_APPLICABLE"
+        },
+        "redflag_rule_codes": []
+      }
+    },
+    {
+      "case_id": "GC-MINOR-001",
+      "title": "Minor is outside the adult tranche population",
+      "categories": [
+        "negative"
+      ],
+      "as_of_at": "2026-07-21 12:00:00",
+      "context": {
+        "evaluation_mode": "ENCOUNTER",
+        "care_setting": "specialty_clinic",
+        "encounter_type": "followup"
+      },
+      "facts": [
+        {
+          "key": "condition.codes",
+          "value": [
+            "diabetes"
+          ],
+          "fact_id": "condition"
+        },
+        {
+          "key": "demographic.age_years",
+          "value": 17,
+          "fact_id": "age"
+        },
+        {
+          "key": "observation.keys",
+          "value": [
+            "bp_systolic",
+            "bp_diastolic",
+            "hba1c",
+            "egfr",
+            "uacr"
+          ],
+          "fact_id": "observation-keys"
+        },
+        {
+          "key": "observation.bp_systolic",
+          "value": 190,
+          "fact_id": "sbp",
+          "unit": "mm[Hg]"
+        },
+        {
+          "key": "observation.bp_diastolic",
+          "value": 120,
+          "fact_id": "dbp",
+          "unit": "mm[Hg]"
+        },
+        {
+          "key": "medication.classes",
+          "value": [
+            "metformin"
+          ],
+          "fact_id": "medications"
+        },
+        {
+          "key": "observation.hba1c",
+          "value": 9.0,
+          "fact_id": "lab-hba1c",
+          "unit": "%",
+          "effective_days_before": 400,
+          "recorded_days_before": 400
+        },
+        {
+          "key": "observation.egfr",
+          "value": 20,
+          "fact_id": "lab-egfr",
+          "unit": "mL/min/{1.73_m2}",
+          "effective_days_before": 400,
+          "recorded_days_before": 400
+        },
+        {
+          "key": "observation.uacr",
+          "value": 400,
+          "fact_id": "lab-uacr",
+          "unit": "mg/g",
+          "effective_days_before": 400,
+          "recorded_days_before": 400
+        }
+      ],
+      "expected": {
+        "outcomes": {
+          "T2-REDFLAG-BP": "NOT_APPLICABLE",
+          "T2-SAFE-MET-STOP": "NOT_APPLICABLE",
+          "T2-SAFE-MET-REVIEW": "NOT_APPLICABLE",
+          "T2-MON-A1C-DUE": "NOT_APPLICABLE",
+          "T2-MON-EGFR-DUE": "NOT_APPLICABLE",
+          "T2-MON-UACR-DUE": "NOT_APPLICABLE"
+        },
+        "redflag_rule_codes": []
+      }
+    },
+    {
+      "case_id": "GC-UNVERIFIED-A1C-001",
+      "title": "Recent but unverified HbA1c cannot clear or trigger the due rule",
+      "categories": [
+        "missing-data"
+      ],
+      "as_of_at": "2026-07-21 12:00:00",
+      "context": {
+        "evaluation_mode": "ENCOUNTER",
+        "care_setting": "specialty_clinic",
+        "encounter_type": "followup"
+      },
+      "facts": [
+        {
+          "key": "condition.codes",
+          "value": [
+            "diabetes"
+          ],
+          "fact_id": "condition"
+        },
+        {
+          "key": "demographic.age_years",
+          "value": 58,
+          "fact_id": "age"
+        },
+        {
+          "key": "observation.keys",
+          "value": [
+            "bp_systolic",
+            "bp_diastolic",
+            "hba1c",
+            "egfr",
+            "uacr"
+          ],
+          "fact_id": "observation-keys"
+        },
+        {
+          "key": "observation.bp_systolic",
+          "value": 130,
+          "fact_id": "sbp",
+          "unit": "mm[Hg]"
+        },
+        {
+          "key": "observation.bp_diastolic",
+          "value": 80,
+          "fact_id": "dbp",
+          "unit": "mm[Hg]"
+        },
+        {
+          "key": "medication.classes",
+          "value": [],
+          "fact_id": "medications"
+        },
+        {
+          "key": "observation.hba1c",
+          "value": 7.2,
+          "fact_id": "lab-hba1c",
+          "unit": "%",
+          "verification": "PROVISIONAL"
+        },
+        {
+          "key": "observation.egfr",
+          "value": 78,
+          "fact_id": "lab-egfr",
+          "unit": "mL/min/{1.73_m2}"
+        },
+        {
+          "key": "observation.uacr",
+          "value": 15,
+          "fact_id": "lab-uacr",
+          "unit": "mg/g"
+        }
+      ],
+      "expected": {
+        "outcomes": {
+          "T2-REDFLAG-BP": "NOT_FIRED",
+          "T2-SAFE-MET-STOP": "NOT_APPLICABLE",
+          "T2-SAFE-MET-REVIEW": "NOT_APPLICABLE",
+          "T2-MON-A1C-DUE": "NEEDS_DATA",
+          "T2-MON-EGFR-DUE": "NOT_FIRED",
+          "T2-MON-UACR-DUE": "NOT_FIRED"
+        },
+        "required_missing_facts": {
+          "T2-MON-A1C-DUE": [
+            "observation.hba1c"
+          ]
+        }
+      }
+    }
+  ]
+}
