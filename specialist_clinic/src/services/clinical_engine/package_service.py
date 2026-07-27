@@ -169,9 +169,17 @@ class ClinicalRulePackageService:
             raise ValueError("این بسته قدیمی است؛ ابتدا بستهٔ اصلاح‌شدهٔ فعلی را آماده کنید")
         if ruleset["status"] != "DRAFT":
             raise ValueError("فقط بستهٔ درحال بازبینی قابل تأیید است")
-        expected = {member["rule_code"] for member in ruleset["members"]}
-        if expected != set(package.rule_codes):
+        expected_hashes = {
+            compiled.definition.rule_code: compiled.content_hash
+            for compiled in package.compiled_rules
+        }
+        stored_hashes = {
+            str(member["rule_code"]): str(member["content_hash"])
+            for member in ruleset["members"]
+        }
+        if stored_hashes != expected_hashes:
             raise ValueError("اعضای بستهٔ ذخیره‌شده با بستهٔ immutable برنامه یکسان نیستند")
+        expected = set(expected_hashes)
         if set(attested_codes or []) != expected:
             raise ValueError("هر قاعده باید جداگانه مطالعه و علامت‌گذاری شود")
         for member in ruleset["members"]:

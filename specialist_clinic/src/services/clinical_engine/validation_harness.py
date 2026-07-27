@@ -3,7 +3,6 @@ from __future__ import annotations
 
 from collections import defaultdict
 from datetime import datetime, timedelta
-import hashlib
 import json
 from pathlib import Path
 import sys

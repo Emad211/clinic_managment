@@ -141,7 +141,8 @@ def _validate_review_metadata(raw: Mapping[str, Any], *, filename: str) -> None:
 
     # Clinical approval is an authenticated append-only database event.  A bundled
     # source file may describe review work, but cannot carry a static approval.
-    if governance.get("clinical_reviewer") not in {None, ""}:
+    clinical_reviewer = governance.get("clinical_reviewer")
+    if clinical_reviewer is not None and str(clinical_reviewer).strip():
         raise RulePackageContractError(
             f"{filename} cannot embed a clinical reviewer in a DRAFT artifact"
         )
@@ -304,10 +305,9 @@ def load_rule_package(
         if filename in filenames:
             raise RulePackageContractError(f"duplicate manifest rule file: {filename}")
         filenames.add(filename)
-        try:
-            sort_order = int(entry["sort_order"])
-        except (KeyError, TypeError, ValueError) as exc:
-            raise RulePackageContractError(f"{filename} requires integer sort_order") from exc
+        sort_order = entry.get("sort_order")
+        if isinstance(sort_order, bool) or not isinstance(sort_order, int):
+            raise RulePackageContractError(f"{filename} requires integer sort_order")
         if sort_order <= 0 or sort_order in sort_orders:
             raise RulePackageContractError(f"duplicate or invalid sort_order: {sort_order}")
         sort_orders.add(sort_order)

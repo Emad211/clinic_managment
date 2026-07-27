@@ -139,3 +139,50 @@ def test_static_clinical_approval_cannot_be_embedded_in_draft_json(tmp_path):
 
     with pytest.raises(RulePackageContractError, match="cannot embed a clinical reviewer"):
         _load(candidate)
+
+
+def test_sort_order_must_be_an_exact_positive_integer(tmp_path):
+    candidate = _copy_package(tmp_path)
+    manifest_path = candidate / "manifest.json"
+    manifest = _json(manifest_path)
+    manifest["rules"][0]["sort_order"] = 1.5
+    _write(manifest_path, manifest)
+
+    with pytest.raises(RulePackageContractError, match="integer sort_order"):
+        _load(candidate)
+
+
+def test_freeze_rejects_same_codes_with_different_content_hashes():
+    from src.services.clinical_engine.package_service import (
+        ClinicalRulePackageService,
+        PACKAGE_VERSION,
+    )
+
+    package = _load(package_directory())
+
+    class FakeRules:
+        def get_ruleset(self, ruleset_id):
+            return {
+                "id": ruleset_id,
+                "ruleset_code": RULESET_CODE,
+                "version": PACKAGE_VERSION,
+                "status": "DRAFT",
+                "members": [
+                    {
+                        "rule_code": code,
+                        "content_hash": "0" * 64,
+                        "lifecycle_status": "VALIDATED",
+                        "rule_version_id": index,
+                    }
+                    for index, code in enumerate(package.rule_codes, start=1)
+                ],
+            }
+
+    service = ClinicalRulePackageService(rules=FakeRules())
+    with pytest.raises(ValueError, match="immutable"):
+        service.approve_and_freeze(
+            1,
+            reviewer="physician-a",
+            attested_codes=list(package.rule_codes),
+            note="reviewed",
+        )
