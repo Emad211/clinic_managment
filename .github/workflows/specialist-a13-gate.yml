@@ -41,14 +41,16 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python -m py_compile .github/finalize_a13.py
-          if ! python .github/finalize_a13.py > .github/a13-finalizer.log 2>&1; then
+          if ! {
+            python -m py_compile .github/finalize_a13.py
+            python .github/finalize_a13.py
+            python -m compileall -q specialist_clinic/src specialist_clinic/tests
+            git diff --check
+          } > .github/a13-finalizer.log 2>&1; then
             cat .github/a13-finalizer.log
             exit 1
           fi
           cat .github/a13-finalizer.log
-          python -m compileall -q specialist_clinic/src specialist_clinic/tests
-          git diff --check
 
       - name: Install specialist dependencies
         working-directory: specialist_clinic
