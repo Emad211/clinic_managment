@@ -1063,6 +1063,29 @@ WHEN NEW.supersedes_event_id IS NOT NULL
 BEGIN
     SELECT RAISE(ABORT, 'review supersession must stay in the same rule and role');
 END;
+CREATE TRIGGER IF NOT EXISTS trg_rule_review_events_linear_history
+BEFORE INSERT ON clinical_rule_review_events
+WHEN (
+    NEW.supersedes_event_id IS NULL
+    AND EXISTS (
+        SELECT 1 FROM clinical_rule_review_events prior
+        WHERE prior.ruleset_id=NEW.ruleset_id
+          AND prior.rule_version_id=NEW.rule_version_id
+          AND prior.role=NEW.role
+    )
+) OR (
+    NEW.supersedes_event_id IS NOT NULL
+    AND EXISTS (
+        SELECT 1 FROM clinical_rule_review_events newer
+        WHERE newer.ruleset_id=NEW.ruleset_id
+          AND newer.rule_version_id=NEW.rule_version_id
+          AND newer.role=NEW.role
+          AND newer.id>NEW.supersedes_event_id
+    )
+)
+BEGIN
+    SELECT RAISE(ABORT, 'review supersession must extend the latest event');
+END;
 CREATE TRIGGER IF NOT EXISTS trg_rule_review_events_role_separation
 BEFORE INSERT ON clinical_rule_review_events
 WHEN EXISTS (

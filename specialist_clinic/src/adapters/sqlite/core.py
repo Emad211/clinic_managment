@@ -47,6 +47,7 @@ _CLINICAL_ENGINE_V2_TRIGGERS = frozenset({
     "trg_rule_review_events_draft_only",
     "trg_rule_review_events_identity_match",
     "trg_rule_review_events_supersedes_match",
+    "trg_rule_review_events_linear_history",
     "trg_rule_review_events_role_separation",
 })
 
