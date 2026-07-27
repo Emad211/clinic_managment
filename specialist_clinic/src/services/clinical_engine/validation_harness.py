@@ -32,40 +32,18 @@ from src.domain.clinical_engine.release import (
     RULESET_CODE,
 )
 from src.services.clinical_engine.compiler import RuleCompiler
+from src.services.clinical_engine.package_contract import (
+    REQUIRED_CASE_CATEGORIES,
+    RulePackageContractError,
+    canonical_json,
+    content_hash,
+    load_rule_package,
+)
 from src.services.clinical_engine.safety import SafetyKernel
 from src.services.clinical_engine.scope_evaluator import ContextualRuleEvaluator
 
 
-REQUIRED_CASE_CATEGORIES = frozenset(
-    {
-        "positive",
-        "negative",
-        "borderline",
-        "missing-data",
-        "conflict",
-        "historical-as-of",
-        "contraindication",
-        "suppression",
-    }
-)
-
-
-class ValidationBundleError(ValueError):
-    pass
-
-
-def canonical_json(value: Any) -> str:
-    return json.dumps(
-        value,
-        ensure_ascii=False,
-        sort_keys=True,
-        separators=(",", ":"),
-        allow_nan=False,
-    )
-
-
-def content_hash(value: Any) -> str:
-    return hashlib.sha256(canonical_json(value).encode("utf-8")).hexdigest()
+ValidationBundleError = RulePackageContractError
 
 
 def package_directory(version: str = CURRENT_BUNDLED_PACKAGE_VERSION) -> Path:
@@ -214,28 +192,14 @@ def _snapshot(case: Mapping[str, Any]) -> FactSnapshot:
     )
 
 
-def _load_package(version: str):
-    directory = package_directory(version)
-    manifest = json.loads(
-        (directory / "manifest.json").read_text(encoding="utf-8")
+def _load_package(version: str, *, case_path: Path | None = None):
+    return load_rule_package(
+        package_directory(version),
+        expected_version=version,
+        expected_ruleset_code=RULESET_CODE,
+        compiler=RuleCompiler(),
+        case_path=case_path,
     )
-    if manifest.get("version") != version:
-        raise ValidationBundleError("manifest version does not match package")
-    compiler = RuleCompiler()
-    rules = []
-    raw_documents = []
-    for item in manifest.get("rules") or ():
-        raw = json.loads(
-            (directory / item["file"]).read_text(encoding="utf-8")
-        )
-        raw_documents.append(raw)
-        rules.append(compiler.compile(raw))
-    if not rules:
-        raise ValidationBundleError("package has no rules")
-    package_hash = content_hash(
-        {"manifest": manifest, "rules": raw_documents}
-    )
-    return manifest, tuple(rules), package_hash
 
 
 def _result_payload(run) -> dict[str, Any]:
@@ -350,12 +314,11 @@ class GoldenCaseValidationHarness:
         package_version: str = CURRENT_BUNDLED_PACKAGE_VERSION,
         case_path: Path | None = None,
     ) -> dict[str, Any]:
-        manifest, compiled_rules, package_hash = _load_package(package_version)
-        bundle = self.load_cases(case_path)
-        if bundle.get("package_version") != package_version:
-            raise ValidationBundleError(
-                "validation bundle targets another package version"
-            )
+        package = _load_package(package_version, case_path=case_path)
+        manifest = package.manifest
+        compiled_rules = package.compiled_rules
+        package_hash = package.package_hash
+        bundle = package.validation_bundle
         cases = bundle.get("cases") or ()
         metrics = {
             rule.definition.rule_code: _empty_metrics()
