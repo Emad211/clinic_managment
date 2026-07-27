@@ -1,20 +1,23 @@
 name: Specialist A12 Diabetes Rule Tranche Gate
 
 on:
-  push:
+  pull_request:
     branches:
-      - agent/specialist-rule-library-tranche-a12
+      - main
   workflow_dispatch:
 
 permissions:
   contents: write
 
 concurrency:
-  group: specialist-a12-diabetes-rule-tranche
+  group: specialist-a12-diabetes-rule-tranche-pr
   cancel-in-progress: true
 
 jobs:
   exact-head-gate:
+    if: >-
+      github.event_name != 'pull_request' ||
+      github.head_ref == 'agent/specialist-rule-library-tranche-a12'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
