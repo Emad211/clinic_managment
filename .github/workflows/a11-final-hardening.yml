@@ -1,0 +1,225 @@
+name: A11 Final Package Identity Hardening
+
+on:
+  push:
+    branches:
+      - agent/specialist-rule-library-intake-a11
+
+permissions:
+  contents: write
+
+concurrency:
+  group: a11-final-package-identity-hardening
+  cancel-in-progress: true
+
+jobs:
+  harden-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/specialist-rule-library-intake-a11
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: |
+            specialist_clinic/requirements.txt
+            webapp/requirements.txt
+
+      - name: Apply final A11 identity hardening
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          root = Path("specialist_clinic")
+
+          def replace_once(path, old, new):
+              path = Path(path)
+              text = path.read_text(encoding="utf-8")
+              if new in text:
+                  return
+              if old not in text:
+                  raise RuntimeError(f"missing A11 final anchor in {path}")
+              path.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+          contract = root / "src/services/clinical_engine/package_contract.py"
+          replace_once(
+              contract,
+              '''    if governance.get("clinical_reviewer") not in {None, ""}:
+                  raise RulePackageContractError(
+                      f"{filename} cannot embed a clinical reviewer in a DRAFT artifact"
+                  )
+          ''',
+              '''    clinical_reviewer = governance.get("clinical_reviewer")
+              if clinical_reviewer is not None and str(clinical_reviewer).strip():
+                  raise RulePackageContractError(
+                      f"{filename} cannot embed a clinical reviewer in a DRAFT artifact"
+                  )
+          ''',
+          )
+          replace_once(
+              contract,
+              '''        try:
+                      sort_order = int(entry["sort_order"])
+                  except (KeyError, TypeError, ValueError) as exc:
+                      raise RulePackageContractError(f"{filename} requires integer sort_order") from exc
+                  if sort_order <= 0 or sort_order in sort_orders:
+          ''',
+              '''        sort_order = entry.get("sort_order")
+                  if isinstance(sort_order, bool) or not isinstance(sort_order, int):
+                      raise RulePackageContractError(f"{filename} requires integer sort_order")
+                  if sort_order <= 0 or sort_order in sort_orders:
+          ''',
+          )
+
+          service = root / "src/services/clinical_engine/package_service.py"
+          replace_once(
+              service,
+              '''        expected = {member["rule_code"] for member in ruleset["members"]}
+                  if expected != set(package.rule_codes):
+                      raise ValueError("اعضای بستهٔ ذخیره‌شده با بستهٔ immutable برنامه یکسان نیستند")
+                  if set(attested_codes or []) != expected:
+          ''',
+              '''        expected_hashes = {
+                      compiled.definition.rule_code: compiled.content_hash
+                      for compiled in package.compiled_rules
+                  }
+                  stored_hashes = {
+                      str(member["rule_code"]): str(member["content_hash"])
+                      for member in ruleset["members"]
+                  }
+                  if stored_hashes != expected_hashes:
+                      raise ValueError("اعضای بستهٔ ذخیره‌شده با بستهٔ immutable برنامه یکسان نیستند")
+                  expected = set(expected_hashes)
+                  if set(attested_codes or []) != expected:
+          ''',
+          )
+
+          harness = root / "src/services/clinical_engine/validation_harness.py"
+          text = harness.read_text(encoding="utf-8")
+          if "import hashlib\n" in text:
+              harness.write_text(text.replace("import hashlib\n", "", 1), encoding="utf-8")
+
+          tests = root / "tests/test_clinical_rule_package_contract.py"
+          text = tests.read_text(encoding="utf-8")
+          marker = "def test_sort_order_must_be_an_exact_positive_integer"
+          if marker not in text:
+              text += '''
+
+          def test_sort_order_must_be_an_exact_positive_integer(tmp_path):
+              candidate = _copy_package(tmp_path)
+              manifest_path = candidate / "manifest.json"
+              manifest = _json(manifest_path)
+              manifest["rules"][0]["sort_order"] = 1.5
+              _write(manifest_path, manifest)
+
+              with pytest.raises(RulePackageContractError, match="integer sort_order"):
+                  _load(candidate)
+
+
+          def test_freeze_rejects_same_codes_with_different_content_hashes():
+              from src.services.clinical_engine.package_service import (
+                  ClinicalRulePackageService,
+                  PACKAGE_VERSION,
+              )
+
+              package = _load(package_directory())
+
+              class FakeRules:
+                  def get_ruleset(self, ruleset_id):
+                      return {
+                          "id": ruleset_id,
+                          "ruleset_code": RULESET_CODE,
+                          "version": PACKAGE_VERSION,
+                          "status": "DRAFT",
+                          "members": [
+                              {
+                                  "rule_code": code,
+                                  "content_hash": "0" * 64,
+                                  "lifecycle_status": "VALIDATED",
+                                  "rule_version_id": index,
+                              }
+                              for index, code in enumerate(package.rule_codes, start=1)
+                          ],
+                      }
+
+              service = ClinicalRulePackageService(rules=FakeRules())
+              with pytest.raises(ValueError, match="immutable"):
+                  service.approve_and_freeze(
+                      1,
+                      reviewer="physician-a",
+                      attested_codes=list(package.rule_codes),
+                      note="reviewed",
+                  )
+          '''
+              tests.write_text(text, encoding="utf-8")
+          PY
+          python -m compileall -q specialist_clinic/src specialist_clinic/tests
+          git diff --check
+
+      - name: Install specialist dependencies
+        working-directory: specialist_clinic
+        run: python -m pip install -r requirements.txt pytest
+
+      - name: Run A11 clinical-engine release gate
+        working-directory: specialist_clinic
+        env:
+          PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
+          PYTHONIOENCODING: utf-8
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pytest -q --tb=short \
+            --junitxml=pytest-specialist-a11-final.xml \
+            tests/test_clinical_engine*.py \
+            tests/test_clinical_validation*.py \
+            tests/test_clinical_rule_package_contract.py \
+            tests/test_end_to_end_loops.py
+
+      - name: Install accounting dependencies
+        working-directory: webapp
+        run: python -m pip install -r requirements.txt
+
+      - name: Run accounting regression suite
+        working-directory: webapp
+        env:
+          PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
+          PYTHONIOENCODING: utf-8
+        run: >-
+          python -m pytest tests -q --tb=short
+          --junitxml=pytest-accounting-a11-final.xml
+
+      - name: Upload final A11 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: specialist-a11-final-identity-evidence
+          path: |
+            specialist_clinic/pytest-specialist-a11-final.xml
+            webapp/pytest-accounting-a11-final.xml
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Publish clean exact-tested hardening
+        shell: bash
+        run: |
+          set -euo pipefail
+          START_SHA=$(git rev-parse HEAD)
+          git fetch origin main
+          git checkout origin/main -- webapp/src
+          rm -f specialist_clinic/pytest-specialist-a11-final.xml
+          rm -f webapp/pytest-accounting-a11-final.xml
+          rm -f .github/workflows/a11-final-hardening.yml
+          git add -A
+          git diff --cached --check
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "bind A11 freeze to exact rule content hashes"
+          git push \
+            --force-with-lease=refs/heads/agent/specialist-rule-library-intake-a11:${START_SHA} \
+            origin HEAD:refs/heads/agent/specialist-rule-library-intake-a11
