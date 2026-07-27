@@ -994,3 +994,83 @@ CREATE TRIGGER IF NOT EXISTS trg_ruleset_members_no_delete
 BEFORE DELETE ON clinical_ruleset_members BEGIN
     SELECT RAISE(ABORT, 'retire the ruleset instead');
 END;
+
+-- A13: immutable, content-bound dual review of every rule before SILENT freeze.
+CREATE TABLE IF NOT EXISTS clinical_rule_review_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ruleset_id INTEGER NOT NULL,
+    rule_version_id INTEGER NOT NULL,
+    role TEXT NOT NULL CHECK (role IN ('CLINICAL', 'TECHNICAL')),
+    decision TEXT NOT NULL CHECK (decision IN ('APPROVE', 'REQUEST_CHANGES')),
+    ruleset_content_hash TEXT NOT NULL,
+    rule_content_hash TEXT NOT NULL,
+    package_hash TEXT NOT NULL,
+    case_bundle_hash TEXT NOT NULL,
+    reviewer_username TEXT NOT NULL,
+    reviewer_display_name TEXT NOT NULL,
+    note TEXT NOT NULL,
+    supersedes_event_id INTEGER,
+    idempotency_key TEXT NOT NULL UNIQUE,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY(ruleset_id) REFERENCES clinical_rulesets(id),
+    FOREIGN KEY(rule_version_id) REFERENCES clinical_rule_versions(id),
+    FOREIGN KEY(supersedes_event_id) REFERENCES clinical_rule_review_events(id)
+);
+CREATE INDEX IF NOT EXISTS idx_rule_review_latest
+ON clinical_rule_review_events(ruleset_id, rule_version_id, role, id DESC);
+CREATE INDEX IF NOT EXISTS idx_rule_review_actor
+ON clinical_rule_review_events(ruleset_id, reviewer_username, role, id DESC);
+
+CREATE TRIGGER IF NOT EXISTS trg_rule_review_events_no_update
+BEFORE UPDATE ON clinical_rule_review_events BEGIN
+    SELECT RAISE(ABORT, 'clinical rule review events are immutable');
+END;
+CREATE TRIGGER IF NOT EXISTS trg_rule_review_events_no_delete
+BEFORE DELETE ON clinical_rule_review_events BEGIN
+    SELECT RAISE(ABORT, 'clinical rule review events cannot be deleted');
+END;
+CREATE TRIGGER IF NOT EXISTS trg_rule_review_events_draft_only
+BEFORE INSERT ON clinical_rule_review_events
+WHEN (SELECT status FROM clinical_rulesets WHERE id=NEW.ruleset_id) <> 'DRAFT'
+BEGIN
+    SELECT RAISE(ABORT, 'rule review events require a DRAFT ruleset');
+END;
+CREATE TRIGGER IF NOT EXISTS trg_rule_review_events_identity_match
+BEFORE INSERT ON clinical_rule_review_events
+WHEN NOT EXISTS (
+    SELECT 1
+    FROM clinical_ruleset_members m
+    JOIN clinical_rulesets s ON s.id=m.ruleset_id
+    JOIN clinical_rule_versions r ON r.id=m.rule_version_id
+    WHERE m.ruleset_id=NEW.ruleset_id
+      AND m.rule_version_id=NEW.rule_version_id
+      AND s.content_hash=NEW.ruleset_content_hash
+      AND r.content_hash=NEW.rule_content_hash
+)
+BEGIN
+    SELECT RAISE(ABORT, 'rule review identity or content hash mismatch');
+END;
+CREATE TRIGGER IF NOT EXISTS trg_rule_review_events_supersedes_match
+BEFORE INSERT ON clinical_rule_review_events
+WHEN NEW.supersedes_event_id IS NOT NULL
+ AND NOT EXISTS (
+    SELECT 1 FROM clinical_rule_review_events prior
+    WHERE prior.id=NEW.supersedes_event_id
+      AND prior.ruleset_id=NEW.ruleset_id
+      AND prior.rule_version_id=NEW.rule_version_id
+      AND prior.role=NEW.role
+ )
+BEGIN
+    SELECT RAISE(ABORT, 'review supersession must stay in the same rule and role');
+END;
+CREATE TRIGGER IF NOT EXISTS trg_rule_review_events_role_separation
+BEFORE INSERT ON clinical_rule_review_events
+WHEN EXISTS (
+    SELECT 1 FROM clinical_rule_review_events prior
+    WHERE prior.ruleset_id=NEW.ruleset_id
+      AND prior.role<>NEW.role
+      AND prior.reviewer_username=NEW.reviewer_username
+)
+BEGIN
+    SELECT RAISE(ABORT, 'one account cannot review both clinical and technical roles');
+END;

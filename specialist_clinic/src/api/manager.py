@@ -30,6 +30,11 @@ def clinical_engine():
     from src.services.clinical_engine.package_service import ClinicalRulePackageService
     from src.services.clinical_engine.demo_cohort import DemoCohortService
     projection["package"] = ClinicalRulePackageService().projection()
+    projection["rule_review_permissions"] = {
+        "clinical": has_permission(Permission.RULE_REVIEW_CLINICAL),
+        "technical": has_permission(Permission.RULE_REVIEW_TECHNICAL),
+        "activate": has_permission(Permission.RULE_ACTIVATE),
+    }
     projection["cohort"] = DemoCohortService().summary()
     from src.services.clinical_engine.validation_service import ClinicalValidationService
     projection["validation"] = ClinicalValidationService().dashboard()
@@ -46,11 +51,13 @@ def clinical_engine_action(action):
     """One permission-governed seam; the service remains the policy owner."""
     if action in {
         "activate-selected", "verify-selected", "promote-ruleset",
-        "activate-global", "rollback", "reset-workflow",
+        "activate-global", "rollback", "reset-workflow", "freeze-rules",
     }:
         required = Permission.RULE_ACTIVATE
-    elif action == "approve" and request.form.get("role") == "technical":
+    elif action in {"approve", "review-rules"} and request.form.get("role") == "technical":
         required = Permission.RULE_REVIEW_TECHNICAL
+    elif action == "review-rules":
+        required = Permission.RULE_REVIEW_CLINICAL
     elif action in {"prepare-rules", "compare", "prepare-demo-cohort"}:
         required = Permission.RULE_REVIEW_TECHNICAL
     else:
@@ -70,16 +77,46 @@ def clinical_engine_action(action):
                 f"بستهٔ اولیه با {len(package['members'])} قاعده آماده شد؛ اکنون متن هر قاعده را بررسی کنید.",
                 "success",
             )
-        elif action == "approve-rules":
+        elif action == "review-rules":
             from src.services.clinical_engine.package_service import ClinicalRulePackageService
-            package = ClinicalRulePackageService().approve_and_freeze(
+            package_service = ClinicalRulePackageService()
+            package_projection = package_service.projection()
+            if package_projection["state"] != "review":
+                raise ActivationGateError("بستهٔ جاری در وضعیت بازبینی نیست")
+            decisions = {
+                rule["code"]: request.form.get(
+                    f"decision__{rule['code']}", ""
+                )
+                for rule in package_projection["rules"]
+            }
+            role = request.form.get("role", "").strip().lower()
+            summary = package_service.review_rules(
                 request.form.get("ruleset_id", type=int),
-                reviewer=reviewer,
-                attested_codes=request.form.getlist("attested_rule"),
+                role=role,
+                decisions=decisions,
+                actor_username=actor,
+                reviewer_display_name=(g.user["full_name"] or actor),
+                note=note,
+            )
+            role_title = "بالینی" if role == "clinical" else "فنی"
+            role_summary = summary["roles"][role]
+            if role_summary["complete"]:
+                flash(f"بازبینی {role_title} همهٔ قواعد ثبت شد.", "success")
+            else:
+                flash(
+                    f"بازبینی {role_title} ثبت شد؛ "
+                    f"{role_summary['changes_requested_count']} قاعده نیازمند اصلاح است.",
+                    "warning",
+                )
+        elif action == "freeze-rules":
+            from src.services.clinical_engine.package_service import ClinicalRulePackageService
+            frozen = ClinicalRulePackageService().freeze_reviewed_package(
+                request.form.get("ruleset_id", type=int),
+                activated_by=actor,
                 note=note,
             )
             flash(
-                f"هر {len(package['members'])} قاعده تأیید و برای آزمون ایمنی فریز شد.",
+                f"هر {len(frozen['members'])} قاعده با دو بازبینی مستقل فریز شد.",
                 "success",
             )
         elif action == "compare":

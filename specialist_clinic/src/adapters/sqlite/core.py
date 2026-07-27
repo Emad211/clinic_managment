@@ -18,6 +18,7 @@ _CLINICAL_ENGINE_V2_TABLES = frozenset({
     "clinical_recommendation_events",
     "clinical_decision_events",
     "clinical_flag_events",
+    "clinical_rule_review_events",
 })
 _CLINICAL_ENGINE_V2_TRIGGERS = frozenset({
     "trg_engine_runs_terminal_no_update",
@@ -41,6 +42,12 @@ _CLINICAL_ENGINE_V2_TRIGGERS = frozenset({
     "trg_ruleset_members_draft_insert_only",
     "trg_ruleset_members_no_update",
     "trg_ruleset_members_no_delete",
+    "trg_rule_review_events_no_update",
+    "trg_rule_review_events_no_delete",
+    "trg_rule_review_events_draft_only",
+    "trg_rule_review_events_identity_match",
+    "trg_rule_review_events_supersedes_match",
+    "trg_rule_review_events_role_separation",
 })
 
 

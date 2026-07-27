@@ -250,12 +250,21 @@ def test_reconciled_severe_bp_to_presentation_and_decision(e2e_app):
 
     packages = ClinicalRulePackageService()
     package = packages.prepare(actor="pytest")
-    frozen = packages.approve_and_freeze(
-        int(package["id"]),
-        reviewer="pytest-physician",
-        attested_codes=[
-            member["rule_code"] for member in package["members"]
-        ],
+    decisions = {
+        member["rule_code"]: "APPROVE" for member in package["members"]
+    }
+    packages.review_rules(
+        int(package["id"]), role="technical", decisions=decisions,
+        actor_username="pytest-engineer", reviewer_display_name="Pytest Engineer",
+        note="technical end-to-end review",
+    )
+    packages.review_rules(
+        int(package["id"]), role="clinical", decisions=decisions,
+        actor_username="pytest-physician", reviewer_display_name="Pytest Physician",
+        note="clinical end-to-end review",
+    )
+    frozen = packages.freeze_reviewed_package(
+        int(package["id"]), activated_by="pytest-release-manager",
         note="end-to-end safety contract",
     )
     assert install_sealed_rollout() == int(frozen["id"])

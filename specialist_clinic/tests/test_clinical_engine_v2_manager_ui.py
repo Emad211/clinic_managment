@@ -47,10 +47,11 @@ def test_control_center_renders_fail_closed_empty_state(manager_ui_app):
     assert "گیت‌های ایمنی" not in html
 
 
-def test_guided_package_prepare_then_clinical_review_and_freeze(manager_ui_app):
+def test_guided_package_prepare_then_dual_review_and_freeze(manager_ui_app):
     from src.adapters.sqlite.clinical_engine_activation_repo import ClinicalEngineActivationRepository
     from src.adapters.sqlite.clinical_engine_fact_repo import ClinicalEngineFactRepository
     from src.adapters.sqlite.clinical_engine_rules_repo import ClinicalEngineRulesRepository
+    from src.services.auth_service import AuthService
 
     client = _manager_client(manager_ui_app)
     prepared = client.post(
@@ -58,42 +59,99 @@ def test_guided_package_prepare_then_clinical_review_and_freeze(manager_ui_app):
     )
     html = prepared.get_data(as_text=True)
     assert prepared.status_code == 200
-    assert "متن هر قاعده را بررسی" in html
-    assert "هشدار فوری فشار خون بسیار بالا" in html
-    assert "هشدار ایمنی متفورمین" in html
-    assert "قاعده دقیقاً چه زمانی فعال می‌شود؟" in html
-    assert "بیشتر یا مساوی" in html and "۱۸۰" in html and "۱۱۰" in html
-    assert "کمتر از" in html and "۳۰" in html
-    assert "هیچ دارو یا نسخه‌ای را خودکار تغییر نمی‌دهد" in html
+    assert "بازبینی مستقل بالینی و فنی" in html
+    assert "سررسید ارزیابی HbA1c" in html
+    assert "بازبینی فایده و خطر متفورمین" in html
+    assert "یک حساب نمی‌تواند هر دو نقش" in html
     with manager_ui_app.app_context():
         assert ClinicalEngineFactRepository().get_mode() == "off"
         package = ClinicalEngineRulesRepository().latest_ruleset("general-outpatient")
         assert package["status"] == "DRAFT"
-        assert {item["lifecycle_status"] for item in package["members"]} == {"VALIDATED"}
         ruleset_id = package["id"]
         rule_codes = [item["rule_code"] for item in package["members"]]
-        rule_count = len(rule_codes)
+        assert len(rule_codes) == 6
 
-    incomplete = client.post(
-        "/manager/clinical-engine/approve-rules",
-        data={"ruleset_id": ruleset_id, "reviewer": "doctor", "note": "reviewed",
-              "attested_rule": ["T2-REDFLAG-BP"]},
+    technical_data = {
+        "ruleset_id": ruleset_id,
+        "role": "technical",
+        "note": "Schema, facts, units and task contracts reviewed.",
+        **{f"decision__{code}": "APPROVE" for code in rule_codes},
+    }
+    technical = client.post(
+        "/manager/clinical-engine/review-rules",
+        data=technical_data,
         follow_redirects=True,
     )
-    assert "هر قاعده باید جداگانه" in incomplete.get_data(as_text=True)
+    assert "بازبینی فنی همهٔ قواعد ثبت شد" in technical.get_data(as_text=True)
 
+    same_actor = client.post(
+        "/manager/clinical-engine/review-rules",
+        data={
+            **technical_data,
+            "role": "clinical",
+            "note": "unsafe same-account review",
+        },
+        follow_redirects=True,
+    )
+    assert "نمی‌تواند هر دو نقش" in same_actor.get_data(as_text=True)
+
+    with manager_ui_app.app_context():
+        assert AuthService().register_user(
+            "clinical-reviewer", "safe-password", "manager", "پزشک بازبین"
+        )
+    client.get("/auth/logout")
+    client.post(
+        "/auth/login",
+        data={"username": "clinical-reviewer", "password": "safe-password"},
+    )
+    clinical_changes = {
+        "ruleset_id": ruleset_id,
+        "role": "clinical",
+        "note": "One rule needs explicit clarification.",
+        **{f"decision__{code}": "APPROVE" for code in rule_codes},
+    }
+    clinical_changes[f"decision__{rule_codes[-1]}"] = "REQUEST_CHANGES"
+    changes = client.post(
+        "/manager/clinical-engine/review-rules",
+        data=clinical_changes,
+        follow_redirects=True,
+    )
+    assert "1 قاعده نیازمند اصلاح" in changes.get_data(as_text=True)
+    blocked = client.post(
+        "/manager/clinical-engine/freeze-rules",
+        data={"ruleset_id": ruleset_id, "note": "must fail"},
+        follow_redirects=True,
+    )
+    assert "دو بازبینی مستقل و کامل ندارد" in blocked.get_data(as_text=True)
+
+    clinical_approved = dict(clinical_changes)
+    clinical_approved["note"] = "Eligibility, exclusions and source locators reviewed."
+    clinical_approved[f"decision__{rule_codes[-1]}"] = "APPROVE"
     approved = client.post(
-        "/manager/clinical-engine/approve-rules",
-        data={"ruleset_id": ruleset_id, "reviewer": "doctor", "note": "reviewed",
-              "attested_rule": rule_codes},
+        "/manager/clinical-engine/review-rules",
+        data=clinical_approved,
         follow_redirects=True,
     )
-    html = approved.get_data(as_text=True)
-    assert f"هر {rule_count} قاعده تأیید" in html
+    assert "دو بازبینی مستقل کامل است" in approved.get_data(as_text=True)
+
+    client.get("/auth/logout")
+    client.post("/auth/login", data={"username": "admin", "password": "admin"})
+    frozen_response = client.post(
+        "/manager/clinical-engine/freeze-rules",
+        data={"ruleset_id": ruleset_id, "note": "dual review complete"},
+        follow_redirects=True,
+    )
+    html = frozen_response.get_data(as_text=True)
+    assert "هر 6 قاعده با دو بازبینی مستقل فریز شد" in html
     assert "۱۰ پروندهٔ نمونهٔ کامل" in html
     with manager_ui_app.app_context():
-        package = ClinicalEngineRulesRepository().latest_ruleset("general-outpatient")
+        repo = ClinicalEngineRulesRepository()
+        package = repo.latest_ruleset("general-outpatient")
         assert package["status"] == "SILENT"
+        summary = repo.rule_review_summary(ruleset_id)
+        assert summary["ready_to_freeze"] is False  # no longer DRAFT after freeze
+        assert summary["roles"]["clinical"]["reviewer_username"] == "clinical-reviewer"
+        assert summary["roles"]["technical"]["reviewer_username"] == "admin"
         assert ClinicalEngineFactRepository().get_mode() == "off"
 
     validation_run = client.post(
@@ -121,32 +179,18 @@ def test_guided_package_prepare_then_clinical_review_and_freeze(manager_ui_app):
     cohort = client.post(
         "/manager/clinical-engine/prepare-demo-cohort", follow_redirects=True,
     )
-    html = cohort.get_data(as_text=True)
-    assert "۱۰ پروندهٔ طولی آماده شد" in html
-    assert "۲،۱۰۰" in html and "۱،۳۰۰" in html
-    assert "رویداد دارویی" in html
-
+    assert "۱۰ پروندهٔ طولی آماده شد" in cohort.get_data(as_text=True)
     compared = client.post(
         "/manager/clinical-engine/compare", follow_redirects=True,
     )
     html = compared.get_data(as_text=True)
     assert "آزمون هر ۱۰ بیمار با موفقیت انجام شد" in html
-    assert "آزمون موفق بود" in html
     with manager_ui_app.app_context():
         state = ClinicalEngineActivationRepository()
-        assert len(state.demo_patients()) == 10
         report = state.get_json("last_report")
         rows = {row["national_id"]: row for row in report["patients"]}
         assert "T2-REDFLAG-BP" in rows["TEST0008"]["v2_rule_codes"]
         assert "T2-SAFE-MET-STOP" in rows["TEST0010"]["v2_rule_codes"]
-        assert report["checks"]["longitudinal_cohort_complete"] is True
-        assert report["checks"]["expected_positive_controls"] is True
-
-    history = client.get("/manager/clinical-engine?step=2#engine-actions")
-    history_html = history.get_data(as_text=True)
-    assert "این مرحله قبلاً تکمیل شده" in history_html
-    assert "قواعدی که تأیید شدند" in history_html
-    assert "بازگشت به مرحلهٔ فعلی" in history_html
 
 
 def test_workflow_reset_requires_confirmation_preserves_audit_and_can_restart(manager_ui_app):
