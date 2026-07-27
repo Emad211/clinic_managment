@@ -42,9 +42,10 @@ def test_send_matches_mediana_normal_sms_contract(monkeypatch):
     assert captured["headers"]["X-API-KEY"] == "secret"
     assert captured["headers"]["User-Agent"] == "SpecialistClinic/1.0"
     assert captured["json"] == {
-        "type": "Informational",
         "recipients": ["09929315456"],
         "messageText": "پیام تست",
+        "sendSmsType": "SendSmsNormalWithType",
+        "messageType": "Informational",
     }
     assert captured["timeout"] == 17
     assert result.ok is True
@@ -103,20 +104,25 @@ def test_balance_uses_requests_transport(monkeypatch):
     assert captured["timeout"] == 12
 
 
-def test_batch_maps_pascal_and_camel_case(monkeypatch):
-    captured = {}
+def test_batch_preserves_message_identity_with_serial_single_send(monkeypatch):
+    captured = []
+    payloads = iter([
+        {"data": {"requestId": 91, "status": "Accepted",
+                  "smsItems": [{"smsItemId": "i-a", "recipient": "0911"}]}},
+        {"Data": {"RequestId": 92, "Status": "Accepted",
+                  "SmsItems": [{"SmsItemId": "i-b", "Recipient": "0912"}]}},
+    ])
     def fake_post(url, **kwargs):
-        captured.update(url=url, **kwargs)
-        return _Response({"data": {"refCodes": [
-            {"code": 91, "refId": "a", "mobiles": ["0911"]},
-            {"Code": 92, "RefId": "b", "Mobiles": ["0912"]},
-        ]}})
+        captured.append((url, kwargs))
+        return _Response(next(payloads))
     monkeypatch.setattr("requests.post", fake_post)
     result = MedianaProvider("secret").send_batch([
         OutgoingSms("a", "0911", "یک"), OutgoingSms("b", "0912", "دو")], "Informational")
-    assert captured['url'].endswith(SEND_ARRAY_PATH)
-    assert [x.provider_request_id for x in result.items] == ['91', '92']
-    assert captured['json']['Requests'][0]['RefId'] == 'a'
+    assert [item.ref_id for item in result.items] == ["a", "b"]
+    assert [item.provider_request_id for item in result.items] == ["91", "92"]
+    assert [item.provider_msgid for item in result.items] == ["i-a", "i-b"]
+    assert len(captured) == 2
+    assert all(url.endswith(SEND_SMS_PATH) for url, _ in captured)
 
 
 def test_delivery_status_request_and_item(monkeypatch):

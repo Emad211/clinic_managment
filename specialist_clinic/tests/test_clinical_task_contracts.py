@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
-from datetime import datetime
+from datetime import datetime, timedelta
 import sqlite3
 
 import pytest
@@ -213,9 +213,9 @@ def test_confirmed_lab_outcome_is_ingested_idempotently_and_closes(task_contract
 
     db = get_db()
     patient_id, task_id = _create_strict_task(db)
-    service = ClinicalCareLoopService(
-        clock=lambda: datetime(2026, 7, 27, 10, 5, 0)
-    )
+    root = ClinicalCareLoopRepository().current_task(task_id)
+    recorded_at = datetime.fromisoformat(root["current_recorded_at"]) + timedelta(seconds=1)
+    service = ClinicalCareLoopService(clock=lambda: recorded_at)
     first = service.record_outcome(
         task_id,
         outcome_type="LAB_COMPLETED",

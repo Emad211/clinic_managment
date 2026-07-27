@@ -164,18 +164,70 @@ def _set_acc_path(path: str):
     os.environ["ACCOUNTING_DB_PATH"] = path
     import src.config.settings as cfg_mod
     cfg_mod.Config.ACCOUNTING_DB_PATH = path
+    from flask import current_app, has_app_context
+    if has_app_context():
+        current_app.config["ACCOUNTING_DB_PATH"] = path
 
 
-def _enroll_patient(spec_db, national_id, full_name="بیمار آزمون"):
-    """Insert a patient_links row in the specialist DB; return the inserted id."""
+def _active_day():
+    from src.common.utils import today_str
+    return today_str()
+
+
+def _complete_enrollment(spec_db, patient_link_id, accounting_patient_id):
+    """Install the explicit immutable specialist cutover used by current queue identity."""
+    conn = sqlite3.connect(spec_db)
+    when = "2026-06-20 00:00:00"
+    conn.execute(
+        "UPDATE patient_links SET accounting_patient_id=? WHERE id=?",
+        (int(accounting_patient_id), int(patient_link_id)),
+    )
+    digest = hashlib.sha256(
+        f"doctor-queue-test-enrollment:{int(patient_link_id)}:{int(accounting_patient_id)}".encode()
+    ).hexdigest()
+    conn.execute(
+        """INSERT INTO specialist_program_enrollments
+           (patient_link_id, accounting_patient_id, effective_at,
+            accounting_snapshot_at, accounting_invoice_cutoff_id,
+            history_policy, created_by, content_hash, created_at)
+           VALUES (?, ?, ?, ?, 0, 'VISIBLE_EXCLUDED', 'test', ?, ?)""",
+        (int(patient_link_id), int(accounting_patient_id), when, when, digest, when),
+    )
+    conn.commit()
+    conn.close()
+
+
+def _enroll_patient(
+    spec_db, national_id, full_name="بیمار آزمون", accounting_patient_id=None
+):
+    """Create the local mirror and, when supplied, its explicit accounting cutover."""
     conn = sqlite3.connect(spec_db)
     cur = conn.execute(
-        "INSERT INTO patient_links (national_id, full_name, enrolled_by) VALUES (?, ?, 'test')",
-        (national_id, full_name),
+        """INSERT INTO patient_links
+           (national_id, accounting_patient_id, full_name, enrolled_by)
+           VALUES (?, ?, ?, 'test')""",
+        (national_id, accounting_patient_id, full_name),
     )
     conn.commit()
     link_id = cur.lastrowid
     conn.close()
+    if accounting_patient_id is not None:
+        # The local row already owns the accounting identity; only append the cutover.
+        conn = sqlite3.connect(spec_db)
+        when = "2026-06-20 00:00:00"
+        digest = hashlib.sha256(
+            f"doctor-queue-test-enrollment:{int(link_id)}:{int(accounting_patient_id)}".encode()
+        ).hexdigest()
+        conn.execute(
+            """INSERT INTO specialist_program_enrollments
+               (patient_link_id, accounting_patient_id, effective_at,
+                accounting_snapshot_at, accounting_invoice_cutoff_id,
+                history_policy, created_by, content_hash, created_at)
+               VALUES (?, ?, ?, ?, 0, 'VISIBLE_EXCLUDED', 'test', ?, ?)""",
+            (int(link_id), int(accounting_patient_id), when, when, digest, when),
+        )
+        conn.commit()
+        conn.close()
     return link_id
 
 
@@ -214,6 +266,7 @@ def specialist_app(tmp_dir):
     app = create_app({
         "TESTING": True,
         "DATABASE_PATH": spec_db,
+        "ACCOUNTING_DB_PATH": _REAL_ACC_DB,
         "PROPAGATE_EXCEPTIONS": True,
         "SECRET_KEY": "test-secret",
         "BACKUP_FOLDER": os.path.join(tmp_dir, "backups"),
@@ -560,7 +613,9 @@ class TestScenario4QueueSegregation:
         conn.close()
 
         # Enroll this patient in the specialist DB
-        _enroll_patient(spec_db, nid, "بیمارِ ثبت‌شده")
+        _enroll_patient(
+            spec_db, nid, "بیمارِ ثبت‌شده", accounting_patient_id=pid
+        )
 
         _set_acc_path(acc_db)
         from src.services.doctor_queue_service import DoctorQueueService
@@ -659,7 +714,7 @@ class TestScenario5VisitRoute:
         conn = sqlite3.connect(acc_db)
         pid_e = _acc_add_patient(conn, "ثبت‌شده", national_id=nid_enrolled)
         _acc_add_patient(conn, "معمولی", national_id=nid_walkin)
-        inv_id = _acc_add_invoice(conn, pid_e, status="open", work_date="2026-06-20")
+        inv_id = _acc_add_invoice(conn, pid_e, status="open", work_date=_active_day())
         _acc_add_visit(conn, inv_id, pid_e)
         conn.close()
 
@@ -673,12 +728,16 @@ class TestScenario5VisitRoute:
         _make_acc_db(acc_db)
         conn = sqlite3.connect(acc_db)
         pid = _acc_add_patient(conn, "ثبت‌شده ۲", national_id=nid)
-        inv_id = _acc_add_invoice(conn, pid, status="open", work_date="2026-06-20")
+        inv_id = _acc_add_invoice(conn, pid, status="open", work_date=_active_day())
         _acc_add_visit(conn, inv_id, pid)
         conn.close()
 
-        _enroll_patient(spec_db, nid, "ثبت‌شده ۲")
+        _enroll_patient(
+            spec_db, nid, "ثبت‌شده ۲", accounting_patient_id=pid
+        )
         _set_acc_path(acc_db)
+        started = client.post(f"/doctor-queue/{inv_id}/start", follow_redirects=False)
+        assert started.status_code == 302
 
         rv = client.get(f"/doctor-queue/{inv_id}/visit?nid={nid}")
         assert rv.status_code == 200, (
@@ -692,7 +751,7 @@ class TestScenario5VisitRoute:
         _make_acc_db(acc_db)
         conn = sqlite3.connect(acc_db)
         pid = _acc_add_patient(conn, "معمولی ۲", national_id=nid)
-        inv_id = _acc_add_invoice(conn, pid, status="open", work_date="2026-06-20")
+        inv_id = _acc_add_invoice(conn, pid, status="open", work_date=_active_day())
         _acc_add_visit(conn, inv_id, pid)
         conn.close()
 
@@ -715,7 +774,7 @@ class TestScenario5VisitRoute:
         _make_acc_db(acc_db)
         conn = sqlite3.connect(acc_db)
         pid = _acc_add_patient(conn, "بدون کد", national_id=None)
-        inv_id = _acc_add_invoice(conn, pid, status="open", work_date="2026-06-20")
+        inv_id = _acc_add_invoice(conn, pid, status="open", work_date=_active_day())
         _acc_add_visit(conn, inv_id, pid)
         conn.close()
         _set_acc_path(acc_db)
@@ -746,24 +805,27 @@ class TestScenario6Save:
         _make_acc_db(acc_db)
         conn = sqlite3.connect(acc_db)
         acc_pid = _acc_add_patient(conn, "بیمارِ ذخیره", national_id=nid)
-        inv_id = _acc_add_invoice(conn, acc_pid, status="open", work_date="2026-06-20")
+        _complete_enrollment(spec_db, pid, acc_pid)
+        inv_id = _acc_add_invoice(conn, acc_pid, status="open", work_date=_active_day())
         _acc_add_visit(conn, inv_id, acc_pid)
         conn.close()
         _set_acc_path(acc_db)
+        started = client.post(f"/doctor-queue/{inv_id}/start", follow_redirects=False)
+        assert started.status_code == 302
 
-        # Verify baseline: no vitals, no notes yet
+        # Verify baseline: no vitals and no document events yet.
         spec_conn = sqlite3.connect(spec_db)
         pre_vitals = spec_conn.execute(
             "SELECT COUNT(*) c FROM vital_readings WHERE patient_link_id=?", (pid,)
         ).fetchone()[0]
-        pre_notes = spec_conn.execute(
-            "SELECT COUNT(*) c FROM clinical_notes WHERE patient_link_id=? AND kind='exam'", (pid,)
+        pre_documents = spec_conn.execute(
+            "SELECT COUNT(*) c FROM care_encounter_document_events WHERE patient_link_id=?", (pid,)
         ).fetchone()[0]
         spec_conn.close()
         assert pre_vitals == 0
-        assert pre_notes == 0
+        assert pre_documents == 0
 
-        # POST save with an FBS value and a note
+        # POST a governed draft with one FBS value.
         rv = client.post(
             f"/doctor-queue/{inv_id}/save",
             data={
@@ -771,7 +833,8 @@ class TestScenario6Save:
                 "nid": nid,
                 "measured_date": "1405/03/30",  # Jalali date → valid Gregorian
                 "fbs": "126",
-                "note": "بیمار کنترل خوبی داشت",
+                "objective_findings": "بیمار کنترل خوبی داشت",
+                "document_request_id": "legacy-doctor-save-a",
             },
             follow_redirects=False,
         )
@@ -788,14 +851,15 @@ class TestScenario6Save:
             "SELECT COUNT(*) c FROM vital_readings WHERE patient_link_id=? AND type='fbs'",
             (pid,)
         ).fetchone()[0]
-        post_notes = spec_conn.execute(
-            "SELECT COUNT(*) c FROM clinical_notes WHERE patient_link_id=? AND kind='exam'",
+        post_documents = spec_conn.execute(
+            "SELECT COUNT(*) c FROM care_encounter_document_events "
+            "WHERE patient_link_id=? AND event_type='DRAFT_SAVED'",
             (pid,)
         ).fetchone()[0]
         spec_conn.close()
 
         assert post_vitals == 1, f"Expected 1 fbs reading after save, got {post_vitals}"
-        assert post_notes == 1, f"Expected 1 exam note after save, got {post_notes}"
+        assert post_documents == 1, f"Expected 1 draft document, got {post_documents}"
 
     def test_save_no_pid_does_not_crash(self, test_client, tmp_dir):
         """POST /save with no pid (walk-in who didn't have nid) must not crash — just redirect."""
@@ -804,7 +868,7 @@ class TestScenario6Save:
         _make_acc_db(acc_db)
         conn = sqlite3.connect(acc_db)
         pid_acc = _acc_add_patient(conn, "بدونِ پیوند", national_id=None)
-        inv_id = _acc_add_invoice(conn, pid_acc, status="open", work_date="2026-06-20")
+        inv_id = _acc_add_invoice(conn, pid_acc, status="open", work_date=_active_day())
         _acc_add_visit(conn, inv_id, pid_acc)
         conn.close()
         _set_acc_path(acc_db)
@@ -829,10 +893,13 @@ class TestScenario6Save:
         _make_acc_db(acc_db)
         conn = sqlite3.connect(acc_db)
         acc_pid = _acc_add_patient(conn, "بیمارِ چندشاخص", national_id=nid)
-        inv_id = _acc_add_invoice(conn, acc_pid, status="open", work_date="2026-06-20")
+        _complete_enrollment(spec_db, pid, acc_pid)
+        inv_id = _acc_add_invoice(conn, acc_pid, status="open", work_date=_active_day())
         _acc_add_visit(conn, inv_id, acc_pid)
         conn.close()
         _set_acc_path(acc_db)
+        started = client.post(f"/doctor-queue/{inv_id}/start", follow_redirects=False)
+        assert started.status_code == 302
 
         client.post(
             f"/doctor-queue/{inv_id}/save",
