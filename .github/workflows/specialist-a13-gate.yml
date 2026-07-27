@@ -1,9 +1,6 @@
 name: Specialist A13 Dual Rule Review Gate
 
 on:
-  push:
-    branches:
-      - agent/specialist-rule-review-governance-a13
   pull_request:
     branches:
       - main
@@ -13,7 +10,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: specialist-a13-dual-rule-review
+  group: specialist-a13-dual-rule-review-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
