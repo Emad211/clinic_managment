@@ -44,11 +44,12 @@ replacements = (
 )
 
 for old, new in replacements:
+    if old in text:
+        text = text.replace(old, new, 1)
+        continue
     if new in text:
         continue
-    if old not in text:
-        raise RuntimeError(f"A13 generator repair anchor missing: {old[:120]!r}")
-    text = text.replace(old, new, 1)
+    raise RuntimeError(f"A13 generator repair anchor missing: {old[:120]!r}")
 
 path.write_text(text, encoding="utf-8")
 print("A13 generator repaired")
