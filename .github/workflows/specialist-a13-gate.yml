@@ -45,7 +45,11 @@ jobs:
         run: |
           set -euo pipefail
           python -m py_compile .github/finalize_a13.py
-          python .github/finalize_a13.py
+          if ! python .github/finalize_a13.py > .github/a13-finalizer.log 2>&1; then
+            cat .github/a13-finalizer.log
+            exit 1
+          fi
+          cat .github/a13-finalizer.log
           python -m compileall -q specialist_clinic/src specialist_clinic/tests
           git diff --check
 
@@ -88,6 +92,7 @@ jobs:
         with:
           name: specialist-a13-dual-rule-review-evidence
           path: |
+            .github/a13-finalizer.log
             specialist_clinic/pytest-specialist-a13.xml
             webapp/pytest-accounting-a13.xml
           if-no-files-found: warn
@@ -100,6 +105,7 @@ jobs:
           git fetch origin main
           git checkout origin/main -- webapp/src
           find specialist_clinic -type d -name __pycache__ -prune -exec rm -rf {} +
+          rm -f .github/a13-finalizer.log
           rm -f specialist_clinic/pytest-specialist-a13.xml
           rm -f webapp/pytest-accounting-a13.xml
           rm -f .github/finalize_a13.py
