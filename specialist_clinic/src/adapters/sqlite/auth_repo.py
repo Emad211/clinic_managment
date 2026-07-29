@@ -7,6 +7,59 @@ from src.adapters.sqlite.core import get_db
 class AuthRepository:
     """Low-level DB operations for users."""
 
+    def count_users(self) -> int:
+        row = get_db().execute("SELECT COUNT(*) AS count FROM users").fetchone()
+        return int(row["count"] or 0)
+
+    def get_manager_requiring_password_change(self) -> Optional[Dict]:
+        row = get_db().execute(
+            """SELECT * FROM users
+               WHERE role='manager' AND is_active=1 AND must_change_password=1
+               ORDER BY id LIMIT 1"""
+        ).fetchone()
+        return dict(row) if row else None
+
+    def create_initial_manager(
+        self,
+        *,
+        username: str,
+        password_hash: bytes,
+        full_name: str,
+    ) -> Dict:
+        db = get_db()
+        if db.execute("SELECT COUNT(*) FROM users").fetchone()[0] != 0:
+            raise RuntimeError("Initial manager can only be created in an empty database")
+        cursor = db.execute(
+            """INSERT INTO users
+               (username,password_hash,role,full_name,is_active,must_change_password)
+               VALUES (?,?,'manager',?,1,0)""",
+            (username, password_hash, full_name),
+        )
+        db.commit()
+        row = db.execute(
+            "SELECT * FROM users WHERE id=?", (cursor.lastrowid,)
+        ).fetchone()
+        return dict(row)
+
+    def complete_required_password_change(
+        self, *, user_id: int, password_hash: bytes
+    ) -> Dict:
+        db = get_db()
+        cursor = db.execute(
+            """UPDATE users
+               SET password_hash=?,must_change_password=0,
+                   failed_attempts=0,locked_until=NULL
+               WHERE id=? AND role='manager' AND is_active=1
+                 AND must_change_password=1""",
+            (password_hash, user_id),
+        )
+        if cursor.rowcount != 1:
+            db.rollback()
+            raise RuntimeError("Required password-change target is no longer valid")
+        db.commit()
+        row = db.execute("SELECT * FROM users WHERE id=?", (user_id,)).fetchone()
+        return dict(row)
+
     def get_raw_by_username(self, username: str) -> Optional[sqlite3.Row]:
         db = get_db()
         return db.execute("SELECT * FROM users WHERE username = ?", (username,)).fetchone()

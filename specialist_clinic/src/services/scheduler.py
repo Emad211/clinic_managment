@@ -7,12 +7,9 @@ atomic SHA-256 manifest is written beside the database file.
 """
 from __future__ import annotations
 
-import hashlib
-import json
 import logging
 import os
 import socket
-import sqlite3
 import threading
 import time
 import uuid
@@ -320,104 +317,28 @@ class Scheduler:
             return False
         return True
 
-    @staticmethod
-    def _file_sha256(path: Path) -> str:
-        digest = hashlib.sha256()
-        with path.open("rb") as handle:
-            for chunk in iter(lambda: handle.read(1024 * 1024), b""):
-                digest.update(chunk)
-        return digest.hexdigest()
-
-    @staticmethod
-    def _sqlite_integrity(path: Path) -> str:
-        connection = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
-        try:
-            row = connection.execute("PRAGMA integrity_check").fetchone()
-            return str(row[0] if row else "missing")
-        finally:
-            connection.close()
-
     def _backup(self):
         """Create, verify and attest one atomic SQLite online-backup snapshot."""
-        tmp = None
-        manifest_tmp = None
         if not self.db_path.exists():
             return True
         try:
-            self.backup_dir.mkdir(parents=True, exist_ok=True)
-            now = iran_now()
-            ts = now.strftime("%Y%m%d_%H%M%S_%f")
-            destination = self.backup_dir / f"backup_auto_{ts}.db"
-            tmp = destination.with_suffix(".db.tmp")
-            source = sqlite3.connect(str(self.db_path), timeout=30)
-            try:
-                output = sqlite3.connect(str(tmp), timeout=30)
-                try:
-                    source.backup(output, pages=-1)
-                    output.commit()
-                finally:
-                    output.close()
-            finally:
-                source.close()
+            from src.services.backup_integrity import BackupIntegrityService
 
-            integrity = self._sqlite_integrity(tmp)
-            if integrity.lower() != "ok":
-                raise RuntimeError(f"backup_integrity_failed:{integrity[:80]}")
-            digest = self._file_sha256(tmp)
-            size = tmp.stat().st_size
-            os.replace(tmp, destination)
-            tmp = None
-
-            manifest = {
-                "schema_version": "1.0",
-                "backup_file": destination.name,
-                "sha256": digest,
-                "size_bytes": size,
-                "integrity_check": "ok",
-                "created_at": now.isoformat(sep=" ", timespec="seconds"),
-            }
-            manifest_path = destination.with_suffix(".manifest.json")
-            manifest_tmp = manifest_path.with_suffix(".json.tmp")
-            manifest_tmp.write_text(
-                json.dumps(
-                    manifest,
-                    ensure_ascii=False,
-                    sort_keys=True,
-                    separators=(",", ":"),
-                ),
-                encoding="utf-8",
+            verified = BackupIntegrityService().create(
+                self.db_path,
+                self.backup_dir,
+                prefix="backup_auto",
+                keep=4,
             )
-            os.replace(manifest_tmp, manifest_path)
-            manifest_tmp = None
-
-            backups = sorted(
-                self.backup_dir.glob("backup_auto_*.db"),
-                key=lambda file: file.stat().st_mtime,
-                reverse=True,
-            )
-            for old in backups[4:]:
-                try:
-                    old.unlink()
-                    old.with_suffix(".manifest.json").unlink(missing_ok=True)
-                except Exception:
-                    logger.warning(
-                        "[scheduler] could not rotate old backup %s", old.name
-                    )
             logger.info(
                 "[scheduler] verified backup created file=%s bytes=%s sha256=%s",
-                destination.name,
-                size,
-                digest[:12],
+                verified.database_path.name,
+                verified.size_bytes,
+                verified.sha256[:12],
             )
             return True
         except Exception:
             logger.exception("[scheduler] backup error")
-            for candidate in (tmp, manifest_tmp):
-                if candidate is not None:
-                    try:
-                        candidate.unlink(missing_ok=True)
-                    except Exception:
-                        pass
             return False
 
 

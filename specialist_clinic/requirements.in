@@ -1,0 +1,7 @@
+Flask
+bcrypt
+jdatetime
+segno
+requests
+jsonschema
+waitress

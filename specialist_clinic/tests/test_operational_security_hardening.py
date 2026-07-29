@@ -1,7 +1,7 @@
 """Targeted operational/security release gate for Clinical Engine infrastructure."""
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import datetime, timedelta
 import json
 from pathlib import Path
 import re
@@ -202,6 +202,37 @@ def test_lease_is_exclusive_monotonic_and_fenced(secure_app):
         repo.assert_current(first, now=start + timedelta(seconds=22))
 
 
+def test_lease_release_within_same_second_preserves_storage_invariant(
+    secure_app,
+):
+    from src.adapters.sqlite.core import get_db
+
+    repo = OperationalLeaseRepository()
+    start = iran_now().replace(tzinfo=None, microsecond=100_000)
+    lease = repo.acquire(
+        "scheduler:same-second",
+        owner_id="worker:same-second",
+        ttl_seconds=60,
+        now=start,
+    )
+    assert lease is not None
+
+    assert repo.release(
+        lease,
+        now=start.replace(microsecond=900_000),
+    )
+
+    row = get_db().execute(
+        """SELECT heartbeat_at, expires_at
+           FROM operational_leases WHERE lease_name=?""",
+        (lease.lease_name,),
+    ).fetchone()
+    assert row is not None
+    assert datetime.fromisoformat(row["expires_at"]) > datetime.fromisoformat(
+        row["heartbeat_at"]
+    )
+
+
 def test_verified_backup_manifest_and_restore_detect_tampering(secure_app):
     app, tmp_path = secure_app
     from src.adapters.sqlite.core import get_db
@@ -292,6 +323,7 @@ def test_health_is_phi_free_and_permission_protected(secure_app):
     assert set(payload["checks"]) == {
         "database",
         "schema",
+        "first_run",
         "activation",
         "audit",
         "worker",

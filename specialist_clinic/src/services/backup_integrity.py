@@ -11,6 +11,8 @@ import shutil
 import sqlite3
 from typing import Any
 
+from src.common.utils import iran_now
+
 
 class BackupVerificationError(RuntimeError):
     pass
@@ -44,6 +46,81 @@ def sqlite_integrity(path: Path) -> str:
 
 class BackupIntegrityService:
     """Accept only a manifest-matched, internally consistent SQLite snapshot."""
+
+    def create(
+        self,
+        source_path: str | os.PathLike,
+        backup_folder: str | os.PathLike,
+        *,
+        prefix: str = "backup_manual",
+        keep: int | None = None,
+    ) -> VerifiedBackup:
+        """Create an online SQLite snapshot, attest it, then verify the result."""
+        source_database = Path(source_path).resolve()
+        if not source_database.is_file():
+            raise FileNotFoundError(f"source database is missing: {source_database}")
+        folder = Path(backup_folder).resolve()
+        folder.mkdir(parents=True, exist_ok=True)
+        now = iran_now()
+        timestamp = now.strftime("%Y%m%d_%H%M%S_%f")
+        destination = folder / f"{prefix}_{timestamp}.db"
+        staging = destination.with_suffix(".db.tmp")
+        manifest_path = destination.with_suffix(".manifest.json")
+        manifest_staging = manifest_path.with_suffix(".json.tmp")
+        try:
+            source = sqlite3.connect(str(source_database), timeout=30)
+            try:
+                output = sqlite3.connect(str(staging), timeout=30)
+                try:
+                    source.backup(output, pages=-1)
+                    output.commit()
+                finally:
+                    output.close()
+            finally:
+                source.close()
+
+            integrity = sqlite_integrity(staging)
+            if integrity.lower() != "ok":
+                raise BackupVerificationError(
+                    f"backup SQLite integrity check failed: {integrity[:80]}"
+                )
+            digest = file_sha256(staging)
+            size_bytes = staging.stat().st_size
+            os.replace(staging, destination)
+
+            manifest_payload = {
+                "schema_version": "1.0",
+                "backup_file": destination.name,
+                "sha256": digest,
+                "size_bytes": size_bytes,
+                "integrity_check": "ok",
+                "created_at": now.isoformat(sep=" ", timespec="seconds"),
+            }
+            manifest_staging.write_text(
+                json.dumps(
+                    manifest_payload,
+                    ensure_ascii=False,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ),
+                encoding="utf-8",
+            )
+            os.replace(manifest_staging, manifest_path)
+            verified = self.verify(destination, manifest_path=manifest_path)
+
+            if keep is not None and keep > 0:
+                backups = sorted(
+                    folder.glob(f"{prefix}_*.db"),
+                    key=lambda file: file.stat().st_mtime,
+                    reverse=True,
+                )
+                for old in backups[keep:]:
+                    old.unlink(missing_ok=True)
+                    old.with_suffix(".manifest.json").unlink(missing_ok=True)
+            return verified
+        finally:
+            staging.unlink(missing_ok=True)
+            manifest_staging.unlink(missing_ok=True)
 
     def verify(
         self,
@@ -118,6 +195,7 @@ class BackupIntegrityService:
         destination = Path(destination_path).resolve()
         destination.parent.mkdir(parents=True, exist_ok=True)
         staging = destination.with_suffix(destination.suffix + ".restore.tmp")
+        safety_copy: Path | None = None
         try:
             shutil.copy2(verified.database_path, staging)
             if not hmac.compare_digest(
@@ -129,7 +207,18 @@ class BackupIntegrityService:
                 raise BackupVerificationError(
                     f"restore staging integrity failed: {integrity[:80]}"
                 )
+            if destination.exists():
+                safety_copy = destination.with_suffix(
+                    destination.suffix + ".before-restore"
+                )
+                shutil.copy2(destination, safety_copy)
             os.replace(staging, destination)
+            if sqlite_integrity(destination).lower() != "ok":
+                if safety_copy is not None and safety_copy.exists():
+                    os.replace(safety_copy, destination)
+                raise BackupVerificationError(
+                    "restored destination failed integrity check"
+                )
         finally:
             staging.unlink(missing_ok=True)
         return verified

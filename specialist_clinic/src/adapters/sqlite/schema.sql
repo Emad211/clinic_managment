@@ -12,6 +12,7 @@ CREATE TABLE IF NOT EXISTS users (
     failed_attempts INTEGER DEFAULT 0,
     locked_until TEXT,
     last_login TIMESTAMP,
+    must_change_password INTEGER NOT NULL DEFAULT 0,
     created_at TIMESTAMP DEFAULT (datetime('now', '+3 hours', '+30 minutes'))
 );
 

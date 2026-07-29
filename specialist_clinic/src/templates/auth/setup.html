@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="color-scheme" content="dark">
+    <title>راه‌اندازی امن — کلینیک تخصصی</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
+</head>
+<body>
+    <div class="auth-wrap">
+        <form class="auth-card auth-card-wide" method="post" autocomplete="off">
+            <div class="auth-brand">
+                <span class="brand-mark">
+                    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/>
+                        <path d="m9 12 2 2 4-4"/>
+                    </svg>
+                </span>
+                <b>راه‌اندازی امن اولیه</b>
+                <small>
+                    {% if target.mode == "change" %}
+                    رمز پیش‌فرض این نصب باید همین حالا تغییر کند.
+                    {% else %}
+                    اولین حساب مدیر را بسازید؛ رمز پیش‌فرضی وجود ندارد.
+                    {% endif %}
+                </small>
+            </div>
+
+            {% with messages = get_flashed_messages() %}
+                {% for msg in messages %}
+                <div class="flash" role="alert">
+                    <span>{{ msg }}</span>
+                </div>
+                {% endfor %}
+            {% endwith %}
+
+            {% if target.mode == "change" %}
+            <label for="username">نام کاربری مدیر</label>
+            <input id="username" type="text" value="{{ target.username }}" disabled>
+            <input type="hidden" name="username" value="{{ target.username }}">
+            {% else %}
+            <label for="username">نام کاربری مدیر</label>
+            <input id="username" type="text" name="username" autocomplete="username"
+                   minlength="3" maxlength="40" pattern="[A-Za-z0-9_.-]{3,40}"
+                   autofocus required>
+
+            <label for="full_name">نام و نام خانوادگی</label>
+            <input id="full_name" type="text" name="full_name" maxlength="120">
+            {% endif %}
+
+            <label for="password">رمز عبور جدید</label>
+            <input id="password" type="password" name="password"
+                   autocomplete="new-password" minlength="12" required>
+            <small class="auth-help">
+                حداقل ۱۲ نویسه، شامل دست‌کم یک حرف و یک عدد؛ نام کاربری را
+                در رمز تکرار نکنید.
+            </small>
+
+            <label for="password_confirm">تکرار رمز عبور</label>
+            <input id="password_confirm" type="password" name="password_confirm"
+                   autocomplete="new-password" minlength="12" required>
+
+            <div class="setup-safety-note">
+                این صفحه فقط از همین رایانه قابل دسترسی است. رمز را در محل امن
+                نگه دارید؛ بازیابی خودکار رمز وجود ندارد.
+            </div>
+            <button class="btn btn-block btn-lg mt-5" type="submit">
+                ثبت و تکمیل راه‌اندازی
+            </button>
+        </form>
+    </div>
+</body>
+</html>

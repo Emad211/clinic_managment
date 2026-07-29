@@ -533,6 +533,10 @@ input[type=checkbox],input[type=radio]{width:auto;accent-color:var(--primary);}
 .auth-wrap{flex:1;display:flex;align-items:center;justify-content:center;padding:var(--s5);min-height:100dvh;}
 .auth-card{width:360px;max-width:100%;background:linear-gradient(180deg,var(--panel),#0e1730);
     border:1px solid var(--line);border-radius:var(--r-lg);padding:34px 32px;box-shadow:var(--shadow-lg);}
+.auth-card-wide{width:480px;}
+.auth-help{display:block;color:var(--muted);line-height:1.9;margin-top:6px;}
+.setup-safety-note{margin-top:var(--s4);padding:12px 14px;border:1px solid var(--line);
+    border-radius:var(--r-md);background:rgba(59,130,246,.08);color:var(--muted);font-size:12.5px;line-height:1.9;}
 .auth-brand{display:flex;flex-direction:column;align-items:center;gap:10px;margin-bottom:var(--s5);}
 .auth-brand .brand-mark{width:54px;height:54px;border-radius:15px;display:grid;place-items:center;color:#fff;
     background:linear-gradient(150deg,var(--primary),#7c3aed);box-shadow:0 8px 24px rgba(59,130,246,.4);}

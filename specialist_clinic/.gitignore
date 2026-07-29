@@ -7,6 +7,10 @@ backups/
 build/
 dist/
 *.spec
+!SpecialistClinic.spec
+.specialist-session-secret
+*.before-restore
+release/
 
 # graphify — keep shareable outputs (graph.json, GRAPH_REPORT.md, graph.html); ignore local/machine state
 graphify-out/.graphify_python

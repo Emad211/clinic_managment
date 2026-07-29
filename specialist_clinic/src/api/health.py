@@ -64,6 +64,7 @@ from src.security.permissions import Permission, permission_required
 from src.services.clinical_audit_integrity import (
     ClinicalAuditIntegrityService,
 )
+from src.services.first_run_service import FirstRunService
 
 
 bp = Blueprint("health", __name__, url_prefix="/health")
@@ -292,6 +293,7 @@ def _readiness_checks() -> dict[str, bool]:
     return {
         "database": integrity_ok,
         "schema": schema_ok,
+        "first_run": not FirstRunService().setup_required(),
         "activation": activation_ok,
         "audit": audit_ok,
         "worker": worker_ok,
@@ -319,6 +321,7 @@ def ready():
         checks = {
             "database": False,
             "schema": False,
+            "first_run": False,
             "activation": False,
             "audit": False,
             "worker": False,
@@ -348,6 +351,7 @@ def details():
         checks = {
             "database": False,
             "schema": False,
+            "first_run": False,
             "activation": False,
             "audit": False,
             "worker": False,

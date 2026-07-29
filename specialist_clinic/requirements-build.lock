@@ -1,0 +1,12 @@
+-r requirements.lock
+altgraph==0.17.5
+iniconfig==2.3.0
+packaging==26.2
+pefile==2023.2.7
+pluggy==1.6.0
+Pygments==2.20.0
+pyinstaller==6.15.0
+pyinstaller-hooks-contrib==2026.6
+pywin32-ctypes==0.2.3
+pytest==9.1.1
+setuptools==83.0.0

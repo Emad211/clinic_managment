@@ -343,6 +343,9 @@ def _run_migrations(db):
     _ensure_column(db, "engagement_approvals", "last_error", "TEXT")
     _ensure_column(db, "users", "api_token", "TEXT")
     _ensure_column(db, "users", "api_token_expires_at", "TEXT")  # SECU-05: extension token TTL
+    _ensure_column(
+        db, "users", "must_change_password", "INTEGER NOT NULL DEFAULT 0"
+    )
     _ensure_column(db, "processed_invoices", "outreach_done", "INTEGER NOT NULL DEFAULT 0")
     _ensure_column(db, "lab_results", "test_key", "TEXT")
     _seed_flag_sections(db)
@@ -468,11 +471,15 @@ def _run_migrations(db):
 def _ensure_default_admin(db):
     """Create the first manager without permitting default credentials in production."""
     row = db.execute("SELECT COUNT(*) AS c FROM users").fetchone()
-    if not row or int(row["c"] or 0) != 0:
+    testing = bool(current_app.config.get("TESTING", False))
+    if row and int(row["c"] or 0) != 0:
+        if not testing:
+            _mark_legacy_default_admin_for_change(db)
         return
 
-    production = bool(current_app.config.get("PRODUCTION")) and not bool(
-        current_app.config.get("TESTING", False)
+    production = bool(current_app.config.get("PRODUCTION")) and not testing
+    create_test_admin = testing and bool(
+        current_app.config.get("CREATE_TEST_ADMIN", True)
     )
     username = str(
         current_app.config.get("BOOTSTRAP_ADMIN_USERNAME")
@@ -491,19 +498,53 @@ def _ensure_default_admin(db):
             "Production bootstrap requires CLINIC_BOOTSTRAP_ADMIN_PASSWORD "
             "with at least 12 characters; admin/admin is forbidden."
         )
-    if not password:
-        # Development/test compatibility only. Production is rejected above.
+    if not password and create_test_admin:
         password = "admin"
+    if not password:
+        # Desktop first-run is completed through /auth/setup. No known default
+        # credential is inserted into a real database.
+        return
 
     import bcrypt
 
     password_hash = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt())
     db.execute(
         "INSERT INTO users "
-        "(username, password_hash, role, full_name, is_active) "
-        "VALUES (?, ?, 'manager', ?, 1)",
+        "(username, password_hash, role, full_name, is_active, must_change_password) "
+        "VALUES (?, ?, 'manager', ?, 1, 0)",
         (username, password_hash, "مدیر سیستم"),
     )
+    db.commit()
+
+
+def _mark_legacy_default_admin_for_change(db):
+    """Make an existing admin/admin installation fail closed until local setup."""
+    import bcrypt
+    from werkzeug.security import check_password_hash
+
+    rows = db.execute(
+        """SELECT id,password_hash FROM users
+           WHERE username='admin' AND role='manager' AND is_active=1
+             AND must_change_password=0"""
+    ).fetchall()
+    for row in rows:
+        stored = row["password_hash"]
+        if isinstance(stored, str):
+            stored = stored.encode("utf-8")
+        try:
+            if bool(stored) and stored.startswith(b"$2"):
+                is_default = bcrypt.checkpw(b"admin", stored)
+            else:
+                is_default = bool(stored) and check_password_hash(
+                    stored.decode("utf-8"), "admin"
+                )
+        except (TypeError, ValueError):
+            is_default = False
+        if is_default:
+            db.execute(
+                "UPDATE users SET must_change_password=1 WHERE id=?",
+                (row["id"],),
+            )
     db.commit()
 
 
