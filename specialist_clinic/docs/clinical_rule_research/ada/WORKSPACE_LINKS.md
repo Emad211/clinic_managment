@@ -28,8 +28,7 @@
 
 ## Workspace package
 
-SHA-256:
-
-`c2896e443826efe3e740f863b7ed3e174b0d003b9808f329e1da164f4a4c87f7`
+- External checksum sidecar: `ADA_Research_Workspace_v0.3.zip.sha256`
+- SHA-256: `57896baa6e9e23cd4faf5925167f465055a63936623dc814b397e9c4502d7431`
 
 No recommendation becomes a Rule because it appears in ADA. Full-text evidence, bias, conflict, computability, local validation, licensing and approvals remain mandatory.
