@@ -124,6 +124,20 @@ class ClinicalTaskContractRepository:
         ).fetchone()
         return self._decode(row)
 
+    def get_many(self, task_ids: list[int]) -> dict[int, dict]:
+        ids = sorted({int(value) for value in task_ids if value})
+        if not ids:
+            return {}
+        marks = ",".join("?" for _ in ids)
+        rows = self._db().execute(
+            f"SELECT * FROM clinical_task_contracts WHERE task_id IN ({marks})",
+            ids,
+        ).fetchall()
+        return {
+            int(row["task_id"]): self._decode(row)
+            for row in rows
+        }
+
     def create_once(
         self,
         *,

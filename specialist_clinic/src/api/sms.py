@@ -351,6 +351,8 @@ def send_campaign(cid):
         msg = f"پنل پذیرفت: {result.get('accepted', result.get('sent', 0))}"
         if result.get('pending'):
             msg += f"، در انتظار تأیید پنل: {result['pending']}"
+        if result.get('deferred'):
+            msg += f"، به‌تعویق‌افتاده توسط سقف روزانه: {result['deferred']}"
         flash(msg + f"، ناموفق: {result['failed']} از {result['total']}", "success")
     log_activity("campaign_send", f"ارسال کمپین #{cid}")
     return redirect(url_for("sms.campaign_detail", cid=cid))

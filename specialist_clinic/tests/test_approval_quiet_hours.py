@@ -358,6 +358,82 @@ class TestApprovalProductionLifecycle:
             datetime(2026, 7, 30, 12, 0)
         ) is True
 
+    def test_delivered_message_still_consumes_daily_cap(self, specialist_app):
+        """Delivery reconciliation must not reopen today's patient allowance."""
+        from src.adapters.sqlite.sms_dispatch_repo import SmsDispatchRepository
+        from src.adapters.sqlite.sms_repo import SmsRepository
+        from src.services.sms.campaign_service import send_single
+        from src.services.sms.guardrail_service import (
+            SmsGuardrailDenied,
+            SmsGuardrailService,
+        )
+
+        pid = _enroll("2220000016", "تحویل و سقف", phone_number="09120000216")
+        SmsRepository().set_setting("engagement_daily_cap", "1")
+        _force_quiet(False)
+        assert send_single(
+            pid,
+            "09120000216",
+            "پیام تحویل‌شده",
+            idempotency_key="manual:delivered-cap:first",
+            source_type="manual",
+            purpose="CARE",
+        ) is True
+        message = SmsDispatchRepository().get_by_idempotency(
+            "manual:delivered-cap:first"
+        )
+        SmsDispatchRepository().record_delivery(
+            int(message["id"]),
+            status="Delivered",
+        )
+
+        assert SmsGuardrailService().submitted_today(pid) == 1
+        with pytest.raises(SmsGuardrailDenied) as denied:
+            SmsGuardrailService().require_allowed(pid)
+        assert denied.value.reason == "daily_cap"
+
+    def test_message_creation_atomically_reserves_daily_allowance(
+        self, specialist_app
+    ):
+        """A queued row reserves capacity before provider submission starts."""
+        from src.adapters.sqlite.sms_dispatch_repo import (
+            SmsDailyCapExceeded,
+            SmsDispatchRepository,
+        )
+        from src.services.sms.governance_service import SmsGovernanceService
+
+        pid = _enroll("2220000017", "رزرو اتمیک", phone_number="09120000217")
+        consent = SmsGovernanceService().require_allowed(
+            patient_link_id=pid,
+            purpose="CARE",
+        )
+        dispatch = SmsDispatchRepository()
+        common = {
+            "campaign_id": None,
+            "patient_link_id": pid,
+            "recipient": "09120000217",
+            "body": "پیام",
+            "provider_name": "null",
+            "source_type": "manual",
+            "source_ref": None,
+            "purpose": "CARE",
+            "consent_event_id": consent.event_id,
+            "consent_decision": consent.decision,
+            "source_policy": "TEST_ATOMIC_CAP",
+            "created_by": "test",
+            "daily_cap": 1,
+        }
+        dispatch.create_message(
+            **common,
+            idempotency_key="atomic-cap:first",
+        )
+
+        with pytest.raises(SmsDailyCapExceeded):
+            dispatch.create_message(
+                **common,
+                idempotency_key="atomic-cap:second",
+            )
+
     def test_campaign_stops_before_preparation_outside_allowed_hours(
         self, specialist_app, monkeypatch
     ):

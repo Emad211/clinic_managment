@@ -5,7 +5,10 @@ import random
 import uuid
 
 from src.adapters.sqlite.core import get_db
-from src.adapters.sqlite.sms_dispatch_repo import SmsDispatchRepository
+from src.adapters.sqlite.sms_dispatch_repo import (
+    SmsDailyCapExceeded,
+    SmsDispatchRepository,
+)
 from src.adapters.sqlite.sms_repo import SmsRepository
 from src.adapters.sqlite.wallet_repo import WalletRepository
 from src.common.utils import iran_now
@@ -156,21 +159,27 @@ def send_single(
         int(patient_link_id),
         override_quiet=override_quiet,
     )
-    message_id, _created = dispatch.create_message(
-        campaign_id=campaign_id,
-        patient_link_id=int(patient_link_id),
-        recipient=phone,
-        body=str(body),
-        provider_name=provider.provider_name,
-        idempotency_key=key,
-        source_type=source_type,
-        source_ref=source_ref,
-        purpose=str(purpose).upper(),
-        consent_event_id=consent.event_id,
-        consent_decision=consent.decision,
-        source_policy="SINGLE_MESSAGE_PURPOSE_V1",
-        created_by=created_by,
-    )
+    try:
+        message_id, _created = dispatch.create_message(
+            campaign_id=campaign_id,
+            patient_link_id=int(patient_link_id),
+            recipient=phone,
+            body=str(body),
+            provider_name=provider.provider_name,
+            idempotency_key=key,
+            source_type=source_type,
+            source_ref=source_ref,
+            purpose=str(purpose).upper(),
+            consent_event_id=consent.event_id,
+            consent_decision=consent.decision,
+            source_policy="SINGLE_MESSAGE_PURPOSE_V1",
+            created_by=created_by,
+            daily_cap=SmsGuardrailService().daily_cap(),
+        )
+    except SmsDailyCapExceeded as exc:
+        from src.services.sms.guardrail_service import SmsGuardrailDenied
+
+        raise SmsGuardrailDenied("daily_cap") from exc
     if not dispatch.claim_submission(message_id):
         row = dispatch.get(message_id) or {}
         return row.get("status") in {"accepted", "delivered"}

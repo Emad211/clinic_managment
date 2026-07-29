@@ -134,7 +134,7 @@
                                     </form>
                                 </details>
                                 {% endif %}
-                                {% if t.source_engine not in ['clinical_v2','encounter_plan'] %}
+                                {% if t.source_engine not in ['clinical_v2','encounter_plan'] and permissions.get('followup.admin.manage') %}
                                     <div class="flex items-center gap-2">
                                         <form class="m-0" method="post" action="{{ url_for('followups.resolve', task_id=t.id) }}">
                                             <input type="hidden" name="status" value="done">
@@ -288,6 +288,7 @@
             </div>
             {% endif %}
 
+            {% if permissions.get('followup.book.appointment') %}
             <form method="post" action="{{ url_for('followups.patient_to_visit', pid=pg.patient_link_id) }}" class="card card-soft" style="margin-top:var(--s3);">
                 <input type="hidden" name="booking_idempotency_key" value="booking:{{ pg.tasks[0].contact_form_token }}">
                 <div class="section-title" style="margin-bottom:var(--s2);">
@@ -314,6 +315,7 @@
                                                     <button class="btn btn-ok" type="submit"><svg class="icon icon-sm"><use href="#i-calendar"></use></svg> ثبت ویزیت</button></div>
                 </div>
             </form>
+            {% endif %}
         </details>
     {% endfor %}
     </div>

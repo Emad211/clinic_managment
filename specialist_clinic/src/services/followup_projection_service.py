@@ -54,6 +54,13 @@ class FollowupProjectionService:
             [int(row["id"]) for row in normalized]
         )
         contracts = ClinicalTaskContractRepository()
+        contract_by_task = contracts.get_many(
+            [
+                int(row["id"])
+                for row in normalized
+                if row.get("source_engine") == "clinical_v2"
+            ]
+        )
         for row in normalized:
             row.update(
                 summaries.get(
@@ -70,7 +77,7 @@ class FollowupProjectionService:
                 )
             )
             row["task_contract"] = (
-                contracts.get(int(row["id"]))
+                contract_by_task.get(int(row["id"]))
                 if row.get("source_engine") == "clinical_v2"
                 else None
             )
@@ -155,7 +162,10 @@ class FollowupProjectionService:
     def summary(self, *, as_of: date | datetime | str) -> dict:
         open_rows = self.open_tasks()
         due_rows = self.due_tasks(as_of=as_of)
-        callbacks = self.contacts.due_callbacks(as_of)
+        callbacks = self.contacts.due_callbacks(
+            as_of,
+            task_ids=[int(row["id"]) for row in open_rows],
+        )
         patients = {int(row["patient_link_id"]) for row in open_rows}
         return {
             "open_tasks": len(open_rows),

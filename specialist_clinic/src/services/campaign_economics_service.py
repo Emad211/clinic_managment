@@ -693,6 +693,37 @@ class CampaignEconomicsService:
         execution_id = current.get("execution_id") or (
             self.repository.audience_snapshot(campaign_id) or {}
         ).get("execution_id")
+        deferred_recipients = 0
+        if trusted_execution:
+            deferred_recipients = max(
+                int(snapshot["treated_count"])
+                - self.repository.messaged_treated_patient_count(campaign_id),
+                0,
+            )
+        if deferred_recipients:
+            if current["status"] == "SENDING":
+                current = self.repository.append_lifecycle(
+                    campaign_id=campaign_id,
+                    status="AWAITING_DELIVERY",
+                    actor_username=actor_username,
+                    execution_id=execution_id,
+                    outcome_code="GUARDRAIL_DEFERRED",
+                    expected_current_event_id=int(current["id"]),
+                    idempotency_key=(
+                        f"campaign:{campaign_id}:{execution_id}:"
+                        "awaiting-guardrail-capacity"
+                    ),
+                    note=(
+                        f"{deferred_recipients} treated recipient(s) remain "
+                        "deferred by operational guardrails."
+                    ),
+                )
+            return {
+                "lifecycle": current,
+                "counts": counts,
+                "projection": self.repository.campaign_projection(campaign_id),
+                "deferred_recipients": deferred_recipients,
+            }
         if counts["messages"] == 0:
             if current["status"] in {"PREPARING", "SENDING"}:
                 current = self.repository.append_lifecycle(
@@ -753,6 +784,7 @@ class CampaignEconomicsService:
             "lifecycle": current,
             "counts": counts,
             "projection": self.repository.campaign_projection(campaign_id),
+            "deferred_recipients": deferred_recipients,
         }
 
     def record_response(

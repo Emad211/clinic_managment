@@ -6,7 +6,10 @@ import uuid
 from src.adapters.sqlite.campaign_execution_claim_repo import (
     CampaignExecutionClaimRepository,
 )
-from src.adapters.sqlite.sms_dispatch_repo import SmsDispatchRepository
+from src.adapters.sqlite.sms_dispatch_repo import (
+    SmsDailyCapExceeded,
+    SmsDispatchRepository,
+)
 from src.adapters.sqlite.sms_repo import SmsRepository
 from src.adapters.sqlite.wallet_repo import WalletRepository
 from src.services.campaign_economics_service import (
@@ -155,21 +158,26 @@ class GovernedCampaignExecutionService:
                     f"campaign:{campaign_id}:execution:{execution_id}:"
                     f"patient:{patient_id}"
                 )
-                message_id, _created = self.dispatch.create_message(
-                    campaign_id=campaign_id,
-                    patient_link_id=patient_id,
-                    recipient=phone,
-                    body=body,
-                    provider_name=provider.provider_name,
-                    idempotency_key=key,
-                    source_type="campaign",
-                    source_ref=str(campaign_id),
-                    purpose=purpose,
-                    consent_event_id=int(consent.event_id),
-                    consent_decision=consent.decision,
-                    source_policy="A6_FROZEN_AUDIENCE_CURRENT_CONSENT",
-                    created_by=actor_username,
-                )
+                try:
+                    message_id, _created = self.dispatch.create_message(
+                        campaign_id=campaign_id,
+                        patient_link_id=patient_id,
+                        recipient=phone,
+                        body=body,
+                        provider_name=provider.provider_name,
+                        idempotency_key=key,
+                        source_type="campaign",
+                        source_ref=str(campaign_id),
+                        purpose=purpose,
+                        consent_event_id=int(consent.event_id),
+                        consent_decision=consent.decision,
+                        source_policy="A6_FROZEN_AUDIENCE_CURRENT_CONSENT",
+                        created_by=actor_username,
+                        daily_cap=self.guardrails.daily_cap(),
+                    )
+                except SmsDailyCapExceeded:
+                    guardrail_skipped += 1
+                    continue
                 if self.dispatch.claim_submission(message_id):
                     claimed.append((message_id, key, phone, body))
                 else:
@@ -251,6 +259,7 @@ class GovernedCampaignExecutionService:
                 "consent_skipped_after_freeze": consent_skipped,
                 "invalid_phone_after_freeze": invalid_phone,
                 "guardrail_skipped": guardrail_skipped,
+                "deferred": int(reconciled.get("deferred_recipients") or 0),
                 "lifecycle": reconciled["lifecycle"],
                 "measurement_status": reconciled["projection"][
                     "measurement_status"

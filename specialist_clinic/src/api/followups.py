@@ -216,7 +216,7 @@ def record_contact(task_id: int):
 
 
 @bp.route("/<int:task_id>/resolve", methods=["POST"])
-@login_required
+@permission_required(Permission.FOLLOWUP_ADMIN_MANAGE)
 def resolve(task_id):
     source = _task_source(task_id)
     if source == "clinical_v2":
@@ -232,6 +232,9 @@ def resolve(task_id):
         )
         return redirect(request.referrer or url_for("followups.worklist"))
     status = request.form.get("status", "done")
+    if status not in {"done", "dismissed"}:
+        flash("وضعیت بستن پیگیری نامعتبر است.", "error")
+        return redirect(request.referrer or url_for("followups.worklist"))
     call_log = request.form.get("call_log") or None
     FollowupRepository().resolve(task_id, status, call_log)
     log_activity("followup_resolve", f"بستن پیگیری اداری ({status})")
@@ -371,7 +374,7 @@ def clinical_transition(task_id: int):
 
 
 @bp.route("/patient/<int:pid>/to-visit", methods=["POST"])
-@login_required
+@permission_required(Permission.FOLLOWUP_BOOK_APPOINTMENT)
 def patient_to_visit(pid):
     """Atomically record BOOKED without falsely completing any follow-up."""
     scheduled_date = jalali_to_gregorian_str(
@@ -441,7 +444,7 @@ def patient_to_visit(pid):
 
 
 @bp.route("/add", methods=["POST"])
-@login_required
+@permission_required(Permission.FOLLOWUP_ADMIN_MANAGE)
 def add_manual():
     pid = request.form.get("patient_link_id", type=int)
     if pid:

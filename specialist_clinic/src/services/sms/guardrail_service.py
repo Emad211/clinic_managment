@@ -97,8 +97,10 @@ class SmsGuardrailService:
                WHERE patient_link_id=?
                  AND send_attempts > 0
                  AND (
-                       status='accepted'
-                       OR delivery_status IN ('Submitting','SubmissionUnknown')
+                       status IN ('pending','accepted','delivered','sent')
+                       OR delivery_status IN (
+                           'Queued','Submitting','SubmissionUnknown'
+                       )
                  )
                  AND date(COALESCE(sent_at, last_attempt_at))
                      = date('now','+3 hours','+30 minutes')""",

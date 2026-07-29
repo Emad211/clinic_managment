@@ -151,44 +151,51 @@ class FollowupOperationsRepository:
             return {}
         marks = ",".join("?" for _ in ids)
         rows = self._db().execute(
-            f"""SELECT * FROM followup_contact_events
-                WHERE task_id IN ({marks})
-                ORDER BY task_id, occurred_at DESC, id DESC""",
+            f"""WITH ranked AS (
+                    SELECT event.*,
+                           COUNT(*) OVER (PARTITION BY task_id) AS contact_count,
+                           ROW_NUMBER() OVER (
+                               PARTITION BY task_id
+                               ORDER BY occurred_at DESC,id DESC
+                           ) AS recency_rank
+                    FROM followup_contact_events event
+                    WHERE task_id IN ({marks})
+                )
+                SELECT * FROM ranked WHERE recency_rank=1""",
             ids,
         ).fetchall()
         result: dict[int, dict] = {}
         for row in rows:
             task_id = int(row["task_id"])
-            summary = result.setdefault(
-                task_id,
-                {
-                    "contact_count": 0,
-                    "last_contact_id": None,
-                    "last_contact_at": None,
-                    "last_contact_channel": None,
-                    "last_contact_outcome": None,
-                    "last_contact_note": None,
-                    "next_contact_at": None,
-                },
-            )
-            summary["contact_count"] += 1
-            if summary["last_contact_id"] is None:
-                summary.update(
-                    {
-                        "last_contact_id": int(row["id"]),
-                        "last_contact_at": row["occurred_at"],
-                        "last_contact_channel": row["channel"],
-                        "last_contact_outcome": row["outcome"],
-                        "last_contact_note": row["note"],
-                        "next_contact_at": row["next_contact_at"],
-                    }
-                )
+            result[task_id] = {
+                "contact_count": int(row["contact_count"]),
+                "last_contact_id": int(row["id"]),
+                "last_contact_at": row["occurred_at"],
+                "last_contact_channel": row["channel"],
+                "last_contact_outcome": row["outcome"],
+                "last_contact_note": row["note"],
+                "next_contact_at": row["next_contact_at"],
+            }
         return result
 
-    def due_callbacks(self, as_of: datetime | str | None = None) -> list[dict]:
+    def due_callbacks(
+        self,
+        as_of: datetime | str | None = None,
+        *,
+        task_ids: list[int] | None = None,
+    ) -> list[dict]:
         current = _text(as_of)
+        ids = sorted({int(value) for value in (task_ids or []) if value})
+        if task_ids is not None and not ids:
+            return []
+        task_filter = ""
+        params: list[object] = [current]
+        if ids:
+            marks = ",".join("?" for _ in ids)
+            task_filter = f" AND event.task_id IN ({marks})"
+            params.extend(ids)
         rows = self._db().execute(
-            """SELECT event.*, task.reason, task.detail,
+            f"""SELECT event.*, task.reason, task.detail,
                       patient.full_name AS patient_name,
                       patient.phone_number
                FROM followup_contact_events event
@@ -196,12 +203,13 @@ class FollowupOperationsRepository:
                JOIN patient_links patient ON patient.id=event.patient_link_id
                WHERE event.next_contact_at IS NOT NULL
                  AND datetime(event.next_contact_at)<=datetime(?)
+                 {task_filter}
                  AND event.id=(
                      SELECT latest.id FROM followup_contact_events latest
                      WHERE latest.task_id=event.task_id
                      ORDER BY latest.occurred_at DESC, latest.id DESC LIMIT 1
                  )
                ORDER BY event.next_contact_at, event.id""",
-            (current,),
+            params,
         ).fetchall()
         return [dict(row) for row in rows]

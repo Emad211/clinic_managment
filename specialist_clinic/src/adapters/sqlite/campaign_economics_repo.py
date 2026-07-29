@@ -265,6 +265,19 @@ class CampaignEconomicsRepository:
         sql += " ORDER BY member.assigned_rank,member.id"
         return [dict(row) for row in self._db().execute(sql, params).fetchall()]
 
+    def messaged_treated_patient_count(self, campaign_id: int) -> int:
+        row = self._db().execute(
+            """SELECT COUNT(DISTINCT message.patient_link_id) AS c
+               FROM sms_messages message
+               JOIN campaign_audience_members member
+                 ON member.campaign_id=message.campaign_id
+                AND member.patient_link_id=message.patient_link_id
+                AND member.assignment='TREATED'
+               WHERE message.campaign_id=?""",
+            (int(campaign_id),),
+        ).fetchone()
+        return int(row["c"])
+
     def create_audience_snapshot(
         self,
         *,

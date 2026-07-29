@@ -35,6 +35,8 @@ class Permission(StrEnum):
     CLINICAL_DECISION_RECORD = "clinical.decision.record"
     CLINICAL_TASK_VIEW = "clinical.task.view"
     FOLLOWUP_CONTACT_RECORD = "followup.contact.record"
+    FOLLOWUP_ADMIN_MANAGE = "followup.admin.manage"
+    FOLLOWUP_BOOK_APPOINTMENT = "followup.book.appointment"
     CLINICAL_TASK_TRANSITION = "clinical.task.transition"
     CLINICAL_OUTCOME_RECORD = "clinical.outcome.record"
     CLINICAL_ALERT_VIEW = "clinical.alert.view"
@@ -77,6 +79,8 @@ _ROLE_DEFAULTS = {
             Permission.FOLLOWUP_PLAN_TRANSITION,
             Permission.CLINICAL_TASK_VIEW,
             Permission.FOLLOWUP_CONTACT_RECORD,
+            Permission.FOLLOWUP_ADMIN_MANAGE,
+            Permission.FOLLOWUP_BOOK_APPOINTMENT,
             Permission.CLINICAL_ALERT_VIEW,
             Permission.CLINICAL_ALERT_ACKNOWLEDGE,
             Permission.SMS_VIEW,

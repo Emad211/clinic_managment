@@ -391,6 +391,26 @@ def test_audience_is_deterministic_frozen_and_excludes_without_consent(a6_app):
     get_db().rollback()
 
 
+def test_treated_recipient_without_message_is_deferred_not_failed(a6_app):
+    from src.services.campaign_economics_service import CampaignEconomicsService
+
+    _patient(
+        name="Guardrail deferred",
+        phone="09121234565",
+        national_id="A600000015",
+        marketing=True,
+    )
+    campaign_id = _campaign(name="Deferred by cap", holdout_percent=0)
+    prepared = _freeze(campaign_id)
+    assert prepared["snapshot"]["treated_count"] == 1
+
+    reconciled = CampaignEconomicsService().reconcile_campaign_state(campaign_id)
+
+    assert reconciled["deferred_recipients"] == 1
+    assert reconciled["lifecycle"]["status"] == "AWAITING_DELIVERY"
+    assert reconciled["lifecycle"]["outcome_code"] == "GUARDRAIL_DEFERRED"
+
+
 def test_positive_response_requires_trusted_treated_member_and_evidence(a6_app):
     from src.adapters.sqlite.campaign_economics_repo import (
         CampaignEconomicsRepository,

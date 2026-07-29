@@ -44,6 +44,10 @@ class SmsDispatchConflict(RuntimeError):
     pass
 
 
+class SmsDailyCapExceeded(RuntimeError):
+    pass
+
+
 class SmsDispatchRepository:
     def __init__(self, db: sqlite3.Connection | None = None):
         self._connection = db
@@ -87,6 +91,7 @@ class SmsDispatchRepository:
         consent_decision: str,
         source_policy: str,
         created_by: str,
+        daily_cap: int | None = None,
         commit: bool = True,
     ) -> tuple[int, bool]:
         db = self._db()
@@ -122,6 +127,24 @@ class SmsDispatchRepository:
                 if commit:
                     db.commit()
                 return int(existing["id"]), False
+
+            if daily_cap is not None:
+                used = db.execute(
+                    """SELECT COUNT(*) AS c
+                       FROM sms_messages
+                       WHERE patient_link_id=?
+                         AND (
+                               status IN ('pending','accepted','delivered','sent')
+                               OR delivery_status IN (
+                                   'Queued','Submitting','SubmissionUnknown'
+                               )
+                         )
+                         AND date(COALESCE(sent_at,last_attempt_at,created_at))
+                             = date('now','+3 hours','+30 minutes')""",
+                    (int(patient_link_id),),
+                ).fetchone()["c"]
+                if int(used) >= int(daily_cap):
+                    raise SmsDailyCapExceeded("daily_cap")
 
             cursor = db.execute(
                 """INSERT INTO sms_messages
@@ -448,5 +471,6 @@ __all__ = [
     "IN_FLIGHT_DELIVERY",
     "TERMINAL_DELIVERY",
     "SmsDispatchConflict",
+    "SmsDailyCapExceeded",
     "SmsDispatchRepository",
 ]

@@ -119,6 +119,31 @@ def test_callback_requires_next_contact_time(followup_state_app):
         )
 
 
+def test_terminal_admin_task_is_not_reported_as_due_callback(followup_state_app):
+    from src.adapters.sqlite.core import get_db
+    from src.adapters.sqlite.followups_repo import FollowupRepository
+    from src.services.followup_contact_service import FollowupContactService
+    from src.services.followup_projection_service import FollowupProjectionService
+
+    db = get_db()
+    task_id = _admin_task(db, _patient(db))
+    FollowupContactService().record(
+        task_id=task_id,
+        channel="PHONE",
+        outcome="CALLBACK_REQUESTED",
+        actor_username="admin",
+        actor_user_id=1,
+        idempotency_key="callback-closed-task-001",
+        next_contact_at="2026-07-27 09:00:00",
+    )
+    FollowupRepository().resolve(task_id, "done")
+
+    summary = FollowupProjectionService().summary(as_of="2026-07-28")
+
+    assert summary["due_callbacks"] == 0
+    assert summary["callbacks"] == []
+
+
 def test_booking_is_atomic_idempotent_and_does_not_complete_admin_task(
     followup_state_app,
 ):
@@ -266,3 +291,70 @@ def test_worklist_shows_structured_contact_ui_and_staff_permission(
     assert "آخرین تماس" in html
     assert "پاسخ داد" in html
     assert "رزرو نوبت فقط مرحلهٔ BOOKED است" in html
+
+
+def test_admin_followup_mutations_require_revocable_permissions(
+    followup_state_app,
+):
+    from src.adapters.sqlite.core import get_db
+    from src.adapters.sqlite.security_permission_repo import (
+        SecurityPermissionRepository,
+    )
+    from src.security.permissions import Permission, default_permissions
+
+    db = get_db()
+    patient_id = _patient(db)
+    task_id = _admin_task(db, patient_id)
+    admin = db.execute(
+        "SELECT * FROM users WHERE username='admin'"
+    ).fetchone()
+    assert Permission.FOLLOWUP_ADMIN_MANAGE in default_permissions("staff")
+    assert Permission.FOLLOWUP_BOOK_APPOINTMENT in default_permissions("staff")
+    SecurityPermissionRepository().record(
+        user_id=int(admin["id"]),
+        permission=Permission.FOLLOWUP_ADMIN_MANAGE,
+        effect="REVOKED",
+        actor_username="admin",
+        actor_user_id=int(admin["id"]),
+        reason="test revocation",
+        expected_current_event_id=None,
+    )
+    client = followup_state_app.test_client()
+    assert client.post(
+        "/auth/login",
+        data={"username": "admin", "password": "admin"},
+    ).status_code in {302, 303}
+
+    response = client.post(
+        f"/followups/{task_id}/resolve",
+        data={"status": "done"},
+    )
+
+    assert response.status_code in {302, 303}
+    assert db.execute(
+        "SELECT status FROM followup_tasks WHERE id=?",
+        (task_id,),
+    ).fetchone()["status"] == "open"
+
+
+def test_admin_followup_rejects_unknown_terminal_status(followup_state_app):
+    from src.adapters.sqlite.core import get_db
+
+    db = get_db()
+    task_id = _admin_task(db, _patient(db))
+    client = followup_state_app.test_client()
+    assert client.post(
+        "/auth/login",
+        data={"username": "admin", "password": "admin"},
+    ).status_code in {302, 303}
+
+    response = client.post(
+        f"/followups/{task_id}/resolve",
+        data={"status": "hidden-by-typo"},
+    )
+
+    assert response.status_code in {302, 303}
+    assert db.execute(
+        "SELECT status FROM followup_tasks WHERE id=?",
+        (task_id,),
+    ).fetchone()["status"] == "open"
