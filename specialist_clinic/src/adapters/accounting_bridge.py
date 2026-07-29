@@ -18,6 +18,28 @@ from typing import Any, Optional
 from src.adapters.accounting_path import accounting_db_path
 
 
+def _patient_name_expression(
+    connection: sqlite3.Connection,
+    *,
+    alias: str = "",
+) -> str:
+    prefix = f"{alias}." if alias else ""
+    columns = {
+        str(row["name"])
+        for row in connection.execute("PRAGMA table_info(patients)").fetchall()
+    }
+    if "full_name" in columns:
+        return f"COALESCE({prefix}full_name,'')"
+    if "name" in columns and "family_name" in columns:
+        return (
+            f"TRIM(COALESCE({prefix}name,'') || ' ' || "
+            f"COALESCE({prefix}family_name,''))"
+        )
+    if "name" in columns:
+        return f"COALESCE({prefix}name,'')"
+    raise sqlite3.OperationalError("accounting patient name columns are unavailable")
+
+
 def _connect_ro() -> Optional[sqlite3.Connection]:
     """Open a read-only connection to the accounting DB, or None if unavailable."""
     path = accounting_db_path()
@@ -40,7 +62,13 @@ def is_available() -> bool:
     if conn is None:
         return False
     try:
-        conn.execute("SELECT 1 FROM patients LIMIT 1")
+        name = _patient_name_expression(conn)
+        conn.execute(
+            f"""SELECT id,{name} AS full_name,national_id,phone_number,
+                       gender,birthdate,address,insurance_type,
+                       insurance_expiry,is_foreign
+                FROM patients LIMIT 1"""
+        )
         return True
     except Exception:
         return False
@@ -55,14 +83,15 @@ def search_patients(query: str, limit: int = 30) -> list[dict[str, Any]]:
     if conn is None:
         return []
     try:
+        name = _patient_name_expression(conn)
         like = f"%{q}%"
         if q:
             rows = conn.execute(
-                """
-                SELECT id, full_name, national_id, phone_number, gender, birthdate,
+                f"""
+                SELECT id, {name} AS full_name, national_id, phone_number, gender, birthdate,
                        address, insurance_type, is_foreign
                 FROM patients
-                WHERE full_name LIKE ? OR COALESCE(national_id,'') LIKE ? OR COALESCE(phone_number,'') LIKE ?
+                WHERE {name} LIKE ? OR COALESCE(national_id,'') LIKE ? OR COALESCE(phone_number,'') LIKE ?
                 ORDER BY id DESC
                 LIMIT ?
                 """,
@@ -70,8 +99,8 @@ def search_patients(query: str, limit: int = 30) -> list[dict[str, Any]]:
             ).fetchall()
         else:
             rows = conn.execute(
-                """
-                SELECT id, full_name, national_id, phone_number, gender, birthdate,
+                f"""
+                SELECT id, {name} AS full_name, national_id, phone_number, gender, birthdate,
                        address, insurance_type, is_foreign
                 FROM patients
                 ORDER BY id DESC
@@ -93,9 +122,10 @@ def get_patient_by_national_id(national_id: str) -> Optional[dict[str, Any]]:
     if conn is None:
         return None
     try:
+        name = _patient_name_expression(conn)
         row = conn.execute(
-            """
-            SELECT id, full_name, national_id, phone_number, gender, birthdate,
+            f"""
+            SELECT id, {name} AS full_name, national_id, phone_number, gender, birthdate,
                    address, insurance_type, insurance_expiry, is_foreign
             FROM patients WHERE national_id = ?
             """,
@@ -123,10 +153,11 @@ def fetch_closed_invoices(last_id: int = 0, floor_date: Optional[str] = None,
     if conn is None:
         return []
     try:
+        name = _patient_name_expression(conn, alias="p")
         rows = conn.execute(
-            """
+            f"""
             SELECT i.id AS invoice_id, i.patient_id, i.work_date, i.closed_at,
-                   i.total_amount, p.national_id, p.full_name, p.phone_number
+                   i.total_amount, p.national_id, {name} AS full_name, p.phone_number
             FROM invoices i JOIN patients p ON p.id = i.patient_id
             WHERE i.status = 'closed'
               AND (i.id > ? OR (? IS NOT NULL AND i.closed_at >= ?))
@@ -150,9 +181,10 @@ def fetch_open_visit_invoices(work_date: Optional[str] = None,
     if conn is None:
         return []
     try:
+        name = _patient_name_expression(conn, alias="p")
         base = (
             "SELECT i.id AS invoice_id, i.patient_id, i.opened_at, i.work_date, "
-            "       p.national_id, p.full_name, p.phone_number "
+            f"       p.national_id, {name} AS full_name, p.phone_number "
             "FROM invoices i JOIN patients p ON p.id = i.patient_id "
             "WHERE i.status='open' AND EXISTS (SELECT 1 FROM visits v WHERE v.invoice_id = i.id)"
         )
@@ -200,9 +232,10 @@ def get_patient_by_id(accounting_patient_id: int) -> Optional[dict[str, Any]]:
     if conn is None:
         return None
     try:
+        name = _patient_name_expression(conn)
         row = conn.execute(
-            """
-            SELECT id, full_name, national_id, phone_number, gender, birthdate,
+            f"""
+            SELECT id, {name} AS full_name, national_id, phone_number, gender, birthdate,
                    address, insurance_type, insurance_expiry, is_foreign
             FROM patients WHERE id = ?
             """,

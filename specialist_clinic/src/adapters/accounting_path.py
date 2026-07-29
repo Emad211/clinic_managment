@@ -6,13 +6,32 @@ an app context falls back to Config.
 """
 from __future__ import annotations
 
+import os
+
 from flask import current_app, has_app_context
 
 from src.config.settings import Config
 
 
 def accounting_db_path() -> str:
+    environment = str(os.environ.get("ACCOUNTING_DB_PATH") or "").strip()
+    if environment:
+        return environment
     if has_app_context():
+        try:
+            from src.adapters.sqlite.system_settings_repo import (
+                SystemSettingsRepository,
+            )
+
+            saved = str(
+                SystemSettingsRepository().get("accounting_db_path", "") or ""
+            ).strip()
+            if saved:
+                return saved
+        except Exception:
+            # Bootstrap/readiness still has the app-config fallback while the
+            # specialist database is unavailable or has not been initialized.
+            pass
         value = current_app.config.get("ACCOUNTING_DB_PATH")
         if value:
             return str(value)

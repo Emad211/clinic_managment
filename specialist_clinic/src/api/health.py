@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 
 from flask import Blueprint, jsonify
 
+from src.adapters import accounting_bridge, specialist_accounting_invoice_reader
 from src.adapters.sqlite.clinical_audit_integrity_schema import (
     ensure_clinical_audit_integrity_storage,
 )
@@ -293,6 +294,10 @@ def _readiness_checks() -> dict[str, bool]:
     return {
         "database": integrity_ok,
         "schema": schema_ok,
+        "accounting_bridge": (
+            accounting_bridge.is_available()
+            and specialist_accounting_invoice_reader.is_available()
+        ),
         "first_run": not FirstRunService().setup_required(),
         "activation": activation_ok,
         "audit": audit_ok,
@@ -321,6 +326,7 @@ def ready():
         checks = {
             "database": False,
             "schema": False,
+            "accounting_bridge": False,
             "first_run": False,
             "activation": False,
             "audit": False,
@@ -351,6 +357,7 @@ def details():
         checks = {
             "database": False,
             "schema": False,
+            "accounting_bridge": False,
             "first_run": False,
             "activation": False,
             "audit": False,

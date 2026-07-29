@@ -323,6 +323,7 @@ def test_health_is_phi_free_and_permission_protected(secure_app):
     assert set(payload["checks"]) == {
         "database",
         "schema",
+        "accounting_bridge",
         "first_run",
         "activation",
         "audit",

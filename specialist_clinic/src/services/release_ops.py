@@ -117,10 +117,24 @@ def run_preflight(app, *, host: str | None = None) -> dict[str, Any]:
         except (OSError, sqlite3.Error):
             foreign_keys_ok = False
     checks.append(_check("database_foreign_keys", foreign_keys_ok))
+    with app.app_context():
+        from src.adapters.accounting_path import accounting_db_path
+        from src.services.accounting_connection_service import (
+            AccountingConnectionError,
+            AccountingConnectionService,
+        )
+
+        resolved_accounting_path = accounting_db_path()
+        try:
+            accounting_read_only_ok = AccountingConnectionService().validate(
+                resolved_accounting_path
+            ).ok
+        except AccountingConnectionError:
+            accounting_read_only_ok = False
     checks.append(
         _check(
             "accounting_bridge_read_only",
-            _accounting_read_only_check(app.config["ACCOUNTING_DB_PATH"]),
+            accounting_read_only_ok,
         )
     )
     checks.extend(_asset_checks(app))
@@ -197,6 +211,12 @@ def _create_accounting_fixture(path: Path) -> None:
                 id INTEGER PRIMARY KEY, invoice_id INTEGER,
                 patient_id INTEGER, procedure_type TEXT,
                 price INTEGER DEFAULT 0
+            );
+            CREATE TABLE invoice_item_payments (
+                invoice_id INTEGER,
+                item_type TEXT,
+                item_id INTEGER,
+                is_paid INTEGER DEFAULT 0
             );
             """
         )
