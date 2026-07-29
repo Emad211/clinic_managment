@@ -260,6 +260,9 @@ def test_worklist_shows_structured_contact_ui_and_staff_permission(
     ).status_code in {302, 303}
     html = client.get("/followups/").get_data(as_text=True)
     assert "ثبت نتیجهٔ تماس" in html
+    assert 'class="contact-result-details"' in html
+    assert "contact-result-form" in html
+    assert "contact-result-grid" in html
     assert "آخرین تماس" in html
     assert "پاسخ داد" in html
     assert "رزرو نوبت فقط مرحلهٔ BOOKED است" in html

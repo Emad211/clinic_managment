@@ -309,6 +309,44 @@ label{display:block;color:var(--muted);font-size:12px;margin:var(--s3) 0 var(--s
 .row{display:flex;gap:var(--s3);align-items:flex-end;flex-wrap:wrap;}
 .field{flex:1;min-width:120px;}
 .fld{display:flex;flex-direction:column;gap:5px;margin:0;}
+
+/* Worklist contact outcome: keep the operational form readable inside a table
+   action cell without coupling its fields to the cell's intrinsic width. */
+.contact-result-details{margin-bottom:var(--s2);}
+.contact-result-form{
+    width:min(620px,calc(100vw - var(--sidebar-w) - 96px));
+    min-width:560px;
+    margin-top:var(--s2);
+    margin-bottom:0;
+    padding:var(--s4);
+}
+.contact-result-grid{
+    display:grid;
+    grid-template-columns:repeat(2,minmax(220px,1fr));
+    gap:var(--s3);
+    align-items:end;
+}
+.contact-result-grid .fld{min-width:0;}
+.contact-result-grid input,.contact-result-grid select{width:100%;min-width:0;}
+.contact-result-actions{
+    display:flex;
+    justify-content:flex-start;
+    margin-top:var(--s3);
+}
+@media(max-width:900px){
+    .contact-result-form{
+        width:min(620px,calc(100vw - 64px));
+    }
+}
+@media(max-width:620px){
+    .contact-result-form{
+        width:calc(100vw - 64px);
+        min-width:0;
+        padding:var(--s3);
+    }
+    .contact-result-grid{grid-template-columns:minmax(0,1fr);}
+    .contact-result-actions .btn{width:100%;}
+}
 .fld > label{margin:0;font-size:11.5px;}
 .fld input,.fld select{padding:9px 11px;width:100%;}
 .input-ltr{direction:ltr;text-align:left;}

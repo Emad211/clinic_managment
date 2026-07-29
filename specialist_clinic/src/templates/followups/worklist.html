@@ -118,19 +118,19 @@
                                 </div>
                                 {% endif %}
                                 {% if permissions.get('followup.contact.record') %}
-                                <details style="margin-bottom:var(--s2);">
+                                <details class="contact-result-details">
                                     <summary class="btn btn-sm btn-ghost">ثبت نتیجهٔ تماس</summary>
-                                    <form method="post" action="{{ url_for('followups.record_contact', task_id=t.id) }}" class="card card-soft" style="min-width:340px;margin-top:var(--s2);">
+                                    <form method="post" action="{{ url_for('followups.record_contact', task_id=t.id) }}" class="card card-soft contact-result-form">
                                         <input type="hidden" name="idempotency_key" value="{{ t.contact_form_token }}">
-                                        <div class="row">
+                                        <div class="contact-result-grid">
                                             <div class="fld"><label>کانال</label><select name="channel">{% for key,label in contact_channel_labels.items() %}<option value="{{ key }}">{{ label }}</option>{% endfor %}</select></div>
                                             <div class="fld"><label>نتیجه</label><select name="outcome">{% for key,label in contact_outcome_labels.items() %}<option value="{{ key }}">{{ label }}</option>{% endfor %}</select></div>
-                                        </div>
-                                        <div class="row">
                                             <div class="fld"><label>تماس بعدی</label><input class="jdate" name="next_contact_at" placeholder="در صورت نیاز"></div>
                                             <div class="fld"><label>توضیح</label><input name="note"></div>
                                         </div>
-                                        <button class="btn btn-sm" type="submit">ثبت رویداد تماس</button>
+                                        <div class="contact-result-actions">
+                                            <button class="btn btn-sm" type="submit">ثبت رویداد تماس</button>
+                                        </div>
                                     </form>
                                 </details>
                                 {% endif %}
