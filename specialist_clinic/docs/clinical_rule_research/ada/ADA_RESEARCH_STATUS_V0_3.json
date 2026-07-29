@@ -1,0 +1,16 @@
+{
+  "version": "0.3",
+  "date": "2026-07-30",
+  "guideline": "ADA Standards of Care in Diabetes—2026",
+  "section_6_recommendation_records": 24,
+  "studies_screened_rec_6_19": 10,
+  "fulltext_extractions": 7,
+  "preliminary_rob_article_appraisals": 7,
+  "open_conflicts": 12,
+  "rule_candidates": 0,
+  "accepted_rules": 0,
+  "licensing": "HOLD",
+  "review_model": "two-pass same evaluator; not independent human appraisal",
+  "google_sheet_id": "1cJT8ViUgt8e8C02TksLNtUi7Gcp9QiFXjHHRX3EMV8Q",
+  "workspace_sha256": "c2896e443826efe3e740f863b7ed3e174b0d003b9808f329e1da164f4a4c87f7"
+}
