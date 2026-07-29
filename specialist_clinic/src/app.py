@@ -498,12 +498,18 @@ def create_app(test_config=None):
     return app
 
 
-def open_browser(*, port: int | None = None):
+def open_browser(*, port: int | None = None) -> bool:
     url = f"http://127.0.0.1:{port or Config.PORT}/"
+    if os.name == "nt":
+        try:
+            os.startfile(url)
+            return True
+        except (AttributeError, OSError):
+            pass
     try:
-        webbrowser.open(url)
-    except Exception:
-        pass
+        return bool(webbrowser.open(url, new=2))
+    except (OSError, webbrowser.Error):
+        return False
 
 
 if __name__ == "__main__":

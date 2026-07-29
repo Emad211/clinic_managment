@@ -5,8 +5,12 @@ import argparse
 import json
 import os
 from pathlib import Path
+import socket
 import sys
 import threading
+import time
+from urllib.error import HTTPError, URLError
+from urllib.request import urlopen
 
 
 if getattr(sys, "frozen", False):
@@ -22,8 +26,86 @@ from src.config.settings import Config
 from src.services.backup_integrity import BackupIntegrityService
 
 
+_CONFIGURABLE_STARTUP_CHECKS = frozenset({"accounting_bridge_read_only"})
+
+
 def _print(payload) -> None:
     print(json.dumps(payload, ensure_ascii=False, indent=2, default=str))
+
+
+def _clinic_url(port: int, path: str = "/") -> str:
+    return f"http://127.0.0.1:{int(port)}{path}"
+
+
+def _clinic_is_live(port: int, *, timeout: float = 0.6) -> bool:
+    try:
+        with urlopen(_clinic_url(port, "/health/live"), timeout=timeout) as response:
+            if response.status != 200:
+                return False
+            payload = json.loads(response.read().decode("utf-8"))
+            return payload == {"status": "ok"}
+    except (HTTPError, URLError, OSError, ValueError, json.JSONDecodeError):
+        return False
+
+
+def _loopback_port_in_use(port: int, *, timeout: float = 0.3) -> bool:
+    try:
+        with socket.create_connection(("127.0.0.1", int(port)), timeout=timeout):
+            return True
+    except OSError:
+        return False
+
+
+def _launch_browser(port: int) -> bool:
+    from src.app import open_browser
+
+    return bool(open_browser(port=port))
+
+
+def _open_browser_when_live(
+    port: int,
+    *,
+    timeout: float = 20.0,
+    poll_interval: float = 0.2,
+) -> bool:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if _clinic_is_live(port):
+            return _launch_browser(port)
+        time.sleep(poll_interval)
+    return False
+
+
+def _startup_blockers(report: dict) -> list[dict]:
+    return [
+        item
+        for item in report.get("checks", [])
+        if item.get("required")
+        and not item.get("ok")
+        and item.get("name") not in _CONFIGURABLE_STARTUP_CHECKS
+    ]
+
+
+def _notify_startup_error(detail: str) -> None:
+    message = (
+        "کلینیک تخصصی اجرا نشد.\n\n"
+        f"{detail}\n\n"
+        "در صورت تکرار، فایل clinic.log کنار برنامه را بررسی کنید."
+    )
+    if getattr(sys, "frozen", False) and os.name == "nt":
+        try:
+            import ctypes
+
+            ctypes.windll.user32.MessageBoxW(
+                None,
+                message,
+                "خطای راه‌اندازی کلینیک تخصصی",
+                0x10,
+            )
+            return
+        except (AttributeError, OSError):
+            pass
+    print(message, file=sys.stderr)
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -65,7 +147,18 @@ def _create_runtime_app():
 
 
 def _serve(args) -> int:
-    from src.app import create_app, open_browser
+    browser_enabled = Config.OPEN_BROWSER and not args.no_browser
+    if _clinic_is_live(args.port):
+        if browser_enabled:
+            _launch_browser(args.port)
+        return 0
+    if _loopback_port_in_use(args.port):
+        raise RuntimeError(
+            f"پورت {args.port} توسط برنامهٔ دیگری اشغال شده است. "
+            "برنامهٔ مزاحم را ببندید یا کلینیک را با پورت دیگری اجرا کنید."
+        )
+
+    from src.app import create_app
     from src.common.network_policy import validate_server_exposure
     from src.services.first_run_service import FirstRunService
     from src.services.release_ops import run_preflight
@@ -79,9 +172,13 @@ def _serve(args) -> int:
         setup_complete=setup_complete,
     )
     report = run_preflight(app, host=args.host)
-    if not report["required_ok"]:
+    blockers = _startup_blockers(report)
+    if blockers:
         _print(report)
-        return 2
+        failed_names = "، ".join(str(item.get("name")) for item in blockers)
+        raise RuntimeError(
+            "کنترل‌های ضروری راه‌اندازی ناموفق بودند: " + failed_names
+        )
 
     app.config["START_SCHEDULER"] = True
     if setup_complete:
@@ -89,9 +186,11 @@ def _serve(args) -> int:
 
         init_scheduler(app)
     if app.config.get("OPEN_BROWSER", True) and not args.no_browser:
-        threading.Timer(
-            1.5,
-            lambda: open_browser(port=args.port),
+        threading.Thread(
+            target=_open_browser_when_live,
+            args=(args.port,),
+            name="browser-launch",
+            daemon=True,
         ).start()
     try:
         from waitress import serve
@@ -212,4 +311,5 @@ if __name__ == "__main__":
         raise SystemExit(main())
     except Exception as exc:
         _print({"status": "fail", "error": type(exc).__name__, "detail": str(exc)})
+        _notify_startup_error(str(exc))
         raise SystemExit(2)
