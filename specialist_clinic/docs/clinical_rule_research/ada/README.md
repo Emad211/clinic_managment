@@ -4,7 +4,7 @@
 
 - منبع مادر کاندیدا: نسخهٔ کامل `ADA Standards of Care in Diabetes—2026`
 - گایدلاین خلاصه‌شده فقط برای navigation و context است.
-- Ruleهای قدیمی ADA/دیابت در سامانه هیچ اعتبار بالینی ندارند.
+- تمام Ruleهای قدیمی سامانه از نظر بالینی بی‌اعتبارند.
 - Rule candidates: `0`
 - Accepted Rules: `0`
 - Licensing: `HOLD`
@@ -18,7 +18,7 @@ Scope، no-pass gate، source boundaries، Drive/Excel workflow و ممنوعی�
 
 ### ADA-01 — Guideline Identity and Appraisal
 
-نسخه، methodology، search cutoff، evidence grading، disclosures، Living Standards و AGREE II بررسی می‌شوند. نتیجهٔ فعلی: ADA 2026 برای پژوهش `USE WITH CONDITIONS` است، نه یک Rule Library اجرایی.
+نسخه، methodology، search cutoff، evidence grading، disclosures، Living Standards و AGREE II بررسی می‌شوند. ADA 2026 برای پژوهش `USE WITH CONDITIONS` است، نه یک Rule Library اجرایی.
 
 ### ADA-02 — Recommendation Inventory
 
@@ -36,19 +36,30 @@ Scope، no-pass gate، source boundaries، Drive/Excel workflow و ممنوعی�
 
 Golden cases، retrospective، SILENT، pilot، clinical approval و technical approval پیش از activation الزامی‌اند.
 
-## وضعیت نسخه v0.3
+## وضعیت نسخه v0.4
 
-- بخش ۶: ۲۴ Recommendation Record دوپاسی
+- بخش ۶: `24` Recommendation Record دوپاسی
 - Recommendation 6.19: نخستین Evidence Dossier
-- مطالعات غربال‌شده: ۱۰
-- استخراج متن کامل: ۷
-- ارزیابی مقدماتی Risk of Bias: ۷
-- تعارض باز: ۱۲
-- Rule Candidate: صفر
+- مطالعات غربال‌شده: `11`
+- استخراج متن کامل: `9`
+- Article-level appraisal: `9`
+- ارزیابی رسمی تکمیل‌شده:
+  - AMSTAR 2 برای Seidu 2019
+  - ROBINS-I برای Christiaens 2025
+  - ROBINS-I تطبیقی برای Rode 2024
+- تعارض باز: `12`
+- Rule Candidate: `0`
+- Accepted Rule: `0`
 
-## اصل علمی فعلی برای 6.19
+## نتیجهٔ رسمی فعلی برای Recommendation 6.19
 
-مطالعات مستقیم پس از severe hypoglycemia عمدتاً شکاف مدیریت را نشان می‌دهند. این شواهد به‌تنهایی ثابت نمی‌کند که یک medication action مشخص پس از یک رخداد، recurrence یا net harm را کاهش می‌دهد. broad deintensification به علت شواهد غیرمستقیم، منافع cardiorenal و یک safety signal مشاهده‌ای در HOLD می‌ماند.
+- مطالعات پس از severe hypoglycemia، شکاف مهم مرور و پیگیری را نشان می‌دهند.
+- شواهد مستقیم و کم‌سوگیری برای یک medication action واحد پس از یک رخداد تأییدشده پیدا نشده است.
+- Seidu 2019 برای سنتز اصلی سود–زیان `AMSTAR 2 CRITICALLY LOW` است و فقط به‌عنوان citation map استفاده می‌شود.
+- Christiaens 2025 یک safety-conflict signal مهم است، ولی `ROBINS-I CRITICAL` دارد و اثبات علی نیست.
+- Rode 2024 شواهد مستقیم‌تری دربارهٔ گردش‌کار و recurrence ارائه می‌دهد، اما اثر علی تغییر دارو یا سطح مراقبت را ثابت نمی‌کند.
+- کاهش، قطع یا تعویض خودکار دارو همچنان `BLOCKED` است.
+- یک trigger احتمالی برای مرور پزشک هنوز فقط Research Concept است و Rule Candidate نیست.
 
 ## اسناد
 
@@ -56,5 +67,7 @@ Golden cases، retrospective، SILENT، pilot، clinical approval و technical a
 - `ADA-02_SECTION6_RECOMMENDATION_INVENTORY_FA.md`
 - `ADA-03_REC_6_19_EVIDENCE_PROTOCOL_FA.md`
 - `ADA-03_REC_6_19_INITIAL_EVIDENCE_MAP_FA.md`
+- `ADA-03_REC_6_19_FORMAL_METHOD_APPRAISAL_FA.md`
 - `WORKSPACE_LINKS.md`
 - `ADA_RESEARCH_STATUS_V0_3.json`
+- `ADA_RESEARCH_STATUS_V0_4.json`
