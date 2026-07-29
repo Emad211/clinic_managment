@@ -341,8 +341,12 @@ def reconcile_messages():
 def send_campaign(cid):
     result = run_campaign(cid)
     if 'error' in result:
-        flash("پنل پیامک فعال تنظیم نشده است" if result.get('reason') == 'provider_unconfigured'
-              else "خطا در ارسال کمپین")
+        if result.get('reason') == 'provider_unconfigured':
+            flash("پنل پیامک فعال تنظیم نشده است")
+        elif result.get('reason') == 'quiet':
+            flash("خارج از ساعت مجاز ارسال است؛ کمپین بدون ارسال باقی ماند.")
+        else:
+            flash("خطا در ارسال کمپین")
     else:
         msg = f"پنل پذیرفت: {result.get('accepted', result.get('sent', 0))}"
         if result.get('pending'):

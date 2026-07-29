@@ -306,6 +306,86 @@ class TestApprovalProductionLifecycle:
         assert svc.repo.get_approval(second)["status"] == "pending"
         assert _counts(pid) == (1, 1)
 
+    def test_daily_cap_counts_a_prior_non_engagement_send(self, specialist_app):
+        """The cap is global per patient, not limited to engagement_dispatch."""
+        from src.adapters.sqlite.core import get_db
+        from src.adapters.sqlite.sms_repo import SmsRepository
+        from src.services.engagement_service import EngagementService
+        from src.services.sms.campaign_service import send_single
+
+        svc = EngagementService()
+        pid = _enroll("2220000015", "سقف بین مسیرها", phone_number="09120000215")
+        SmsRepository().set_setting("engagement_daily_cap", "1")
+        _force_quiet(False)
+
+        assert send_single(
+            pid,
+            "09120000215",
+            "پیام عملیاتی اول",
+            idempotency_key="manual:cross-path-cap:first",
+            source_type="manual",
+            purpose="CARE",
+        ) is True
+        aid = _queue_one(svc, pid, "cap:after-manual")
+
+        result = svc.approve(aid, decided_by="admin")
+
+        assert result == {"ok": False, "reason": "daily_cap"}
+        assert svc.repo.get_approval(aid)["status"] == "pending"
+        assert get_db().execute(
+            "SELECT COUNT(*) c FROM sms_messages WHERE patient_link_id=?",
+            (pid,),
+        ).fetchone()["c"] == 1
+
+    def test_overnight_allowed_window_handles_midnight(self, specialist_app):
+        """Allowed windows that cross midnight must not be inverted."""
+        from datetime import datetime
+        from src.adapters.sqlite.sms_repo import SmsRepository
+        from src.services.sms.guardrail_service import SmsGuardrailService
+
+        sms = SmsRepository()
+        sms.set_setting("engagement_quiet_start", "20:00")
+        sms.set_setting("engagement_quiet_end", "06:00")
+        guardrails = SmsGuardrailService(sms)
+
+        assert guardrails.is_outside_allowed_hours(
+            datetime(2026, 7, 30, 23, 30)
+        ) is False
+        assert guardrails.is_outside_allowed_hours(
+            datetime(2026, 7, 30, 3, 30)
+        ) is False
+        assert guardrails.is_outside_allowed_hours(
+            datetime(2026, 7, 30, 12, 0)
+        ) is True
+
+    def test_campaign_stops_before_preparation_outside_allowed_hours(
+        self, specialist_app, monkeypatch
+    ):
+        """A blocked campaign must not freeze or mutate its audience."""
+        from src.services.sms.campaign_execution_service import (
+            GovernedCampaignExecutionService,
+        )
+
+        service = GovernedCampaignExecutionService()
+        monkeypatch.setattr(
+            service.guardrails,
+            "is_outside_allowed_hours",
+            lambda: True,
+        )
+
+        def must_not_prepare(*args, **kwargs):
+            raise AssertionError("campaign preparation must not run while blocked")
+
+        monkeypatch.setattr(service.economics, "prepare_execution", must_not_prepare)
+
+        result = service.run(999)
+
+        assert result == {
+            "error": "outside allowed SMS hours",
+            "reason": "quiet",
+            "total": 0,
+        }
+
     def test_accepted_message_is_linked_and_second_click_is_idempotent(self, specialist_app):
         from src.adapters.sqlite.core import get_db
         from src.services.engagement_service import EngagementService

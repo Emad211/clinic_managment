@@ -15,6 +15,7 @@ from src.services.sms.governance_service import (
     SmsGovernanceService,
     canonicalize_iran_mobile,
 )
+from src.services.sms.guardrail_service import SmsGuardrailService
 from src.services.sms.provider import (
     OutgoingSms,
     UnconfiguredProvider,
@@ -132,6 +133,7 @@ def send_single(
     source_ref: str | None = None,
     purpose: str = "CARE",
     created_by: str = "system:sms",
+    override_quiet: bool = False,
 ) -> bool:
     """Send one governed SMS; return provider acceptance, never delivery."""
     key = str(idempotency_key or "").strip()
@@ -147,6 +149,13 @@ def send_single(
     if isinstance(provider, UnconfiguredProvider):
         return False
     dispatch = SmsDispatchRepository()
+    existing = dispatch.get_by_idempotency(key)
+    if existing:
+        return existing.get("status") in {"accepted", "delivered", "sent"}
+    SmsGuardrailService().require_allowed(
+        int(patient_link_id),
+        override_quiet=override_quiet,
+    )
     message_id, _created = dispatch.create_message(
         campaign_id=campaign_id,
         patient_link_id=int(patient_link_id),

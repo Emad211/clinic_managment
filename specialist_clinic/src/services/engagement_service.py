@@ -28,11 +28,11 @@ from src.services.sms.governance_service import (
     SmsConsentDenied,
     SmsGovernanceService,
 )
+from src.services.sms.guardrail_service import (
+    SmsGuardrailDenied,
+    SmsGuardrailService,
+)
 
-
-QUIET_START_DEFAULT = "08:00"
-QUIET_END_DEFAULT = "21:00"
-DAILY_CAP_DEFAULT = 1
 
 REASON_BY_EVENT = {
     "lapsed": "lapsed",
@@ -48,27 +48,10 @@ class EngagementService:
         self.sms = SmsRepository()
 
     def _quiet_now(self) -> bool:
-        start = self.sms.get_setting(
-            "engagement_quiet_start",
-            QUIET_START_DEFAULT,
-        )
-        end = self.sms.get_setting(
-            "engagement_quiet_end",
-            QUIET_END_DEFAULT,
-        )
-        now = iran_now().strftime("%H:%M")
-        return not (start <= now <= end)
+        return SmsGuardrailService(self.sms).is_outside_allowed_hours()
 
     def _daily_cap(self) -> int:
-        try:
-            return int(
-                self.sms.get_setting(
-                    "engagement_daily_cap",
-                    DAILY_CAP_DEFAULT,
-                )
-            )
-        except (TypeError, ValueError):
-            return DAILY_CAP_DEFAULT
+        return SmsGuardrailService(self.sms).daily_cap()
 
     def _provider_ready(self) -> bool:
         if self.sms.provider_configured():
@@ -358,12 +341,6 @@ class EngagementService:
         if approval.get("event_key") in RETIRED_CLINICAL_EVENTS:
             self.repo.set_status(approval_id, "rejected", "system:logic-consolidation")
             return {"ok": False, "reason": "retired_clinical_event"}
-        if self._quiet_now() and not override:
-            return {"ok": False, "reason": "quiet"}
-        if self.repo.sms_count_today(
-            approval["patient_link_id"]
-        ) >= self._daily_cap():
-            return {"ok": False, "reason": "daily_cap"}
         patient = db.execute(
             """SELECT id, full_name, phone_number
                FROM patient_links WHERE id=?""",
@@ -387,6 +364,13 @@ class EngagementService:
         )
         if not body.strip():
             return {"ok": False, "reason": "empty"}
+        try:
+            SmsGuardrailService(self.sms).require_allowed(
+                int(approval["patient_link_id"]),
+                override_quiet=override,
+            )
+        except SmsGuardrailDenied as exc:
+            return {"ok": False, "reason": exc.reason}
         if not self._provider_ready():
             return {"ok": False, "reason": "provider_unconfigured"}
         if not self.repo.claim_approval(approval_id):
@@ -404,7 +388,15 @@ class EngagementService:
                 source_ref=str(approval_id),
                 purpose="CARE",
                 created_by=decided_by,
+                override_quiet=override,
             )
+        except SmsGuardrailDenied as exc:
+            self.repo.finish_approval(
+                approval_id,
+                "pending",
+                error=None,
+            )
+            return {"ok": False, "reason": exc.reason}
         except Exception as exc:
             self.repo.finish_approval(
                 approval_id,

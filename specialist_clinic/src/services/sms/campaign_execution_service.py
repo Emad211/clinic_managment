@@ -19,6 +19,10 @@ from src.services.sms.governance_service import (
     SmsGovernanceService,
     canonicalize_iran_mobile,
 )
+from src.services.sms.guardrail_service import (
+    SmsGuardrailDenied,
+    SmsGuardrailService,
+)
 from src.services.sms.provider import OutgoingSms, UnconfiguredProvider, get_provider
 
 
@@ -29,6 +33,7 @@ class GovernedCampaignExecutionService:
         self.economics = CampaignEconomicsService()
         self.dispatch = SmsDispatchRepository()
         self.governance = SmsGovernanceService()
+        self.guardrails = SmsGuardrailService(self.sms)
 
     @staticmethod
     def _fa_num(number: int) -> str:
@@ -74,6 +79,12 @@ class GovernedCampaignExecutionService:
         *,
         actor_username: str = "system:campaign-execution",
     ) -> dict:
+        if self.guardrails.is_outside_allowed_hours():
+            return {
+                "error": "outside allowed SMS hours",
+                "reason": "quiet",
+                "total": 0,
+            }
         prepared = self.economics.prepare_execution(
             int(campaign_id), actor_username=actor_username
         )
@@ -114,7 +125,7 @@ class GovernedCampaignExecutionService:
             "Informational" if purpose == "CARE" else "PromotionalToCustomers"
         )
         claimed: list[tuple[int, str, str, str]] = []
-        consent_skipped = invalid_phone = already_processed = 0
+        consent_skipped = invalid_phone = already_processed = guardrail_skipped = 0
         try:
             for member in prepared["members"]:
                 patient_id = int(member["patient_link_id"])
@@ -132,6 +143,11 @@ class GovernedCampaignExecutionService:
                     continue
                 except ValueError:
                     invalid_phone += 1
+                    continue
+                try:
+                    self.guardrails.require_allowed(patient_id)
+                except SmsGuardrailDenied:
+                    guardrail_skipped += 1
                     continue
 
                 body = self._message_body(campaign, member)
@@ -234,6 +250,7 @@ class GovernedCampaignExecutionService:
                 "excluded": int(prepared["snapshot"]["excluded_count"]),
                 "consent_skipped_after_freeze": consent_skipped,
                 "invalid_phone_after_freeze": invalid_phone,
+                "guardrail_skipped": guardrail_skipped,
                 "lifecycle": reconciled["lifecycle"],
                 "measurement_status": reconciled["projection"][
                     "measurement_status"
