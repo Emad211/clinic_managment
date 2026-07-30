@@ -26,7 +26,7 @@ Scope، no-pass gate، source boundaries، Drive/Excel workflow و ممنوعی�
 
 ### ADA-03 — Evidence Dossiers
 
-برای هر Recommendation منتخب، citation chain، supplemental search، article screening، full-text extraction، Risk of Bias، directness و conflict matrix ساخته می‌شود.
+برای هر Recommendation منتخب، citation chain، supplemental search، article screening، full-text extraction، Risk of Bias، directness، cross-section dependencies و conflict matrix ساخته می‌شود.
 
 ### ADA-04 — Formalization Readiness
 
@@ -36,18 +36,16 @@ Scope، no-pass gate، source boundaries، Drive/Excel workflow و ممنوعی�
 
 Golden cases، retrospective، SILENT، pilot، clinical approval و technical approval پیش از activation الزامی‌اند.
 
-## وضعیت نسخه v0.4
+## وضعیت نسخه v0.5
 
 - بخش ۶: `24` Recommendation Record دوپاسی
 - Recommendation 6.19: نخستین Evidence Dossier
 - مطالعات غربال‌شده: `11`
 - استخراج متن کامل: `9`
 - Article-level appraisal: `9`
-- ارزیابی رسمی تکمیل‌شده:
-  - AMSTAR 2 برای Seidu 2019
-  - ROBINS-I برای Christiaens 2025
-  - ROBINS-I تطبیقی برای Rode 2024
-- تعارض باز: `12`
+- ارزیابی رسمی روش‌شناختی: `3`
+- وابستگی بین‌بخشی ثبت‌شده: `14`
+- تعارض باز: `15`
 - Rule Candidate: `0`
 - Accepted Rule: `0`
 
@@ -55,9 +53,12 @@ Golden cases، retrospective، SILENT، pilot، clinical approval و technical a
 
 - مطالعات پس از severe hypoglycemia، شکاف مهم مرور و پیگیری را نشان می‌دهند.
 - شواهد مستقیم و کم‌سوگیری برای یک medication action واحد پس از یک رخداد تأییدشده پیدا نشده است.
-- Seidu 2019 برای سنتز اصلی سود–زیان `AMSTAR 2 CRITICALLY LOW` است و فقط به‌عنوان citation map استفاده می‌شود.
+- Seidu 2019 برای سنتز اصلی سود–زیان `AMSTAR 2 CRITICALLY LOW` است و فقط citation map محسوب می‌شود.
 - Christiaens 2025 یک safety-conflict signal مهم است، ولی `ROBINS-I CRITICAL` دارد و اثبات علی نیست.
 - Rode 2024 شواهد مستقیم‌تری دربارهٔ گردش‌کار و recurrence ارائه می‌دهد، اما اثر علی تغییر دارو یا سطح مراقبت را ثابت نمی‌کند.
+- Sections 9، 10، 11 و 13 نشان می‌دهند تغییر درمان باید indication، CKD، ASCVD، HF، cognition، function و burden را هم‌زمان لحاظ کند.
+- داروهای دارای منفعت مستقل قلبی–کلیوی نباید به‌دلیل A1C یا یک رخداد هیپوگلیسمی به‌صورت عمومی حذف شوند.
+- deintensification، cessation، switch و simplification چهار intervention یکسان نیستند.
 - کاهش، قطع یا تعویض خودکار دارو همچنان `BLOCKED` است.
 - یک trigger احتمالی برای مرور پزشک هنوز فقط Research Concept است و Rule Candidate نیست.
 
@@ -68,6 +69,8 @@ Golden cases، retrospective، SILENT، pilot، clinical approval و technical a
 - `ADA-03_REC_6_19_EVIDENCE_PROTOCOL_FA.md`
 - `ADA-03_REC_6_19_INITIAL_EVIDENCE_MAP_FA.md`
 - `ADA-03_REC_6_19_FORMAL_METHOD_APPRAISAL_FA.md`
+- `ADA-03_REC_6_19_CROSS_SECTION_DEPENDENCY_REVIEW_FA.md`
 - `WORKSPACE_LINKS.md`
 - `ADA_RESEARCH_STATUS_V0_3.json`
 - `ADA_RESEARCH_STATUS_V0_4.json`
+- `ADA_RESEARCH_STATUS_V0_5.json`
