@@ -1,13 +1,14 @@
 # ADA 2026 Research Workspace — Links
 
-## وضعیت v0.4
+## وضعیت v0.5
 
 - Section 6 recommendation records: `24`
 - Studies screened for REC 6.19: `11`
 - Full-text extractions: `9`
 - Article-level appraisals: `9`
 - Formal method appraisals completed: `3`
-- Open conflicts: `12`
+- Cross-section dependencies mapped: `14`
+- Open conflicts: `15`
 - Rule candidates: `0`
 - Accepted clinical Rules: `0`
 - Licensing: `HOLD`
@@ -18,9 +19,10 @@
 - Root: https://drive.google.com/drive/folders/1UaeH0BiGTu_83m0sdoiNl_TpaY3lr37e
 - ADA 2026 folder: https://drive.google.com/drive/folders/1O6HrtOl3oU6X4ceKCb-s6ATUD_Gu4wtc
 - Workbook folder: https://drive.google.com/drive/folders/1hGafgckxY1KD5ScZdOaGYiLLfvX0I5QI
-- Native Google Sheet v0.4: https://docs.google.com/spreadsheets/d/1lkEa9Iu3vO1QcPUoAigVcRWiKsSRz1350OiGChghHc8
+- Native Google Sheet v0.5: https://docs.google.com/spreadsheets/d/1Rpd41jOQOoXXlrkCeAu0Xlp8dwCTeLRgzyLvmfnjYTI
 - Recommendation folder: https://drive.google.com/drive/folders/1gXMNsjSDumXAgHDIhW1c8Tk-xRlg2Z_7
 - Evidence Dossier folder: https://drive.google.com/drive/folders/1V00DWnlQDCeYTSVjAQy6oN4bZfmTTxRt
+- Cross-section dependency review v0.5: https://docs.google.com/document/d/1-s5A2HPpZs3Kxn8GK6xTWSMcoNsji0zgWBNzj1pYCss
 - Formal method appraisal v0.4: https://docs.google.com/document/d/1J9sL-_iAvw1w3Qh4DCVcjvtjrhfHDhKTaINfqmNsQk8
 - ADA-02 Section 6 document: https://docs.google.com/document/d/1HKPHlDlWyE_vZnGO2favJTSWxxk_8bsnG5w3YMoe5I4
 - REC 6.19 protocol: https://docs.google.com/document/d/1diMrbLZDOa_b182qTizzSJV3oI23kl-64deu_7sxsaY
@@ -32,14 +34,13 @@
 - Repository: `Emad211/clinic_managment`
 - Branch: `research/ada-2026-evidence-v0.2`
 - Draft PR: `#60`
-- v0.4 evidence commit before this link-alignment commit: `08bf08bca98ce62082569a97dde8f43612929de0`
 - Protected publisher PDFs and binary workbooks are not committed.
 
 ## Workspace package
 
-- External checksum sidecar: `ADA_Research_Workspace_v0.4.zip.sha256`
-- SHA-256: `ca67ef5b2816d97fee7f79429cadb8bd5b29e3b8dfd5db09f087ec645f692a58`
+- External checksum sidecar: `ADA_Research_Workspace_v0.5.zip.sha256`
+- SHA-256: `b13fbb1d7d80c52603952ae537836a8f9bb22c58e1e5bbbdf400f064270efd18`
 
 ## Current evidence boundary
 
-No causal evidence currently supports an automated medication reduction, cessation, or switch after one verified level 2/3 hypoglycemia event. A verified clinician-review trigger remains a research concept only and is not yet a Rule candidate.
+Section 6 alone cannot determine a medication action. Any future clinician-review workflow must resolve drug class, indication, CKD, ASCVD, HF, geriatric status, technology context, individualized goals and preferences. Automated medication reduction, cessation or switching remains blocked, and no Rule Candidate exists.
