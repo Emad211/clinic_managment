@@ -1,12 +1,17 @@
 # ADA-03 — پروتکل Evidence Dossier توصیه 6.19
 
-## شناسه و وضعیت
+## شناسه و وضعیت v0.4
 
 - Recommendation: `REC-ADA26-S06-6.19`
 - Evidence Unit: `EU-ADA-S06-001`
-- Dossier: `DOS-ADA26-S06-6.19-V0`
-- Status: `IN_PROGRESS`
-- Rule Candidate: ندارد
+- Dossier: `DOS-ADA26-S06-6.19-V0.4`
+- Status: `IN_PROGRESS / DIRECT_CAUSAL_EVIDENCE_NOT_FOUND`
+- Studies screened: `11`
+- Full-text extractions: `9`
+- Formal method appraisals: `3`
+- Rule Candidate: `0`
+- Accepted Rule: `0`
+- Licensing: `HOLD`
 
 ## سؤال بالینی
 
@@ -27,7 +32,7 @@
 - Level 2 با glucose معتبر و تأییدشده؛
 - یا Level 3 با نیاز به کمک شخص دیگر؛
 - مراقبت سرپایی یا transition از ED/بستری؛
-- subgroupهای insulin، sulfonylurea، CKD، ASCVD، HF، frailty و سالمندی.
+- subgroupهای T1D/T2D، insulin، sulfonylurea، CKD، ASCVD، HF، frailty و سالمندی.
 
 خارج از نتیجه‌گیری مستقیم:
 
@@ -37,36 +42,61 @@
 - قطع یا تغییر دوز خودکار؛
 - استنباط رخداد از متن آزاد بدون Fact استاندارد.
 
+## Intervention taxonomy
+
+هیچ intervention کلی و واحدی پذیرفته نمی‌شود. گزینه‌ها جدا می‌مانند:
+
+- clinician review only؛
+- education/DSMES؛
+- CGM/device review؛
+- dose reduction؛
+- medication cessation؛
+- class switch؛
+- regimen simplification؛
+- glucagon access/training؛
+- follow-up scheduling؛
+- social/access intervention.
+
 ## Outcomes ضروری
 
+### اصلی
+
 - recurrent Level 2/3 hypoglycemia؛
-- ED/hospitalization؛
+- EMS/ED/hospital recurrence؛
+- all-cause hospitalization؛
 - mortality؛
-- A1C/CGM؛
+- serious adverse events.
+
+### ثانویه
+
+- A1C/TIR/TBR و glycemic variability؛
 - hyperglycemia/crisis؛
 - burden و quality of life؛
-- falls/fracture/cognitive harm؛
-- cardiorenal benefit؛
+- falls/function/cognitive harm؛
+- patient preferences؛
+- cardiorenal/weight benefit؛
+- medication process outcomes؛
 - adverse effects of medication change.
 
 نرخ medication review یا deprescribing پیامد فرایندی است و جایگزین benefit بالینی نمی‌شود.
 
-## Directness taxonomy
+## Directness hierarchy
 
-- DIRECT_GUIDELINE
-- DIRECT_EVENT_IMPLEMENTATION_ONLY
-- DIRECT_CAUSAL_EFFICACY
-- INDIRECT_INTERVENTION
-- INDIRECT_REGIMEN_SELECTION
-- INDIRECT_PREFERENCE
-- INDIRECT_SYNTHESIS
-- CONFLICTING_OBSERVATIONAL_SAFETY_SIGNAL
-- LOCAL_CONTEXT_ONLY
+1. Randomized post-event intervention with clinical outcomes
+2. Prospective comparative event-verified cohort
+3. Retrospective direct-event comparative cohort
+4. Post-event implementation/process study
+5. General deprescribing/simplification intervention
+6. General observational deintensification study
+7. Qualitative preference evidence
+8. Guideline statement or narrative synthesis
+
+شواهد سطح پایین‌تر نمی‌توانند فقدان شواهد بالاتر را پنهان کنند.
 
 ## Search
 
 - citation chain رسمی ADA؛
-- مطالعات تعریف رخداد، recurrence و review؛
+- مطالعات event definition، recurrence و review؛
 - supplemental search از `2025-07-19`؛
 - severe/level 2/level 3 hypoglycemia، medication review، deintensification، deprescribing، insulin simplification، sulfonylurea، older adults، recurrence، hospitalization، mortality و cardiorenal benefit.
 
@@ -77,14 +107,26 @@
 - cluster RCT: RoB 2 cluster؛
 - cohort/nonrandomized: ROBINS-I؛
 - systematic review: AMSTAR 2؛
-- qualitative: CASP؛
+- qualitative: CASP/JBI-aligned؛
 - body of evidence: GRADE.
 
-دو Pass توسط همان ارزیاب انجام می‌شود و محدودیت نبود استقلال انسانی ثبت خواهد شد.
+دو Pass توسط همان ارزیاب انجام می‌شود و محدودیت نبود استقلال انسانی ثبت می‌شود.
+
+## Formal appraisal status
+
+- Seidu 2019: `AMSTAR 2 CRITICALLY LOW` برای سنتز اصلی؛ citation-map only.
+- Christiaens 2025: `ROBINS-I CRITICAL`؛ safety-conflict signal only.
+- Rode 2024: `ROBINS-I SERIOUS` برای تفسیر علی؛ direct workflow evidence only.
 
 ## Conflict rule
 
-یافتهٔ harm حذف یا میانگین نمی‌شود و بدون bias appraisal نیز causal پذیرفته نمی‌شود. تا حل تعارض، broad medication action در HOLD باقی می‌ماند.
+- process improvement به معنی clinical benefit نیست؛
+- association مشاهده‌ای به معنی causal harm/benefit نیست؛
+- complete cessation، dose reduction، class switch و simplification جدا می‌مانند؛
+- event severity و care setting مخلوط نمی‌شوند؛
+- دارویی با indication مستقل قلبی–کلیوی بدون review همان indication حذف نمی‌شود؛
+- threshold یا action متعارض میانگین‌گیری نمی‌شود؛
+- تعارض حل‌نشده موجب `HOLD` است.
 
 ## Computability Gate
 
@@ -102,21 +144,30 @@
 - recent treatment changes؛
 - duplicate/conflict state.
 
-## خروجی احتمالی آینده
+## معیار پایان Dossier
 
-فقط پس از validation ممکن است یک trigger محدود و clinician-owned برای «نیاز به مرور درمان پس از رخداد تأییدشده» بررسی شود.
+- citation chain و update search کامل؛
+- full-text extraction برای همهٔ مطالعات واردشده؛
+- formal RoB تکمیل؛
+- directness و effect estimates سنتز؛
+- cross-section/cross-guideline dependencies حل؛
+- event data contract مشخص؛
+- local workflow و validation plan آماده؛
+- licensing روشن.
 
-## خروجی ممنوع
+## نتیجهٔ v0.4
 
-- کاهش خودکار insulin؛
-- قطع یا تعویض خودکار دارو؛
-- تغییر خودکار target؛
-- prescription/order/referral خودکار؛
-- پیام درمانی مستقیم.
+تا این نسخه، شواهد مستقیم و کم‌سوگیری برای یک medication action واحد پس از یک رخداد تأییدشده پیدا نشده است.
 
-## منابع اولیه
+- automatic stop/reduce/switch: `BLOCKED`
+- medication Rule Candidate: `NO`
+- clinician-review trigger: `RESEARCH CONCEPT ONLY`
+
+## منابع اصلی فعلی
 
 - ADA Section 6: https://diabetesjournals.org/care/article/49/Supplement_1/S132/163927/6-Glycemic-Goals-Hypoglycemia-and-Hyperglycemic
 - Alexopoulos: https://pmc.ncbi.nlm.nih.gov/articles/PMC8564578/
+- Seidu: https://doi.org/10.1111/dom.13724
 - Grant: https://jamanetwork.com/journals/jamainternalmedicine/fullarticle/2835615
 - Christiaens: https://pmc.ncbi.nlm.nih.gov/articles/PMC12156012/
+- Rode: https://pmc.ncbi.nlm.nih.gov/articles/PMC11530891/
