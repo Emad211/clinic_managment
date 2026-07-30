@@ -1,113 +1,110 @@
-# ADA-03 — نقشهٔ اولیهٔ شواهد Recommendation 6.19
+# ADA-03 — نقشهٔ شواهد Recommendation 6.19
 
-## وضعیت
+## وضعیت v0.4
 
-- مطالعات غربال‌شده: 10
-- استخراج متن کامل: 7
-- ارزیابی مقدماتی Risk of Bias: 7
-- تعارض‌های باز بخش 6: 12
-- Rule Candidate: 0
-- نتیجه: `EVIDENCE_INCOMPLETE / CONFLICT_OPEN / LICENSING_HOLD`
+- مطالعات غربال‌شده: `11`
+- استخراج متن کامل: `9`
+- Article-level appraisal: `9`
+- ارزیابی رسمی روش‌شناختی: `3`
+- تعارض‌های باز: `12`
+- Rule Candidate: `0`
+- Accepted Rule: `0`
+- Licensing: `HOLD`
 
-## تفکیک ضروری شواهد
+این نقشه سه نوع شواهد را جدا نگه می‌دارد:
 
-سه موضوع نباید با هم مخلوط شوند:
+1. شواهد شکاف اجرای مراقبت پس از رویداد؛
+2. شواهد اثربخشی علی یک اقدام مشخص؛
+3. شواهد یا سیگنال احتمالی آسیب.
 
-1. وجود شکاف در review درمان پس از severe hypoglycemia؛
-2. توانایی intervention برای افزایش deprescribing یا simplification؛
-3. اثربخشی و ایمنی بالینی یک medication action مشخص پس از یک رخداد تأییدشده.
+هیچ‌یک از این دسته‌ها نباید به دستهٔ دیگر تبدیل یا تعمیم داده شود.
 
-مطالعات مستقیم پس از رخداد عمدتاً مورد اول را نشان می‌دهند و اثبات نمی‌کنند که یک اقدام دارویی مشخص recurrence، hospitalization یا mortality را در کل جمعیت کاهش می‌دهد.
+## توصیهٔ مادر
 
-## شواهد مستقیم فرایندی پس از رخداد
+ADA 2026 Recommendation 6.19 می‌گوید یک یا چند رخداد سطح ۲ یا ۳ باید موجب بازنگری طرح درمان شود و، در صورت مناسب‌بودن، کاهش شدت یا تعویض دارو بررسی شود. Grade توصیه `B` است. متن توصیه نوع اقدام واحد، دارو، دوز، زمان یا automation را تعیین نمی‌کند.
 
-### Alexopoulos et al., 2021
+منبع رسمی:
+https://diabetesjournals.org/care/article/49/Supplement_1/S132/163927/6-Glycemic-Goals-Hypoglycemia-and-Hyperglycemic
 
-Retrospective claims cohort در سالمندان پس از ED/hospitalization مرتبط با severe hypoglycemia. مطالعه نشان می‌دهد deintensification به‌طور یکنواخت انجام نمی‌شود و با regimen و ویژگی‌های بیمار متفاوت است. Outcome اصلی process است، تغییر دوز insulin ممکن است ثبت نشود و causal benefit بررسی نشده است.
+## تعریف رویداد
 
-Preliminary ROBINS-I برای causal inference: `SERIOUS`
+- Level 2 بر اساس glucose پایین‌تر از آستانهٔ تعریف‌شده است.
+- Level 3 بر اساس نیاز به کمک فرد دیگر تعریف می‌شود و الزاماً به یک عدد glucose وابسته نیست.
+- Rule یا workflow آینده نباید این دو را یکی کند.
+- event verification باید شامل زمان، منبع، مقدار glucose در صورت وجود، علائم، نیاز به کمک و وضعیت تأیید باشد.
 
-منبع: https://pmc.ncbi.nlm.nih.gov/articles/PMC8564578/
+## شکاف اجرای مستقیم پس از رویداد
 
-### Vijayakumar et al., 2020
+Alexopoulos 2021 و Vijayakumar 2020 نشان می‌دهند که پس از severe hypoglycemia، کاهش شدت یا اصلاح درمان در بسیاری از بیماران انجام نمی‌شود یا در داده‌ها ثبت نمی‌شود. این مطالعات process evidence هستند و اثربخشی یک تغییر خاص را ثابت نمی‌کنند.
 
-Retrospective pre/post analysis. پس از severe hypoglycemia، بسیاری از اجزای مدیریت بدون تغییر باقی ماندند. مطالعه comparator causal ندارد، A1C فقط برای زیرمجموعه‌ای موجود است و medication dose/adherence کامل ثبت نمی‌شود.
+Rode 2024 تعداد `1,977` رویداد EMS در `1,028` بزرگسال را بررسی کرد. گفت‌وگو دربارهٔ هیپوگلیسمی و تغییر دارو بر اساس سطح مراقبت تفاوت بزرگی داشت. عدم انتقال و عدم بستری با عود بیشتر همراه بود، اما گفت‌وگو یا تغییر درمان در مدل مشاهده‌ای اثر محافظتی معنادار نشان نداد. این نتیجه به‌علت confounding نباید به بی‌اثر بودن مرور یا تغییر درمان تعبیر شود.
 
-Preliminary ROBINS-I: `SERIOUS`
+منابع:
 
-نتیجهٔ این گروه: care-process gap محتمل است؛ action-specific efficacy اثبات نشده است.
+- https://pmc.ncbi.nlm.nih.gov/articles/PMC8564578/
+- https://doi.org/10.2337/dc20-0458
+- https://pmc.ncbi.nlm.nih.gov/articles/PMC11530891/
+
+## شواهد مستقیم اثربخشی
+
+تا نسخهٔ v0.4، هیچ مطالعهٔ مستقیم و کم‌سوگیری در مجموعهٔ بررسی‌شده پیدا نشده است که یک medication action استاندارد را پس از یک رویداد تأییدشدهٔ Level 2/3 آزمایش کند و کاهش recurrence یا net harm را نشان دهد.
+
+- medication-specific Rule: `BLOCKED`
+- automatic deintensification/switch/stop: `BLOCKED`
+- direct causal evidence status: `NOT FOUND`
 
 ## شواهد غیرمستقیم مداخله‌ای
 
-### Munshi et al., 2016
+مطالعات simplification، مقایسهٔ regimenهای کم‌خطرتر و interventionهای clinician-facing نشان می‌دهند که در جمعیت‌های منتخب می‌توان بار درمان یا هیپوگلیسمی را کاهش داد یا deprescribing را افزایش داد. این مطالعات prior-event triggered نیستند و نمی‌توانند برای همهٔ بیماران پس از یک رویداد، اقدام واحد تعریف کنند.
 
-مطالعهٔ تک‌گروهی کوچک در سالمندان insulin-treated. پس از simplification، CGM hypoglycemia و burden کاهش یافت، اما comparator وجود نداشت و event-triggered نبود.
+## مرور Seidu 2019
 
-Preliminary ROBINS-I: `SERIOUS`
+ارزیابی رسمی AMSTAR 2:
 
-### IMPERIUM, 2018
+`CRITICALLY LOW` برای استفاده به‌عنوان سنتز اصلی benefit–harm.
 
-Randomized open-label trial در سالمندان آسیب‌پذیر. یک strategy با خطر hypoglycemia کمتر چند outcome هیپوگلیسمی را کاهش داد. prior Level 2/3 event شرط ورود نبود و تعمیم به همهٔ داروها مجاز نیست.
+دلایل اصلی:
 
-Preliminary RoB 2: `SOME_CONCERNS`
+- نبود فهرست فردی مطالعات حذف‌شده؛
+- RoB ناکافی برای NRSIهای مداخله‌ای؛
+- نتیجه‌گیری بیش از حد قطعی نسبت به ناهمگونی و کیفیت شواهد؛
+- نبود funding map مطالعه‌به‌مطالعه.
 
-### Grant et al., 2025
+این مرور فقط برای citation mapping و یافتن مطالعات اولیه استفاده می‌شود.
 
-Cluster randomized trial. مداخلهٔ clinician-facing نرخ deprescribing را افزایش داد، اما کاهش قطعی hypoglycemia complication را اثبات نکرد. این شواهد برای workflow مهم است، نه medication action خودکار.
+## سیگنال تعارض Christiaens 2025
 
-Preliminary RoB 2 cluster: `SOME_CONCERNS`
+مطالعهٔ target-trial emulation افزایش کوتاه‌مدت مرگ/بستری را پس از deintensification گزارش کرد. `88.8%` مواجهه‌ها توقف کامل داروهای هیپوگلیسمی‌زا بودند.
 
-منبع: https://jamanetwork.com/journals/jamainternalmedicine/fullarticle/2835615
+ROBINS-I رسمی:
 
-## ترجیحات بیمار
+`CRITICAL`
 
-Pilla et al. نشان می‌دهد willingness برای deintensification به وضعیت سلامت و خطر hypoglycemia وابسته است. این مطالعه برای acceptability مفید است، نه efficacy؛ قابلیت تعمیم به ایران نیز محدود است.
+این مطالعه به‌دلیل confounding by indication، acute decline، end-of-life goals و reverse causation اثبات علی نیست؛ اما به‌عنوان safety-conflict signal نادیده گرفته نمی‌شود و blanket deintensification را مسدود می‌کند. اصلاحیهٔ منتشرشده فقط acknowledgement نویسندگان را تغییر داد.
 
-## مرور نظام‌مند
+منابع:
 
-Seidu et al. برای feasibility/safety deprescribing مرتبط است، اما AMSTAR 2 و mapping مطالعات پایه هنوز تکمیل نشده است. ناهمگنی population، intervention و outcome باید حل شود.
+- https://pmc.ncbi.nlm.nih.gov/articles/PMC12156012/
+- https://pmc.ncbi.nlm.nih.gov/articles/PMC10660441/
+- https://pmc.ncbi.nlm.nih.gov/articles/PMC12413510/
 
-Status: `FULLTEXT_ROB_PENDING`
+## وابستگی‌های حل‌نشده
 
-## Safety conflict
+- Section 9: pharmacologic indications و class-specific risks
+- Section 13: سالمندی، cognition، function و life expectancy
+- CKD/KDIGO: clearance، hypoglycemia risk و cardiorenal benefit
+- Section 7: CGM data validity و detection
+- local workflow: owner، SLA، task burden و availability
+- Licensing: ADA adaptation/software reuse
 
-### Christiaens et al., 2025
+## نتیجهٔ فعلی
 
-Target-trial emulation در افراد 75 سال و بالاتر. در routine data، deintensification با افزایش کوتاه‌مدت composite مرگ یا hospitalization همراه بود. این یافته نادیده گرفته نمی‌شود؛ در عین حال confounding by indication، reverse causation، frailty، افت سلامت، prognosis و acute illness می‌توانند association را به‌شدت مخدوش کنند.
+فقط یک مفهوم محدود برای پژوهش باقی می‌ماند:
 
-Preliminary ROBINS-I برای ادعای causal: `CRITICAL`
+> رخداد تأییدشدهٔ Level 2 یا 3 می‌تواند یک درخواست مرور پزشک ایجاد کند، بدون پیشنهاد خودکار نوع تغییر درمان.
 
-منبع: https://pmc.ncbi.nlm.nih.gov/articles/PMC12156012/
+اما این مفهوم هنوز Rule Candidate نیست، زیرا event schema، required facts، exclusions، owner/SLA، cross-guideline dependencies، local validation، licensing و approvals بسته نشده‌اند.
 
-تصمیم: broad deintensification تا formal ROBINS-I، بررسی correction، sensitivity analysis و triangulation در HOLD می‌ماند.
-
-## شکاف اصلی
-
-هنوز شواهد مستقیم کافی شناسایی نشده که ثابت کند پس از یک رخداد تأییدشدهٔ Level 2/3، یک medication action استاندارد و مشخص در همهٔ بزرگسالان recurrence یا net harm را کاهش می‌دهد. citation-chain و supplemental search ادامه دارد.
-
-## تعارض cardiorenal
-
-بازنگری دارو نباید therapy دارای منفعت مستقل برای CKD، HF، ASCVD یا obesity را بدون بررسی indication حذف کند. drug class، indication، eGFR، بیماری‌های همراه و individualized goal اجباری‌اند.
-
-## نتیجه برای موتور
-
-احتمالاً فقط یک trigger محدود clinician-owned برای review پس از رخداد تأییدشده قابل پژوهش است. این trigger نیز نیازمند false-positive، duplicate suppression، owner/SLA، retrospective و SILENT validation است.
-
-موارد ممنوع:
-
-- کاهش خودکار insulin؛
-- قطع sulfonylurea؛
-- تعویض خودکار class؛
-- تغییر خودکار target؛
-- prescription/order؛
-- پیام مستقیم درمانی.
-
-## Gate
-
-- `SCIENTIFIC_DIRECTNESS = INCOMPLETE`
-- `SAFETY_CONFLICT = OPEN`
-- `FORMAL_ROB = INCOMPLETE`
-- `CROSS_SECTION_REVIEW = INCOMPLETE`
-- `LOCAL_VALIDATION = NOT_STARTED`
-- `LICENSING = HOLD`
-- `RULE_CANDIDATE = NO`
+- Rule candidates: `0`
+- Accepted Rules: `0`
+- Licensing: `HOLD`
