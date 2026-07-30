@@ -37,7 +37,7 @@
 ## Workspace package
 
 - External checksum sidecar: `ADA_Research_Workspace_v0.4.zip.sha256`
-- SHA-256: `bdf0e00dbbb4aa742b1ff3c2ec290f873dead19fe15d5036d952acb4d1c4949c`
+- SHA-256: `ca67ef5b2816d97fee7f79429cadb8bd5b29e3b8dfd5db09f087ec645f692a58`
 
 ## Current evidence boundary
 
