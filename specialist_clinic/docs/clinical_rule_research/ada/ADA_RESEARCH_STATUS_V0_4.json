@@ -18,6 +18,6 @@
   "review_model": "two-pass same evaluator; not independent human appraisal",
   "google_sheet_id": "1lkEa9Iu3vO1QcPUoAigVcRWiKsSRz1350OiGChghHc8",
   "formal_appraisal_doc_id": "1J9sL-_iAvw1w3Qh4DCVcjvtjrhfHDhKTaINfqmNsQk8",
-  "workspace_sha256": "bdf0e00dbbb4aa742b1ff3c2ec290f873dead19fe15d5036d952acb4d1c4949c",
+  "workspace_sha256": "ca67ef5b2816d97fee7f79429cadb8bd5b29e3b8dfd5db09f087ec645f692a58",
   "primary_rec_6_19_conclusion": "no causal evidence currently supports an automated medication action after one verified level 2/3 event"
 }
