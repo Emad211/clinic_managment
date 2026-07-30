@@ -32,7 +32,7 @@
 - Repository: `Emad211/clinic_managment`
 - Branch: `research/ada-2026-evidence-v0.2`
 - Draft PR: `#60`
-- Research head when v0.4 was recorded: `08bf08bca98ce62082569a97dde8f43612929de0`
+- v0.4 evidence commit before this link-alignment commit: `08bf08bca98ce62082569a97dde8f43612929de0`
 - Protected publisher PDFs and binary workbooks are not committed.
 
 ## Workspace package
