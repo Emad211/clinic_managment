@@ -1,0 +1,22 @@
+{
+  "version": "0.6",
+  "date": "2026-07-30",
+  "guideline": "ADA Standards of Care in Diabetes—2026",
+  "section_6_recommendation_records": 24,
+  "studies_screened_rec_6_19": 11,
+  "fulltext_extractions": 9,
+  "article_level_appraisals": 13,
+  "formal_method_appraisals": 7,
+  "ada_primary_citations_verified": 5,
+  "grade_evidence_units": 7,
+  "kdigo_dependency_records": 8,
+  "cross_section_dependencies_mapped": 14,
+  "open_conflicts": 19,
+  "rule_candidates": 0,
+  "accepted_rules": 0,
+  "licensing": "HOLD",
+  "review_model": "two-pass same evaluator; not independent human appraisal",
+  "primary_conclusion": "no direct evidence supports an autonomous or standardized post-event medication action",
+  "google_sheet_id": "1Y5ttQRuvHxL4s6xo-YuzsWGBUE2_SEaCCEQ0-KqvIRc",
+  "workspace_sha256": "bd830a5782a1982f1000a9d45c8bec0d89cd6ab47bf6dd16fb8094529b588744"
+}
