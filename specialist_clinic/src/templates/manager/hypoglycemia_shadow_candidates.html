@@ -34,7 +34,7 @@
         <svg class="icon icon-lg"><use href="#i-shield"></use></svg>
         <div><h2>Storage ناقص است</h2><p>داوری تا بازگرداندن یکپارچگی ledgerها مسدود است.</p></div>
     </section>
-    {% elif not queue.items %}
+    {% elif not queue['items'] %}
     <section class="card hypo-adj-empty">
         <svg class="icon icon-lg"><use href="#i-check"></use></svg>
         <div><h2>صف داوری خالی است</h2><p>هیچ Candidate یا Conflict جاری برای تصمیم انسانی وجود ندارد.</p></div>
@@ -42,7 +42,7 @@
     {% endif %}
 
     <div class="hypo-adj-list">
-        {% for item in queue.items %}
+        {% for item in queue['items'] %}
         <article class="hypo-adj-card hypo-adj-{{ item.status|lower }}" data-event-version="{{ item.version_id }}">
             <header>
                 <div>
