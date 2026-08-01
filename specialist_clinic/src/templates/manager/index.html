@@ -17,6 +17,12 @@
             <div class="nt-ic t-violet"><svg class="icon"><use href="#i-shield"></use></svg></div>
             <div><b>موتور بالینی v2</b><small>وضعیت، گیت‌های ایمنی و انتشار کنترل‌شده</small></div>
         </a>
+        {% if permissions.get('operational.health.view') %}
+        <a class="card card-soft nav-tile" href="{{ url_for('hypoglycemia_shadow_monitor.index') }}">
+            <div class="nt-ic t-ok"><svg class="icon"><use href="#i-activity"></use></svg></div>
+            <div><b>پایش هیپوگلیسمی Shadow</b><small>شمارنده‌های داخلی، backlog و خطاهای یکپارچگی؛ بدون اقدام درمانی</small></div>
+        </a>
+        {% endif %}
         <a class="card card-soft nav-tile" href="{{ url_for('manager.users') }}">
             <div class="nt-ic t-warn"><svg class="icon"><use href="#i-key"></use></svg></div>
             <div><b>کاربران</b><small>حساب‌ها و سطوح دسترسی</small></div>
