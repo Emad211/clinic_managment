@@ -1,8 +1,8 @@
-"""Aggregate, PHI-free observability for the isolated hypoglycemia shadow slice.
+"""Identifier-free aggregate observability for the hypoglycemia shadow slice.
 
 This read model never installs storage, writes data, opens clinical tasks, or exposes
-patient/event/source identities. It reports only current aggregate states and safety
-anomalies needed to evaluate the shadow workflow.
+patient/event/source identities. Aggregate low-cell counts remain internal health data
+and are not represented as anonymous or PHI-free.
 """
 from __future__ import annotations
 
@@ -38,6 +38,7 @@ _REQUIRED_TABLES = frozenset(
     }
 )
 _SAVEPOINT = "hypoglycemia_shadow_observability"
+_PRIVACY_SCOPE = "INTERNAL_AGGREGATE_LOW_CELL_COUNTS_POSSIBLE"
 
 
 def _time_text(value: datetime) -> str:
@@ -51,7 +52,7 @@ def _zeros(keys: tuple[str, ...]) -> dict[str, int]:
 
 
 class HypoglycemiaShadowObservability:
-    """Build one consistent aggregate snapshot without mutating the database."""
+    """Build one consistent identifier-free snapshot without database writes."""
 
     def __init__(
         self,
@@ -92,7 +93,8 @@ class HypoglycemiaShadowObservability:
             "generated_at": _time_text(self._clock()),
             "storage_state": storage_state,
             "integrity_state": "ATTENTION_REQUIRED" if attention else "OK",
-            "contains_phi": False,
+            "contains_direct_identifiers": False,
+            "privacy_scope": _PRIVACY_SCOPE,
             "current_event_total": 0,
             "event_counts": _zeros(_EVENT_STATUSES),
             "event_level_counts": _zeros(_EVENT_LEVELS),
@@ -223,7 +225,8 @@ class HypoglycemiaShadowObservability:
             "integrity_state": (
                 "ATTENTION_REQUIRED" if stale_source_reviews else "OK"
             ),
-            "contains_phi": False,
+            "contains_direct_identifiers": False,
+            "privacy_scope": _PRIVACY_SCOPE,
             "current_event_total": len(current_events),
             "event_counts": event_counts,
             "event_level_counts": level_counts,
