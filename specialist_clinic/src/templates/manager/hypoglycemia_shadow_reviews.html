@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block title %}بازکردن Reviewهای Shadow{% endblock %}
+{% block content %}
+<div class="hypo-review-opening">
+    <div class="crumb"><a href="{{ url_for('manager.index') }}">مدیریت</a> / <a href="{{ url_for('hypoglycemia_shadow_monitor.index') }}">پایش Shadow</a> / بازکردن Review</div>
+
+    <section class="hypo-review-hero">
+        <div>
+            <span class="hypo-review-kicker"><svg class="icon icon-sm"><use href="#i-clipboard"></use></svg> اقدام انسانی · بدون Task یا درمان</span>
+            <h1>رخدادهای تأییدشدهٔ آمادهٔ Review</h1>
+            <p>فقط رخدادهایی نمایش داده می‌شوند که آخرین نسخهٔ آن‌ها تأیید شده و تاکنون هیچ Review داخلی برای همان نسخه باز نشده است.</p>
+        </div>
+        <div class="hypo-review-total">
+            <small>آمادهٔ Review</small>
+            <strong data-count="ready">{{ queue.ready_count|fa_num }}</strong>
+        </div>
+    </section>
+
+    <div class="hypo-review-boundary" role="note">
+        <svg class="icon"><use href="#i-info"></use></svg>
+        <div>
+            <b>بازکردن Review چه کاری می‌کند؟</b>
+            <p>فقط یک پروندهٔ داخلی append-only با مالکیت کاربر فعلی می‌سازد. هیچ Follow-up Task، Alert، پیام بیمار، SLA، نسخه، ارجاع یا تغییر دارو ایجاد نمی‌شود.</p>
+        </div>
+    </div>
+
+    {% if queue.storage_state == 'NOT_INSTALLED' %}
+    <section class="card hypo-review-empty">
+        <svg class="icon icon-lg"><use href="#i-clipboard"></use></svg>
+        <div><h2>زیرساخت Shadow هنوز استفاده نشده است</h2><p>بازکردن این صفحه Storage را نصب نمی‌کند و هیچ داده‌ای ایجاد نمی‌شود.</p></div>
+    </section>
+    {% elif queue.storage_state == 'INCOMPLETE' %}
+    <section class="card hypo-review-critical">
+        <svg class="icon icon-lg"><use href="#i-shield"></use></svg>
+        <div><h2>Storage ناقص است</h2><p>بازکردن Review تا بازگرداندن یکپارچگی ledgerها مسدود است.</p></div>
+    </section>
+    {% elif not queue['items'] %}
+    <section class="card hypo-review-empty">
+        <svg class="icon icon-lg"><use href="#i-check"></use></svg>
+        <div><h2>رخداد آماده‌ای وجود ندارد</h2><p>رخدادهای Candidate ابتدا باید توسط کاربر مجاز داوری شوند؛ Review نیز برای یک نسخه فقط یک‌بار باز می‌شود.</p></div>
+    </section>
+    {% endif %}
+
+    <div class="hypo-review-list">
+        {% for item in queue['items'] %}
+        <article class="hypo-review-card" data-event-version="{{ item.version_id }}">
+            <header>
+                <div>
+                    <span class="hypo-review-status">تأییدشده</span>
+                    <h2><a href="{{ url_for('patients.detail', pid=item.patient_link_id) }}">{{ item.patient_name }}</a></h2>
+                    <small>نسخهٔ {{ item.version_number|fa_num }} · داوری‌شده توسط {{ item.adjudicated_by }}</small>
+                </div>
+                <div class="hypo-review-level">
+                    <small>سطح رخداد</small>
+                    <strong>{{ item.event_level.replace('_', ' ') }}</strong>
+                </div>
+            </header>
+
+            <div class="hypo-review-facts">
+                <div><small>زمان وقوع</small><strong>{{ item.occurred_at|jalali if item.occurred_at else 'نامشخص' }}</strong></div>
+                <div><small>قند ثبت‌شده</small><strong>{% if item.glucose_value is not none %}{{ item.glucose_value|fa_num }} {{ item.glucose_unit or '' }}{% else %}برای Level 3 الزامی نیست{% endif %}</strong></div>
+                <div><small>کمک شخص دیگر</small><strong>{{ {'YES':'بله','NO':'خیر','UNKNOWN':'نامشخص'}[item.external_assistance] }}</strong></div>
+                <div><small>اختلال عملکرد</small><strong>{{ {'YES':'بله','NO':'خیر','UNKNOWN':'نامشخص'}[item.altered_function] }}</strong></div>
+                <div><small>نوع گزارشگر</small><strong>{{ {'SYSTEM':'سیستم','CLINICIAN':'درمانگر','PATIENT':'بیمار','CAREGIVER':'مراقب','EMS':'اورژانس','DEVICE':'دستگاه','IMPORTED':'واردشده'}[item.reporter_type] }}</strong></div>
+                <div><small>منبع</small><strong>{{ item.source_system }}</strong></div>
+            </div>
+
+            <form method="post" action="{{ url_for('hypoglycemia_shadow_monitor.open_review', event_id=item.event_id) }}" class="hypo-review-form">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="expected_version_id" value="{{ item.version_id }}">
+                <div>
+                    <b>مالک Review:</b> حساب کاربری فعلی شما
+                    <small>تخصیص به کاربر دیگر و تعیین اقدام بالینی در این مرحله پشتیبانی نمی‌شود.</small>
+                </div>
+                <button type="submit" class="btn btn-primary"><svg class="icon icon-sm"><use href="#i-clipboard"></use></svg> بازکردن Review برای خودم</button>
+            </form>
+        </article>
+        {% endfor %}
+    </div>
+</div>
+
+<style>
+.hypo-review-opening{display:grid;gap:18px;max-width:1280px;margin:0 auto}.hypo-review-hero{display:flex;align-items:center;justify-content:space-between;gap:24px;padding:26px;border:1px solid var(--line);border-radius:22px;background:linear-gradient(135deg,var(--panel),var(--panel2));box-shadow:var(--shadow-sm)}.hypo-review-hero h1{margin:6px 0 8px;font-size:clamp(1.55rem,3vw,2.25rem)}.hypo-review-hero p{margin:0;max-width:760px;color:var(--muted);line-height:1.9}.hypo-review-kicker{display:inline-flex;align-items:center;gap:7px;color:var(--primary);font-size:.82rem;font-weight:800}.hypo-review-total{min-width:126px;padding:14px 18px;text-align:center;border:1px solid var(--line);border-radius:16px;background:var(--panel)}.hypo-review-total small{display:block;color:var(--muted)}.hypo-review-total strong{display:block;margin-top:4px;font-size:1.7rem}.hypo-review-boundary{display:flex;gap:12px;padding:16px 18px;border:1px solid rgba(16,185,129,.3);border-radius:16px;background:rgba(16,185,129,.07)}.hypo-review-boundary p{margin:4px 0 0;color:var(--muted);line-height:1.8}.hypo-review-empty,.hypo-review-critical{display:flex;align-items:center;gap:16px;padding:23px}.hypo-review-empty h2,.hypo-review-critical h2{margin:0 0 6px}.hypo-review-empty p,.hypo-review-critical p{margin:0;color:var(--muted)}.hypo-review-critical{border-color:rgba(239,68,68,.4);background:rgba(239,68,68,.05)}.hypo-review-list{display:grid;gap:14px}.hypo-review-card{overflow:hidden;border:1px solid var(--line);border-radius:20px;background:var(--panel);box-shadow:var(--shadow-sm)}.hypo-review-card>header{display:flex;justify-content:space-between;align-items:flex-start;gap:18px;padding:19px 21px;border-bottom:1px solid var(--line);background:var(--panel2)}.hypo-review-card h2{margin:5px 0 3px;font-size:1.18rem}.hypo-review-card h2 a{color:inherit;text-decoration:none}.hypo-review-card h2 a:hover{color:var(--primary)}.hypo-review-card header small{color:var(--muted)}.hypo-review-status{display:inline-block;padding:4px 9px;border-radius:999px;background:rgba(16,185,129,.12);color:#047857;font-size:.72rem;font-weight:800}.hypo-review-level{text-align:left;direction:rtl}.hypo-review-level small{display:block}.hypo-review-level strong{display:block;margin-top:4px;direction:ltr}.hypo-review-facts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1px;background:var(--line)}.hypo-review-facts>div{padding:14px 17px;background:var(--panel)}.hypo-review-facts small{display:block;color:var(--muted);font-size:.76rem}.hypo-review-facts strong{display:block;margin-top:4px;font-size:.93rem}.hypo-review-form{display:flex;justify-content:space-between;align-items:center;gap:18px;padding:18px 21px}.hypo-review-form small{display:block;margin-top:4px;color:var(--muted)}.hypo-review-form .btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;white-space:nowrap}@media(max-width:760px){.hypo-review-hero,.hypo-review-card>header,.hypo-review-form{align-items:stretch;flex-direction:column}.hypo-review-total{width:100%}.hypo-review-facts{grid-template-columns:1fr 1fr}}@media(max-width:480px){.hypo-review-facts{grid-template-columns:1fr}}
+</style>
+{% endblock %}
