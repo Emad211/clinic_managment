@@ -1,0 +1,57 @@
+{
+  "version": "0.9.4",
+  "date": "2026-08-01",
+  "guideline": "ADA Standards of Care in Diabetes—2026",
+  "workstream": "ADA-04 D0 Event and Review Contract Freeze",
+  "parent_version": "0.9.3",
+  "branch": "research/ada-2026-evidence-v0.2",
+  "pull_request": 60,
+  "native_google_sheet": {
+    "spreadsheet_id": "1q344KGq1lUsncMofTtPSvEYKTmR2iJ0y6xSUnZsBDjY",
+    "url": "https://docs.google.com/spreadsheets/d/1q344KGq1lUsncMofTtPSvEYKTmR2iJ0y6xSUnZsBDjY/edit",
+    "title": "ADA Clinical Rule Evidence Master v0.9.4 — Event and Review Contract Freeze",
+    "parent_v0_9_3_preserved": "https://docs.google.com/spreadsheets/d/1x2tHD54tphkDXgmjQzmxHwHbA1CNXWTfzC236Z5j830/edit"
+  },
+  "metrics": {
+    "section_6_recommendations": 24,
+    "studies_screened_rec_6_19": 17,
+    "fulltext_extractions": 10,
+    "article_level_appraisals": 16,
+    "sealed_formal_appraisals": 9,
+    "provisional_pht2_appraisals": 1,
+    "grade_evidence_units": 10,
+    "search_log_records": 48,
+    "open_conflicts": 43,
+    "decision_records": 82,
+    "computability_requirements_audited": 28,
+    "minimum_data_contract_fields": 43,
+    "event_review_contract_clauses": 38,
+    "synthetic_fixtures": 20,
+    "rule_candidates": 0,
+    "accepted_clinical_rules": 0,
+    "runtime_changes": 0,
+    "ui_changes": 0
+  },
+  "d0_contract": {
+    "status": "RESEARCH_FROZEN_NOT_APPROVED_FOR_IMPLEMENTATION",
+    "event_model": "APPEND_ONLY_ROOT_VERSION_EVIDENCE_LINK",
+    "deduplication": "ALGORITHM_PROPOSES_HUMAN_ADJUDICATES",
+    "correction": "NEW_VERSION_OR_ENTERED_IN_ERROR_NEVER_UPDATE_DELETE",
+    "review_source_gate": "EXACT_CONFIRMED_EVENT_VERSION_ONLY",
+    "review_contract": "IMMUTABLE_REQUIRED_FACTS_VERIFICATION_ALLOWED_OUTCOMES_HASH",
+    "disposition": "CLINICIAN_AUTHORED_RECORD_ONLY_NO_EXTERNAL_SIDE_EFFECT"
+  },
+  "d1_fixture_design": {
+    "status": "DESIGNED_NOT_EXECUTABLE",
+    "synthetic_only": true,
+    "automatic_medication_action": "FORBIDDEN"
+  },
+  "computability": {
+    "review_trigger_current_product": "NOT_COMPUTABLE",
+    "medication_action": "HARD_BLOCK"
+  },
+  "licensing": "HOLD",
+  "independent_human_review": "NOT_AVAILABLE",
+  "clinical_activation": "BLOCKED",
+  "next_phase": "multidisciplinary D0 review; then executable synthetic data-integrity tests only"
+}
