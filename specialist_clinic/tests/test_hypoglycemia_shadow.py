@@ -320,3 +320,45 @@ def test_entered_in_error_event_cannot_open_review(shadow_app):
             owner_username="doctor",
             actor_username="doctor",
         )
+
+
+def test_review_disposition_is_blocked_after_source_event_is_invalidated(shadow_app):
+    from src.adapters.sqlite.core import get_db
+    from src.services.hypoglycemia_shadow import HypoglycemiaShadowValidationError
+
+    db = get_db()
+    patient_id = _patient(db, national_id="HYPOSHADOW010")
+    service = _service(db)
+    candidate = _candidate(
+        service,
+        patient_id,
+        source_record_id="FX-6.19-008",
+    )
+    confirmed = service.adjudicate(
+        candidate["event_id"],
+        expected_current_version_id=candidate["current"]["id"],
+        decision="CONFIRMED",
+        actor_username="doctor",
+    )
+    review = service.open_review(
+        event_id=confirmed["event_id"],
+        expected_event_version_id=confirmed["current"]["id"],
+        owner_username="doctor",
+        actor_username="doctor",
+    )
+    service.adjudicate(
+        confirmed["event_id"],
+        expected_current_version_id=confirmed["current"]["id"],
+        decision="ENTERED_IN_ERROR",
+        actor_username="doctor",
+        note="شاهد منبع ابطال شد.",
+    )
+
+    with pytest.raises(HypoglycemiaShadowValidationError, match="no longer"):
+        service.record_disposition(
+            review["review_id"],
+            expected_current_review_event_id=review["current"]["id"],
+            disposition_type="NO_CHANGE",
+            rationale="نباید پس از ابطال رخداد ثبت شود.",
+            actor_username="doctor",
+        )
