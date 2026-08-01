@@ -23,6 +23,12 @@
             <div><b>پایش هیپوگلیسمی Shadow</b><small>شمارنده‌های داخلی، backlog و خطاهای یکپارچگی؛ بدون اقدام درمانی</small></div>
         </a>
         {% endif %}
+        {% if permissions.get('clinical.decision.record') %}
+        <a class="card card-soft nav-tile" href="{{ url_for('hypoglycemia_shadow_monitor.candidates') }}">
+            <div class="nt-ic t-warn"><svg class="icon"><use href="#i-clipboard"></use></svg></div>
+            <div><b>داوری رخدادهای Shadow</b><small>تأیید، رد یا ثبت تعارض برای Candidateها؛ بدون Review یا تغییر درمان</small></div>
+        </a>
+        {% endif %}
         <a class="card card-soft nav-tile" href="{{ url_for('manager.users') }}">
             <div class="nt-ic t-warn"><svg class="icon"><use href="#i-key"></use></svg></div>
             <div><b>کاربران</b><small>حساب‌ها و سطوح دسترسی</small></div>
