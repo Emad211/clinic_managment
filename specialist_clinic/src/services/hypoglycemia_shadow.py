@@ -713,6 +713,25 @@ class HypoglycemiaShadowService:
             raise HypoglycemiaShadowConflict("review head changed")
         if current["event_type"] == "ENTERED_IN_ERROR":
             raise HypoglycemiaShadowValidationError("review is terminal")
+        source_state = db.execute(
+            """SELECT latest.id, latest.status, latest.verification
+               FROM hypoglycemia_shadow_event_versions source
+               JOIN hypoglycemia_shadow_event_versions latest
+                 ON latest.event_id = source.event_id
+               WHERE source.id=?
+               ORDER BY latest.version_number DESC
+               LIMIT 1""",
+            (int(current["event_version_id"]),),
+        ).fetchone()
+        if (
+            not source_state
+            or int(source_state["id"]) != int(current["event_version_id"])
+            or source_state["status"] != "CONFIRMED"
+            or source_state["verification"] != "CONFIRMED"
+        ):
+            raise HypoglycemiaShadowValidationError(
+                "review source event is no longer current confirmed"
+            )
         payload = {
             "review_id": review_id,
             "sequence_number": int(current["sequence_number"]) + 1,
