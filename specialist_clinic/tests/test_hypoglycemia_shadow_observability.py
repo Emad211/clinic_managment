@@ -92,7 +92,10 @@ def test_empty_snapshot_is_read_only_and_does_not_install_storage(observability_
     assert snapshot["integrity_state"] == "OK"
     assert snapshot["current_event_total"] == 0
     assert snapshot["current_review_total"] == 0
-    assert snapshot["contains_phi"] is False
+    assert snapshot["contains_direct_identifiers"] is False
+    assert snapshot["privacy_scope"] == (
+        "INTERNAL_AGGREGATE_LOW_CELL_COUNTS_POSSIBLE"
+    )
     assert db.total_changes == changes_before
     assert db.execute(
         """SELECT COUNT(*) FROM sqlite_master
@@ -100,7 +103,9 @@ def test_empty_snapshot_is_read_only_and_does_not_install_storage(observability_
     ).fetchone()[0] == table_count_before
 
 
-def test_snapshot_aggregates_current_heads_without_phi_or_writes(observability_app):
+def test_snapshot_aggregates_current_heads_without_identifiers_or_writes(
+    observability_app,
+):
     from src.adapters.sqlite.core import get_db
 
     db = get_db()
@@ -171,6 +176,10 @@ def test_snapshot_aggregates_current_heads_without_phi_or_writes(observability_a
     assert db.total_changes == changes_before
     assert snapshot["storage_state"] == "READY"
     assert snapshot["integrity_state"] == "OK"
+    assert snapshot["contains_direct_identifiers"] is False
+    assert snapshot["privacy_scope"] == (
+        "INTERNAL_AGGREGATE_LOW_CELL_COUNTS_POSSIBLE"
+    )
     assert snapshot["current_event_total"] == 5
     assert snapshot["event_counts"] == {
         "CANDIDATE": 2,
@@ -251,6 +260,7 @@ def test_partial_storage_is_reported_without_querying_or_repairing_it(
     assert snapshot["storage_state"] == "INCOMPLETE"
     assert snapshot["integrity_state"] == "ATTENTION_REQUIRED"
     assert snapshot["current_event_total"] == 0
+    assert snapshot["contains_direct_identifiers"] is False
     assert db.total_changes == changes_before
     assert db.execute(
         """SELECT COUNT(*) FROM sqlite_master
