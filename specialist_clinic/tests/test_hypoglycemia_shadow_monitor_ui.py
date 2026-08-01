@@ -92,7 +92,9 @@ def test_staff_without_operational_health_permission_cannot_view_monitor(
             "staff",
             "کاربر درمانگاه",
         )
+    with shadow_monitor_app.test_request_context():
         expected_location = url_for("dashboard.index")
+
     client = _login(shadow_monitor_app, "shadow-staff", "safe-password")
     response = client.get("/manager/hypoglycemia-shadow/")
 
