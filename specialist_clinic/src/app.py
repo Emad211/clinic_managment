@@ -118,6 +118,9 @@ def create_app(test_config=None):
     from src.api.followups import bp as followups_bp
     from src.api.finance_review import bp as finance_review_bp
     from src.api.health import bp as health_bp
+    from src.api.hypoglycemia_shadow_monitor import (
+        bp as hypoglycemia_shadow_monitor_bp,
+    )
     from src.api.manager import bp as manager_bp
     from src.api.patient_card import bp as patient_card_bp
     from src.api.patients import bp as patients_bp
@@ -136,6 +139,7 @@ def create_app(test_config=None):
         finance_review_bp,
         sms_bp,
         manager_bp,
+        hypoglycemia_shadow_monitor_bp,
         control_room_bp,
         ext_bp,
         doctor_queue_bp,
