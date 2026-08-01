@@ -82,6 +82,7 @@ def test_shadow_monitor_requires_login(shadow_monitor_app):
 def test_staff_without_operational_health_permission_cannot_view_monitor(
     shadow_monitor_app,
 ):
+    from flask import url_for
     from src.services.auth_service import AuthService
 
     with shadow_monitor_app.app_context():
@@ -91,11 +92,12 @@ def test_staff_without_operational_health_permission_cannot_view_monitor(
             "staff",
             "کاربر درمانگاه",
         )
+        expected_location = url_for("dashboard.index")
     client = _login(shadow_monitor_app, "shadow-staff", "safe-password")
     response = client.get("/manager/hypoglycemia-shadow/")
 
     assert response.status_code in {302, 303}
-    assert "/dashboard" in response.headers["Location"]
+    assert response.headers["Location"].endswith(expected_location)
 
 
 def test_empty_monitor_does_not_install_storage_and_disables_cache(
