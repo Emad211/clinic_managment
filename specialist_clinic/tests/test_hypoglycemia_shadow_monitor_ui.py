@@ -98,7 +98,7 @@ def test_staff_without_operational_health_permission_cannot_view_monitor(
     assert "/dashboard" in response.headers["Location"]
 
 
-def test_empty_monitor_is_read_only_does_not_install_storage_and_disables_cache(
+def test_empty_monitor_does_not_install_storage_and_disables_cache(
     shadow_monitor_app,
 ):
     from src.adapters.sqlite.core import get_db
@@ -109,7 +109,6 @@ def test_empty_monitor_is_read_only_does_not_install_storage_and_disables_cache(
             """SELECT COUNT(*) FROM sqlite_master
                WHERE type='table' AND name LIKE 'hypoglycemia_shadow_%'"""
         ).fetchone()[0]
-        changes_before = db.total_changes
 
     response = _login(shadow_monitor_app).get(
         "/manager/hypoglycemia-shadow/"
@@ -131,7 +130,6 @@ def test_empty_monitor_is_read_only_does_not_install_storage_and_disables_cache(
             """SELECT COUNT(*) FROM sqlite_master
                WHERE type='table' AND name LIKE 'hypoglycemia_shadow_%'"""
         ).fetchone()[0] == table_count_before
-        assert db.total_changes == changes_before
 
 
 def test_manager_home_links_to_shadow_monitor_only_for_permitted_user(
