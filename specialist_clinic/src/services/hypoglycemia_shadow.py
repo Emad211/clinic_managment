@@ -428,36 +428,50 @@ class HypoglycemiaShadowService:
             "note": _optional(note),
             "supersedes_version_id": None,
         }
-        with db:
-            db.execute(
-                """INSERT INTO hypoglycemia_shadow_event_versions
-                   (event_id, version_number, patient_link_id,
-                    source_system, source_record_id, status, event_level,
-                    occurred_at, recorded_at, glucose_value, glucose_unit,
-                    external_assistance, altered_function, reporter_type,
-                    verification, actor_username, note,
-                    supersedes_version_id, content_hash)
-                   VALUES (?,1,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NULL,?)""",
-                (
-                    event_id,
-                    int(patient_link_id),
-                    source_system,
-                    source_record_id,
-                    "CANDIDATE",
-                    event_level,
-                    payload["occurred_at"],
-                    payload["recorded_at"],
-                    numeric,
-                    normalized_unit,
-                    external_assistance,
-                    altered_function,
-                    reporter_type,
-                    verification,
-                    actor_username,
-                    payload["note"],
-                    _hash(payload),
-                ),
-            )
+        try:
+            with db:
+                db.execute(
+                    """INSERT INTO hypoglycemia_shadow_event_versions
+                       (event_id, version_number, patient_link_id,
+                        source_system, source_record_id, status, event_level,
+                        occurred_at, recorded_at, glucose_value, glucose_unit,
+                        external_assistance, altered_function, reporter_type,
+                        verification, actor_username, note,
+                        supersedes_version_id, content_hash)
+                       VALUES (?,1,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NULL,?)""",
+                    (
+                        event_id,
+                        int(patient_link_id),
+                        source_system,
+                        source_record_id,
+                        "CANDIDATE",
+                        event_level,
+                        payload["occurred_at"],
+                        payload["recorded_at"],
+                        numeric,
+                        normalized_unit,
+                        external_assistance,
+                        altered_function,
+                        reporter_type,
+                        verification,
+                        actor_username,
+                        payload["note"],
+                        _hash(payload),
+                    ),
+                )
+        except sqlite3.IntegrityError as exc:
+            existing = db.execute(
+                """SELECT event_id, patient_link_id
+                   FROM hypoglycemia_shadow_event_versions
+                   WHERE source_system=? AND source_record_id=?
+                     AND version_number=1""",
+                (source_system, source_record_id),
+            ).fetchone()
+            if existing and int(existing["patient_link_id"]) == int(patient_link_id):
+                return self.get_event(str(existing["event_id"]))
+            raise HypoglycemiaShadowConflict(
+                "candidate source identity changed concurrently"
+            ) from exc
         return self.get_event(event_id)
 
     @staticmethod
@@ -678,24 +692,37 @@ class HypoglycemiaShadowService:
             "actor_username": _required(actor_username, "actor_username"),
             "supersedes_event_id": None,
         }
-        with db:
-            db.execute(
-                """INSERT INTO hypoglycemia_shadow_review_events
-                   (review_id, sequence_number, patient_link_id,
-                    event_version_id, owner_username, event_type,
-                    disposition_type, rationale, recorded_at,
-                    actor_username, supersedes_event_id, content_hash)
-                   VALUES (?,1,?,?,?,'OPENED',NULL,NULL,?,?,NULL,?)""",
-                (
-                    review_id,
-                    payload["patient_link_id"],
-                    payload["event_version_id"],
-                    payload["owner_username"],
-                    payload["recorded_at"],
-                    payload["actor_username"],
-                    _hash(payload),
-                ),
-            )
+        try:
+            with db:
+                db.execute(
+                    """INSERT INTO hypoglycemia_shadow_review_events
+                       (review_id, sequence_number, patient_link_id,
+                        event_version_id, owner_username, event_type,
+                        disposition_type, rationale, recorded_at,
+                        actor_username, supersedes_event_id, content_hash)
+                       VALUES (?,1,?,?,?,'OPENED',NULL,NULL,?,?,NULL,?)""",
+                    (
+                        review_id,
+                        payload["patient_link_id"],
+                        payload["event_version_id"],
+                        payload["owner_username"],
+                        payload["recorded_at"],
+                        payload["actor_username"],
+                        _hash(payload),
+                    ),
+                )
+        except sqlite3.IntegrityError as exc:
+            existing = db.execute(
+                """SELECT review_id
+                   FROM hypoglycemia_shadow_review_events
+                   WHERE event_version_id=? AND sequence_number=1""",
+                (int(expected_event_version_id),),
+            ).fetchone()
+            if existing:
+                return self.get_review(str(existing["review_id"]))
+            raise HypoglycemiaShadowConflict(
+                "review creation changed concurrently"
+            ) from exc
         return self.get_review(review_id)
 
     def record_disposition(
