@@ -54,6 +54,7 @@ def index():
 
 
 @bp.get("/candidates")
+@permission_required(Permission.PATIENT_VIEW)
 @permission_required(Permission.CLINICAL_DECISION_RECORD)
 def candidates():
     """List only current candidate/conflict heads for human adjudication."""
@@ -65,10 +66,11 @@ def candidates():
 
 
 @bp.post("/candidates/<event_id>/adjudicate")
+@permission_required(Permission.PATIENT_VIEW)
 @permission_required(Permission.CLINICAL_DECISION_RECORD)
 def adjudicate(event_id: str):
     """Record one explicit human event decision; never open a review or task."""
-    if HypoglycemiaShadowAdjudicationQueue().snapshot()["storage_state"] != "READY":
+    if HypoglycemiaShadowAdjudicationQueue().state() != "READY":
         flash("زیرساخت Shadow برای داوری آماده نیست.", "error")
         return redirect(url_for("hypoglycemia_shadow_monitor.candidates"))
 
