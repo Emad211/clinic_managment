@@ -3,6 +3,16 @@
 Software for an Iranian clinic, RTL/Jalali throughout, Persian UI. The repository
 holds two independent production Flask + SQLite desktop apps.
 
+> ## Canonical project status
+>
+> Before starting or reviewing product, clinical-rule, research, Shadow, release, or
+> migration work, read [`PROJECT_STATE.md`](PROJECT_STATE.md). Its machine-readable
+> companion is [`PROJECT_STATE.json`](PROJECT_STATE.json).
+>
+> `main` is the current product authority. Clinical-rule research, experimental Shadow
+> workflows, release engineering, and Halqe migration are separate streams and must not
+> be interpreted as the status of the whole project.
+
 | Tree | What it is | Stack | Port | Status |
 |------|-----------|-------|------|--------|
 | [`webapp/`](webapp/) | **Hesabdari (Accounting)** — reception, invoicing, visits, injections, procedures, payroll, reports | Flask + SQLite (`clinic_new.db`) | 8080 | production |
@@ -15,6 +25,7 @@ and revenue **live and read-only** through `specialist_clinic/src/adapters/accou
 
 ## Where to look
 
+- **Canonical project status and stream boundaries:** [`PROJECT_STATE.md`](PROJECT_STATE.md).
 - **Working agreements & architecture rules:** [`CLAUDE.md`](CLAUDE.md) (repo-wide) and the
   nearest per-app `CLAUDE.md` ([`specialist_clinic/CLAUDE.md`](specialist_clinic/CLAUDE.md)).
 - **Specialist-clinic plans & references:** [`specialist_clinic/docs/`](specialist_clinic/docs/)

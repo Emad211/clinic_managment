@@ -1,0 +1,95 @@
+{
+  "schema_version": "1.0",
+  "audited_at": "2026-08-01T10:10:00+03:30",
+  "repository": "Emad211/clinic_managment",
+  "product_authority": {
+    "branch": "main",
+    "head": "075ddaa574c5c8b99b6d7b93c775823e6b00e3dc",
+    "status": "ACTIVE_PRODUCT"
+  },
+  "overall_status": "PRODUCT_OPERATIONAL_CLINICAL_CONTENT_NOT_APPROVED_GOVERNANCE_RECONCILIATION_REQUIRED",
+  "streams": {
+    "accounting": {
+      "path": "webapp/",
+      "status": "PRODUCTION",
+      "database": "clinic_new.db",
+      "specialist_access": "READ_ONLY"
+    },
+    "specialist_clinic": {
+      "path": "specialist_clinic/",
+      "status": "ACTIVE_PRODUCT",
+      "database": "specialist.db"
+    },
+    "clinical_engine_v2": {
+      "status": "INFRASTRUCTURE_IMPLEMENTED_ACTIVATION_GATED",
+      "visible_activation": "BLOCKED_PENDING_REAL_APPROVAL_VALIDATION_AND_PILOT"
+    },
+    "legacy_rule_package": {
+      "version": "2026.1-draft.3",
+      "status": "LEGACY_DRAFT_QUARANTINED",
+      "clinical_use": "NOT_APPROVED",
+      "rules": [
+        "T2-REDFLAG-BP",
+        "T2-SAFE-MET-STOP",
+        "T2-SAFE-MET-REVIEW",
+        "T2-MON-A1C-DUE",
+        "T2-MON-EGFR-DUE",
+        "T2-MON-UACR-DUE"
+      ],
+      "required_decision": "REVALIDATE_OR_REPLACE_OR_RETIRE"
+    },
+    "clinical_rule_research": {
+      "pull_request": 60,
+      "branch": "research/ada-2026-evidence-v0.2",
+      "head": "311d350ff4575b2a915ade9dc075bc218cb473d2",
+      "status": "EVIDENCE_AUTHORITY_DRAFT_FROZEN_V0_9_4",
+      "rule_candidates": 0,
+      "accepted_rules": 0,
+      "licensing": "HOLD",
+      "clinical_activation": "BLOCKED"
+    },
+    "hypoglycemia_shadow": {
+      "merged_pull_requests": [62, 63, 64, 65, 66, 67],
+      "status": "EXPERIMENTAL_INTERNAL_SHADOW_PAUSED_FOR_RECONCILIATION",
+      "is_clinical_rule": false,
+      "is_approved_rollout": false,
+      "automatic_medication_action": false,
+      "next_decision": "KEEP_AS_DATA_QUALITY_WORKFLOW_OR_REWORK_TO_APPROVED_CONTRACT_OR_REVERT_FROM_PRODUCT"
+    },
+    "hypoglycemia_shadow_disposition": {
+      "branch": "feature/hypoglycemia-shadow-disposition-v1",
+      "ahead_of_main_by": 2,
+      "status": "PAUSED_DO_NOT_MERGE"
+    },
+    "release_engineering_a15": {
+      "pull_request": 59,
+      "branch": "agent/specialist-release-readiness-a15",
+      "status": "STALE_DIVERGED_DRAFT_REBUILD_FROM_CURRENT_MAIN"
+    },
+    "halqe_migration": {
+      "status": "SEPARATE_STRATEGIC_STREAM",
+      "production_authority": false,
+      "automatic_cutover": false
+    }
+  },
+  "global_freeze": {
+    "new_clinical_research": "PAUSED_EXCEPT_DECISION_CHANGING_RETRIEVAL",
+    "new_clinical_rules": "PAUSED",
+    "hypoglycemia_shadow_expansion": "PAUSED",
+    "disposition_branch": "DO_NOT_MERGE",
+    "release_cleanup": "ALLOWED_AFTER_GOVERNANCE_MERGE",
+    "focused_bug_and_security_fixes": "ALLOWED"
+  },
+  "next_phases": [
+    "R0_GOVERNANCE_RECONCILIATION",
+    "R1_RELEASE_BASELINE_FROM_CURRENT_MAIN",
+    "R2_BOUNDED_CLINICAL_CONTENT_FORMALIZATION"
+  ],
+  "trust_order": [
+    "GITHUB_MAIN_AND_PULL_REQUEST_STATE",
+    "PROJECT_STATE_MD_AND_JSON",
+    "CODE_ADJACENT_DOCUMENTATION",
+    "HISTORICAL_PULL_REQUEST_BODIES",
+    "CONVERSATION_OR_AGENT_MEMORY"
+  ]
+}
