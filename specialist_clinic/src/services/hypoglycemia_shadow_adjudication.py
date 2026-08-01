@@ -29,7 +29,7 @@ class HypoglycemiaShadowAdjudicationQueue:
         return get_db()
 
     @staticmethod
-    def storage_state(db: sqlite3.Connection) -> str:
+    def _storage_state(db: sqlite3.Connection) -> str:
         rows = db.execute(
             "SELECT name FROM sqlite_master WHERE type='table' AND name IN (?,?)",
             tuple(sorted(_REQUIRED_TABLES)),
@@ -44,9 +44,13 @@ class HypoglycemiaShadowAdjudicationQueue:
             return "INCOMPLETE"
         return "READY"
 
+    def state(self) -> str:
+        """Return readiness without loading any patient/event row."""
+        return self._storage_state(self._db())
+
     def snapshot(self) -> dict[str, Any]:
         db = self._db()
-        state = self.storage_state(db)
+        state = self._storage_state(db)
         if state != "READY":
             return {
                 "storage_state": state,
