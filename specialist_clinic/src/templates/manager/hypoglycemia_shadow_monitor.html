@@ -1,0 +1,171 @@
+{% extends "base.html" %}
+{% block title %}پایش هیپوگلیسمی Shadow{% endblock %}
+{% block content %}
+<div class="shadow-monitor">
+    <div class="crumb"><a href="{{ url_for('manager.index') }}">مدیریت</a> / پایش هیپوگلیسمی Shadow</div>
+
+    <section class="shadow-hero" aria-labelledby="shadow-title">
+        <div>
+            <span class="shadow-kicker"><svg class="icon icon-sm"><use href="#i-shield"></use></svg> پایش داخلی · فقط خواندنی</span>
+            <h1 id="shadow-title">هیپوگلیسمی Shadow</h1>
+            <p>نمای تجمیعی کیفیت داده و جریان بازبینی پزشک؛ بدون Rule، هشدار درمانی، پیام بیمار یا تغییر دارو.</p>
+        </div>
+        <div class="shadow-state shadow-state-{{ 'ok' if shadow.integrity_state == 'OK' else 'attention' }}">
+            <span aria-hidden="true"></span>
+            <div>
+                <small>یکپارچگی Snapshot</small>
+                <strong>{{ 'سالم' if shadow.integrity_state == 'OK' else 'نیازمند بررسی' }}</strong>
+            </div>
+        </div>
+    </section>
+
+    <div class="shadow-boundary" role="note">
+        <svg class="icon"><use href="#i-info"></use></svg>
+        <div>
+            <b>مرز ایمنی این صفحه</b>
+            <p>این خروجی تصمیم بالینی تولید نمی‌کند و هیچ عملیات نوشتنی ندارد. شمارنده‌های کم‌تعداد، با وجود نداشتن شناسهٔ مستقیم، همچنان اطلاعات داخلی حساس‌اند و نباید خارج از محیط مجاز منتشر شوند.</p>
+        </div>
+    </div>
+
+    <section class="shadow-meta" aria-label="وضعیت فنی Snapshot">
+        <div>
+            <small>وضعیت Storage</small>
+            <strong data-storage-state="{{ shadow.storage_state }}">
+                {% if shadow.storage_state == 'READY' %}آماده{% elif shadow.storage_state == 'NOT_INSTALLED' %}نصب نشده{% else %}ناقص{% endif %}
+            </strong>
+        </div>
+        <div>
+            <small>زمان Snapshot</small>
+            <strong>{{ shadow.generated_at|jalali }}</strong>
+        </div>
+        <div>
+            <small>ردهٔ حریم خصوصی</small>
+            <strong class="shadow-privacy">تجمیعی داخلی · احتمال سلول کوچک</strong>
+        </div>
+    </section>
+
+    {% if shadow.storage_state == 'NOT_INSTALLED' %}
+    <section class="card shadow-empty" aria-labelledby="empty-title">
+        <div class="shadow-empty-icon"><svg class="icon icon-lg"><use href="#i-clipboard"></use></svg></div>
+        <div>
+            <h2 id="empty-title">هنوز دادهٔ Shadow ثبت نشده است</h2>
+            <p>این صفحه عمداً Storage را نصب یا ترمیم نمی‌کند. تا زمانی که سرویس Shadow به‌صورت صریح در یک مسیر کنترل‌شده استفاده نشود، همهٔ شمارنده‌ها صفر می‌مانند.</p>
+        </div>
+    </section>
+    {% elif shadow.storage_state == 'INCOMPLETE' %}
+    <section class="card shadow-critical" aria-labelledby="incomplete-title">
+        <div class="shadow-empty-icon"><svg class="icon icon-lg"><use href="#i-shield"></use></svg></div>
+        <div>
+            <h2 id="incomplete-title">Storage ناقص است</h2>
+            <p>فقط بخشی از ledgerهای موردنیاز وجود دارد. Snapshot هیچ repair یا migration انجام نداده و تا بررسی فنی، وضعیت یکپارچگی مسدود تلقی می‌شود.</p>
+        </div>
+    </section>
+    {% endif %}
+
+    <section class="shadow-section" aria-labelledby="events-title">
+        <div class="shadow-section-head">
+            <div>
+                <span class="shadow-kicker">رخدادهای جاری</span>
+                <h2 id="events-title">آخرین head هر رخداد</h2>
+            </div>
+            <div class="shadow-total"><small>مجموع</small><strong data-count="event-total">{{ shadow.current_event_total|fa_num }}</strong></div>
+        </div>
+        <div class="shadow-grid shadow-grid-5">
+            {% for key, label, tone in [
+                ('CANDIDATE','کاندید','neutral'),
+                ('CONFIRMED','تأییدشده','ok'),
+                ('CONFLICT','متعارض','warn'),
+                ('REJECTED','ردشده','muted'),
+                ('ENTERED_IN_ERROR','ابطال‌شده','danger')
+            ] %}
+            <article class="shadow-metric shadow-tone-{{ tone }}">
+                <small>{{ label }}</small>
+                <strong data-count="event-{{ key|lower }}">{{ shadow.event_counts[key]|fa_num }}</strong>
+                <span>{{ key }}</span>
+            </article>
+            {% endfor %}
+        </div>
+    </section>
+
+    <section class="shadow-section" aria-labelledby="levels-title">
+        <div class="shadow-section-head">
+            <div>
+                <span class="shadow-kicker">طبقه‌بندی داده</span>
+                <h2 id="levels-title">سطح ثبت‌شدهٔ رخداد</h2>
+            </div>
+        </div>
+        <div class="shadow-grid shadow-grid-3">
+            <article class="shadow-metric shadow-tone-neutral"><small>Level 2</small><strong data-count="level-2">{{ shadow.event_level_counts.LEVEL_2|fa_num }}</strong><span>اندازه‌گیری‌محور</span></article>
+            <article class="shadow-metric shadow-tone-neutral"><small>Level 3</small><strong data-count="level-3">{{ shadow.event_level_counts.LEVEL_3|fa_num }}</strong><span>کمک خارجی و اختلال عملکرد</span></article>
+            <article class="shadow-metric shadow-tone-muted"><small>نامشخص</small><strong data-count="level-unknown">{{ shadow.event_level_counts.UNKNOWN|fa_num }}</strong><span>نیازمند داده یا داوری</span></article>
+        </div>
+    </section>
+
+    <div class="shadow-two-column">
+        <section class="shadow-section" aria-labelledby="reviews-title">
+            <div class="shadow-section-head">
+                <div>
+                    <span class="shadow-kicker">بازبینی پزشک</span>
+                    <h2 id="reviews-title">وضعیت Reviewها</h2>
+                </div>
+                <div class="shadow-total"><small>مجموع</small><strong data-count="review-total">{{ shadow.current_review_total|fa_num }}</strong></div>
+            </div>
+            <div class="shadow-list">
+                <div><span>باز</span><strong data-count="review-opened">{{ shadow.review_counts.OPENED|fa_num }}</strong></div>
+                <div><span>تصمیم ثبت‌شده</span><strong data-count="review-disposition">{{ shadow.review_counts.DISPOSITION_RECORDED|fa_num }}</strong></div>
+                <div><span>ابطال‌شده</span><strong data-count="review-error">{{ shadow.review_counts.ENTERED_IN_ERROR|fa_num }}</strong></div>
+            </div>
+        </section>
+
+        <section class="shadow-section" aria-labelledby="backlog-title">
+            <div class="shadow-section-head">
+                <div>
+                    <span class="shadow-kicker">کیفیت داده</span>
+                    <h2 id="backlog-title">Backlog غیرتجویزی</h2>
+                </div>
+            </div>
+            <div class="shadow-list">
+                <div><span>کاندید بدون زمان وقوع</span><strong data-count="backlog-time">{{ shadow.backlog.candidate_missing_occurrence_time|fa_num }}</strong></div>
+                <div><span>کاندید زیر سطح تأیید</span><strong data-count="backlog-verification">{{ shadow.backlog.candidate_below_confirmed_verification|fa_num }}</strong></div>
+                <div><span>رخداد تأییدشده بدون Review فعال</span><strong data-count="backlog-review">{{ shadow.backlog.confirmed_without_active_review|fa_num }}</strong></div>
+            </div>
+        </section>
+    </div>
+
+    <section class="shadow-section shadow-anomaly{% if shadow.safety_anomalies.review_source_no_longer_current_confirmed %} has-anomaly{% endif %}" aria-labelledby="anomaly-title">
+        <div>
+            <span class="shadow-kicker">کنترل یکپارچگی</span>
+            <h2 id="anomaly-title">Review با منبع دیگرنامعتبر</h2>
+            <p>این شمارنده Reviewهایی را نشان می‌دهد که نسخهٔ منبعشان دیگر آخرین رخداد تأییدشده نیست. سرویس نوشتنی اجازهٔ ثبت تصمیم جدید روی آن‌ها را نمی‌دهد.</p>
+        </div>
+        <strong data-count="stale-review-source">{{ shadow.safety_anomalies.review_source_no_longer_current_confirmed|fa_num }}</strong>
+    </section>
+
+    <section class="shadow-section" aria-labelledby="dispositions-title">
+        <div class="shadow-section-head">
+            <div>
+                <span class="shadow-kicker">ثبت تصمیم مستقل پزشک</span>
+                <h2 id="dispositions-title">انواع Disposition ثبت‌شده</h2>
+            </div>
+        </div>
+        <div class="shadow-dispositions">
+            {% for key, label in [
+                ('NO_CHANGE','بدون تغییر'),
+                ('MEDICATION_CHANGE_RECORDED','تغییر دارو ثبت‌شده'),
+                ('EDUCATION','آموزش'),
+                ('DEVICE_REVIEW','مرور دستگاه'),
+                ('REFERRAL_RECORDED','ارجاع ثبت‌شده'),
+                ('FOLLOWUP','پیگیری'),
+                ('OTHER','سایر')
+            ] %}
+            <div><span>{{ label }}</span><strong data-count="disposition-{{ key|lower }}">{{ shadow.disposition_counts[key]|fa_num }}</strong></div>
+            {% endfor %}
+        </div>
+        <p class="shadow-footnote">نمایش «تغییر دارو ثبت‌شده» فقط ثبت یک تصمیم مستقل پزشک است؛ این صفحه یا سرویس Shadow هیچ پیشنهاد، نسخه، سفارش یا اجرای درمانی انجام نمی‌دهد.</p>
+    </section>
+</div>
+
+<style>
+.shadow-monitor{display:grid;gap:18px;max-width:1400px;margin:0 auto}.shadow-hero{display:flex;align-items:center;justify-content:space-between;gap:24px;padding:28px;border:1px solid var(--line);border-radius:22px;background:linear-gradient(135deg,var(--panel),var(--panel2));box-shadow:var(--shadow-sm)}.shadow-hero h1{margin:6px 0 8px;font-size:clamp(1.65rem,3vw,2.35rem)}.shadow-hero p{margin:0;max-width:760px;color:var(--muted);line-height:1.9}.shadow-kicker{display:inline-flex;align-items:center;gap:7px;color:var(--primary);font-size:.82rem;font-weight:800;letter-spacing:.02em}.shadow-state{display:flex;align-items:center;gap:12px;min-width:180px;padding:14px 16px;border-radius:16px;background:var(--panel)}.shadow-state>span{width:12px;height:12px;border-radius:50%;box-shadow:0 0 0 5px rgba(16,185,129,.12)}.shadow-state-ok>span{background:#10b981}.shadow-state-attention>span{background:#ef4444;box-shadow:0 0 0 5px rgba(239,68,68,.12)}.shadow-state small,.shadow-meta small,.shadow-total small{display:block;color:var(--muted);font-size:.75rem}.shadow-state strong,.shadow-meta strong{display:block;margin-top:3px}.shadow-boundary{display:flex;gap:12px;padding:17px 18px;border:1px solid rgba(245,158,11,.35);border-radius:16px;background:rgba(245,158,11,.08)}.shadow-boundary p{margin:4px 0 0;line-height:1.8;color:var(--muted)}.shadow-meta{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.shadow-meta>div{padding:16px 18px;border:1px solid var(--line);border-radius:15px;background:var(--panel)}.shadow-privacy{font-size:.88rem}.shadow-empty,.shadow-critical{display:flex;align-items:center;gap:18px;padding:24px}.shadow-empty h2,.shadow-critical h2{margin:0 0 7px}.shadow-empty p,.shadow-critical p{margin:0;color:var(--muted);line-height:1.8}.shadow-critical{border-color:rgba(239,68,68,.4);background:rgba(239,68,68,.06)}.shadow-empty-icon{display:grid;place-items:center;min-width:54px;height:54px;border-radius:16px;background:var(--panel2);color:var(--primary)}.shadow-section{padding:20px;border:1px solid var(--line);border-radius:20px;background:var(--panel);box-shadow:var(--shadow-sm)}.shadow-section-head{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:15px}.shadow-section h2{margin:4px 0 0;font-size:1.15rem}.shadow-total{text-align:center;min-width:72px;padding:8px 12px;border-radius:13px;background:var(--panel2)}.shadow-total strong{font-size:1.35rem}.shadow-grid{display:grid;gap:10px}.shadow-grid-5{grid-template-columns:repeat(5,minmax(0,1fr))}.shadow-grid-3{grid-template-columns:repeat(3,minmax(0,1fr))}.shadow-metric{position:relative;overflow:hidden;padding:17px;border-radius:15px;border:1px solid var(--line);background:var(--panel2)}.shadow-metric:before{content:"";position:absolute;inset-inline-start:0;top:0;bottom:0;width:4px;background:#94a3b8}.shadow-tone-ok:before{background:#10b981}.shadow-tone-warn:before{background:#f59e0b}.shadow-tone-danger:before{background:#ef4444}.shadow-tone-muted:before{background:#64748b}.shadow-metric small,.shadow-metric span{display:block;color:var(--muted)}.shadow-metric strong{display:block;margin:6px 0 4px;font-size:1.85rem}.shadow-metric span{font-size:.72rem;direction:ltr;text-align:right}.shadow-two-column{display:grid;grid-template-columns:1fr 1fr;gap:14px}.shadow-list{display:grid;gap:9px}.shadow-list>div,.shadow-dispositions>div{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 14px;border-radius:12px;background:var(--panel2)}.shadow-list strong,.shadow-dispositions strong{font-size:1.12rem}.shadow-anomaly{display:flex;align-items:center;justify-content:space-between;gap:24px}.shadow-anomaly p{margin:7px 0 0;color:var(--muted);line-height:1.8}.shadow-anomaly>strong{display:grid;place-items:center;min-width:74px;height:74px;border-radius:20px;background:rgba(16,185,129,.1);color:#059669;font-size:2rem}.shadow-anomaly.has-anomaly{border-color:rgba(239,68,68,.45);background:rgba(239,68,68,.05)}.shadow-anomaly.has-anomaly>strong{background:rgba(239,68,68,.12);color:#dc2626}.shadow-dispositions{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px}.shadow-footnote{margin:14px 0 0;padding-top:13px;border-top:1px dashed var(--line);color:var(--muted);line-height:1.8;font-size:.88rem}@media(max-width:1000px){.shadow-grid-5{grid-template-columns:repeat(3,minmax(0,1fr))}.shadow-dispositions{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:720px){.shadow-hero,.shadow-anomaly{align-items:flex-start;flex-direction:column}.shadow-state{width:100%}.shadow-meta,.shadow-two-column,.shadow-grid-3{grid-template-columns:1fr}.shadow-grid-5{grid-template-columns:repeat(2,minmax(0,1fr))}.shadow-dispositions{grid-template-columns:1fr}}
+</style>
+{% endblock %}
