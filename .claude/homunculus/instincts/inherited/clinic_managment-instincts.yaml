@@ -1,0 +1,408 @@
+# Instincts generated from https://github.com/Emad211/clinic_managment
+# Generated: 2026-08-01T00:06:00.766Z
+# Version: 2.0
+# NOTE: This file supplements (does not replace) any existing curated instincts.
+# High-confidence manually curated instincts should be preserved alongside these.
+
+---
+id: clinic_managment-commit-length
+trigger: "when writing a commit message"
+confidence: 0.6
+domain: git
+source: repo-analysis
+source_repo: https://github.com/Emad211/clinic_managment
+---
+
+# Clinic_managment Commit Length
+
+## Action
+
+Write moderate-length commit messages (~51 characters)
+
+## Evidence
+
+- Average commit message length: 51 chars
+- Based on 47 commits
+
+---
+id: clinic_managment-naming-files
+trigger: "when creating a new file"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/Emad211/clinic_managment
+---
+
+# Clinic_managment Naming Files
+
+## Action
+
+Use kebab-case naming convention
+
+## Evidence
+
+- Analyzed file naming patterns in repository
+- Dominant pattern: kebab-case
+
+---
+id: clinic_managment-import-relative
+trigger: "when importing modules"
+confidence: 0.75
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/Emad211/clinic_managment
+---
+
+# Clinic_managment Import Relative
+
+## Action
+
+Use relative imports for project files
+
+## Evidence
+
+- Import analysis shows relative import pattern
+- Example: import { x } from '../lib/x'
+
+---
+id: clinic_managment-export-style
+trigger: "when exporting from a module"
+confidence: 0.7
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/Emad211/clinic_managment
+---
+
+# Clinic_managment Export Style
+
+## Action
+
+Prefer named exports
+
+## Evidence
+
+- Export pattern analysis
+- Dominant style: named
+
+---
+id: clinic_managment-test-separate
+trigger: "when writing tests"
+confidence: 0.8
+domain: testing
+source: repo-analysis
+source_repo: https://github.com/Emad211/clinic_managment
+---
+
+# Clinic_managment Test Separate
+
+## Action
+
+Place tests in the tests/ or __tests__/ directory, mirroring src structure
+
+## Evidence
+
+- Separate test directory pattern detected
+- Tests live in dedicated test folders
+
+---
+id: clinic_managment-workflow-ada-evidence-version-advancement
+trigger: "when doing ada evidence version advancement"
+confidence: 0.65
+domain: workflow
+source: repo-analysis
+source_repo: https://github.com/Emad211/clinic_managment
+---
+
+# Clinic_managment Workflow Ada Evidence Version Advancement
+
+## Action
+
+Follow the ada-evidence-version-advancement workflow:
+1. Update or create ADA_RESEARCH_STATUS_Vx_x.json to reflect new version status.
+2. Update WORKSPACE_LINKS.md with new Drive/workspace links and checksums.
+3. Update README.md to note version advancement and summarize changes.
+
+## Evidence
+
+- Workflow detected from commit patterns
+- Frequency: ~3x per month
+- Files: specialist_clinic/docs/clinical_rule_research/ada/ADA_RESEARCH_STATUS_V*.json, specialist_clinic/docs/clinical_rule_research/ada/WORKSPACE_LINKS.md, specialist_clinic/docs/clinical_rule_research/ada/README.md
+
+---
+id: clinic_managment-workflow-ada-evidence-checksum-correction
+trigger: "when doing ada evidence checksum correction"
+confidence: 0.6
+domain: workflow
+source: repo-analysis
+source_repo: https://github.com/Emad211/clinic_managment
+---
+
+# Clinic_managment Workflow Ada Evidence Checksum Correction
+
+## Action
+
+Follow the ada-evidence-checksum-correction workflow:
+1. Edit WORKSPACE_LINKS.md to correct the relevant version's link/checksum.
+2. If needed, update ADA_RESEARCH_STATUS_Vx_x.json to reflect the correction.
+
+## Evidence
+
+- Workflow detected from commit patterns
+- Frequency: ~2x per month
+- Files: specialist_clinic/docs/clinical_rule_research/ada/WORKSPACE_LINKS.md, specialist_clinic/docs/clinical_rule_research/ada/ADA_RESEARCH_STATUS_V*.json
+
+---
+id: clinic_managment-workflow-ada-evidence-map-or-protocol-update
+trigger: "when doing ada evidence map or protocol update"
+confidence: 0.6
+domain: workflow
+source: repo-analysis
+source_repo: https://github.com/Emad211/clinic_managment
+---
+
+# Clinic_managment Workflow Ada Evidence Map Or Protocol Update
+
+## Action
+
+Follow the ada-evidence-map-or-protocol-update workflow:
+1. Edit ADA-03_REC_6_19_INITIAL_EVIDENCE_MAP_FA.md or ADA-03_REC_6_19_EVIDENCE_PROTOCOL_FA.md to reflect new findings.
+2. Optionally, update related status or documentation files.
+
+## Evidence
+
+- Workflow detected from commit patterns
+- Frequency: ~2x per month
+- Files: specialist_clinic/docs/clinical_rule_research/ada/ADA-03_REC_6_19_INITIAL_EVIDENCE_MAP_FA.md, specialist_clinic/docs/clinical_rule_research/ada/ADA-03_REC_6_19_EVIDENCE_PROTOCOL_FA.md
+
+---
+id: clinic_managment-instinct-file-naming
+trigger: "When creating or renaming a file in the codebase"
+confidence: 0.9
+domain: code-style
+source: repo-analysis
+source_repo: Emad211/clinic_managment
+---
+
+# Clinic_managment Instinct File Naming
+
+## Action
+
+Use kebab-case for file names (e.g., clinical-rule.ts)
+
+## Evidence
+
+- Pattern in codeStyle.namingConventions.files
+
+---
+id: clinic_managment-instinct-function-naming
+trigger: "When defining a new function"
+confidence: 0.9
+domain: code-style
+source: repo-analysis
+source_repo: Emad211/clinic_managment
+---
+
+# Clinic_managment Instinct Function Naming
+
+## Action
+
+Use camelCase for function names (e.g., getPatientData)
+
+## Evidence
+
+- Pattern in codeStyle.namingConventions.functions
+
+---
+id: clinic_managment-instinct-class-naming
+trigger: "When defining a new class"
+confidence: 0.9
+domain: code-style
+source: repo-analysis
+source_repo: Emad211/clinic_managment
+---
+
+# Clinic_managment Instinct Class Naming
+
+## Action
+
+Use PascalCase for class names (e.g., PatientRecord)
+
+## Evidence
+
+- Pattern in codeStyle.namingConventions.classes
+
+---
+id: clinic_managment-instinct-constant-naming
+trigger: "When defining a constant"
+confidence: 0.9
+domain: code-style
+source: repo-analysis
+source_repo: Emad211/clinic_managment
+---
+
+# Clinic_managment Instinct Constant Naming
+
+## Action
+
+Use SCREAMING_SNAKE_CASE for constant names (e.g., MAX_PATIENTS)
+
+## Evidence
+
+- Pattern in codeStyle.namingConventions.constants
+
+---
+id: clinic_managment-instinct-import-style
+trigger: "When importing modules in TypeScript files"
+confidence: 0.9
+domain: code-style
+source: repo-analysis
+source_repo: Emad211/clinic_managment
+---
+
+# Clinic_managment Instinct Import Style
+
+## Action
+
+Use relative import paths (e.g., import { X } from './module')
+
+## Evidence
+
+- Pattern in codeStyle.importStyle
+
+---
+id: clinic_managment-instinct-export-style
+trigger: "When exporting functions, classes, or constants"
+confidence: 0.9
+domain: code-style
+source: repo-analysis
+source_repo: Emad211/clinic_managment
+---
+
+# Clinic_managment Instinct Export Style
+
+## Action
+
+Use named exports (e.g., export { MyFunction })
+
+## Evidence
+
+- Pattern in codeStyle.exportStyle
+
+---
+id: clinic_managment-instinct-test-location
+trigger: "When adding or updating tests"
+confidence: 0.8
+domain: testing
+source: repo-analysis
+source_repo: Emad211/clinic_managment
+---
+
+# Clinic_managment Instinct Test Location
+
+## Action
+
+Place test files in a separate directory from source code
+
+## Evidence
+
+- Pattern in architecture.testLocation: 'separate'
+
+---
+id: clinic_managment-instinct-commit-prefix
+trigger: "When writing a commit message for documentation or research changes"
+confidence: 0.9
+domain: git
+source: repo-analysis
+source_repo: Emad211/clinic_managment
+---
+
+# Clinic_managment Instinct Commit Prefix
+
+## Action
+
+Prefix commit messages with 'docs' or 'research' as appropriate (e.g., docs(ada): ...)
+
+## Evidence
+
+- Seen in commit: docs(research): establish clinical rule research governance
+- Seen in commit: research(ada): add formal appraisal for recommendation 6.19
+
+---
+id: clinic_managment-instinct-commit-length
+trigger: "When composing a commit message"
+confidence: 0.7
+domain: git
+source: repo-analysis
+source_repo: Emad211/clinic_managment
+---
+
+# Clinic_managment Instinct Commit Length
+
+## Action
+
+Keep commit messages concise, averaging around 50 characters
+
+## Evidence
+
+- Pattern in commits.averageLength: 51
+
+---
+id: clinic_managment-instinct-ada-evidence-version-advancement
+trigger: "When progressing the ADA 6.19 evidence review to a new formal version or audit checkpoint"
+confidence: 0.95
+domain: workflow
+source: repo-analysis
+source_repo: Emad211/clinic_managment
+---
+
+# Clinic_managment Instinct Ada Evidence Version Advancement
+
+## Action
+
+Update or create ADA_RESEARCH_STATUS_Vx_x.json, update WORKSPACE_LINKS.md, and update README.md to reflect the new version and summarize changes
+
+## Evidence
+
+- Workflow: ada-evidence-version-advancement
+- Files: specialist_clinic/docs/clinical_rule_research/ada/ADA_RESEARCH_STATUS_V*.json, WORKSPACE_LINKS.md, README.md
+
+---
+id: clinic_managment-instinct-ada-evidence-checksum-correction
+trigger: "When a checksum or workspace link is found to be incorrect or needs updating for a specific ADA evidence version"
+confidence: 0.85
+domain: workflow
+source: repo-analysis
+source_repo: Emad211/clinic_managment
+---
+
+# Clinic_managment Instinct Ada Evidence Checksum Correction
+
+## Action
+
+Edit WORKSPACE_LINKS.md to correct the relevant version's link/checksum, and if needed, update ADA_RESEARCH_STATUS_Vx_x.json
+
+## Evidence
+
+- Workflow: ada-evidence-checksum-correction
+- Files: specialist_clinic/docs/clinical_rule_research/ada/WORKSPACE_LINKS.md, ADA_RESEARCH_STATUS_V*.json
+
+---
+id: clinic_managment-instinct-ada-evidence-map-or-protocol-update
+trigger: "When new evidence, appraisals, or cross-section reviews are completed for ADA 6.19"
+confidence: 0.85
+domain: workflow
+source: repo-analysis
+source_repo: Emad211/clinic_managment
+---
+
+# Clinic_managment Instinct Ada Evidence Map Or Protocol Update
+
+## Action
+
+Edit ADA-03_REC_6_19_INITIAL_EVIDENCE_MAP_FA.md or ADA-03_REC_6_19_EVIDENCE_PROTOCOL_FA.md to reflect new findings and optionally update related documentation
+
+## Evidence
+
+- Workflow: ada-evidence-map-or-protocol-update
+- Files: specialist_clinic/docs/clinical_rule_research/ada/ADA-03_REC_6_19_INITIAL_EVIDENCE_MAP_FA.md, ADA-03_REC_6_19_EVIDENCE_PROTOCOL_FA.md
+
