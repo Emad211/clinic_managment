@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% block title %}داوری رخدادهای Shadow{% endblock %}
+{% block content %}
+<div class="hypo-adjudication">
+    <div class="crumb"><a href="{{ url_for('manager.index') }}">مدیریت</a> / <a href="{{ url_for('hypoglycemia_shadow_monitor.index') }}">پایش Shadow</a> / داوری</div>
+
+    <section class="hypo-adj-hero">
+        <div>
+            <span class="hypo-adj-kicker"><svg class="icon icon-sm"><use href="#i-shield"></use></svg> داوری انسانی · بدون اقدام درمانی</span>
+            <h1>رخدادهای نیازمند داوری</h1>
+            <p>این صفحه فقط وضعیت یک Candidate را تأیید، رد یا متعارض ثبت می‌کند. تأیید رخداد Review، Task، هشدار، نسخه یا تغییر دارو ایجاد نمی‌کند.</p>
+        </div>
+        <div class="hypo-adj-totals">
+            <div><small>کاندید</small><strong data-count="candidate">{{ queue.candidate_count|fa_num }}</strong></div>
+            <div><small>متعارض</small><strong data-count="conflict">{{ queue.conflict_count|fa_num }}</strong></div>
+        </div>
+    </section>
+
+    <div class="hypo-adj-boundary" role="note">
+        <svg class="icon"><use href="#i-info"></use></svg>
+        <div>
+            <b>مرز تصمیم</b>
+            <p>داوری فقط مشخص می‌کند دادهٔ موجود یک رخداد معتبر است یا نه. علت دارویی، شدت درمان، ارجاع و هر تصمیم مراقبتی در این مرحله خارج از Scope هستند.</p>
+        </div>
+    </div>
+
+    {% if queue.storage_state == 'NOT_INSTALLED' %}
+    <section class="card hypo-adj-empty">
+        <svg class="icon icon-lg"><use href="#i-clipboard"></use></svg>
+        <div><h2>هنوز Candidate ثبت نشده است</h2><p>بازکردن این صفحه Storage را نصب نمی‌کند. Candidate فقط از مسیرهای کنترل‌شدهٔ ثبت داده ساخته می‌شود.</p></div>
+    </section>
+    {% elif queue.storage_state == 'INCOMPLETE' %}
+    <section class="card hypo-adj-critical">
+        <svg class="icon icon-lg"><use href="#i-shield"></use></svg>
+        <div><h2>Storage ناقص است</h2><p>داوری تا بازگرداندن یکپارچگی ledgerها مسدود است.</p></div>
+    </section>
+    {% elif not queue.items %}
+    <section class="card hypo-adj-empty">
+        <svg class="icon icon-lg"><use href="#i-check"></use></svg>
+        <div><h2>صف داوری خالی است</h2><p>هیچ Candidate یا Conflict جاری برای تصمیم انسانی وجود ندارد.</p></div>
+    </section>
+    {% endif %}
+
+    <div class="hypo-adj-list">
+        {% for item in queue.items %}
+        <article class="hypo-adj-card hypo-adj-{{ item.status|lower }}" data-event-version="{{ item.version_id }}">
+            <header>
+                <div>
+                    <span class="hypo-adj-status">{{ 'متعارض' if item.status == 'CONFLICT' else 'کاندید' }}</span>
+                    <h2><a href="{{ url_for('patients.detail', pid=item.patient_link_id) }}">{{ item.patient_name }}</a></h2>
+                    <small>نسخهٔ جاری {{ item.version_number|fa_num }} · {{ item.source_system }}</small>
+                </div>
+                <div class="hypo-adj-level">
+                    <small>طبقه‌بندی پیشنهادی</small>
+                    <strong>{{ item.event_level.replace('_', ' ') }}</strong>
+                </div>
+            </header>
+
+            <div class="hypo-adj-facts">
+                <div><small>زمان وقوع</small><strong>{{ item.occurred_at|jalali if item.occurred_at else 'نامشخص' }}</strong></div>
+                <div><small>قند ثبت‌شده</small><strong>{% if item.glucose_value is not none %}{{ item.glucose_value|fa_num }} {{ item.glucose_unit or '' }}{% else %}ثبت نشده{% endif %}</strong></div>
+                <div><small>کمک شخص دیگر</small><strong>{{ {'YES':'بله','NO':'خیر','UNKNOWN':'نامشخص'}[item.external_assistance] }}</strong></div>
+                <div><small>اختلال عملکرد</small><strong>{{ {'YES':'بله','NO':'خیر','UNKNOWN':'نامشخص'}[item.altered_function] }}</strong></div>
+                <div><small>نوع گزارشگر</small><strong>{{ {'SYSTEM':'سیستم','CLINICIAN':'درمانگر','PATIENT':'بیمار','CAREGIVER':'مراقب','EMS':'اورژانس','DEVICE':'دستگاه','IMPORTED':'واردشده'}[item.reporter_type] }}</strong></div>
+                <div><small>سطح تأیید فعلی</small><strong>{{ {'PROVISIONAL':'موقت','CONFIRMED':'تأییدشده','UNVERIFIED':'تأییدنشده','CONFLICT':'متعارض'}[item.verification] }}</strong></div>
+            </div>
+
+            <form method="post" action="{{ url_for('hypoglycemia_shadow_monitor.adjudicate', event_id=item.event_id) }}" class="hypo-adj-form">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="expected_version_id" value="{{ item.version_id }}">
+                <label for="rationale-{{ item.version_id }}">دلیل داوری</label>
+                <textarea id="rationale-{{ item.version_id }}" name="rationale" maxlength="1000" required placeholder="منبع مشاهده‌شده، دلیل پذیرش/رد یا علت تعارض را کوتاه و مشخص ثبت کنید."></textarea>
+                <div class="hypo-adj-actions">
+                    <button type="submit" name="decision" value="CONFIRMED" class="btn btn-primary"><svg class="icon icon-sm"><use href="#i-check"></use></svg> تأیید رخداد</button>
+                    <button type="submit" name="decision" value="REJECTED" class="btn btn-ghost"><svg class="icon icon-sm"><use href="#i-x"></use></svg> رد Candidate</button>
+                    {% if item.status == 'CANDIDATE' %}
+                    <button type="submit" name="decision" value="CONFLICT" class="btn btn-ghost"><svg class="icon icon-sm"><use href="#i-alert"></use></svg> ثبت تعارض</button>
+                    {% endif %}
+                </div>
+            </form>
+        </article>
+        {% endfor %}
+    </div>
+</div>
+
+<style>
+.hypo-adjudication{display:grid;gap:18px;max-width:1280px;margin:0 auto}.hypo-adj-hero{display:flex;justify-content:space-between;align-items:center;gap:24px;padding:26px;border:1px solid var(--line);border-radius:22px;background:linear-gradient(135deg,var(--panel),var(--panel2));box-shadow:var(--shadow-sm)}.hypo-adj-hero h1{margin:6px 0 8px;font-size:clamp(1.55rem,3vw,2.25rem)}.hypo-adj-hero p{margin:0;max-width:760px;color:var(--muted);line-height:1.9}.hypo-adj-kicker{display:inline-flex;align-items:center;gap:7px;color:var(--primary);font-size:.82rem;font-weight:800}.hypo-adj-totals{display:grid;grid-template-columns:repeat(2,minmax(90px,1fr));gap:10px}.hypo-adj-totals>div{padding:13px 16px;text-align:center;border:1px solid var(--line);border-radius:15px;background:var(--panel)}.hypo-adj-totals small{display:block;color:var(--muted)}.hypo-adj-totals strong{display:block;margin-top:3px;font-size:1.5rem}.hypo-adj-boundary{display:flex;gap:12px;padding:16px 18px;border:1px solid rgba(59,130,246,.3);border-radius:16px;background:rgba(59,130,246,.07)}.hypo-adj-boundary p{margin:4px 0 0;color:var(--muted);line-height:1.8}.hypo-adj-empty,.hypo-adj-critical{display:flex;align-items:center;gap:16px;padding:23px}.hypo-adj-empty h2,.hypo-adj-critical h2{margin:0 0 6px}.hypo-adj-empty p,.hypo-adj-critical p{margin:0;color:var(--muted)}.hypo-adj-critical{border-color:rgba(239,68,68,.4);background:rgba(239,68,68,.05)}.hypo-adj-list{display:grid;gap:14px}.hypo-adj-card{overflow:hidden;border:1px solid var(--line);border-radius:20px;background:var(--panel);box-shadow:var(--shadow-sm)}.hypo-adj-card>header{display:flex;justify-content:space-between;align-items:flex-start;gap:18px;padding:19px 21px;border-bottom:1px solid var(--line);background:var(--panel2)}.hypo-adj-card h2{margin:5px 0 3px;font-size:1.18rem}.hypo-adj-card h2 a{color:inherit;text-decoration:none}.hypo-adj-card h2 a:hover{color:var(--primary)}.hypo-adj-card header small{color:var(--muted)}.hypo-adj-status{display:inline-block;padding:4px 9px;border-radius:999px;background:rgba(245,158,11,.12);color:#b45309;font-size:.72rem;font-weight:800}.hypo-adj-conflict .hypo-adj-status{background:rgba(239,68,68,.12);color:#dc2626}.hypo-adj-level{text-align:left;direction:rtl}.hypo-adj-level small{display:block}.hypo-adj-level strong{display:block;margin-top:4px;direction:ltr}.hypo-adj-facts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1px;background:var(--line)}.hypo-adj-facts>div{padding:14px 17px;background:var(--panel)}.hypo-adj-facts small{display:block;color:var(--muted);font-size:.76rem}.hypo-adj-facts strong{display:block;margin-top:4px;font-size:.93rem}.hypo-adj-form{display:grid;gap:10px;padding:18px 21px}.hypo-adj-form label{font-weight:800}.hypo-adj-form textarea{min-height:84px;resize:vertical}.hypo-adj-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:3px}.hypo-adj-actions .btn{display:inline-flex;align-items:center;gap:6px}@media(max-width:760px){.hypo-adj-hero,.hypo-adj-card>header{align-items:stretch;flex-direction:column}.hypo-adj-totals{width:100%}.hypo-adj-facts{grid-template-columns:1fr 1fr}.hypo-adj-actions{display:grid}.hypo-adj-actions .btn{justify-content:center}}@media(max-width:480px){.hypo-adj-facts{grid-template-columns:1fr}}
+</style>
+{% endblock %}
