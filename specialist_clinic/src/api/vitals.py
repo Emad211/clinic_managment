@@ -2,6 +2,9 @@ from flask import Blueprint, request, redirect, url_for, flash, g
 from src.api.auth import login_required
 from src.adapters.sqlite.vitals_repo import VitalsRepository, VITAL_TYPES
 from src.services.activity_logger import log_activity
+from src.services.hypoglycemia_shadow_glucose_ingest import (
+    HypoglycemiaShadowGlucoseIngestService,
+)
 from src.common.utils import jalali_to_gregorian_str
 
 bp = Blueprint("vitals", __name__, url_prefix="/vitals")
@@ -11,7 +14,8 @@ bp = Blueprint("vitals", __name__, url_prefix="/vitals")
 @login_required
 def add_reading(pid):
     from src.adapters.sqlite.clinical_rules_repo import ClinicalRulesRepository
-    repo = VitalsRepository()
+
+    ingest = HypoglycemiaShadowGlucoseIngestService()
     measured = jalali_to_gregorian_str(request.form.get("measured_date", ""))
     measured_at = f"{measured} 12:00:00" if measured else None
     added = 0
@@ -26,12 +30,25 @@ def add_reading(pid):
             value = float(raw)
         except ValueError:
             continue
-        unit = (indicators.get(vtype) or {}).get('unit') or VITAL_TYPES.get(vtype, {}).get('unit')
-        repo.add_reading(pid, vtype=vtype, value=value, unit=unit, measured_at=measured_at,
-                         recorded_by=g.user["username"])
+        unit = (
+            (indicators.get(vtype) or {}).get("unit")
+            or VITAL_TYPES.get(vtype, {}).get("unit")
+        )
+        ingest.add_vital_reading(
+            pid,
+            vtype=vtype,
+            value=value,
+            unit=unit,
+            measured_at=measured_at,
+            recorded_by=g.user["username"],
+        )
         added += 1
     if added:
-        log_activity("vitals_add", f"ثبت {added} شاخص حیاتی", patient_link_id=pid)
+        log_activity(
+            "vitals_add",
+            f"ثبت {added} شاخص حیاتی",
+            patient_link_id=pid,
+        )
         flash(f"{added} شاخص ثبت شد", "success")
     else:
         flash("هیچ مقداری وارد نشد")
@@ -41,7 +58,11 @@ def add_reading(pid):
 @bp.route("/<int:pid>/reading/<int:reading_id>/delete", methods=["POST"])
 @login_required
 def delete_reading(pid, reading_id):
-    VitalsRepository().delete_reading(reading_id)
+    HypoglycemiaShadowGlucoseIngestService().delete_vital_reading(
+        patient_link_id=pid,
+        reading_id=reading_id,
+        actor_username=g.user["username"],
+    )
     return redirect(url_for("patients.detail", pid=pid) + "#vitals")
 
 
@@ -85,7 +106,10 @@ def add_lab(pid):
             if not name or value is None:
                 continue
             repo.add_lab(
-                pid, test_name=name, test_key=(at(keys, i) or "").strip() or None, value=value,
+                pid,
+                test_name=name,
+                test_key=(at(keys, i) or "").strip() or None,
+                value=value,
                 unit=(at(units, i) or "").strip() or None,
                 ref_low=_to_float(at(ref_lows, i)),
                 ref_high=_to_float(at(ref_highs, i)),
@@ -94,7 +118,11 @@ def add_lab(pid):
             )
             added += 1
         if added:
-            log_activity("lab_add", f"ثبت {added} آزمایش", patient_link_id=pid)
+            log_activity(
+                "lab_add",
+                f"ثبت {added} آزمایش",
+                patient_link_id=pid,
+            )
             flash(f"{added} آزمایش ثبت شد", "success")
         else:
             flash("هیچ آزمایشی ثبت نشد")
@@ -106,7 +134,9 @@ def add_lab(pid):
         flash("نام آزمایش الزامی است")
         return redirect(url_for("patients.detail", pid=pid) + "#record")
     repo.add_lab(
-        pid, test_name=name, test_key=(request.form.get("test_key") or "").strip() or None,
+        pid,
+        test_name=name,
+        test_key=(request.form.get("test_key") or "").strip() or None,
         value=_to_float(request.form.get("value")),
         unit=request.form.get("unit") or None,
         ref_low=_to_float(request.form.get("ref_low")),
@@ -115,7 +145,11 @@ def add_lab(pid):
         notes=request.form.get("notes") or None,
         recorded_by=g.user["username"],
     )
-    log_activity("lab_add", f"ثبت آزمایش: {name}", patient_link_id=pid)
+    log_activity(
+        "lab_add",
+        f"ثبت آزمایش: {name}",
+        patient_link_id=pid,
+    )
     flash("آزمایش ثبت شد", "success")
     return redirect(url_for("patients.detail", pid=pid) + "#record")
 
