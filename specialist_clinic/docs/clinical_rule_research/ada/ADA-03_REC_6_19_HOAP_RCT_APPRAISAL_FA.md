@@ -2,83 +2,140 @@
 
 **مقاله:** Gilliam et al., JAMA Network Open, 2026  
 **DOI:** 10.1001/jamanetworkopen.2025.59946  
-**وضعیت متن کامل:** کامل، PMC و CC-BY
+**Registry:** NCT06746714  
+**وضعیت متن کامل مقاله:** کامل و CC-BY  
+**وضعیت Supplement 1:** وجود Protocol/SAP تأیید شده؛ binary، تاریخ و version chronology هنوز ممیزی نشده‌اند
 
-## طراحی
+## طراحی و estimand واقعی
 
-کارآزمایی تصادفی open-label در Kaiser Permanente Northern California:
+کارآزمایی open-label در Kaiser Permanente Northern California:
 
-- 200 بیمار randomize شدند؛
-- 191 نفر در ITT باقی ماندند؛
-- intervention توسط یک pharmacist expert انجام شد؛
-- intervention چندجزئی بود: chart review، proactive outreach، individualized goals، medication optimization، education، referral و follow-up؛
-- comparator، usual care پس از dissemination سراسری HOAP بود.
+- 200 نفر randomize شدند؛
+- 9 نفر پس از allocation حذف شدند؛
+- cohort تحلیل‌شده 191 نفر بود: 96 intervention و 95 usual care؛
+- intervention توسط یک pharmacist متخصص و به‌صورت multicomponent اجرا شد؛
+- comparator، usual care پس از passive/system-wide availability of HOAP بود.
 
-## نتایج
+بنابراین contrast واقعی:
 
-### Primary process outcome
+`active expert-pharmacist workflow using HOAP`
 
-Safer regimen در 6 ماه:
+در برابر:
 
-- intervention: 28.1%
-- control: 15.8%
-- RD: 12.3 percentage points
-- 95% CI: 0.6 تا 24.0
+`usual care with passive HOAP availability`
 
-### Acute-care hypoglycemia
+است؛ نه اعتبار مستقل HOAP algorithm در برابر نبود الگوریتم.
 
-در 6 ماه:
+## chronology باز
 
-- intervention: 0
-- control: 5.3%
-- RD: −5.3 points
-- 95% CI: −11.8 تا −1.3
+- مقاله: random selection/assignment در 2023-06-01؛
+- registry و متن مقاله: trial start در 2023-07-20؛
+- CONSORT footnote: baseline در 2023-07-23؛
+- public registry posting پس از primary completion انجام شد.
 
-در 12 ماه اختلاف دیگر statistically significant نبود.
+این chronology بدون خواندن dated Supplement 1 نهایی نمی‌شود.
 
-### HbA1c
+## Primary process outcome
 
-شواهدی از بدترشدن HbA1c بین گروه‌ها دیده نشد، ولی 38 بیمار دادهٔ 6 ماهه نداشتند.
+Safer regimen در شش ماه:
 
-## Risk of Bias
+- intervention: 27/96 = 28.1%؛
+- control: 15/95 = 15.8%؛
+- RD: 12.3 percentage points؛
+- 95% CI: 0.6 تا 24.0.
 
-### Safer-regimen result
+اما 50 نفر از 191 نفر در randomization از قبل شرط primary outcome را داشتند و فقط 141 نفر sulfonylurea، bolus insulin یا mixed insulin دریافت می‌کردند.
 
-Overall: **Some concerns**
+در restricted target-drug subset:
 
-علل:
+- intervention: 27/68 = 40%؛
+- control: 15/73 = 21%؛
+- RD: 19.2 percentage points؛
+- 95% CI: 4.0 تا 33.7.
 
-- 9 بیمار پس از randomization به‌عنوان ineligible حذف شدند؛
-- baseline age imbalance وجود داشت؛
-- intervention open-label و multicomponent بود؛
-- یک pharmacist intervention را اجرا کرد؛
-- outcome نسخه/دستور را ثبت می‌کند، نه adherence یا همهٔ dose reductions.
+تا ممیزی SAP مشخص نیست restricted subset همان estimand از پیش تعیین‌شده بوده یا تحلیل تکمیلی. هیچ‌یک از این estimateها به Rule دارویی تبدیل نمی‌شود.
+
+## Acute-care hypoglycemia
+
+در شش ماه:
+
+- intervention: 0؛
+- control: 5/95 = 5.3%؛
+- RD: -5.3 percentage points؛
+- 95% CI: -11.8 تا -1.3.
+
+در 12 ماه که تحلیل post hoc بود:
+
+- intervention: 1/48 = 2.1%؛
+- control: 6/95 = 6.3%؛
+- RD: -4.2 percentage points؛
+- 95% CI: -11.3 تا 1.8.
+
+این سیگنال secondary، sparse، multiplicity-unaudited و در 12 ماه statistically clear نبود. ED/IP data نیز طبق مقاله حدود 5% severe hypoglycemia را ثبت می‌کند.
+
+## Intervention fidelity و transferability
+
+- فقط 73 نفر از 96 نفر intervention یک initial visit کامل کردند؛
+- یک pharmacist متخصص intervention را اجرا کرد؛
+- تماس‌ها تکرارشونده و individualized بودند؛
+- تیم درمان و زیرساخت integrated نقش اساسی داشتند؛
+- comparator نیز passive HOAP access داشت.
+
+بنابراین effect را نمی‌توان به یک clause یا threshold داخلی HOAP نسبت داد.
+
+## RoB 2 پالایش‌شده
+
+### Safer-regimen process outcome
+
+Overall: **SOME CONCERNS — PROVISIONAL**
+
+علل اصلی:
+
+- post-randomization exclusions و نامشخص‌بودن handling از پیش تعیین‌شده؛
+- public registration پس از primary completion؛
+- assignment/start/baseline chronology باز؛
+- open-label و intervention چندجزئی؛
+- baseline outcome state برای 50/191؛
+- restricted subset prespecification و multiplicity ممیزی‌نشده؛
+- construct محدود EHR discontinuation order.
 
 ### ED/IP result
 
-Overall: **Some concerns + very serious imprecision**
+Overall: **SOME CONCERNS + VERY SERIOUS IMPRECISION — PROVISIONAL**
 
 علل:
 
-- outcome ثانویه و rare بود؛
-- trial برای severe hypoglycemia به‌عنوان primary outcome power نداشت؛
-- ED/IP فقط بخشی از Level 3 events را ثبت می‌کند؛
-- اثر 12 ماهه ناپایدار بود.
+- secondary و rare؛
+- فقط پنج event در شش ماه؛
+- sensitivity پایین ED/IP برای تمام severe events؛
+- 12-month analysis post hoc و غیرمعنی‌دار؛
+- multiplicity ممیزی‌نشده.
+
+## GRADE canonical
+
+- `EU-6.19-08` safer-prescribing process: `VERY LOW`؛ Gate = `PROCESS_WORKFLOW_EVIDENCE_ONLY`.
+- `EU-6.19-09` ED/IP signal: `VERY LOW`؛ Gate = `BLOCKED_REPLICATION_AND_PRECISION`.
 
 ## نتیجهٔ مجاز
 
-این trial از توسعه و ارزیابی یک workflow proactive pharmacist/clinician review حمایت می‌کند.
+این trial از پژوهش و local shadow evaluation یک workflow proactive، pharmacist/clinician-owned و team-based حمایت می‌کند.
 
 ## نتیجهٔ غیرمجاز
 
 این trial اجازه نمی‌دهد:
 
-- HOAP algorithm عیناً به Rule تبدیل شود؛
+- HOAP algorithm عیناً به Rule Library تبدیل شود؛
+- restricted-subset estimate به threshold تبدیل شود؛
 - medication discontinuation خودکار شود؛
-- acute-care benefit قطعی یا پایدار فرض شود؛
-- effect به درمانگاه ایران بدون local adaptation تعمیم داده شود.
+- ED/IP signal اثبات پایدار severe-hypoglycemia prevention تلقی شود؛
+- اثر به درمانگاه ایران بدون local computability، staffing و validation تعمیم داده شود؛
+- internal guideline بدون access/method/licensing encode شود.
 
 ## Gate
 
-`PROCESS_WORKFLOW_EVIDENCE_ONLY`  
-Rule Candidate = 0
+`PROCESS_WORKFLOW_EVIDENCE_ONLY + SUPPLEMENT_VERSION_HOLD + INTERNAL_GUIDELINE_ACCESS_HOLD + LICENSING_HOLD`
+
+- Rule Candidate = 0
+- Accepted Rule = 0
+- Runtime change = 0
+- Clinical activation = BLOCKED
