@@ -7,6 +7,7 @@
 - Rule candidates: `0`
 - Accepted Rules: `0`
 - Licensing: `HOLD`
+- Clinical activation: `BLOCKED`
 - Review model: دو Pass توسط همان ارزیاب؛ نه دو ارزیاب انسانی مستقل.
 
 ## مراحل
@@ -18,53 +19,105 @@
 5. `ADA-04`: Formalization Readiness
 6. `ADA-05`: Validation, SILENT, pilot and governed activation
 
-## وضعیت نسخه v0.8
+## وضعیت نسخه v0.9.1
 
 - بخش ۶: `24` Recommendation Record
 - مطالعات غربال‌شده برای 6.19: `17`
-- استخراج متن کامل: `10`
+- استخراج متن کامل مقالهٔ نتایج: `10`
 - Article-level appraisal: `16`
-- Formal method/result appraisal: `9`
+- Formal method/result appraisal sealed: `9`
+- Provisional result appraisal: `1` برای PHT2
 - GRADE Evidence Units: `10`
-- GRADE units corrected in consistency audit: `4`
 - KDIGO dependency records: `8`
 - HOAP provenance domains: `8`
-- تعارض باز: `26`
-- Decision records: `53`
+- Search Log records: `35`
+- تعارض باز: `29`
+- Decision records: `59`
 - Rule Candidate: `0`
 - Accepted Rule: `0`
+- Runtime change: `0`
 
-## یافته‌های اصلی
+## یافتهٔ اصلی Recommendation 6.19
 
-- ADA 6.19 یک trigger برای بازنگری طرح درمان است، نه یک medication action استاندارد.
-- منابع اصلی ADA برای 6.19 اثربخشی یک اقدام دارویی خودکار پس از Level 2/3 را ثابت نمی‌کنند.
-- HOAP randomized trial شواهدی برای proactive pharmacist-led workflow ایجاد می‌کند، اما صحت و portability تک‌تک threshold/actionهای الگوریتم را ثابت نمی‌کند.
-- usual-care arm نیز پس از passive dissemination به HOAP دسترسی داشت؛ بنابراین trial بیشتر active implementation را در برابر passive implementation می‌سنجد.
-- public registration کارآزمایی HOAP بعد از primary completion ثبت شده و prespecification تا بررسی نسخهٔ تاریخ‌دار protocol/SAP روی HOLD است.
-- خود HOAP یک guideline داخلی است؛ متن frozen، evidence tables، clause-level grading و reuse rights آن تأیید نشده‌اند.
-- PHT2 متن کامل نتایج در دسترس ندارد و فقط incremental psychoeducation را در برابر proactive care alone مقایسه می‌کند.
-- KDIGO نشان می‌دهد CKD stage، HbA1c reliability، insulin clearance و independent cardiorenal indication باید پیش از هر formalization دارویی بررسی شوند.
+ADA 6.19 یک trigger برای بازنگری clinician-owned طرح درمان است، نه یک medication action استاندارد و خودکار.
 
-## ممیزی GRADE
+workflow مجاز فعلی:
 
-چهار certainty label ناسازگار اصلاح شدند:
+`verified hypoglycemia event -> clinician-owned review trigger -> collect missing facts -> individualized decision`
 
-- `EU-6.19-04`: `VERY LOW`
-- `EU-6.19-06`: `LOW`
-- `EU-6.19-08`: `VERY LOW`
-- `EU-6.19-09`: `VERY LOW`
-- `EU-6.19-10`: همچنان `PENDING`
+منابع اصلی ADA برای 6.19 اثربخشی یک اقدام دارویی خودکار واحد را پس از Level 2/3 ثابت نمی‌کنند. هر formalization دارویی باید داروی دقیق، indication، CKD stage، insulin clearance، قابلیت اعتماد HbA1c، cardiorenal benefit، frailty/cognition، caregiver capacity، treatment burden و ترجیح بیمار را بررسی کند.
 
-این اصلاح evidence boundary را سخت‌گیرانه‌تر کرد. هیچ Medication Action و هیچ Rule Candidate ایجاد نشد.
+## PHT2 — وضعیت v0.9.1
+
+Protocol و SAP عمومی PHT2 در ClinicalTrials.gov بازیابی و ممیزی شدند. نسخهٔ حاکم `Version 7 — 2025-04-14` است.
+
+تصحیح مهم:
+
+- عبارت قبلی «SAP در دسترس نیست» منسوخ شد؛
+- full results article/CONSORT و Final PCORI Report همچنان روی HOLD هستند؛
+- appraisal از `fully pending` به `provisional` ارتقا یافت، نه final.
+
+contrast صحیح trial:
+
+- `PC`: proactive nurse care؛
+- `PC+`: همان care به‌علاوهٔ psychoeducation.
+
+این trial proactive care را با usual care مقایسه نکرده است.
+
+نتیجهٔ primary:
+
+- PC: 16.1%
+- PC+: 11.6%
+- aRR: 0.72، 95% CI: 0.39 تا 1.30
+- aARD: -4.6 percentage points، 95% CI: -13.0 تا 3.7
+
+تعارض‌های باز:
+
+- Abstract هم‌زمان `92%` completion و `230/259` را گزارش می‌کند؛ محاسبه برابر 88.8% است؛
+- randomization design پس از first enrollment از cluster به individual تغییر کرده است؛
+- secondary/missing-data plan حین follow-up تغییر کرده و clustering پس از completion روشن شده است؛
+- power assumption نرخ رخداد بالاتری از event frequency واقعی داشت؛
+- multiplicity statement در Protocol عمومی پیدا نشد.
+
+RoB 2 موقت:
+
+`SOME CONCERNS — PROVISIONAL / MAY ESCALATE`
+
+GRADE موقت برای portability/actionability در Rule Library:
+
+`EU-6.19-10 = VERY LOW — PROVISIONAL / NOT FINAL`
+
+این قضاوت دربارهٔ قابلیت تبدیل به Rule است، نه نفی ارزش علمی trial.
+
+## HOAP — وضعیت v0.9.1
+
+Trial Protocol و SAP در JAMA Supplement 1 قرار دارند. با این حال:
+
+- public registry posting بعد از primary completion انجام شده است؛
+- تاریخ/نسخهٔ Supplement 1 نسبت به randomization هنوز مستقل ممیزی نشده است؛
+- نسخهٔ frozen داخلی HOAP، evidence tables، Delphi details، clause-level grading و reuse/software rights در دسترس نیستند؛
+- comparator نیز passive access به HOAP داشت؛
+- primary outcome safer-prescribing process بود، نه severe hypoglycemia.
+
+نقش مجاز HOAP:
+
+`PROCESS_WORKFLOW_EVIDENCE_ONLY`
+
+HOAP مجوز کپی thresholdها، actionهای دارویی یا الگوریتم داخلی نیست.
 
 ## مرزهای غیرقابل عبور
 
 - کپی مستقیم HOAP به Rule Library
-- استفاده از trial effect به‌عنوان تأیید همهٔ الگوریتم
+- استفاده از trial effect به‌عنوان تأیید تمام الگوریتم
 - کاهش/قطع/تعویض خودکار دارو
 - حذف داروی organ-protective فقط بر اساس A1C یا hypoglycemia event
+- `hypoglycemia_event -> reduce_all_diabetes_medications`
+- `old_age -> deintensify`
+- `low_eGFR -> stop_all_agents`
+- `CGM_low -> assume_level_3_event`
 - استفاده از KDIGO 2026 draft به‌عنوان منبع normative
-- نهایی‌کردن PHT2 بر اساس Abstract
+- finalizing PHT2 بدون متن کامل/CONSORT و analysis implementation
+- ترجمه یا software encoding منبع محافظت‌شده بدون permission
 
 ## اسناد کلیدی
 
@@ -76,9 +129,21 @@
 - `ADA-03_REC_6_19_KDIGO_CROSS_GUIDELINE_FA.md`
 - `ADA-03_REC_6_19_POST_CUTOFF_UPDATE_FA.md`
 - `ADA-03_REC_6_19_HOAP_RCT_APPRAISAL_FA.md`
-- `ADA-03_REC_6_19_PHT2_PENDING_APPRAISAL_FA.md`
-- `ADA-03_REC_6_19_GRADE_CONSISTENCY_AUDIT_FA.md`
 - `ADA-03_REC_6_19_HOAP_PROVENANCE_TRANSFERABILITY_FA.md`
+- `ADA-03_REC_6_19_PHT2_PENDING_APPRAISAL_FA.md`
+- `ADA-03_REC_6_19_PHT2_PROTOCOL_SAP_RECONCILIATION_V0_9_1_FA.md`
+- `ADA-03_REC_6_19_GRADE_CONSISTENCY_AUDIT_FA.md`
+- `ADA_REC_6_19_V0_9_1_WORKBOOK_ROWS.json`
+- `ADA_RESEARCH_STATUS_V0_3.json` تا `ADA_RESEARCH_STATUS_V0_9_1.json`
 - `HISTORY_RECONCILIATION_V0_7_FA.md`
 - `WORKSPACE_LINKS.md`
-- `ADA_RESEARCH_STATUS_V0_3.json` تا `ADA_RESEARCH_STATUS_V0_8.json`
+
+## وضعیت اجرایی
+
+- Rule candidates: `0`
+- Accepted Rules: `0`
+- Licensing: `HOLD`
+- Runtime changes: `0`
+- Clinical activation: `BLOCKED`
+
+PR پژوهش باید تا بسته‌شدن full-text/result reporting، HOAP access/method/licensing، local computability، independent review و validation در وضعیت Draft باقی بماند.
