@@ -21,6 +21,9 @@ from src.services.hypoglycemia_shadow import (
 from src.services.hypoglycemia_shadow_adjudication import (
     HypoglycemiaShadowAdjudicationQueue,
 )
+from src.services.hypoglycemia_shadow_disposition_queue import (
+    HypoglycemiaShadowDispositionQueue,
+)
 from src.services.hypoglycemia_shadow_observability import (
     HypoglycemiaShadowObservability,
 )
@@ -35,6 +38,9 @@ bp = Blueprint(
     url_prefix="/manager/hypoglycemia-shadow",
 )
 _ALLOWED_UI_DECISIONS = frozenset({"CONFIRMED", "REJECTED", "CONFLICT"})
+_ALLOWED_LOW_RISK_DISPOSITIONS = frozenset(
+    {"NO_CHANGE", "EDUCATION", "DEVICE_REVIEW", "FOLLOWUP", "OTHER"}
+)
 
 
 def _private_response(template: str, **context):
@@ -171,3 +177,86 @@ def open_review(event_id: str):
             "success",
         )
     return redirect(url_for("hypoglycemia_shadow_monitor.reviews"))
+
+
+@bp.get("/my-reviews")
+@permission_required(Permission.PATIENT_VIEW)
+@permission_required(Permission.CLINICAL_DECISION_RECORD)
+def my_reviews():
+    """List current user's valid OPENED reviews for low-risk disposition."""
+    return _private_response(
+        "manager/hypoglycemia_shadow_my_reviews.html",
+        queue=HypoglycemiaShadowDispositionQueue().snapshot(
+            owner_username=g.user["username"]
+        ),
+        active_page="manager",
+    )
+
+
+@bp.post("/my-reviews/<review_id>/disposition")
+@permission_required(Permission.PATIENT_VIEW)
+@permission_required(Permission.CLINICAL_DECISION_RECORD)
+def record_disposition(review_id: str):
+    """Record a low-risk clinician-authored disposition for the current owner."""
+    if HypoglycemiaShadowDispositionQueue().state() != "READY":
+        flash("زیرساخت Shadow برای ثبت نتیجهٔ Review آماده نیست.", "error")
+        return redirect(url_for("hypoglycemia_shadow_monitor.my_reviews"))
+
+    disposition = str(
+        request.form.get("disposition_type") or ""
+    ).strip().upper()
+    rationale = " ".join(
+        str(request.form.get("rationale") or "").strip().split()
+    )
+    try:
+        expected_review_event_id = int(
+            request.form.get("expected_review_event_id") or ""
+        )
+    except (TypeError, ValueError):
+        flash("نسخهٔ Review معتبر نیست.", "error")
+        return redirect(url_for("hypoglycemia_shadow_monitor.my_reviews"))
+    if disposition not in _ALLOWED_LOW_RISK_DISPOSITIONS:
+        flash(
+            "این نوع نتیجه در Shadow کم‌خطر مجاز نیست؛ تصمیم دارویی یا ارجاعی باید خارج از این جریان ثبت شود.",
+            "error",
+        )
+        return redirect(url_for("hypoglycemia_shadow_monitor.my_reviews"))
+    if not rationale:
+        flash("ثبت دلیل نتیجهٔ Review الزامی است.", "error")
+        return redirect(url_for("hypoglycemia_shadow_monitor.my_reviews"))
+    if len(rationale) > 1000:
+        flash("دلیل نتیجهٔ Review بیش از حد طولانی است.", "error")
+        return redirect(url_for("hypoglycemia_shadow_monitor.my_reviews"))
+
+    service = HypoglycemiaShadowService()
+    try:
+        review = service.get_review(review_id)
+        current = review["current"]
+        if str(current["owner_username"]) != str(g.user["username"]):
+            raise HypoglycemiaShadowValidationError(
+                "review is owned by another clinician"
+            )
+        service.record_disposition(
+            review_id,
+            expected_current_review_event_id=expected_review_event_id,
+            disposition_type=disposition,
+            rationale=rationale,
+            actor_username=g.user["username"],
+        )
+    except HypoglycemiaShadowConflict:
+        flash(
+            "Review هم‌زمان تغییر کرده است؛ فهرست را دوباره بررسی کنید.",
+            "error",
+        )
+    except (HypoglycemiaShadowValidationError, LookupError) as exc:
+        flash(f"نتیجه ثبت نشد: {exc}", "error")
+    else:
+        labels = {
+            "NO_CHANGE": "بدون تغییر",
+            "EDUCATION": "آموزش",
+            "DEVICE_REVIEW": "مرور دستگاه",
+            "FOLLOWUP": "پیگیری",
+            "OTHER": "سایر",
+        }
+        flash(f"نتیجهٔ Review ({labels[disposition]}) ثبت شد.", "success")
+    return redirect(url_for("hypoglycemia_shadow_monitor.my_reviews"))
