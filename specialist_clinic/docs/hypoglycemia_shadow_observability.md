@@ -17,7 +17,7 @@ It answers only operational questions:
 
 ## Privacy boundary
 
-The snapshot contains no:
+The snapshot contains no direct:
 
 - patient identifier;
 - event or review identifier;
@@ -26,14 +26,18 @@ The snapshot contains no:
 - glucose value;
 - note or rationale.
 
-Only fixed aggregate counts and system states are returned.
+Only fixed aggregate counts and system states are returned. These counts are
+still internal health information: small cells may be inferentially sensitive.
+The payload is therefore labeled
+`INTERNAL_AGGREGATE_LOW_CELL_COUNTS_POSSIBLE`, not anonymous or PHI-free.
 
-## Read-only boundary
+## Read-only consistency boundary
 
 The read model:
 
 - does not install or repair storage;
 - does not write, update, or delete any row;
+- reads all component queries inside one SQLite read transaction/savepoint;
 - returns a zero snapshot with `NOT_INSTALLED` when the shadow slice has never
   been explicitly used;
 - returns `INCOMPLETE / ATTENTION_REQUIRED` when only part of the required
