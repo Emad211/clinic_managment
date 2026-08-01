@@ -68,8 +68,7 @@ def candidates():
 @permission_required(Permission.CLINICAL_DECISION_RECORD)
 def adjudicate(event_id: str):
     """Record one explicit human event decision; never open a review or task."""
-    queue = HypoglycemiaShadowAdjudicationQueue()
-    if queue.storage_state(queue._db()) != "READY":
+    if HypoglycemiaShadowAdjudicationQueue().snapshot()["storage_state"] != "READY":
         flash("زیرساخت Shadow برای داوری آماده نیست.", "error")
         return redirect(url_for("hypoglycemia_shadow_monitor.candidates"))
 
