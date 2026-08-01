@@ -1,4 +1,4 @@
-"""Internal monitoring and clinician-owned hypoglycemia shadow adjudication."""
+"""Internal monitoring and clinician-owned hypoglycemia shadow workflows."""
 from __future__ import annotations
 
 from flask import (
@@ -23,6 +23,9 @@ from src.services.hypoglycemia_shadow_adjudication import (
 )
 from src.services.hypoglycemia_shadow_observability import (
     HypoglycemiaShadowObservability,
+)
+from src.services.hypoglycemia_shadow_review_queue import (
+    HypoglycemiaShadowReviewQueue,
 )
 
 
@@ -118,3 +121,53 @@ def adjudicate(event_id: str):
         }
         flash(f"نتیجهٔ داوری ({labels[decision]}) ثبت شد.", "success")
     return redirect(url_for("hypoglycemia_shadow_monitor.candidates"))
+
+
+@bp.get("/reviews")
+@permission_required(Permission.PATIENT_VIEW)
+@permission_required(Permission.CLINICAL_DECISION_RECORD)
+def reviews():
+    """List current confirmed event versions eligible for explicit review."""
+    return _private_response(
+        "manager/hypoglycemia_shadow_reviews.html",
+        queue=HypoglycemiaShadowReviewQueue().snapshot(),
+        active_page="manager",
+    )
+
+
+@bp.post("/reviews/<event_id>/open")
+@permission_required(Permission.PATIENT_VIEW)
+@permission_required(Permission.CLINICAL_DECISION_RECORD)
+def open_review(event_id: str):
+    """Open one idempotent review for the current user; create no external task."""
+    if HypoglycemiaShadowReviewQueue().state() != "READY":
+        flash("زیرساخت Shadow برای بازکردن Review آماده نیست.", "error")
+        return redirect(url_for("hypoglycemia_shadow_monitor.reviews"))
+    try:
+        expected_version_id = int(
+            request.form.get("expected_version_id") or ""
+        )
+    except (TypeError, ValueError):
+        flash("نسخهٔ رخداد برای Review معتبر نیست.", "error")
+        return redirect(url_for("hypoglycemia_shadow_monitor.reviews"))
+
+    try:
+        HypoglycemiaShadowService().open_review(
+            event_id=event_id,
+            expected_event_version_id=expected_version_id,
+            owner_username=g.user["username"],
+            actor_username=g.user["username"],
+        )
+    except HypoglycemiaShadowConflict:
+        flash(
+            "رخداد هم‌زمان تغییر کرده است؛ فهرست را دوباره بررسی کنید.",
+            "error",
+        )
+    except (HypoglycemiaShadowValidationError, LookupError) as exc:
+        flash(f"Review باز نشد: {exc}", "error")
+    else:
+        flash(
+            "Review داخلی برای شما باز شد؛ هیچ Task یا اقدام درمانی ساخته نشد.",
+            "success",
+        )
+    return redirect(url_for("hypoglycemia_shadow_monitor.reviews"))

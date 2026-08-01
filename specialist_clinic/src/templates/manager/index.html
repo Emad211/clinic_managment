@@ -28,6 +28,10 @@
             <div class="nt-ic t-warn"><svg class="icon"><use href="#i-clipboard"></use></svg></div>
             <div><b>داوری رخدادهای Shadow</b><small>تأیید، رد یا ثبت تعارض برای Candidateها؛ بدون Review یا تغییر درمان</small></div>
         </a>
+        <a class="card card-soft nav-tile" href="{{ url_for('hypoglycemia_shadow_monitor.reviews') }}">
+            <div class="nt-ic t-ok"><svg class="icon"><use href="#i-check"></use></svg></div>
+            <div><b>بازکردن Reviewهای Shadow</b><small>ایجاد پروندهٔ داخلی برای رخدادهای تأییدشده؛ بدون Task یا اقدام درمانی</small></div>
+        </a>
         {% endif %}
         <a class="card card-soft nav-tile" href="{{ url_for('manager.users') }}">
             <div class="nt-ic t-warn"><svg class="icon"><use href="#i-key"></use></svg></div>
