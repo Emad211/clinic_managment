@@ -1,0 +1,100 @@
+{
+  "schema_version": "0.9.2",
+  "parent_workbook": "ADA Clinical Rule Evidence Master v0.8 — GRADE Audited",
+  "parent_preserved": true,
+  "native_sheet_id": "1p-ugp_yQ3pVqbSN1I-IwremZ4P65sSEi3AtReFeyVbc",
+  "applied_changes": {
+    "search_log_append": [
+      "SEA-ADA-0032",
+      "SEA-ADA-0033",
+      "SEA-ADA-0034",
+      "SEA-ADA-0035",
+      "SEA-ADA-0036",
+      "SEA-ADA-0037",
+      "SEA-ADA-0038",
+      "SEA-ADA-0039"
+    ],
+    "conflict_matrix_refine": [
+      "CONFLICT-ADA-S06-025"
+    ],
+    "conflict_matrix_append": [
+      "CONFLICT-ADA-S06-027",
+      "CONFLICT-ADA-S06-028",
+      "CONFLICT-ADA-S06-029",
+      "CONFLICT-ADA-S06-030",
+      "CONFLICT-ADA-S06-031",
+      "CONFLICT-ADA-S06-032",
+      "CONFLICT-ADA-S06-033",
+      "CONFLICT-ADA-S06-034"
+    ],
+    "decision_log_append": [
+      "DEC-ADA-054",
+      "DEC-ADA-055",
+      "DEC-ADA-056",
+      "DEC-ADA-057",
+      "DEC-ADA-058",
+      "DEC-ADA-059",
+      "DEC-ADA-060",
+      "DEC-ADA-061",
+      "DEC-ADA-062",
+      "DEC-ADA-063",
+      "DEC-ADA-064",
+      "DEC-ADA-065",
+      "DEC-ADA-066"
+    ],
+    "pht2_rob2_append": [
+      "ROB2-0013-P-01",
+      "ROB2-0013-P-02",
+      "ROB2-0013-P-03",
+      "ROB2-0013-P-04",
+      "ROB2-0013-P-05"
+    ],
+    "hoap_rob2_refine": [
+      "ROB2-0012-P-01",
+      "ROB2-0012-P-02",
+      "ROB2-0012-P-03",
+      "ROB2-0012-P-04",
+      "ROB2-0012-P-05",
+      "ROB2-0012-H-01",
+      "ROB2-0012-H-02",
+      "ROB2-0012-H-03",
+      "ROB2-0012-H-04",
+      "ROB2-0012-H-05"
+    ],
+    "grade_updates": [
+      "EU-6.19-08",
+      "EU-6.19-09",
+      "EU-6.19-10"
+    ],
+    "provenance_updates": [
+      "HOAP-PROV-005",
+      "HOAP-PROV-006"
+    ],
+    "article_screening_updates": [
+      "ART-ADA-S06-0012",
+      "ART-ADA-S06-0013"
+    ],
+    "fulltext_extraction_update": [
+      "EXT-ADA-S06-0010"
+    ],
+    "version_history_added": true
+  },
+  "key_open_conflicts": {
+    "CONFLICT-ADA-S06-027": "PHT2 completion statement: 92% versus 230/259 = 88.8%.",
+    "CONFLICT-ADA-S06-028": "PHT2 power assumption versus substantially lower observed event frequency.",
+    "CONFLICT-ADA-S06-029": "PHT2 amendment chronology and implemented analysis plan.",
+    "CONFLICT-ADA-S06-030": "HOAP 200 randomized versus 191 analyzed after post-allocation exclusions.",
+    "CONFLICT-ADA-S06-031": "HOAP assignment date versus trial-start and baseline dates.",
+    "CONFLICT-ADA-S06-032": "HOAP full-cohort primary estimand versus 141 target-drug subset.",
+    "CONFLICT-ADA-S06-033": "HOAP sparse ED/IP signal, multiplicity and lack of durability.",
+    "CONFLICT-ADA-S06-034": "Supplement 1 is listed but official binary/version chronology was not audited."
+  },
+  "invariants": {
+    "rule_candidates": 0,
+    "accepted_rules": 0,
+    "runtime_changes": 0,
+    "licensing": "HOLD",
+    "clinical_activation": "BLOCKED",
+    "permitted_workflow": "verified event -> clinician-owned review -> collect facts -> individualized decision"
+  }
+}
