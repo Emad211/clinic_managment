@@ -37,6 +37,7 @@ _REQUIRED_TABLES = frozenset(
         "hypoglycemia_shadow_review_events",
     }
 )
+_SAVEPOINT = "hypoglycemia_shadow_observability"
 
 
 def _time_text(value: datetime) -> str:
@@ -50,7 +51,7 @@ def _zeros(keys: tuple[str, ...]) -> dict[str, int]:
 
 
 class HypoglycemiaShadowObservability:
-    """Build a deterministic aggregate snapshot without mutating the database."""
+    """Build one consistent aggregate snapshot without mutating the database."""
 
     def __init__(
         self,
@@ -74,7 +75,10 @@ class HypoglycemiaShadowObservability:
             "SELECT name FROM sqlite_master WHERE type='table' AND name IN (?,?)",
             tuple(sorted(_REQUIRED_TABLES)),
         ).fetchall()
-        present = {str(row["name"] if hasattr(row, "keys") else row[0]) for row in rows}
+        present = {
+            str(row["name"] if hasattr(row, "keys") else row[0])
+            for row in rows
+        }
         if not present:
             return "NOT_INSTALLED"
         if present != _REQUIRED_TABLES:
@@ -107,6 +111,20 @@ class HypoglycemiaShadowObservability:
 
     def snapshot(self) -> dict[str, Any]:
         db = self._db()
+        db.execute(f"SAVEPOINT {_SAVEPOINT}")
+        try:
+            result = self._snapshot_in_read_transaction(db)
+            db.execute(f"RELEASE SAVEPOINT {_SAVEPOINT}")
+            return result
+        except Exception:
+            db.execute(f"ROLLBACK TO SAVEPOINT {_SAVEPOINT}")
+            db.execute(f"RELEASE SAVEPOINT {_SAVEPOINT}")
+            raise
+
+    def _snapshot_in_read_transaction(
+        self,
+        db: sqlite3.Connection,
+    ) -> dict[str, Any]:
         storage_state = self._storage_state(db)
         if storage_state != "READY":
             return self._empty(storage_state)
@@ -143,7 +161,9 @@ class HypoglycemiaShadowObservability:
                 "SELECT id, event_id FROM hypoglycemia_shadow_event_versions"
             ).fetchall()
         }
-        current_by_event = {str(row["event_id"]): row for row in current_events}
+        current_by_event = {
+            str(row["event_id"]): row for row in current_events
+        }
 
         event_counts = _zeros(_EVENT_STATUSES)
         level_counts = _zeros(_EVENT_LEVELS)
