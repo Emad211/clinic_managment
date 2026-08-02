@@ -29,9 +29,57 @@ def _fo1_module():
     return module
 
 
+def _upgrade_fo1_fixture_to_authoritative_state_schema(
+    db: sqlite3.Connection,
+) -> None:
+    """Give the compact FO-1 identity fixture the lifecycle columns FO-2 reads."""
+    db.executescript(
+        """
+        ALTER TABLE clinical_task_events ADD COLUMN supersedes_event_id INTEGER;
+        ALTER TABLE clinical_task_events ADD COLUMN due_at TEXT;
+        ALTER TABLE clinical_task_events ADD COLUMN assigned_to TEXT;
+
+        ALTER TABLE clinical_outcome_events ADD COLUMN verification TEXT;
+        ALTER TABLE clinical_outcome_events ADD COLUMN observed_at TEXT;
+        ALTER TABLE clinical_outcome_events ADD COLUMN outcome_type TEXT;
+
+        ALTER TABLE care_plan_commitments ADD COLUMN commitment_type TEXT;
+
+        ALTER TABLE care_plan_commitment_events ADD COLUMN supersedes_event_id INTEGER;
+        ALTER TABLE care_plan_commitment_events ADD COLUMN status TEXT;
+        ALTER TABLE care_plan_commitment_events ADD COLUMN due_at TEXT;
+        ALTER TABLE care_plan_commitment_events ADD COLUMN assigned_to TEXT;
+        ALTER TABLE care_plan_commitment_events ADD COLUMN evidence_type TEXT;
+        ALTER TABLE care_plan_commitment_events ADD COLUMN outcome_code TEXT;
+
+        UPDATE clinical_task_events
+        SET due_at='2026-08-12 00:00:00', assigned_to='nurse-1'
+        WHERE id=11;
+
+        UPDATE clinical_outcome_events
+        SET verification='CONFIRMED',
+            observed_at='2026-08-02 10:30:00',
+            outcome_type='LAB_COMPLETED'
+        WHERE id=12;
+
+        UPDATE care_plan_commitments
+        SET commitment_type='LAB_REVIEW'
+        WHERE commitment_id='commit-1';
+
+        UPDATE care_plan_commitment_events
+        SET status='SCHEDULED',
+            due_at='2026-08-13 09:00:00',
+            assigned_to='nurse-2'
+        WHERE id=1;
+        """
+    )
+    db.commit()
+
+
 def _db() -> sqlite3.Connection:
     module = _fo1_module()
     db = module._db()
+    _upgrade_fo1_fixture_to_authoritative_state_schema(db)
     FollowupEpisodeBackfillService(db).run(apply=True)
     ensure_followup_operations_storage(db)
     return db
