@@ -31,8 +31,7 @@ EXPECTED_FLAGS = (
     "FOLLOWUP_EVIDENCE_ASSIST",
     "FOLLOWUP_AUTOMATION_HEALTH",
 )
-POST_FO1_SCHEMA_NAMES = (
-    "followup_work_item_projection",
+POST_FO2_SCHEMA_NAMES = (
     "automation_decision_events",
     "operational_outbox",
 )
@@ -153,7 +152,7 @@ print(json.dumps({
     assert payload["values"] == {name: False for name in EXPECTED_FLAGS}
 
 
-def test_fo2_and_later_schema_is_not_installed_in_fo1():
+def test_fo3_and_later_schema_is_not_installed_before_fo2():
     schema_sources = [SRC_ROOT / "adapters" / "sqlite" / "schema.sql"]
     schema_sources.extend(
         path for path in (SRC_ROOT / "adapters" / "sqlite").glob("*.py") if path.is_file()
@@ -163,7 +162,7 @@ def test_fo2_and_later_schema_is_not_installed_in_fo1():
         if not path.is_file():
             continue
         text = path.read_text(encoding="utf-8")
-        for table in POST_FO1_SCHEMA_NAMES:
+        for table in POST_FO2_SCHEMA_NAMES:
             declaration = re.compile(
                 rf"CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?[\[\]`\"']*{re.escape(table)}\b",
                 re.IGNORECASE,
@@ -173,7 +172,7 @@ def test_fo2_and_later_schema_is_not_installed_in_fo1():
     assert violations == []
 
 
-def test_project_state_closes_fo0_and_authorizes_only_fo1():
+def test_project_state_validates_fo1_and_authorizes_only_fo2():
     state = json.loads((REPO_ROOT / "PROJECT_STATE.json").read_text(encoding="utf-8"))
     specialist = state["streams"]["specialist_clinic"]
     assert specialist["data_classification"] == "TEST_ONLY_SYNTHETIC_OR_RESETTABLE"
@@ -182,11 +181,17 @@ def test_project_state_closes_fo0_and_authorizes_only_fo1():
 
     stream = state["streams"]["followup_orchestration_ux_v1"]
     assert stream["program_code"] == "FOUX-V1"
-    assert stream["plan_version"] == "1.1.0"
-    assert stream["status"] == "FO_0_VALIDATED_FO_1_AUTHORIZED"
-    assert stream["fo1_allowed"] is True
+    assert stream["plan_version"] == "1.2.0"
+    assert stream["status"] == "FO_0_VALIDATED_FO_1_VALIDATED_FO_2_AUTHORIZED"
+    assert stream["fo1_evidence"]["implementation_pr"] == 75
+    assert stream["fo1_evidence"]["merge_commit"] == "15ef1585c069a74c26fbc0ce859e03906e5f475a"
+    assert stream["fo1_evidence"]["specialist_tests_passed"] == 736
+    assert stream["fo1_evidence"]["accounting_tests_passed"] == 54
+    assert stream["fo1_evidence"]["source_truth_digest_unchanged"] is True
+    assert stream["fo2_allowed"] is True
+    assert stream["fo3_allowed"] is False
     assert stream["feature_flags"] == {name: False for name in EXPECTED_FLAGS}
-    assert state["global_freeze"]["followup_orchestration_fo2_and_later"].startswith("BLOCKED")
+    assert state["global_freeze"]["followup_orchestration_fo3_and_later"].startswith("BLOCKED")
 
 
 def test_canonical_docs_and_agent_guard_are_current():
@@ -194,12 +199,15 @@ def test_canonical_docs_and_agent_guard_are_current():
     plan = PLAN_PATH.read_text(encoding="utf-8")
     baseline = BASELINE_PATH.read_text(encoding="utf-8")
     agent = agent_path.read_text(encoding="utf-8")
-    assert "نسخه:** `1.1.0`" in plan
-    assert "FO_0_VALIDATED / FO_1_AUTHORIZED" in plan
-    assert "TEST_ONLY / SYNTHETIC_OR_RESETTABLE" in plan
+
+    assert "نسخه:** `1.2.0`" in plan
+    assert "FO_0_VALIDATED / FO_1_VALIDATED / FO_2_AUTHORIZED" in plan
+    assert "FO-1 | VALIDATED" in plan
+    assert "FO-2 | AUTHORIZED" in plan
     assert "Status:** `VALIDATED`" in baseline
-    assert "FO-1 = AUTHORIZED" in agent
-    assert "FO-2 and later = BLOCKED" in agent
+    assert "FO-1 = VALIDATED" in agent
+    assert "FO-2 = AUTHORIZED" in agent
+    assert "FO-3 and later = BLOCKED" in agent
 
 
 def test_read_only_baseline_capture_remains_non_mutating_and_phi_free(tmp_path):
