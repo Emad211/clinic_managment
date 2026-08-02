@@ -7,6 +7,24 @@ import sys
 DEFAULT_SECRET_KEY = 'specialist-clinic-secret-change-in-prod'
 
 
+# Follow-up Orchestration & UX v1 is registered in FO-0 only. These flags are
+# intentionally declared here before any implementation consumes them. Every flag
+# defaults to OFF and must be enabled explicitly in a later, separately reviewed
+# tranche. See docs/FOLLOWUP_ORCHESTRATION_UX_V1_IMPLEMENTATION_PLAN.md.
+FOLLOWUP_ORCHESTRATION_FLAGS = (
+    'FOLLOWUP_EPISODES_ENABLED',
+    'FOLLOWUP_PROJECTION_SHADOW',
+    'FOLLOWUP_UNIFIED_WORKLIST_READONLY',
+    'FOLLOWUP_UNIFIED_WORKLIST_ACTIONS',
+    'FOLLOWUP_AUTO_ROUTING',
+    'FOLLOWUP_STRUCTURED_CONTACT',
+    'FOLLOWUP_SMS_AUTO_GUARDED',
+    'FOLLOWUP_APPOINTMENT_SYNC',
+    'FOLLOWUP_EVIDENCE_ASSIST',
+    'FOLLOWUP_AUTOMATION_HEALTH',
+)
+
+
 def _env_flag(name: str) -> bool:
     return os.environ.get(name, '').strip().lower() in ('1', 'true', 'yes', 'on')
 
@@ -47,6 +65,24 @@ class Config:
 
     DEBUG = _env_flag('DEBUG')
     TESTING = False
+
+    # FOUX-V1 feature gates. FO-0 only registers these names. No runtime service,
+    # route, template, schema installer or scheduler job may consume them until its
+    # corresponding tranche is approved and implemented.
+    FOLLOWUP_EPISODES_ENABLED = _env_flag('FOLLOWUP_EPISODES_ENABLED')
+    FOLLOWUP_PROJECTION_SHADOW = _env_flag('FOLLOWUP_PROJECTION_SHADOW')
+    FOLLOWUP_UNIFIED_WORKLIST_READONLY = _env_flag(
+        'FOLLOWUP_UNIFIED_WORKLIST_READONLY'
+    )
+    FOLLOWUP_UNIFIED_WORKLIST_ACTIONS = _env_flag(
+        'FOLLOWUP_UNIFIED_WORKLIST_ACTIONS'
+    )
+    FOLLOWUP_AUTO_ROUTING = _env_flag('FOLLOWUP_AUTO_ROUTING')
+    FOLLOWUP_STRUCTURED_CONTACT = _env_flag('FOLLOWUP_STRUCTURED_CONTACT')
+    FOLLOWUP_SMS_AUTO_GUARDED = _env_flag('FOLLOWUP_SMS_AUTO_GUARDED')
+    FOLLOWUP_APPOINTMENT_SYNC = _env_flag('FOLLOWUP_APPOINTMENT_SYNC')
+    FOLLOWUP_EVIDENCE_ASSIST = _env_flag('FOLLOWUP_EVIDENCE_ASSIST')
+    FOLLOWUP_AUTOMATION_HEALTH = _env_flag('FOLLOWUP_AUTOMATION_HEALTH')
 
 
 class TestConfig(Config):
