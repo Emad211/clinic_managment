@@ -1,72 +1,89 @@
 # Specialist Clinic — Agent Instructions
 
-This file is the nearest mandatory instruction source for every change under `specialist_clinic/`.
+این فایل نزدیک‌ترین منبع دستور برای همهٔ تغییرات زیر `specialist_clinic/` است.
 
-## Mandatory read order
+## ترتیب مطالعهٔ اجباری
 
-Before editing code, schema, UI, tests or documentation in this tree, read and reconcile:
+پیش از هر تغییر:
 
-1. repository `PROJECT_STATE.md` and `PROJECT_STATE.json`;
-2. root `AGENTS.md`;
-3. this file;
-4. `graphify-out/GRAPH_REPORT.md` when available;
-5. the code-adjacent contract for the stream being changed.
+1. `PROJECT_STATE.md` و `PROJECT_STATE.json`؛
+2. `AGENTS.md` ریشه؛
+3. همین فایل؛
+4. `graphify-out/GRAPH_REPORT.md` در صورت وجود؛
+5. قرارداد نزدیک به کد و سند canonical جریان.
 
-For Follow-up, Worklist, Task, SMS, Contact, Appointment or operational automation work:
+برای Follow-up، Task، Worklist، SMS، Contact، Appointment یا automation:
 
 ```text
 docs/FOLLOWUP_ORCHESTRATION_UX_V1_IMPLEMENTATION_PLAN.md
 docs/FOLLOWUP_ORCHESTRATION_UX_V1_BASELINE.md
 ```
 
-Conversation memory, old branches and historical PR bodies never override current `main`, `PROJECT_STATE.*` or the canonical plan.
+حافظهٔ گفتگو، branch قدیمی و PR تاریخی بر `main` و منابع بالا مقدم نیستند.
 
-## Current data environment
+## طبقه‌بندی محیط فعلی
 
 ```text
 specialist.db = TEST_ONLY / SYNTHETIC_OR_RESETTABLE
 source        = owner attestation, 2026-08-03
 ```
 
-This permits reset/reseed and migration rehearsal on current data, but it does not remove security or clinical guardrails. Before real patient data is entered, production-readiness and privacy review are mandatory. Never encode a `TEST_ONLY` shortcut in runtime logic.
+Reset/reseed و migration rehearsal روی دادهٔ فعلی مجاز است، ولی guardrailهای امنیتی و بالینی حذف نمی‌شوند. پیش از ورود دادهٔ واقعی بیمار، production-readiness و privacy review الزامی است. هیچ shortcut مبتنی بر `TEST_ONLY` وارد runtime نشود.
 
-## Current FOUX-V1 gate
-
-Program: `FOUX-V1 — Follow-up Orchestration & UX v1`
+## وضعیت FOUX-V1
 
 ```text
 FO-0 = VALIDATED
-FO-1 = AUTHORIZED
-FO-2 and later = BLOCKED pending FO-1 exit gate
+FO-1 = VALIDATED
+FO-2 = AUTHORIZED
+FO-3 and later = BLOCKED pending FO-2 exit gate
 ```
 
-Current permitted tranche:
+### FO-1 موجود روی main
 
 ```text
-FO-1 — Episode Identity & Append-only Links
+followup_episodes
+followup_episode_links
+followup_episode_events
 ```
 
-FO-1 may add only:
+Episode و Link immutable هستند؛ Event append-only و linear است. CLI backfill explicit است و startup backfill خودکار ندارد. Relation مبهم باید orphan reason بگیرد، نه relation حدسی.
 
-- additive/idempotent Episode, Link and Event storage;
-- deterministic/versioned identity builder;
-- source adapters/linker and explicit orphan reasons;
-- dry-run/backfill/rebuild/audit for supported test sources;
-- focused tests and CLI/reporting needed to prove correctness.
+## دامنهٔ مجاز فعلی: FO-2
 
-FO-1 must not add:
+```text
+FO-2 — Projection, Next Action & Shadow Parity
+```
 
-- Unified Worklist UI or change existing Worklist behavior;
-- Projection/next-action/routing/SLA runtime;
-- new SMS automation or approval behavior;
-- appointment/SMS cross-channel reactions;
-- automatic closure or escalation;
-- Clinical Evidence Assist;
-- new Clinical Rule or Hypoglycemia Shadow behavior;
-- Write to `clinic_new.db`;
-- fabricated relation, event, outcome or evidence.
+FO-2 می‌تواند فقط این موارد را اضافه کند:
 
-## FOUX-V1 feature flags
+- schema additive/idempotent برای `followup_work_item_projection`؛
+- repository projection؛
+- source-state adapterهای read-only؛
+- policy مرکزی و versioned برای state/next action؛
+- `ACTION_REQUIRED / WAITING / BLOCKED / TERMINAL`؛
+- waiting/block reason؛
+- جداسازی `action_due_at` و `target_at`؛
+- owner role proposal بدون assignment؛
+- deterministic projection hash/rebuild؛
+- parity report با Worklist فعلی؛
+- projection lag/performance metrics؛
+- explicit CLI و focused tests.
+
+FO-2 نباید:
+
+- Worklist یا template فعلی را تغییر دهد؛
+- route یا CTA جدید عملیاتی بسازد؛
+- claim/assignment انجام دهد؛
+- SMS ارسال یا approval را تغییر دهد؛
+- appointment reaction اجرا کند؛
+- outbox، retry، escalation یا auto-close بسازد؛
+- Evidence Assist بسازد؛
+- Clinical Task را transition/complete کند؛
+- Rule یا Hypoglycemia Shadow را تغییر دهد؛
+- `clinic_new.db` را بنویسد.
+
+## Feature Flagها
 
 ```text
 FOLLOWUP_EPISODES_ENABLED
@@ -81,46 +98,66 @@ FOLLOWUP_EVIDENCE_ASSIST
 FOLLOWUP_AUTOMATION_HEALTH
 ```
 
-All default OFF. In FO-1, only `FOLLOWUP_EPISODES_ENABLED` may be consumed, solely to gate Episode infrastructure. Default-OFF startup must preserve existing runtime behavior exactly.
+همه default OFF. در FO-2 فقط `FOLLOWUP_PROJECTION_SHADOW` ممکن است توسط اجرای explicit shadow/CLI مصرف شود. request، Scheduler و UI با default OFF باید دقیقاً رفتار قبلی را حفظ کنند.
 
-## Permanent safety boundaries
+## قرارداد Projection در FO-2
 
-- `webapp/clinic_new.db` is read-only from Specialist Clinic.
-- Existing source truths remain authoritative.
-- Episode is operational linkage, not clinical truth.
-- Clinical Task completion requires governed outcome evidence.
-- Appointment booking does not complete a Clinical Task.
-- No medication, diagnosis, referral or dose action is automated.
-- SMS consent, quiet hours, cap, cooldown, idempotency and provider guards remain mandatory.
-- Clinical Rule content and Hypoglycemia Shadow are outside FOUX-V1.
-- Append-only event tables are never updated or deleted.
-- Backfill only creates relations that can be proven from current source rows.
-- Unsupported/ambiguous rows receive an orphan reason; they do not receive guessed links.
+هر Work Item nonterminal دقیقاً یکی از این حالت‌هاست:
 
-## FO-1 required tests
+```text
+ACTION_REQUIRED
+WAITING
+BLOCKED
+```
 
-- migration on fresh DB, copied/existing DB and rerun;
-- UPDATE/DELETE rejection for append-only events;
-- immutable Episode identity;
-- deterministic identity and content hashes;
-- duplicate source link idempotency;
-- source/patient mismatch rejection;
-- dry-run and real backfill parity;
-- repeated backfill creates no duplicates;
-- source truth hashes/rows unchanged;
-- feature default OFF changes no existing route/UI/Scheduler behavior;
-- full Specialist Clinic suite;
+و باید دقیقاً یک توضیح عملیاتی داشته باشد:
+
+```text
+next_action
+waiting_reason
+blocked_reason
+```
+
+Projection:
+
+- source truth نیست؛
+- از Episode/Links و Sourceهای حاکم rebuild می‌شود؛
+- same source snapshot → same projection hash؛
+- patient scope را دوباره کنترل می‌کند؛
+- raw PHI یا payload بالینی عمومی ذخیره نمی‌کند؛
+- owner فقط role proposal است؛
+- تاریخ یا relation ساختگی تولید نمی‌کند؛
+- conflict/missing/stale را با reason code نشان می‌دهد.
+
+## مرزهای دائمی ایمنی
+
+- `clinic_new.db` برای Specialist Clinic read-only است.
+- Source Truthهای فعلی authoritative باقی می‌مانند.
+- Episode/Projection حقیقت بالینی نیستند.
+- Clinical Task completion نیازمند Evidence حاکم است.
+- Appointment، Clinical Task را complete نمی‌کند.
+- هیچ تصمیم دارویی، تشخیصی یا ارجاعی خودکار نیست.
+- SMS consent/quiet/cap/cooldown/idempotency حفظ می‌شود.
+- Rule و Hypoglycemia Shadow خارج از FOUX هستند.
+- eventهای append-only هرگز UPDATE/DELETE نمی‌شوند.
+
+## تست‌های اجباری FO-2
+
+- fresh/existing/rerun migration؛
+- deterministic projection hash؛
+- delete/rebuild equivalence؛
+- every nonterminal projection has action/wait/block؛
+- source/patient mismatch becomes blocked/conflict؛
+- stale/missing source reason؛
+- role proposal deterministic؛
+- action_due/target separation؛
+- parity report classifies every mismatch؛
+- source truth unchanged؛
+- feature default OFF causes no existing behavior change؛
+- no UI/Scheduler/SMS mutation؛
+- full Specialist suite؛
 - Accounting suite when governance/shared files change.
 
-## PR contract
+## PR Contract
 
-Every FOUX-V1 PR must state:
-
-- tranche and Requirement IDs;
-- exact scope and anti-scope;
-- schema/data impact;
-- feature flag and default;
-- focused/full test evidence;
-- rollback path;
-- UX effect;
-- proof that clinical safety and accounting read-only boundaries remain intact.
+هر PR باید tranche، Requirement ID، scope، schema/data impact، feature flag، focused/full tests، rollback، UX effect و proof مرزهای بالینی/حسابداری را ثبت کند.

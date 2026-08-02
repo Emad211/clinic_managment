@@ -1,14 +1,14 @@
 {
-  "schema_version": "1.2",
-  "audited_at": "2026-08-03T02:14:00+03:30",
+  "schema_version": "1.3",
+  "audited_at": "2026-08-03T02:51:00+03:30",
   "repository": "Emad211/clinic_managment",
   "product_authority": {
     "branch": "main",
-    "head": "901dbfdf9c358ecc09d2a60a0680f6a4a8370d17",
+    "head": "15ef1585c069a74c26fbc0ce859e03906e5f475a",
     "status": "ACTIVE_PRODUCT",
-    "head_note": "FOUX-V1 FO-0 merged; test-only data attestation pending merge"
+    "head_note": "FOUX-V1 FO-1 merged; FO-2 governance attestation pending merge"
   },
-  "overall_status": "PRODUCT_OPERATIONAL_CLINICAL_CONTENT_NOT_APPROVED_GOVERNANCE_RECONCILIATION_REQUIRED",
+  "overall_status": "PRODUCT_OPERATIONAL_PRE_PRODUCTION_TEST_DATA_CLINICAL_CONTENT_NOT_APPROVED_GOVERNANCE_RECONCILIATION_REQUIRED",
   "streams": {
     "accounting": {
       "path": "webapp/",
@@ -29,28 +29,53 @@
       "program_code": "FOUX-V1",
       "path": "specialist_clinic/",
       "canonical_plan": "specialist_clinic/docs/FOLLOWUP_ORCHESTRATION_UX_V1_IMPLEMENTATION_PLAN.md",
-      "plan_version": "1.1.0",
+      "plan_version": "1.2.0",
       "baseline_report": "specialist_clinic/docs/FOLLOWUP_ORCHESTRATION_UX_V1_BASELINE.md",
-      "tracking_issue_fo0": 71,
       "owner": "Emad211",
-      "current_tranche": "FO_1_EPISODE_IDENTITY_APPEND_ONLY_LINKS",
-      "status": "FO_0_VALIDATED_FO_1_AUTHORIZED",
+      "current_tranche": "FO_2_PROJECTION_NEXT_ACTION_SHADOW_PARITY",
+      "status": "FO_0_VALIDATED_FO_1_VALIDATED_FO_2_AUTHORIZED",
       "data_environment": "TEST_ONLY_RESETTABLE",
       "fo0_evidence": {
+        "tracking_issue": 71,
         "canonical_plan_pr": 70,
         "implementation_pr": 72,
+        "attestation_pr": 73,
         "merge_commit": "901dbfdf9c358ecc09d2a60a0680f6a4a8370d17",
         "specialist_tests_passed": 731,
         "accounting_tests_passed": 54,
         "deterministic_aggregate_fixture": true,
         "owner_test_only_attestation": true
       },
-      "runtime_behavior_change": false,
-      "schema_change": false,
-      "database_mutation": false,
+      "fo1_evidence": {
+        "tracking_issue": 74,
+        "implementation_pr": 75,
+        "merge_commit": "15ef1585c069a74c26fbc0ce859e03906e5f475a",
+        "specialist_tests_passed": 736,
+        "accounting_tests_passed": 54,
+        "synthetic_episodes": 4,
+        "synthetic_links": 12,
+        "second_apply_new_episodes": 0,
+        "second_apply_new_links": 0,
+        "source_truth_digest_unchanged": true
+      },
+      "fo1_contract": {
+        "tables": [
+          "followup_episodes",
+          "followup_episode_links",
+          "followup_episode_events"
+        ],
+        "identity_version": "1.0",
+        "automatic_backfill_on_startup": false,
+        "episode_and_link_identity_immutable": true,
+        "episode_events_append_only": true,
+        "ambiguous_relation_policy": "EXPLICIT_ORPHAN_REASON_NO_GUESSING"
+      },
+      "runtime_behavior_change_from_fo1": false,
+      "source_truth_mutation_from_fo1": false,
       "production_operational_baseline": "DEFERRED_TO_CONTROLLED_PILOT_BEFORE_REAL_DATA",
-      "fo1_allowed": true,
-      "next_gate": "FO_1_EPISODE_LINK_EVENT_SCHEMA_WITH_ZERO_SOURCE_TRUTH_MUTATION_AND_GREEN_CI",
+      "fo2_allowed": true,
+      "fo3_allowed": false,
+      "next_gate": "FO_2_DETERMINISTIC_SHADOW_PROJECTION_WITH_EXPLAINABLE_PARITY_AND_GREEN_CI",
       "feature_flags": {
         "FOLLOWUP_EPISODES_ENABLED": false,
         "FOLLOWUP_PROJECTION_SHADOW": false,
@@ -65,10 +90,12 @@
       },
       "invariants": [
         "EXISTING_SOURCE_TRUTHS_REMAIN_AUTHORITATIVE",
-        "EPISODE_IS_NOT_CLINICAL_TRUTH",
-        "FO_1_MAY_ADD_ONLY_EPISODE_LINK_EVENT_INFRASTRUCTURE",
-        "NO_UI_OR_AUTOMATION_BEHAVIOR_CHANGE_IN_FO_1",
-        "NO_FABRICATED_RELATION_OR_EVENT",
+        "EPISODE_AND_PROJECTION_ARE_NOT_CLINICAL_TRUTH",
+        "NO_UI_OR_OPERATIONAL_MUTATION_IN_FO_2",
+        "NO_FABRICATED_RELATION_EVENT_OR_DUE_DATE",
+        "EVERY_NONTERMINAL_PROJECTION_HAS_ACTION_WAIT_OR_BLOCK",
+        "SAME_SOURCE_SNAPSHOT_PRODUCES_SAME_PROJECTION_HASH",
+        "OWNER_ROLE_IS_PROPOSAL_ONLY_IN_FO_2",
         "CLINICAL_TASK_COMPLETION_REQUIRES_EVIDENCE",
         "APPOINTMENT_DOES_NOT_COMPLETE_CLINICAL_TASK",
         "NO_CLINICAL_RULE_OR_SHADOW_SCOPE_CHANGE",
@@ -135,8 +162,8 @@
     "disposition_branch": "DO_NOT_MERGE",
     "release_cleanup": "ALLOWED_AFTER_GOVERNANCE_MERGE",
     "focused_bug_and_security_fixes": "ALLOWED",
-    "followup_orchestration_fo1": "ALLOWED_WITHIN_CANONICAL_SCOPE",
-    "followup_orchestration_fo2_and_later": "BLOCKED_PENDING_FO_1_EXIT_GATE"
+    "followup_orchestration_fo2": "ALLOWED_WITHIN_CANONICAL_SHADOW_SCOPE",
+    "followup_orchestration_fo3_and_later": "BLOCKED_PENDING_FO_2_EXIT_GATE"
   },
   "next_phases": [
     "R0_GOVERNANCE_RECONCILIATION",
@@ -145,7 +172,8 @@
   ],
   "operational_programs": [
     "FOUX_V1_FO_0_VALIDATED",
-    "FOUX_V1_FO_1_AUTHORIZED"
+    "FOUX_V1_FO_1_VALIDATED",
+    "FOUX_V1_FO_2_AUTHORIZED"
   ],
   "trust_order": [
     "GITHUB_MAIN_AND_PULL_REQUEST_STATE",
