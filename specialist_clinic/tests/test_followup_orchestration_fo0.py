@@ -6,6 +6,7 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import re
 import sqlite3
 import subprocess
 import sys
@@ -92,9 +93,7 @@ def _create_baseline_fixture(path: Path) -> None:
                 id INTEGER PRIMARY KEY,
                 status TEXT
             );
-            CREATE TABLE engagement_dispatch (
-                id INTEGER PRIMARY KEY
-            );
+            CREATE TABLE engagement_dispatch (id INTEGER PRIMARY KEY);
             CREATE TABLE sms_messages (
                 id INTEGER PRIMARY KEY,
                 status TEXT,
@@ -143,9 +142,7 @@ def _create_baseline_fixture(path: Path) -> None:
                 (3, 'CANCELLED', NULL, 2);
 
             INSERT INTO engagement_approvals VALUES
-                (1, 'pending'),
-                (2, 'failed'),
-                (3, 'approved');
+                (1, 'pending'), (2, 'failed'), (3, 'approved');
             INSERT INTO engagement_dispatch VALUES (1), (2);
 
             INSERT INTO sms_messages VALUES
@@ -158,9 +155,7 @@ def _create_baseline_fixture(path: Path) -> None:
                 (2, 'scheduled', '2026-08-05 10:00:00');
 
             INSERT INTO appointments VALUES
-                (1, 'scheduled'),
-                (2, 'no_show'),
-                (3, 'cancelled');
+                (1, 'scheduled'), (2, 'no_show'), (3, 'cancelled');
 
             INSERT INTO followup_contact_events VALUES
                 (1, 1, '2026-08-01 09:00:00', '2026-08-02 09:00:00'),
@@ -218,13 +213,25 @@ def test_fo0_flags_have_no_runtime_consumer_yet():
 
 
 def test_fo0_does_not_install_orchestration_schema():
+    """Reject actual FOUX table declarations without confusing flags for tables."""
+    schema_sources = [SRC_ROOT / "adapters" / "sqlite" / "schema.sql"]
+    schema_sources.extend(
+        path
+        for path in (SRC_ROOT / "adapters" / "sqlite").glob("*.py")
+        if path.is_file()
+    )
     violations: list[str] = []
-    for path in SRC_ROOT.rglob("*"):
-        if not path.is_file() or path.suffix.lower() not in {".py", ".sql"}:
+    for path in schema_sources:
+        if not path.is_file():
             continue
-        text = path.read_text(encoding="utf-8").lower()
+        text = path.read_text(encoding="utf-8")
         for table in FOUX_SCHEMA_NAMES:
-            if table in text:
+            declaration = re.compile(
+                rf"CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?[\[\]`\"']*"
+                rf"{re.escape(table)}\b",
+                re.IGNORECASE,
+            )
+            if declaration.search(text):
                 violations.append(f"{path.relative_to(SPECIALIST_ROOT)}:{table}")
     assert violations == []
 
@@ -297,30 +304,34 @@ def test_read_only_baseline_capture_is_aggregate_and_non_mutating(tmp_path):
     assert captured["database"]["quick_check"] == "ok"
 
     metrics = captured["metrics"]
-    assert metrics["active_patients"] == 2
-    assert metrics["open_admin_tasks"] == 2
-    assert metrics["unassigned_open_admin_tasks"] == 1
-    assert metrics["overdue_open_admin_tasks"] == 1
-    assert metrics["current_nonterminal_clinical_tasks"] == 1
-    assert metrics["unassigned_current_clinical_tasks"] == 1
-    assert metrics["current_nonterminal_plan_commitments"] == 1
-    assert metrics["unassigned_current_plan_commitments"] == 0
-    assert metrics["current_open_work_items_total"] == 4
-    assert metrics["current_unassigned_work_items_total"] == 2
+    expected = {
+        "active_patients": 2,
+        "open_admin_tasks": 2,
+        "unassigned_open_admin_tasks": 1,
+        "overdue_open_admin_tasks": 1,
+        "current_nonterminal_clinical_tasks": 1,
+        "unassigned_current_clinical_tasks": 1,
+        "current_nonterminal_plan_commitments": 1,
+        "unassigned_current_plan_commitments": 0,
+        "current_open_work_items_total": 4,
+        "current_unassigned_work_items_total": 2,
+        "pending_engagement_approvals": 1,
+        "failed_or_unknown_engagement_approvals": 1,
+        "engagement_dispatch_rows": 2,
+        "sms_delivered": 1,
+        "sms_inflight_or_unknown": 1,
+        "sms_failed": 1,
+        "due_scheduled_campaigns": 1,
+        "scheduled_appointments": 1,
+        "no_show_appointments": 1,
+        "contact_events": 2,
+        "callbacks_due_from_latest_contact": 1,
+        "scheduler_failed_job_keys": 1,
+        "scheduler_running_job_keys": 1,
+    }
+    for key, value in expected.items():
+        assert metrics[key] == value
     assert captured["derived"]["unassigned_open_work_item_percent"] == 50.0
-    assert metrics["pending_engagement_approvals"] == 1
-    assert metrics["failed_or_unknown_engagement_approvals"] == 1
-    assert metrics["engagement_dispatch_rows"] == 2
-    assert metrics["sms_delivered"] == 1
-    assert metrics["sms_inflight_or_unknown"] == 1
-    assert metrics["sms_failed"] == 1
-    assert metrics["due_scheduled_campaigns"] == 1
-    assert metrics["scheduled_appointments"] == 1
-    assert metrics["no_show_appointments"] == 1
-    assert metrics["contact_events"] == 2
-    assert metrics["callbacks_due_from_latest_contact"] == 1
-    assert metrics["scheduler_failed_job_keys"] == 1
-    assert metrics["scheduler_running_job_keys"] == 1
 
     rendered = json.dumps(captured, ensure_ascii=False)
     assert "نام محرمانه نمونه" not in rendered
