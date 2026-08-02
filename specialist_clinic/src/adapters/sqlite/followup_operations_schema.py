@@ -4,6 +4,9 @@ from __future__ import annotations
 import sqlite3
 
 from src.adapters.sqlite.followup_episode_schema import ensure_followup_episode_storage
+from src.adapters.sqlite.followup_projection_schema import (
+    ensure_followup_projection_storage,
+)
 
 
 CONTACT_CHANNELS = (
@@ -133,6 +136,7 @@ def ensure_followup_operations_storage(db: sqlite3.Connection) -> None:
         """
     )
     ensure_followup_episode_storage(db)
+    ensure_followup_projection_storage(db)
     db.commit()
 
 
