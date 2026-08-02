@@ -4,9 +4,9 @@
 >
 > هر توسعه، پژوهش، آزمایش Shadow، انتشار یا مهاجرت باید پیش از شروع با این سند تطبیق داده شود. در صورت تعارض میان متن گفتگو، PR قدیمی یا حافظهٔ ایجنت با این فایل و وضعیت واقعی GitHub، ابتدا وضعیت مخزن بررسی و سپس این سند به‌روزرسانی می‌شود.
 
-- آخرین ممیزی: `2026-08-01`
+- آخرین ممیزی: `2026-08-03`
 - شاخهٔ محصول مرجع: `main`
-- head مرجع هنگام ممیزی: `075ddaa574c5c8b99b6d7b93c775823e6b00e3dc`
+- head مرجع هنگام شروع ممیزی FO-0: `86981354e48c06667b115b2c854a39e3f611e733`
 - وضعیت کلی: `PRODUCT_OPERATIONAL / CLINICAL_CONTENT_NOT_APPROVED / GOVERNANCE_RECONCILIATION_REQUIRED`
 
 ## 1. تعریف دقیق پروژه
@@ -19,7 +19,8 @@
 4. Clinical Rule Research — پژوهش شواهد برای بازسازی Rule Library؛
 5. Experimental Shadow Workflows — آزمایش‌های داخلی غیرتجویزی؛
 6. Release Engineering — ساخت و استقرار Windows/local/LAN؛
-7. Halqe Migration — مهاجرت بلندمدت و مستقل به PostgreSQL/Next.js.
+7. Halqe Migration — مهاجرت بلندمدت و مستقل به PostgreSQL/Next.js؛
+8. Follow-up Orchestration & UX v1 — بازطراحی عملیاتی Task، SMS، Contact، Appointment و Worklist با حفظ Source of Truthهای فعلی.
 
 این جریان‌ها **نباید به‌جای یکدیگر تفسیر شوند**.
 
@@ -28,6 +29,7 @@
 | جریان | مرجع | وضعیت | اختیار | ممنوعیت فعلی |
 |---|---|---|---|---|
 | محصول عملیاتی | `main` | `ACTIVE_PRODUCT` | رفتار واقعی برنامه و قراردادهای فعلی | تغییر بالینی بدون گیت مستقل |
+| Follow-up Orchestration & UX v1 | `specialist_clinic/docs/FOLLOWUP_ORCHESTRATION_UX_V1_IMPLEMENTATION_PLAN.md` / Issue #71 | `FO_0_REPOSITORY_BASELINE_RECORDED / LIVE_OPERATIONAL_COUNTS_PENDING` | ثبت baseline، flagهای خاموش و guardهای حاکمیتی | FO-1، schema، projection یا تغییر رفتار تا بسته‌شدن Exit Gate FO-0 |
 | موتور بالینی v2 | کد و تست‌های `main` | `INFRASTRUCTURE_IMPLEMENTED / ACTIVATION_GATED` | اجرای deterministic، audit و lifecycle | فعال‌سازی بدون seal و review واقعی |
 | بستهٔ Rule موجود | `2026.1-draft.3` روی `main` | `LEGACY_DRAFT_QUARANTINED` | فقط artifact پیش‌نویس و تست فنی | clinical use، activation یا ادعای approval |
 | پژوهش ADA جدید | PR #60 / `research/ada-2026-evidence-v0.2` | `EVIDENCE_AUTHORITY_DRAFT / FROZEN_V0_9_4` | شواهد و مبنای replacement آینده | تلقی به‌عنوان وضعیت کل محصول یا Runtime authority |
@@ -61,6 +63,40 @@
 - Clinical Engine v2 با حالت suggestion-only و گیت فعال‌سازی.
 
 نتیجه: پروژه در سطح محصول **بسیار جلو رفته و قابل اجراست**؛ ناتمامی اصلی در Clinical Content approval، release engineering نهایی و reconciliation جریان‌هاست.
+
+### 3.3 Follow-up Orchestration & UX v1
+
+برنامهٔ `FOUX-V1` برای حل پراکندگی Task، SMS، Contact، Appointment و Outcome ثبت شده است. سند اجرایی canonical:
+
+```text
+specialist_clinic/docs/FOLLOWUP_ORCHESTRATION_UX_V1_IMPLEMENTATION_PLAN.md
+```
+
+گزارش baseline:
+
+```text
+specialist_clinic/docs/FOLLOWUP_ORCHESTRATION_UX_V1_BASELINE.md
+```
+
+وضعیت FO-0:
+
+```text
+Repository baseline       = RECORDED
+Tracking issue / owner    = #71 / Emad211
+Feature flags             = REGISTERED, DEFAULT OFF
+Runtime behavior change   = NONE
+Schema/database mutation  = NONE
+Live operational counts   = PENDING READ-ONLY OPERATOR CAPTURE
+FO-1                      = BLOCKED
+```
+
+علت Block: دیتابیس production در Git نگهداری نمی‌شود و GitHub به `specialist.db` استقرار دسترسی ندارد. هیچ عددی از seed یا حدس جایگزین baseline واقعی نمی‌شود. ابزار aggregate-only و read-only زیر برای capture ثبت شده است:
+
+```text
+specialist_clinic/scripts/capture_followup_fo0_baseline.py
+```
+
+تا زمان ثبت خروجی live و سبزشدن CI، هیچ Episode schema، Projection، auto-routing، auto-SMS یا cross-channel mutation جدید مجاز نیست.
 
 ## 4. وضعیت موتور بالینی v2
 
@@ -264,12 +300,40 @@ PRهای مهاجرت Halqe یک جریان استراتژیک جدا هستند
 تا تکمیل Phase R0:
 
 ```text
-New clinical research        = PAUSED except decision-changing retrieval
-New clinical rules           = PAUSED
-Hypoglycemia Shadow expansion= PAUSED
-Disposition branch           = DO_NOT_MERGE
-Release cleanup              = ALLOWED after governance merge
-Bug/security fixes           = ALLOWED with focused tests
+New clinical research         = PAUSED except decision-changing retrieval
+New clinical rules            = PAUSED
+Hypoglycemia Shadow expansion = PAUSED
+Disposition branch            = DO_NOT_MERGE
+Release cleanup               = ALLOWED after governance merge
+Bug/security fixes            = ALLOWED with focused tests
+FOUX-V1 FO-0                  = ALLOWED, registration/baseline only
+FOUX-V1 FO-1 and later        = BLOCKED pending live baseline + green CI + explicit start
 ```
 
 این توقف به معنی توقف کل پروژه نیست؛ فقط جلوی ادامهٔ بدون طبقه‌بندی و مخلوط‌شدن مسیرها را می‌گیرد.
+
+## 14. گیت حاکم Follow-up Orchestration & UX v1
+
+Source of Truth اجرایی این جریان، سند canonical آن است. در FO-0 فقط موارد زیر مجازند:
+
+- ثبت stream، owner و status؛
+- baseline ثابت UI و Source of Truth؛
+- capture aggregate و read-only از دیتابیس استقرار؛
+- تعریف flagهای خاموش؛
+- test guard برای اثبات عدم استفادهٔ runtime و عدم ایجاد schema.
+
+Exit Gate FO-0:
+
+```text
+Canonical plan on main        = PASS
+Repository baseline report    = PASS
+Project State registration    = IN THIS TRANCHE
+Feature flags default OFF      = IN THIS TRANCHE
+Runtime consumer of flags      = MUST BE ZERO
+FOUX schema/data mutation      = MUST BE ZERO
+Live operational metrics       = PENDING OPERATOR CAPTURE
+Full CI                        = MUST BE GREEN
+FO-1 authorization             = EXPLICITLY REQUIRED AFTER ALL ABOVE
+```
+
+تا وقتی یکی از موارد `PENDING` یا ناموفق است، وضعیت برنامه `FO_0_INCOMPLETE` باقی می‌ماند و branch بعدی حق ساخت Episode، backfill، Projection یا mutation جدید را ندارد.
