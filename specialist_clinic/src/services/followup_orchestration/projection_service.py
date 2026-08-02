@@ -2,8 +2,8 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
-import time
 import sqlite3
+import time
 
 from src.adapters.sqlite.followup_projection_repo import FollowupProjectionRepository
 from src.adapters.sqlite.followup_projection_schema import PROJECTION_VERSION
@@ -61,17 +61,21 @@ class FollowupProjectionService:
         rows: list[dict] = []
         for episode in self.reader.episodes():
             snapshot = self.reader.snapshot(episode)
-            decision = self.policy.decide(snapshot, as_of_at=as_of)
+            decision_payload = self.policy.decide(
+                snapshot, as_of_at=as_of
+            ).as_dict()
+            state_detail = decision_payload.pop("state_detail")
             row = {
                 "episode_id": str(episode["episode_id"]),
                 "patient_link_id": int(episode["patient_link_id"]),
                 "episode_type": str(episode["episode_type"]),
-                **decision.as_dict(),
+                **decision_payload,
                 "owner_user_id": None,
                 "last_source_event_at": snapshot["last_source_event_at"],
                 "last_episode_event_id": snapshot["last_episode_event_id"],
                 "source_count": int(snapshot["source_count"]),
                 "source_fingerprint": str(snapshot["source_fingerprint"]),
+                "state_detail_json": state_detail,
                 "projection_version": PROJECTION_VERSION,
                 "policy_version": self.policy.version,
                 "as_of_at": as_of,
@@ -181,15 +185,14 @@ class FollowupProjectionService:
 
         matched = legacy & active_coverage
         legacy_only = legacy - matched
+        all_linked_keys = {
+            linked for values in links_by_episode.values() for linked in values
+        }
         legacy_reason_counts: dict[str, int] = {}
         for key in sorted(legacy_only):
             if key in terminal_coverage:
                 reason = "PROJECTION_TERMINAL_WHILE_LEGACY_OPEN"
-            elif key in {
-                linked
-                for values in links_by_episode.values()
-                for linked in values
-            }:
+            elif key in all_linked_keys:
                 reason = "EPISODE_NOT_NONTERMINAL_OR_NOT_PROJECTED"
             else:
                 reason = "LEGACY_SOURCE_NOT_LINKED"
@@ -293,8 +296,7 @@ class FollowupProjectionService:
         }
         if apply:
             repository = FollowupProjectionRepository(self.db)
-            write = repository.replace_all(rows)
-            result.update(write)
+            result.update(repository.replace_all(rows))
         result["duration_ms"] = round(
             (time.perf_counter() - started) * 1000.0, 2
         )
