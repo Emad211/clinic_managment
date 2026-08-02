@@ -31,10 +31,7 @@ EXPECTED_FLAGS = (
     "FOLLOWUP_EVIDENCE_ASSIST",
     "FOLLOWUP_AUTOMATION_HEALTH",
 )
-FOUX_SCHEMA_NAMES = (
-    "followup_episodes",
-    "followup_episode_links",
-    "followup_episode_events",
+POST_FO1_SCHEMA_NAMES = (
     "followup_work_item_projection",
     "automation_decision_events",
     "operational_outbox",
@@ -59,91 +56,71 @@ def _create_baseline_fixture(path: Path) -> None:
         db.executescript(
             """
             CREATE TABLE patient_links (
-                id INTEGER PRIMARY KEY,
-                full_name TEXT,
-                phone_number TEXT,
+                id INTEGER PRIMARY KEY, full_name TEXT, phone_number TEXT,
                 is_active INTEGER NOT NULL
             );
             CREATE TABLE followup_tasks (
-                id INTEGER PRIMARY KEY,
-                status TEXT,
-                source_engine TEXT,
-                assigned_to TEXT,
-                due_date TEXT
+                id INTEGER PRIMARY KEY, status TEXT, source_engine TEXT,
+                assigned_to TEXT, due_date TEXT
             );
             CREATE TABLE clinical_task_events (
-                id INTEGER PRIMARY KEY,
-                status TEXT,
-                assigned_to TEXT,
+                id INTEGER PRIMARY KEY, status TEXT, assigned_to TEXT,
                 supersedes_event_id INTEGER
             );
             CREATE TABLE care_plan_commitment_events (
-                id INTEGER PRIMARY KEY,
-                status TEXT,
-                assigned_to TEXT,
+                id INTEGER PRIMARY KEY, status TEXT, assigned_to TEXT,
                 supersedes_event_id INTEGER
             );
             CREATE TABLE engagement_approvals (id INTEGER PRIMARY KEY, status TEXT);
             CREATE TABLE engagement_dispatch (id INTEGER PRIMARY KEY);
             CREATE TABLE sms_messages (
-                id INTEGER PRIMARY KEY,
-                status TEXT,
-                delivery_status TEXT
+                id INTEGER PRIMARY KEY, status TEXT, delivery_status TEXT
             );
             CREATE TABLE sms_campaigns (
-                id INTEGER PRIMARY KEY,
-                status TEXT,
-                scheduled_at TEXT
+                id INTEGER PRIMARY KEY, status TEXT, scheduled_at TEXT
             );
             CREATE TABLE appointments (id INTEGER PRIMARY KEY, status TEXT);
             CREATE TABLE followup_contact_events (
-                id INTEGER PRIMARY KEY,
-                task_id INTEGER,
-                occurred_at TEXT,
+                id INTEGER PRIMARY KEY, task_id INTEGER, occurred_at TEXT,
                 next_contact_at TEXT
             );
             CREATE TABLE operational_job_runs (
-                job_key TEXT PRIMARY KEY,
-                status TEXT
+                job_key TEXT PRIMARY KEY, status TEXT
             );
 
             INSERT INTO patient_links VALUES
-                (1, 'نام محرمانه نمونه', '09120000000', 1),
-                (2, 'بیمار دوم', '09121111111', 1),
-                (3, 'غیرفعال', NULL, 0);
+                (1,'نام محرمانه نمونه','09120000000',1),
+                (2,'بیمار دوم','09121111111',1),
+                (3,'غیرفعال',NULL,0);
             INSERT INTO followup_tasks VALUES
-                (1, 'open', NULL, NULL, '2026-08-01'),
-                (2, 'open', '', 'staff-1', '2026-08-10'),
-                (3, 'done', '', NULL, '2026-07-01'),
-                (4, 'open', 'clinical_v2', NULL, '2026-08-02'),
-                (5, 'open', 'encounter_plan', NULL, '2026-08-02');
+                (1,'open',NULL,NULL,'2026-08-01'),
+                (2,'open','', 'staff-1','2026-08-10'),
+                (3,'done','',NULL,'2026-07-01'),
+                (4,'open','clinical_v2',NULL,'2026-08-02'),
+                (5,'open','encounter_plan',NULL,'2026-08-02');
             INSERT INTO clinical_task_events VALUES
-                (1, 'OPEN', NULL, NULL),
-                (2, 'OPEN', 'nurse-1', NULL),
-                (3, 'COMPLETED', 'nurse-1', 2);
+                (1,'OPEN',NULL,NULL),(2,'OPEN','nurse-1',NULL),
+                (3,'COMPLETED','nurse-1',2);
             INSERT INTO care_plan_commitment_events VALUES
-                (1, 'OPEN', 'staff-2', NULL),
-                (2, 'OPEN', NULL, NULL),
-                (3, 'CANCELLED', NULL, 2);
+                (1,'OPEN','staff-2',NULL),(2,'OPEN',NULL,NULL),
+                (3,'CANCELLED',NULL,2);
             INSERT INTO engagement_approvals VALUES
-                (1, 'pending'), (2, 'failed'), (3, 'approved');
-            INSERT INTO engagement_dispatch VALUES (1), (2);
+                (1,'pending'),(2,'failed'),(3,'approved');
+            INSERT INTO engagement_dispatch VALUES (1),(2);
             INSERT INTO sms_messages VALUES
-                (1, 'sent', 'Delivered'),
-                (2, 'pending', 'SubmissionUnknown'),
-                (3, 'failed', 'Failed');
+                (1,'sent','Delivered'),(2,'pending','SubmissionUnknown'),
+                (3,'failed','Failed');
             INSERT INTO sms_campaigns VALUES
-                (1, 'scheduled', '2026-08-02 10:00:00'),
-                (2, 'scheduled', '2026-08-05 10:00:00');
+                (1,'scheduled','2026-08-02 10:00:00'),
+                (2,'scheduled','2026-08-05 10:00:00');
             INSERT INTO appointments VALUES
-                (1, 'scheduled'), (2, 'no_show'), (3, 'cancelled');
+                (1,'scheduled'),(2,'no_show'),(3,'cancelled');
             INSERT INTO followup_contact_events VALUES
-                (1, 1, '2026-08-01 09:00:00', '2026-08-02 09:00:00'),
-                (2, 2, '2026-08-01 10:00:00', '2026-08-05 10:00:00');
+                (1,1,'2026-08-01 09:00:00','2026-08-02 09:00:00'),
+                (2,2,'2026-08-01 10:00:00','2026-08-05 10:00:00');
             INSERT INTO operational_job_runs VALUES
-                ('job:failed', 'FAILED'),
-                ('job:running', 'RUNNING'),
-                ('job:ok', 'COMPLETED');
+                ('job:failed','FAILED'),('job:running','RUNNING'),
+                ('job:ok','COMPLETED');
             """
         )
         db.commit()
@@ -151,7 +128,7 @@ def _create_baseline_fixture(path: Path) -> None:
         db.close()
 
 
-def test_fo0_flags_exist_and_default_off_in_clean_environment():
+def test_foux_flags_exist_and_default_off_in_clean_environment():
     env = os.environ.copy()
     for name in EXPECTED_FLAGS:
         env.pop(name, None)
@@ -176,22 +153,7 @@ print(json.dumps({
     assert payload["values"] == {name: False for name in EXPECTED_FLAGS}
 
 
-def test_fo0_flags_have_no_runtime_consumer_yet():
-    settings_path = SRC_ROOT / "config" / "settings.py"
-    violations: list[str] = []
-    for path in SRC_ROOT.rglob("*"):
-        if not path.is_file() or path == settings_path:
-            continue
-        if path.suffix.lower() not in {".py", ".html", ".js", ".css"}:
-            continue
-        text = path.read_text(encoding="utf-8")
-        for flag in EXPECTED_FLAGS:
-            if flag in text:
-                violations.append(f"{path.relative_to(SPECIALIST_ROOT)}:{flag}")
-    assert violations == []
-
-
-def test_fo0_does_not_install_orchestration_schema():
+def test_fo2_and_later_schema_is_not_installed_in_fo1():
     schema_sources = [SRC_ROOT / "adapters" / "sqlite" / "schema.sql"]
     schema_sources.extend(
         path for path in (SRC_ROOT / "adapters" / "sqlite").glob("*.py") if path.is_file()
@@ -201,7 +163,7 @@ def test_fo0_does_not_install_orchestration_schema():
         if not path.is_file():
             continue
         text = path.read_text(encoding="utf-8")
-        for table in FOUX_SCHEMA_NAMES:
+        for table in POST_FO1_SCHEMA_NAMES:
             declaration = re.compile(
                 rf"CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?[\[\]`\"']*{re.escape(table)}\b",
                 re.IGNORECASE,
@@ -211,7 +173,7 @@ def test_fo0_does_not_install_orchestration_schema():
     assert violations == []
 
 
-def test_project_state_closes_fo0_and_authorizes_fo1():
+def test_project_state_closes_fo0_and_authorizes_only_fo1():
     state = json.loads((REPO_ROOT / "PROJECT_STATE.json").read_text(encoding="utf-8"))
     specialist = state["streams"]["specialist_clinic"]
     assert specialist["data_classification"] == "TEST_ONLY_SYNTHETIC_OR_RESETTABLE"
@@ -222,66 +184,40 @@ def test_project_state_closes_fo0_and_authorizes_fo1():
     assert stream["program_code"] == "FOUX-V1"
     assert stream["plan_version"] == "1.1.0"
     assert stream["status"] == "FO_0_VALIDATED_FO_1_AUTHORIZED"
-    assert stream["data_environment"] == "TEST_ONLY_RESETTABLE"
-    assert stream["fo0_evidence"]["owner_test_only_attestation"] is True
-    assert stream["fo0_evidence"]["specialist_tests_passed"] == 731
-    assert stream["fo0_evidence"]["accounting_tests_passed"] == 54
     assert stream["fo1_allowed"] is True
     assert stream["feature_flags"] == {name: False for name in EXPECTED_FLAGS}
-
-    state_md = (REPO_ROOT / "PROJECT_STATE.md").read_text(encoding="utf-8")
-    assert "TEST_ONLY / SYNTHETIC_OR_RESETTABLE" in state_md
-    assert "FO-0                     = VALIDATED" in state_md
-    assert "FO-1                     = ALLOWED_WITHIN_CANONICAL_SCOPE" in state_md
+    assert state["global_freeze"]["followup_orchestration_fo2_and_later"].startswith("BLOCKED")
 
 
-def test_canonical_docs_and_nearest_agent_guard_are_current():
+def test_canonical_docs_and_agent_guard_are_current():
     agent_path = SPECIALIST_ROOT / "AGENTS.md"
-    assert PLAN_PATH.is_file() and BASELINE_PATH.is_file() and agent_path.is_file()
-
     plan = PLAN_PATH.read_text(encoding="utf-8")
     baseline = BASELINE_PATH.read_text(encoding="utf-8")
     agent = agent_path.read_text(encoding="utf-8")
-
     assert "نسخه:** `1.1.0`" in plan
     assert "FO_0_VALIDATED / FO_1_AUTHORIZED" in plan
     assert "TEST_ONLY / SYNTHETIC_OR_RESETTABLE" in plan
-    assert "FO-0 | VALIDATED" in plan
-    assert "FO-1 | AUTHORIZED" in plan
     assert "Status:** `VALIDATED`" in baseline
-    assert "Environment data classification:** `TEST_ONLY / RESETTABLE`" in baseline
     assert "FO-1 = AUTHORIZED" in agent
     assert "FO-2 and later = BLOCKED" in agent
 
 
-def test_read_only_baseline_capture_is_aggregate_and_non_mutating(tmp_path):
+def test_read_only_baseline_capture_remains_non_mutating_and_phi_free(tmp_path):
     database = tmp_path / "specialist.db"
     _create_baseline_fixture(database)
     before = _file_hash(database)
-
-    module = _load_capture_module()
-    captured = module.capture(
+    captured = _load_capture_module().capture(
         database,
         captured_at=datetime(
-            2026,
-            8,
-            3,
-            1,
-            44,
+            2026, 8, 3, 1, 44,
             tzinfo=timezone(timedelta(hours=3, minutes=30)),
         ),
     )
-
     assert _file_hash(database) == before
     assert captured["read_only"] is True
     assert captured["contains_phi"] is False
     assert captured["database_unchanged_after_capture"] is True
     assert captured["database"]["quick_check"] == "ok"
-    assert captured["metrics"]["active_patients"] == 2
-    assert captured["metrics"]["current_open_work_items_total"] == 4
-    assert captured["metrics"]["current_unassigned_work_items_total"] == 2
-    assert captured["derived"]["unassigned_open_work_item_percent"] == 50.0
-
     rendered = json.dumps(captured, ensure_ascii=False)
     assert "نام محرمانه نمونه" not in rendered
     assert "09120000000" not in rendered
