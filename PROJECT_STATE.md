@@ -1,339 +1,286 @@
 # وضعیت حاکم پروژه — Clinic Management
 
-> **این فایل Source of Truth مدیریتی مخزن است.**
->
-> هر توسعه، پژوهش، آزمایش Shadow، انتشار یا مهاجرت باید پیش از شروع با این سند تطبیق داده شود. در صورت تعارض میان متن گفتگو، PR قدیمی یا حافظهٔ ایجنت با این فایل و وضعیت واقعی GitHub، ابتدا وضعیت مخزن بررسی و سپس این سند به‌روزرسانی می‌شود.
+> **Source of Truth مدیریتی مخزن.** پیش از هر توسعه، وضعیت واقعی GitHub، این فایل و `PROJECT_STATE.json` باید خوانده شوند. حافظهٔ گفتگو یا branch قدیمی به‌تنهایی معتبر نیست.
 
-- آخرین ممیزی: `2026-08-03`
-- شاخهٔ محصول مرجع: `main`
-- head مرجع هنگام شروع ممیزی FO-0: `86981354e48c06667b115b2c854a39e3f611e733`
-- وضعیت کلی: `PRODUCT_OPERATIONAL / CLINICAL_CONTENT_NOT_APPROVED / GOVERNANCE_RECONCILIATION_REQUIRED`
+- آخرین ممیزی: `2026-08-03 02:14 +03:30`
+- شاخهٔ مرجع محصول: `main`
+- head مرجع پیش از این تغییر حاکمیتی: `901dbfdf9c358ecc09d2a60a0680f6a4a8370d17`
+- وضعیت کلی: `PRODUCT_OPERATIONAL / PRE_PRODUCTION_TEST_DATA / CLINICAL_CONTENT_NOT_APPROVED / GOVERNANCE_RECONCILIATION_REQUIRED`
 
-## 1. تعریف دقیق پروژه
+---
 
-این مخزن فقط پروژهٔ پژوهش Rule نیست. Monorepo شامل دو برنامهٔ مستقل عملیاتی و چند جریان توسعهٔ جداست:
+## 1. تعریف پروژه
 
-1. `webapp/` — حسابداری مطب، Flask + SQLite، پورت 8080؛
-2. `specialist_clinic/` — مدیریت بیماری مزمن، پرونده، نوبت، Worklist، پیامک، داشبورد و موتور بالینی suggestion-only، پورت 8090؛
-3. Clinical Engine v2 — زیرساخت Fact، Rule package، audit، validation، dual review، activation seal و rollback؛
-4. Clinical Rule Research — پژوهش شواهد برای بازسازی Rule Library؛
-5. Experimental Shadow Workflows — آزمایش‌های داخلی غیرتجویزی؛
-6. Release Engineering — ساخت و استقرار Windows/local/LAN؛
-7. Halqe Migration — مهاجرت بلندمدت و مستقل به PostgreSQL/Next.js؛
-8. Follow-up Orchestration & UX v1 — بازطراحی عملیاتی Task، SMS، Contact، Appointment و Worklist با حفظ Source of Truthهای فعلی.
+Monorepo شامل جریان‌های مستقل زیر است:
 
-این جریان‌ها **نباید به‌جای یکدیگر تفسیر شوند**.
+1. `webapp/` — حسابداری Flask + SQLite، پورت 8080؛
+2. `specialist_clinic/` — مدیریت بیماری مزمن، Worklist، SMS، نوبت، پرونده و Clinical Engine v2، پورت 8090؛
+3. Clinical Engine v2 — زیرساخت deterministic، audit، review، activation seal و rollback؛
+4. Clinical Rule Research — پژوهش شواهد برای Rule Library؛
+5. Hypoglycemia Shadow — آزمایش داخلی غیرتجویزی؛
+6. Follow-up Orchestration & UX v1 — Episode، Projection، Routing و اتوماسیون عملیاتی؛
+7. Release Engineering؛
+8. Halqe Migration.
 
-## 2. ماتریس مرجع جریان‌ها
+این جریان‌ها اختیار یکدیگر را ندارند.
 
-| جریان | مرجع | وضعیت | اختیار | ممنوعیت فعلی |
+---
+
+## 2. طبقه‌بندی دادهٔ محیط فعلی
+
+مالک محصول در تاریخ `2026-08-03` اعلام کرده است که دیتابیس فعلی Specialist Clinic فقط دادهٔ تستی دارد:
+
+```text
+specialist.db data class = TEST_ONLY / SYNTHETIC_OR_RESETTABLE
+real patient PHI         = NOT EXPECTED
+reset/reseed             = ALLOWED
+```
+
+پیامدها:
+
+- دادهٔ فعلی می‌تواند برای migration rehearsal، backfill و تست deterministic استفاده شود؛
+- شمارش یک دیتابیس محلی resettable معیار business/production نیست؛
+- KPI واقعی فقط در Pilot ثبت می‌شود؛
+- پیش از ورود اولین دادهٔ واقعی بیمار، production-readiness، privacy، backup/restore و baseline دوباره اجباری است؛
+- این طبقه‌بندی نباید وارد منطق runtime یا باعث کاهش guardrail شود.
+
+---
+
+## 3. ماتریس جریان‌ها
+
+| جریان | مرجع | وضعیت | اختیار | ممنوعیت |
 |---|---|---|---|---|
-| محصول عملیاتی | `main` | `ACTIVE_PRODUCT` | رفتار واقعی برنامه و قراردادهای فعلی | تغییر بالینی بدون گیت مستقل |
-| Follow-up Orchestration & UX v1 | `specialist_clinic/docs/FOLLOWUP_ORCHESTRATION_UX_V1_IMPLEMENTATION_PLAN.md` / Issue #71 | `FO_0_REPOSITORY_BASELINE_RECORDED / LIVE_OPERATIONAL_COUNTS_PENDING` | ثبت baseline، flagهای خاموش و guardهای حاکمیتی | FO-1، schema، projection یا تغییر رفتار تا بسته‌شدن Exit Gate FO-0 |
-| موتور بالینی v2 | کد و تست‌های `main` | `INFRASTRUCTURE_IMPLEMENTED / ACTIVATION_GATED` | اجرای deterministic، audit و lifecycle | فعال‌سازی بدون seal و review واقعی |
-| بستهٔ Rule موجود | `2026.1-draft.3` روی `main` | `LEGACY_DRAFT_QUARANTINED` | فقط artifact پیش‌نویس و تست فنی | clinical use، activation یا ادعای approval |
-| پژوهش ADA جدید | PR #60 / `research/ada-2026-evidence-v0.2` | `EVIDENCE_AUTHORITY_DRAFT / FROZEN_V0_9_4` | شواهد و مبنای replacement آینده | تلقی به‌عنوان وضعیت کل محصول یا Runtime authority |
-| Hypoglycemia Shadow | PRهای #62 تا #67 روی `main` | `EXPERIMENTAL_INTERNAL_SHADOW / PAUSED_FOR_RECONCILIATION` | ثبت Candidate، داوری انسانی و Review داخلی | معرفی به‌عنوان Rule معتبر، rollout بالینی یا گسترش Scope |
-| Shadow disposition | `feature/hypoglycemia-shadow-disposition-v1` | `PAUSED_DO_NOT_MERGE` | هیچ؛ فقط work-in-progress حفظ‌شده | PR، merge یا توسعه تا تصمیم reconciliation |
-| Release A15 | PR #59 | `STALE_DIVERGED_DRAFT` | مرجع نیازهای release engineering | merge مستقیم روی main فعلی |
-| Halqe migration | PRهای Draft قدیمی | `SEPARATE_STRATEGIC_STREAM` | طراحی و rehearsal مهاجرت | تلقی به‌عنوان مسیر فعال محصول فعلی یا cutover خودکار |
+| محصول عملیاتی | `main` | `ACTIVE_PRODUCT_PRE_PRODUCTION` | رفتار واقعی برنامه | تغییر بالینی بدون گیت |
+| Follow-up Orchestration & UX v1 | سند canonical / Issueهای FOUX | `FO_0_VALIDATED / FO_1_AUTHORIZED` | Episode/Link/Event در FO-1 | UI، Projection، routing و automation پیش از gate |
+| Clinical Engine v2 | کد و تست main | `INFRASTRUCTURE_IMPLEMENTED / ACTIVATION_GATED` | runtime و audit | activation بدون approval |
+| Rule package فعلی | `2026.1-draft.3` | `LEGACY_DRAFT_QUARANTINED` | provenance و تست فنی | clinical use |
+| پژوهش ADA | PR #60 | `FROZEN_V0_9_4 / EVIDENCE_AUTHORITY_DRAFT` | evidence آینده | runtime authority |
+| Hypoglycemia Shadow | PR #62–#67 | `PAUSED_FOR_RECONCILIATION` | data-quality experiment | Rule/Task/Alert/medication expansion |
+| Shadow disposition | branch مربوط | `PAUSED_DO_NOT_MERGE` | ندارد | توسعه و merge |
+| Release A15 | PR #59 | `STALE_DIVERGED_DRAFT` | requirement reference | merge مستقیم |
+| Halqe Migration | PRهای قدیمی | `SEPARATE_STRATEGIC_STREAM` | design/rehearsal | cutover خودکار |
 
-## 3. وضعیت محصول عملیاتی
+---
 
-### 3.1 حسابداری
+## 4. وضعیت Follow-up Orchestration & UX v1
 
-- برنامهٔ مستقل production؛
-- دیتابیس `clinic_new.db`؛
-- مطب تخصصی فقط از طریق SQLite `mode=ro` آن را می‌خواند؛
-- هیچ Write از Specialist Clinic به حسابداری مجاز نیست.
-
-### 3.2 مطب تخصصی
-
-قابلیت‌های اصلی موجود:
-
-- اتصال و ثبت بیمار؛
-- پروندهٔ طولی بیماری‌های مزمن؛
-- دارو، آلرژی، آزمایش و علائم حیاتی؛
-- نوبت و Doctor Queue؛
-- Encounter documentation امضاشده و append-only؛
-- Plan commitment و Worklist؛
-- پیامک، رضایت، تحویل، کمپین و attribution؛
-- پل مالی read-only و reconciliation؛
-- داشبورد و Control Room؛
-- Clinical Engine v2 با حالت suggestion-only و گیت فعال‌سازی.
-
-نتیجه: پروژه در سطح محصول **بسیار جلو رفته و قابل اجراست**؛ ناتمامی اصلی در Clinical Content approval، release engineering نهایی و reconciliation جریان‌هاست.
-
-### 3.3 Follow-up Orchestration & UX v1
-
-برنامهٔ `FOUX-V1` برای حل پراکندگی Task، SMS، Contact، Appointment و Outcome ثبت شده است. سند اجرایی canonical:
+### 4.1 مرجع‌ها
 
 ```text
+Plan:
 specialist_clinic/docs/FOLLOWUP_ORCHESTRATION_UX_V1_IMPLEMENTATION_PLAN.md
-```
 
-گزارش baseline:
-
-```text
+Baseline:
 specialist_clinic/docs/FOLLOWUP_ORCHESTRATION_UX_V1_BASELINE.md
+
+FO-0 Issue: #71
+FO-0 PR:    #72
+FO-0 merge: 901dbfdf9c358ecc09d2a60a0680f6a4a8370d17
 ```
 
-وضعیت FO-0:
+### 4.2 FO-0
 
 ```text
-Repository baseline       = RECORDED
-Tracking issue / owner    = #71 / Emad211
-Feature flags             = REGISTERED, DEFAULT OFF
-Runtime behavior change   = NONE
-Schema/database mutation  = NONE
-Live operational counts   = PENDING READ-ONLY OPERATOR CAPTURE
-FO-1                      = BLOCKED
+Repository/UI baseline      = RECORDED
+Owner test-only attestation = RECORDED
+Synthetic aggregate test    = PASS
+Feature flags               = 10/10 OFF
+Runtime consumer            = NONE
+FOUX schema                 = NONE
+Specialist CI               = 731 PASS
+Accounting CI               = 54 PASS
+Status                      = VALIDATED
 ```
 
-علت Block: دیتابیس production در Git نگهداری نمی‌شود و GitHub به `specialist.db` استقرار دسترسی ندارد. هیچ عددی از seed یا حدس جایگزین baseline واقعی نمی‌شود. ابزار aggregate-only و read-only زیر برای capture ثبت شده است:
+Snapshot عددی production برای FO-0 لازم نیست، چون محیط فعلی test-only و resettable است. baseline واقعی قبل از Pilot/ورود دادهٔ واقعی دوباره ثبت می‌شود.
+
+### 4.3 قدم مجاز فعلی
 
 ```text
-specialist_clinic/scripts/capture_followup_fo0_baseline.py
+FO-1 — Episode Identity & Append-only Links
 ```
 
-تا زمان ثبت خروجی live و سبزشدن CI، هیچ Episode schema، Projection، auto-routing، auto-SMS یا cross-channel mutation جدید مجاز نیست.
+دامنهٔ مجاز FO-1:
 
-## 4. وضعیت موتور بالینی v2
+- schema additive/idempotent فقط برای Episode، Link و Event؛
+- identity builder deterministic/versioned؛
+- source linker و orphan reason؛
+- dry-run/backfill روی دادهٔ تستی؛
+- rebuild/audit؛
+- flag default OFF؛
+- بدون تغییر UI، SMS، Scheduler behavior، routing یا Clinical logic.
 
-زیرساخت موتور ساخته شده است:
+FO-2 و بالاتر تا Exit Gate FO-1 مسدودند.
 
-- Factهای canonical، time-aware، source-aware و verification-aware؛
-- Rule package و schemaهای versioned؛
-- Golden Case validation؛
-- append-only run/recommendation/decision/task records؛
-- dual independent clinical/technical review؛
-- content-bound hashes؛
-- activation seal، selected rollout و rollback؛
-- fail-closed current rollout contract.
+---
 
-این وضعیت به معنی معتبر بودن محتوای Ruleها نیست.
+## 5. Feature Flagهای FOUX-V1
+
+همه فعلاً OFF:
 
 ```text
-Engine infrastructure = IMPLEMENTED
-Clinical rule approval = NOT COMPLETED
+FOLLOWUP_EPISODES_ENABLED
+FOLLOWUP_PROJECTION_SHADOW
+FOLLOWUP_UNIFIED_WORKLIST_READONLY
+FOLLOWUP_UNIFIED_WORKLIST_ACTIONS
+FOLLOWUP_AUTO_ROUTING
+FOLLOWUP_STRUCTURED_CONTACT
+FOLLOWUP_SMS_AUTO_GUARDED
+FOLLOWUP_APPOINTMENT_SYNC
+FOLLOWUP_EVIDENCE_ASSIST
+FOLLOWUP_AUTOMATION_HEALTH
+```
+
+در FO-1 فقط `FOLLOWUP_EPISODES_ENABLED` ممکن است توسط زیرساخت Episode مصرف شود، اما default آن باید OFF بماند و هیچ رفتار UI یا automation را فعال نکند.
+
+---
+
+## 6. وضعیت محصول Specialist Clinic
+
+قابلیت‌های موجود:
+
+- patient link و پروندهٔ طولی؛
+- دارو، آلرژی، آزمایش و vital؛
+- Appointment و Doctor Queue؛
+- Encounter documentation امضاشده؛
+- Plan Commitment و Worklist؛
+- Contact event append-only؛
+- SMS consent، approval، campaign، delivery و attribution؛
+- financial bridge read-only؛
+- Scheduler با lease/fencing/idempotency؛
+- Clinical Engine v2 suggestion-only.
+
+Specialist Clinic فقط `clinic_new.db` را read-only می‌خواند. هر Write به دیتابیس حسابداری ممنوع است.
+
+---
+
+## 7. Clinical Engine v2 و Ruleها
+
+```text
+Engine infrastructure       = IMPLEMENTED
+Clinical content approval   = NOT COMPLETED
 Visible clinical activation = BLOCKED
 ```
 
-## 5. Ruleهای موجود روی main
-
-بستهٔ `2026.1-draft.3` شش Rule دارد:
-
-- `T2-REDFLAG-BP`
-- `T2-SAFE-MET-STOP`
-- `T2-SAFE-MET-REVIEW`
-- `T2-MON-A1C-DUE`
-- `T2-MON-EGFR-DUE`
-- `T2-MON-UACR-DUE`
-
-Manifest فعلی:
+بستهٔ `2026.1-draft.3` شامل شش Rule quarantined است:
 
 ```text
-status       = DRAFT
-clinical_use = NOT_APPROVED
+T2-REDFLAG-BP
+T2-SAFE-MET-STOP
+T2-SAFE-MET-REVIEW
+T2-MON-A1C-DUE
+T2-MON-EGFR-DUE
+T2-MON-UACR-DUE
 ```
 
-از این پس این بسته رسماً به‌عنوان زیر طبقه‌بندی می‌شود:
+هر Rule باید بعداً `REVALIDATE / REPLACE / RETIRE` شود. تست فنی معادل clinical approval نیست.
+
+---
+
+## 8. پژوهش ADA
+
+PR #60 فقط Evidence Authority آینده است:
 
 ```text
-LEGACY_DRAFT_QUARANTINED
+Rule Candidate = 0
+Accepted Rule  = 0
+Licensing      = HOLD
+Activation     = BLOCKED
 ```
 
-معنای این وضعیت:
+پژوهش جدید فقط در صورت decision-changing retrieval مجاز است.
 
-- حذف نشده و برای provenance و تست فنی حفظ می‌شود؛
-- هیچ‌کدام clinical approval واقعی ندارند؛
-- پژوهش جدید به‌طور خودکار آن‌ها را supersede نکرده است؛
-- هر Rule باید در reconciliation آینده یکی از تصمیم‌های `REVALIDATE / REPLACE / RETIRE` را بگیرد؛
-- تا آن زمان نباید به SILENT، selected rollout یا visible activation برسد.
+---
 
-## 6. پژوهش بازسازی Rule Library
+## 9. Hypoglycemia Shadow
 
-PR #60 فقط **Evidence Authority آینده** است، نه Source of Truth کل پروژه.
-
-وضعیت فریز v0.9.4:
-
-- Rule Candidate جدید: 0
-- Accepted Rule جدید: 0
-- Licensing: HOLD
-- Clinical activation: BLOCKED
-- Runtime/UI changes در خود PR: 0
-
-پژوهش ADA 6.19 به دلیل بازده نزولی در v0.9.4 فریز است. ادامهٔ پژوهش فقط زمانی مجاز است که یکی از شرایط زیر برقرار باشد:
-
-1. منبع جدید بتواند تصمیم موجود را تغییر دهد؛
-2. یک Rule Candidate محدود و مشخص به شواهد تکمیلی نیاز داشته باشد؛
-3. اختلاف مهمی برای approval یا retirement یک Rule وجود داشته باشد.
-
-پژوهش نامحدود و نسخه‌سازی بدون خروجی تصمیمی ممنوع است.
-
-## 7. Hypoglycemia Shadow
-
-PRهای #62 تا #67 قابلیت‌های زیر را به `main` افزوده‌اند:
-
-- ledger append-only رخداد و Review؛
-- observability داخلی؛
-- monitor manager-only؛
-- ساخت Candidate موقت برای FBS کمتر از 54 mg/dL؛
-- داوری انسانی `CONFIRMED / REJECTED / CONFLICT`؛
-- بازکردن صریح Review توسط کاربر مجاز.
-
-مرز فعلی:
-
-- Clinical Rule نیست؛
-- Rule Candidate پژوهشی نیست؛
-- medication action یا recommendation ندارد؛
-- Task، Alert، prescription، referral یا patient message خودکار ندارد؛
-- rollout بالینی تأییدشده نیست.
-
-طبقه‌بندی رسمی:
+وضعیت:
 
 ```text
 EXPERIMENTAL_INTERNAL_SHADOW
 PAUSED_FOR_RECONCILIATION
 ```
 
-تا بسته‌شدن reconciliation موارد زیر ممنوع‌اند:
+ممنوع:
 
-- توسعهٔ disposition UI؛
-- افزودن Task/SLA/Alert؛
-- اتصال به medication logic؛
-- معرفی به‌عنوان اجرای Recommendation 6.19؛
-- rollout برای استفادهٔ بالینی واقعی.
+- disposition expansion؛
+- Task/SLA/Alert؛
+- medication logic؛
+- معرفی به‌عنوان Rule معتبر؛
+- rollout بالینی.
 
-کد فعلی فوراً Revert نمی‌شود؛ ابتدا باید در یک تصمیم رسمی یکی از وضعیت‌های زیر را بگیرد:
+تصمیم آینده: `KEEP_AS_DATA_QUALITY_WORKFLOW / REWORK / REVERT`.
+
+---
+
+## 10. Release Engineering و Halqe
+
+A15 باید از main فعلی بازسازی شود و Windows build، self-test و backup/restore rehearsal داشته باشد. PR #59 مستقیم merge نمی‌شود.
+
+Halqe یک جریان استراتژیک جداست. Flask/SQLite فعلی تا تصمیم رسمی cutover، Product Authority باقی می‌ماند.
+
+---
+
+## 11. قوانین Scope و اعتماد
+
+پیش از هر tranche:
+
+1. جریان متعلق مشخص شود؛
+2. خروجی اجرایی/تصمیمی روشن باشد؛
+3. scope متناسب با ریسک باشد؛
+4. feature flag و rollback مشخص باشد؛
+5. focused و full test تعریف شود؛
+6. Project State و سند canonical پس از merge به‌روزرسانی شوند.
+
+قواعد ثابت:
+
+- Shadow بدون approval به Rule تبدیل نمی‌شود؛
+- Rule Draft وارد rollout نمی‌شود؛
+- یک failure فقط capability وابسته را block می‌کند؛
+- source truth بالینی append-only باقی می‌ماند؛
+- FO-1 هیچ تصمیم، پیام، routing یا completion خودکاری ایجاد نمی‌کند؛
+- feature branch نیمه‌کاره مسیر پروژه را تعیین نمی‌کند.
+
+---
+
+## 12. ترتیب ادامه
+
+### جریان عملیاتی FOUX
 
 ```text
-KEEP_AS_DATA_QUALITY_WORKFLOW
-REWORK_TO_MATCH_APPROVED_CONTRACT
-REVERT_FROM_PRODUCT
+FO-1 Episode/Link/Event
+→ FO-2 Projection Shadow
+→ FO-3 Read-only Worklist
+→ FO-4 Ownership/Routing/SLA
+→ FO-5 Structured Contact
+→ FO-6 Governed SMS
+→ FO-7 Cross-channel/Outbox
+→ FO-8 Evidence Assist
+→ FO-9 Automation Health
+→ FO-10 Pilot/Cutover
 ```
 
-## 8. Release Engineering
+### جریان کلان پروژه
 
-PR #59 برای A15 روی head قدیمی ساخته شده و نسبت به `main` فعلی diverged است. این PR نباید مستقیم merge شود.
+```text
+R0 Governance Reconciliation
+R1 Release Baseline
+R2 Bounded Clinical Content
+```
 
-مسیر صحیح:
+این جریان‌ها می‌توانند با scope مستقل جلو بروند، اما نباید قراردادهای یکدیگر را دور بزنند.
 
-1. استخراج requirementهای معتبر A15؛
-2. ساخت branch تازه از `main` فعلی؛
-3. اعمال minimal release changes بدون finalizer موقت در محصول؛
-4. full Linux Specialist/Accounting CI؛
-5. Windows frozen build و self-test واقعی؛
-6. backup/verify/restore rehearsal؛
-7. فقط سپس merge.
-
-## 9. Halqe Migration
-
-PRهای مهاجرت Halqe یک جریان استراتژیک جدا هستند. آن‌ها وضعیت محصول فعلی Specialist Clinic را تعریف نمی‌کنند.
-
-تا تصمیم رسمی cutover:
-
-- Flask/SQLite فعلی product authority است؛
-- Halqe migration PRها Draft باقی می‌مانند؛
-- هیچ merge زنجیره‌ای یا production import خودکار انجام نمی‌شود؛
-- تصمیم مهاجرت باید شامل rehearsal، clinician sign-off، financial sign-off، backup/restore و rollback باشد.
-
-## 10. قانون Source of Truth
-
-برای پاسخ به «الان پروژه کجاست؟» ترتیب اعتماد چنین است:
-
-1. وضعیت واقعی `main` و PRهای GitHub؛
-2. این فایل و `PROJECT_STATE.json`؛
-3. README و اسناد نزدیک به کد؛
-4. PR bodyها و گزارش‌های تاریخی؛
-5. متن گفتگو یا حافظهٔ ایجنت.
-
-هیچ ایجنتی نباید فقط از حافظه دربارهٔ وضعیت پروژه نتیجه‌گیری کند.
-
-## 11. گاردریل ضد Over-research و Scope drift
-
-پیش از هر tranche باید پنج سؤال پاسخ داده شود:
-
-1. این کار متعلق به کدام جریان است؟
-2. خروجی اجرایی یا تصمیمی آن چیست؟
-3. آیا نتیجه می‌تواند وضعیت یا تصمیمی را تغییر دهد؟
-4. آیا Scope متناسب با ریسک خروجی است؟
-5. آیا این سند بعد از merge نیاز به به‌روزرسانی دارد؟
-
-قواعد:
-
-- پژوهش جدید بدون decision impact شروع نمی‌شود؛
-- Shadow بدون approval به Rule تبدیل نمی‌شود؛
-- تست فنی معادل clinical approval نیست؛
-- Rule Draft وارد visible rollout نمی‌شود؛
-- یک Conflict فقط capability وابسته به خودش را Block می‌کند؛
-- هر tranche باید کوچک، قابل تست و دارای exit criterion باشد؛
-- هیچ feature branch نیمه‌کاره‌ای مسیر بعدی پروژه را تعیین نمی‌کند.
-
-## 12. ترتیب صحیح ادامهٔ پروژه
-
-### Phase R0 — Reconciliation حاکمیتی
-
-1. merge همین سند؛
-2. توقف `feature/hypoglycemia-shadow-disposition-v1`؛
-3. ساخت جدول تصمیم برای شش Rule A12: `REVALIDATE / REPLACE / RETIRE`؛
-4. تصمیم رسمی دربارهٔ Hypoglycemia Shadow: keep/rework/revert؛
-5. تعیین اینکه PR #60 چگونه و در چه واحدهایی به Rule Candidate تبدیل می‌شود.
-
-### Phase R1 — Release baseline
-
-1. بازسازی A15 از `main` فعلی؛
-2. build و self-test Windows؛
-3. backup/restore rehearsal؛
-4. انتشار یک baseline قابل نصب و بازتولید.
-
-### Phase R2 — Clinical content
-
-1. Ruleها به‌صورت تک‌واحدی و محدود؛
-2. evidence → computability → Rule Candidate → Golden Cases؛
-3. independent clinical/technical review؛
-4. SILENT و سپس pilot محدود؛
-5. هیچ activation جمعی یا خودکار.
+---
 
 ## 13. تصمیم فعلی
 
-تا تکمیل Phase R0:
-
 ```text
-New clinical research         = PAUSED except decision-changing retrieval
-New clinical rules            = PAUSED
-Hypoglycemia Shadow expansion = PAUSED
-Disposition branch            = DO_NOT_MERGE
-Release cleanup               = ALLOWED after governance merge
-Bug/security fixes            = ALLOWED with focused tests
-FOUX-V1 FO-0                  = ALLOWED, registration/baseline only
-FOUX-V1 FO-1 and later        = BLOCKED pending live baseline + green CI + explicit start
+FOUX FO-0                     = VALIDATED
+FOUX FO-1                     = ALLOWED_WITHIN_CANONICAL_SCOPE
+FOUX FO-2+                    = BLOCKED_PENDING_FO_1_EXIT
+New clinical rules           = PAUSED
+Hypoglycemia Shadow expansion= PAUSED
+Disposition branch           = DO_NOT_MERGE
+Focused bug/security fixes   = ALLOWED
+Release cleanup              = ALLOWED on fresh main branch
 ```
-
-این توقف به معنی توقف کل پروژه نیست؛ فقط جلوی ادامهٔ بدون طبقه‌بندی و مخلوط‌شدن مسیرها را می‌گیرد.
-
-## 14. گیت حاکم Follow-up Orchestration & UX v1
-
-Source of Truth اجرایی این جریان، سند canonical آن است. در FO-0 فقط موارد زیر مجازند:
-
-- ثبت stream، owner و status؛
-- baseline ثابت UI و Source of Truth؛
-- capture aggregate و read-only از دیتابیس استقرار؛
-- تعریف flagهای خاموش؛
-- test guard برای اثبات عدم استفادهٔ runtime و عدم ایجاد schema.
-
-Exit Gate FO-0:
-
-```text
-Canonical plan on main        = PASS
-Repository baseline report    = PASS
-Project State registration    = IN THIS TRANCHE
-Feature flags default OFF      = IN THIS TRANCHE
-Runtime consumer of flags      = MUST BE ZERO
-FOUX schema/data mutation      = MUST BE ZERO
-Live operational metrics       = PENDING OPERATOR CAPTURE
-Full CI                        = MUST BE GREEN
-FO-1 authorization             = EXPLICITLY REQUIRED AFTER ALL ABOVE
-```
-
-تا وقتی یکی از موارد `PENDING` یا ناموفق است، وضعیت برنامه `FO_0_INCOMPLETE` باقی می‌ماند و branch بعدی حق ساخت Episode، backfill، Projection یا mutation جدید را ندارد.

@@ -1,41 +1,56 @@
 {
-  "schema_version": "1.1",
-  "audited_at": "2026-08-03T01:44:00+03:30",
+  "schema_version": "1.2",
+  "audited_at": "2026-08-03T02:14:00+03:30",
   "repository": "Emad211/clinic_managment",
   "product_authority": {
     "branch": "main",
-    "head": "86981354e48c06667b115b2c854a39e3f611e733",
+    "head": "901dbfdf9c358ecc09d2a60a0680f6a4a8370d17",
     "status": "ACTIVE_PRODUCT",
-    "head_note": "Main head at FOUX-V1 FO-0 registration start"
+    "head_note": "FOUX-V1 FO-0 merged; test-only data attestation pending merge"
   },
   "overall_status": "PRODUCT_OPERATIONAL_CLINICAL_CONTENT_NOT_APPROVED_GOVERNANCE_RECONCILIATION_REQUIRED",
   "streams": {
     "accounting": {
       "path": "webapp/",
-      "status": "PRODUCTION",
+      "status": "PRODUCTION_CODE_TEST_DATA_CONTEXT",
       "database": "clinic_new.db",
       "specialist_access": "READ_ONLY"
     },
     "specialist_clinic": {
       "path": "specialist_clinic/",
-      "status": "ACTIVE_PRODUCT",
-      "database": "specialist.db"
+      "status": "ACTIVE_PRODUCT_PRE_PRODUCTION_TEST_DATA",
+      "database": "specialist.db",
+      "data_classification": "TEST_ONLY_SYNTHETIC_OR_RESETTABLE",
+      "classification_source": "OWNER_ATTESTATION_2026_08_03",
+      "real_patient_phi_expected": false,
+      "production_readiness_review_required_before_real_data": true
     },
     "followup_orchestration_ux_v1": {
       "program_code": "FOUX-V1",
       "path": "specialist_clinic/",
       "canonical_plan": "specialist_clinic/docs/FOLLOWUP_ORCHESTRATION_UX_V1_IMPLEMENTATION_PLAN.md",
+      "plan_version": "1.1.0",
       "baseline_report": "specialist_clinic/docs/FOLLOWUP_ORCHESTRATION_UX_V1_BASELINE.md",
-      "tracking_issue": 71,
+      "tracking_issue_fo0": 71,
       "owner": "Emad211",
-      "current_tranche": "FO-0_GOVERNANCE_BASELINE_REGISTRATION",
-      "status": "FO_0_REPOSITORY_BASELINE_RECORDED_LIVE_OPERATIONAL_COUNTS_PENDING",
+      "current_tranche": "FO_1_EPISODE_IDENTITY_APPEND_ONLY_LINKS",
+      "status": "FO_0_VALIDATED_FO_1_AUTHORIZED",
+      "data_environment": "TEST_ONLY_RESETTABLE",
+      "fo0_evidence": {
+        "canonical_plan_pr": 70,
+        "implementation_pr": 72,
+        "merge_commit": "901dbfdf9c358ecc09d2a60a0680f6a4a8370d17",
+        "specialist_tests_passed": 731,
+        "accounting_tests_passed": 54,
+        "deterministic_aggregate_fixture": true,
+        "owner_test_only_attestation": true
+      },
       "runtime_behavior_change": false,
       "schema_change": false,
       "database_mutation": false,
-      "live_operational_counts": "PENDING_OPERATOR_READ_ONLY_CAPTURE",
-      "fo1_allowed": false,
-      "next_gate": "LIVE_BASELINE_CAPTURE_AND_GREEN_CI_THEN_EXPLICIT_FO_1_START",
+      "production_operational_baseline": "DEFERRED_TO_CONTROLLED_PILOT_BEFORE_REAL_DATA",
+      "fo1_allowed": true,
+      "next_gate": "FO_1_EPISODE_LINK_EVENT_SCHEMA_WITH_ZERO_SOURCE_TRUTH_MUTATION_AND_GREEN_CI",
       "feature_flags": {
         "FOLLOWUP_EPISODES_ENABLED": false,
         "FOLLOWUP_PROJECTION_SHADOW": false,
@@ -50,12 +65,15 @@
       },
       "invariants": [
         "EXISTING_SOURCE_TRUTHS_REMAIN_AUTHORITATIVE",
-        "NO_FOUX_SCHEMA_IN_FO_0",
-        "NO_RUNTIME_CONSUMER_OF_FOUX_FLAGS_IN_FO_0",
+        "EPISODE_IS_NOT_CLINICAL_TRUTH",
+        "FO_1_MAY_ADD_ONLY_EPISODE_LINK_EVENT_INFRASTRUCTURE",
+        "NO_UI_OR_AUTOMATION_BEHAVIOR_CHANGE_IN_FO_1",
+        "NO_FABRICATED_RELATION_OR_EVENT",
         "CLINICAL_TASK_COMPLETION_REQUIRES_EVIDENCE",
         "APPOINTMENT_DOES_NOT_COMPLETE_CLINICAL_TASK",
         "NO_CLINICAL_RULE_OR_SHADOW_SCOPE_CHANGE",
-        "NO_WRITE_TO_ACCOUNTING_DATABASE"
+        "NO_WRITE_TO_ACCOUNTING_DATABASE",
+        "TEST_ONLY_ASSUMPTION_MUST_BE_REVOKED_BEFORE_REAL_PATIENT_DATA"
       ]
     },
     "clinical_engine_v2": {
@@ -87,14 +105,7 @@
       "clinical_activation": "BLOCKED"
     },
     "hypoglycemia_shadow": {
-      "merged_pull_requests": [
-        62,
-        63,
-        64,
-        65,
-        66,
-        67
-      ],
+      "merged_pull_requests": [62, 63, 64, 65, 66, 67],
       "status": "EXPERIMENTAL_INTERNAL_SHADOW_PAUSED_FOR_RECONCILIATION",
       "is_clinical_rule": false,
       "is_approved_rollout": false,
@@ -124,7 +135,8 @@
     "disposition_branch": "DO_NOT_MERGE",
     "release_cleanup": "ALLOWED_AFTER_GOVERNANCE_MERGE",
     "focused_bug_and_security_fixes": "ALLOWED",
-    "followup_orchestration_fo1": "BLOCKED_PENDING_FO_0_EXIT_GATE"
+    "followup_orchestration_fo1": "ALLOWED_WITHIN_CANONICAL_SCOPE",
+    "followup_orchestration_fo2_and_later": "BLOCKED_PENDING_FO_1_EXIT_GATE"
   },
   "next_phases": [
     "R0_GOVERNANCE_RECONCILIATION",
@@ -132,7 +144,8 @@
     "R2_BOUNDED_CLINICAL_CONTENT_FORMALIZATION"
   ],
   "operational_programs": [
-    "FOUX_V1_FO_0_REGISTERED_LIVE_BASELINE_PENDING"
+    "FOUX_V1_FO_0_VALIDATED",
+    "FOUX_V1_FO_1_AUTHORIZED"
   ],
   "trust_order": [
     "GITHUB_MAIN_AND_PULL_REQUEST_STATE",

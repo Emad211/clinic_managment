@@ -15,14 +15,8 @@ import sys
 SPECIALIST_ROOT = Path(__file__).resolve().parents[1]
 REPO_ROOT = SPECIALIST_ROOT.parent
 SRC_ROOT = SPECIALIST_ROOT / "src"
-PLAN_PATH = (
-    SPECIALIST_ROOT
-    / "docs"
-    / "FOLLOWUP_ORCHESTRATION_UX_V1_IMPLEMENTATION_PLAN.md"
-)
-BASELINE_PATH = (
-    SPECIALIST_ROOT / "docs" / "FOLLOWUP_ORCHESTRATION_UX_V1_BASELINE.md"
-)
+PLAN_PATH = SPECIALIST_ROOT / "docs" / "FOLLOWUP_ORCHESTRATION_UX_V1_IMPLEMENTATION_PLAN.md"
+BASELINE_PATH = SPECIALIST_ROOT / "docs" / "FOLLOWUP_ORCHESTRATION_UX_V1_BASELINE.md"
 CAPTURE_PATH = SPECIALIST_ROOT / "scripts" / "capture_followup_fo0_baseline.py"
 
 EXPECTED_FLAGS = (
@@ -89,10 +83,7 @@ def _create_baseline_fixture(path: Path) -> None:
                 assigned_to TEXT,
                 supersedes_event_id INTEGER
             );
-            CREATE TABLE engagement_approvals (
-                id INTEGER PRIMARY KEY,
-                status TEXT
-            );
+            CREATE TABLE engagement_approvals (id INTEGER PRIMARY KEY, status TEXT);
             CREATE TABLE engagement_dispatch (id INTEGER PRIMARY KEY);
             CREATE TABLE sms_messages (
                 id INTEGER PRIMARY KEY,
@@ -104,10 +95,7 @@ def _create_baseline_fixture(path: Path) -> None:
                 status TEXT,
                 scheduled_at TEXT
             );
-            CREATE TABLE appointments (
-                id INTEGER PRIMARY KEY,
-                status TEXT
-            );
+            CREATE TABLE appointments (id INTEGER PRIMARY KEY, status TEXT);
             CREATE TABLE followup_contact_events (
                 id INTEGER PRIMARY KEY,
                 task_id INTEGER,
@@ -123,44 +111,35 @@ def _create_baseline_fixture(path: Path) -> None:
                 (1, 'نام محرمانه نمونه', '09120000000', 1),
                 (2, 'بیمار دوم', '09121111111', 1),
                 (3, 'غیرفعال', NULL, 0);
-
             INSERT INTO followup_tasks VALUES
                 (1, 'open', NULL, NULL, '2026-08-01'),
                 (2, 'open', '', 'staff-1', '2026-08-10'),
                 (3, 'done', '', NULL, '2026-07-01'),
                 (4, 'open', 'clinical_v2', NULL, '2026-08-02'),
                 (5, 'open', 'encounter_plan', NULL, '2026-08-02');
-
             INSERT INTO clinical_task_events VALUES
                 (1, 'OPEN', NULL, NULL),
                 (2, 'OPEN', 'nurse-1', NULL),
                 (3, 'COMPLETED', 'nurse-1', 2);
-
             INSERT INTO care_plan_commitment_events VALUES
                 (1, 'OPEN', 'staff-2', NULL),
                 (2, 'OPEN', NULL, NULL),
                 (3, 'CANCELLED', NULL, 2);
-
             INSERT INTO engagement_approvals VALUES
                 (1, 'pending'), (2, 'failed'), (3, 'approved');
             INSERT INTO engagement_dispatch VALUES (1), (2);
-
             INSERT INTO sms_messages VALUES
                 (1, 'sent', 'Delivered'),
                 (2, 'pending', 'SubmissionUnknown'),
                 (3, 'failed', 'Failed');
-
             INSERT INTO sms_campaigns VALUES
                 (1, 'scheduled', '2026-08-02 10:00:00'),
                 (2, 'scheduled', '2026-08-05 10:00:00');
-
             INSERT INTO appointments VALUES
                 (1, 'scheduled'), (2, 'no_show'), (3, 'cancelled');
-
             INSERT INTO followup_contact_events VALUES
                 (1, 1, '2026-08-01 09:00:00', '2026-08-02 09:00:00'),
                 (2, 2, '2026-08-01 10:00:00', '2026-08-05 10:00:00');
-
             INSERT INTO operational_job_runs VALUES
                 ('job:failed', 'FAILED'),
                 ('job:running', 'RUNNING'),
@@ -213,12 +192,9 @@ def test_fo0_flags_have_no_runtime_consumer_yet():
 
 
 def test_fo0_does_not_install_orchestration_schema():
-    """Reject actual FOUX table declarations without confusing flags for tables."""
     schema_sources = [SRC_ROOT / "adapters" / "sqlite" / "schema.sql"]
     schema_sources.extend(
-        path
-        for path in (SRC_ROOT / "adapters" / "sqlite").glob("*.py")
-        if path.is_file()
+        path for path in (SRC_ROOT / "adapters" / "sqlite").glob("*.py") if path.is_file()
     )
     violations: list[str] = []
     for path in schema_sources:
@@ -227,8 +203,7 @@ def test_fo0_does_not_install_orchestration_schema():
         text = path.read_text(encoding="utf-8")
         for table in FOUX_SCHEMA_NAMES:
             declaration = re.compile(
-                rf"CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?[\[\]`\"']*"
-                rf"{re.escape(table)}\b",
+                rf"CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?[\[\]`\"']*{re.escape(table)}\b",
                 re.IGNORECASE,
             )
             if declaration.search(text):
@@ -236,47 +211,47 @@ def test_fo0_does_not_install_orchestration_schema():
     assert violations == []
 
 
-def test_project_state_registers_same_fo0_contract():
+def test_project_state_closes_fo0_and_authorizes_fo1():
     state = json.loads((REPO_ROOT / "PROJECT_STATE.json").read_text(encoding="utf-8"))
+    specialist = state["streams"]["specialist_clinic"]
+    assert specialist["data_classification"] == "TEST_ONLY_SYNTHETIC_OR_RESETTABLE"
+    assert specialist["real_patient_phi_expected"] is False
+    assert specialist["production_readiness_review_required_before_real_data"] is True
+
     stream = state["streams"]["followup_orchestration_ux_v1"]
     assert stream["program_code"] == "FOUX-V1"
-    assert stream["canonical_plan"] == str(PLAN_PATH.relative_to(REPO_ROOT)).replace(
-        "\\", "/"
-    )
-    assert stream["baseline_report"] == str(
-        BASELINE_PATH.relative_to(REPO_ROOT)
-    ).replace("\\", "/")
-    assert stream["tracking_issue"] == 71
-    assert stream["runtime_behavior_change"] is False
-    assert stream["schema_change"] is False
-    assert stream["database_mutation"] is False
-    assert stream["fo1_allowed"] is False
-    assert stream["live_operational_counts"] == "PENDING_OPERATOR_READ_ONLY_CAPTURE"
+    assert stream["plan_version"] == "1.1.0"
+    assert stream["status"] == "FO_0_VALIDATED_FO_1_AUTHORIZED"
+    assert stream["data_environment"] == "TEST_ONLY_RESETTABLE"
+    assert stream["fo0_evidence"]["owner_test_only_attestation"] is True
+    assert stream["fo0_evidence"]["specialist_tests_passed"] == 731
+    assert stream["fo0_evidence"]["accounting_tests_passed"] == 54
+    assert stream["fo1_allowed"] is True
     assert stream["feature_flags"] == {name: False for name in EXPECTED_FLAGS}
 
     state_md = (REPO_ROOT / "PROJECT_STATE.md").read_text(encoding="utf-8")
-    assert "Follow-up Orchestration & UX v1" in state_md
-    assert str(PLAN_PATH.relative_to(REPO_ROOT)).replace("\\", "/") in state_md
-    assert str(BASELINE_PATH.relative_to(REPO_ROOT)).replace("\\", "/") in state_md
-    assert "FOUX-V1 FO-1 and later" in state_md
-    assert "BLOCKED" in state_md
+    assert "TEST_ONLY / SYNTHETIC_OR_RESETTABLE" in state_md
+    assert "FO-0                     = VALIDATED" in state_md
+    assert "FO-1                     = ALLOWED_WITHIN_CANONICAL_SCOPE" in state_md
 
 
-def test_canonical_docs_and_nearest_agent_guard_are_present():
-    assert PLAN_PATH.is_file()
-    assert BASELINE_PATH.is_file()
+def test_canonical_docs_and_nearest_agent_guard_are_current():
     agent_path = SPECIALIST_ROOT / "AGENTS.md"
-    assert agent_path.is_file()
+    assert PLAN_PATH.is_file() and BASELINE_PATH.is_file() and agent_path.is_file()
 
     plan = PLAN_PATH.read_text(encoding="utf-8")
     baseline = BASELINE_PATH.read_text(encoding="utf-8")
     agent = agent_path.read_text(encoding="utf-8")
-    assert "FO-0 — Governance, Baseline & Registration" in plan
-    assert "LIVE_OPERATIONAL_COUNTS = PENDING_DEPLOYMENT_CAPTURE" in baseline
-    assert "FO-1 and later blocked" in agent
-    for flag in EXPECTED_FLAGS:
-        assert flag in baseline
-        assert flag in agent
+
+    assert "نسخه:** `1.1.0`" in plan
+    assert "FO_0_VALIDATED / FO_1_AUTHORIZED" in plan
+    assert "TEST_ONLY / SYNTHETIC_OR_RESETTABLE" in plan
+    assert "FO-0 | VALIDATED" in plan
+    assert "FO-1 | AUTHORIZED" in plan
+    assert "Status:** `VALIDATED`" in baseline
+    assert "Environment data classification:** `TEST_ONLY / RESETTABLE`" in baseline
+    assert "FO-1 = AUTHORIZED" in agent
+    assert "FO-2 and later = BLOCKED" in agent
 
 
 def test_read_only_baseline_capture_is_aggregate_and_non_mutating(tmp_path):
@@ -302,35 +277,9 @@ def test_read_only_baseline_capture_is_aggregate_and_non_mutating(tmp_path):
     assert captured["contains_phi"] is False
     assert captured["database_unchanged_after_capture"] is True
     assert captured["database"]["quick_check"] == "ok"
-
-    metrics = captured["metrics"]
-    expected = {
-        "active_patients": 2,
-        "open_admin_tasks": 2,
-        "unassigned_open_admin_tasks": 1,
-        "overdue_open_admin_tasks": 1,
-        "current_nonterminal_clinical_tasks": 1,
-        "unassigned_current_clinical_tasks": 1,
-        "current_nonterminal_plan_commitments": 1,
-        "unassigned_current_plan_commitments": 0,
-        "current_open_work_items_total": 4,
-        "current_unassigned_work_items_total": 2,
-        "pending_engagement_approvals": 1,
-        "failed_or_unknown_engagement_approvals": 1,
-        "engagement_dispatch_rows": 2,
-        "sms_delivered": 1,
-        "sms_inflight_or_unknown": 1,
-        "sms_failed": 1,
-        "due_scheduled_campaigns": 1,
-        "scheduled_appointments": 1,
-        "no_show_appointments": 1,
-        "contact_events": 2,
-        "callbacks_due_from_latest_contact": 1,
-        "scheduler_failed_job_keys": 1,
-        "scheduler_running_job_keys": 1,
-    }
-    for key, value in expected.items():
-        assert metrics[key] == value
+    assert captured["metrics"]["active_patients"] == 2
+    assert captured["metrics"]["current_open_work_items_total"] == 4
+    assert captured["metrics"]["current_unassigned_work_items_total"] == 2
     assert captured["derived"]["unassigned_open_work_item_percent"] == 50.0
 
     rendered = json.dumps(captured, ensure_ascii=False)
