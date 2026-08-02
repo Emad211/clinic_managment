@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import sqlite3
 
+from src.adapters.sqlite.followup_episode_schema import ensure_followup_episode_storage
+
 
 CONTACT_CHANNELS = (
     "PHONE",
@@ -130,3 +132,12 @@ def ensure_followup_operations_storage(db: sqlite3.Connection) -> None:
         BEGIN SELECT RAISE(ABORT, 'booking appointment scope mismatch'); END;
         """
     )
+    ensure_followup_episode_storage(db)
+    db.commit()
+
+
+__all__ = [
+    "CONTACT_CHANNELS",
+    "CONTACT_OUTCOMES",
+    "ensure_followup_operations_storage",
+]
