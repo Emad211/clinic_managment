@@ -140,11 +140,22 @@ def clinical_engine_action(action):
                 flash("گزارش ساخته شد، اما فعال‌سازی همچنان مسدود است. موارد قرمز را بررسی کنید.", "warning")
         elif action == "prepare-demo-cohort":
             from src.services.clinical_engine.demo_cohort import DemoCohortService
-            cohort = DemoCohortService().ensure(actor=actor)
+            from src.services.followup_orchestration.demo_seed_preparation import (
+                DemoSeedFollowupPreparationService,
+            )
+
+            cohort_service = DemoCohortService()
+            cohort = cohort_service.ensure(actor=actor)
+            followup = DemoSeedFollowupPreparationService(get_db()).run(
+                as_of_at=cohort_service.reference_at(),
+                actor_username=actor,
+            )
             totals = cohort["totals"]
             flash(
                 f"۱۰ پروندهٔ طولی آماده شد: {totals['vitals']} مشاهده، "
-                f"{totals['labs']} آزمایش و {totals['medication_events']} رویداد دارویی.",
+                f"{totals['labs']} آزمایش، "
+                f"{totals['medication_events']} رویداد دارویی و "
+                f"{followup['demo_projection_count']} مسیر در نمای یکپارچه.",
                 "success",
             )
         elif action == "approve":

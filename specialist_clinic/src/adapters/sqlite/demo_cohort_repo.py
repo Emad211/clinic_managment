@@ -158,6 +158,7 @@ class DemoCohortRepository:
                     db,
                     patient_id,
                     patient,
+                    fixture_national_id=national_id,
                     condition_ids=condition_ids,
                     drug_catalog=drug_catalog,
                     allergy_catalog=allergy_catalog,
@@ -186,7 +187,6 @@ class DemoCohortRepository:
             "clinical_notes",
             "surgery_history",
             "medical_history",
-            "followup_tasks",
             "appointments",
             "allergies",
             "medication_events",
@@ -200,6 +200,15 @@ class DemoCohortRepository:
                 f"DELETE FROM {table} WHERE patient_link_id=?",
                 (patient_id,),
             )
+        # Preserve administrative demo follow-up row IDs so immutable Episode links
+        # remain valid across repeated canonical seed runs. Governed clinical/plan
+        # tasks are still reset with the rest of the synthetic clinical source set.
+        db.execute(
+            """DELETE FROM followup_tasks
+               WHERE patient_link_id=?
+                 AND COALESCE(source_engine,'') IN ('clinical_v2','encounter_plan')""",
+            (patient_id,),
+        )
 
     @staticmethod
     def _insert_patient_records(
@@ -207,6 +216,7 @@ class DemoCohortRepository:
         patient_id: int,
         patient: dict,
         *,
+        fixture_national_id: str,
         condition_ids: dict[str, int],
         drug_catalog: dict[tuple[str, str], dict],
         allergy_catalog: dict[str, dict],
@@ -511,28 +521,9 @@ class DemoCohortRepository:
                 for row in patient["appointments"]
             ],
         )
-        db.executemany(
-            """INSERT INTO followup_tasks
-               (patient_link_id, due_date, reason, detail, status, assigned_to,
-                fulfillment, resolved_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-            [
-                (
-                    patient_id,
-                    row["due_date"],
-                    row["reason"],
-                    row["detail"],
-                    row["status"],
-                    "تیم درمان",
-                    (
-                        "remote"
-                        if row["reason"] == "refill"
-                        else "in_person"
-                    ),
-                    row.get("resolved_at"),
-                )
-                for row in patient["followups"]
-            ],
+        DemoCohortRepository._sync_followups(
+            db, patient_id, patient,
+            fixture_national_id=fixture_national_id, actor=actor, now=now
         )
         db.executemany(
             """INSERT INTO prescriptions
@@ -549,6 +540,85 @@ class DemoCohortRepository:
                 for row in patient["prescriptions"]
             ],
         )
+
+    @staticmethod
+    def _sync_followups(
+        db, patient_id: int, patient: dict, *,
+        fixture_national_id: str, actor: str, now: str
+    ) -> None:
+        """Upsert only canonical fixture-owned follow-ups with stable IDs.
+
+        Ownership is recorded in the synthetic seed's settings namespace instead
+        of modifying source provenance fields. This preserves an existing immutable
+        Episode link revision and leaves user-created TEST-patient tasks untouched.
+        """
+        for index, row in enumerate(patient["followups"], start=1):
+            fixture_key = (
+                f"demo_followup_task_id:{fixture_national_id}:{index}"
+            )
+            fulfillment = "remote" if row["reason"] == "refill" else "in_person"
+            mapped = db.execute(
+                "SELECT value FROM settings WHERE key=?",
+                (fixture_key,),
+            ).fetchone()
+            existing = None
+            if mapped and str(mapped["value"] or "").isdigit():
+                existing = db.execute(
+                    """SELECT id FROM followup_tasks
+                       WHERE id=? AND patient_link_id=?""",
+                    (int(mapped["value"]), patient_id),
+                ).fetchone()
+
+            if not existing:
+                # Adopt exact rows produced by releases before the mapping existed.
+                existing = db.execute(
+                    """SELECT id FROM followup_tasks
+                       WHERE patient_link_id=?
+                         AND COALESCE(source_engine,'')=''
+                         AND COALESCE(source_rule,'')=''
+                         AND COALESCE(source_event,'')=''
+                         AND due_date IS ?
+                         AND reason IS ?
+                         AND detail IS ?
+                         AND status=?
+                         AND COALESCE(assigned_to,'')='تیم درمان'
+                         AND COALESCE(fulfillment,'in_person')=?
+                         AND resolved_at IS ?
+                       ORDER BY id LIMIT 1""",
+                    (
+                        patient_id, row["due_date"], row["reason"], row["detail"],
+                        row["status"], fulfillment, row.get("resolved_at"),
+                    ),
+                ).fetchone()
+
+            values = (
+                row["due_date"], row["reason"], row["detail"], row["status"],
+                "تیم درمان", fulfillment, row.get("resolved_at"),
+            )
+            if existing:
+                task_id = int(existing["id"])
+                db.execute(
+                    """UPDATE followup_tasks
+                       SET due_date=?, reason=?, detail=?, status=?, assigned_to=?,
+                           fulfillment=?, resolved_at=?
+                       WHERE id=? AND patient_link_id=?""",
+                    (*values, task_id, patient_id),
+                )
+            else:
+                cursor = db.execute(
+                    """INSERT INTO followup_tasks
+                       (patient_link_id, due_date, reason, detail, status,
+                        assigned_to, fulfillment, resolved_at, created_at)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (patient_id, *values, now),
+                )
+                task_id = int(cursor.lastrowid)
+
+            db.execute(
+                """INSERT INTO settings (key, value) VALUES (?, ?)
+                   ON CONFLICT(key) DO UPDATE SET value=excluded.value""",
+                (fixture_key, str(task_id)),
+            )
 
     def summary(self, *, expected_version: str) -> dict:
         ids = [f"TEST{index:04d}" for index in range(1, 11)]
@@ -593,7 +663,6 @@ class DemoCohortRepository:
             "medication_events": "medication_events",
             "notes": "clinical_notes",
             "appointments": "appointments",
-            "followups": "followup_tasks",
             "prescriptions": "prescriptions",
             "history": "medical_history",
             "allergies": "allergies",
@@ -610,6 +679,17 @@ class DemoCohortRepository:
                         patient_ids,
                     ).fetchone()["count"]
                 )
+            totals["followups"] = int(
+                db.execute(
+                    f"""SELECT COUNT(DISTINCT task.id) AS count
+                        FROM settings seed_map
+                        JOIN followup_tasks task
+                          ON task.id=CAST(seed_map.value AS INTEGER)
+                        WHERE seed_map.key LIKE 'demo_followup_task_id:TEST%:%'
+                          AND task.patient_link_id IN ({patient_marks})""",
+                    patient_ids,
+                ).fetchone()["count"]
+            )
             totals["reconciled_collections"] = int(
                 db.execute(
                     f"""SELECT COUNT(*) AS count FROM (
