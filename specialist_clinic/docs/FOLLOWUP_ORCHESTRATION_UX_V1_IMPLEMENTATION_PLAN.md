@@ -4,9 +4,9 @@
 >
 > **کد برنامه:** `FOUX-V1`
 >
-> **نسخه:** `1.5.1`
+> **نسخه:** `1.5.2`
 >
-> **آخرین بازبینی:** `2026-08-03`
+> **آخرین بازبینی:** `2026-08-04`
 >
 > **وضعیت:** `FO_0_VALIDATED / FO_1_VALIDATED / FO_2_VALIDATED / FO_3_VALIDATED_WITH_OWNER_ACCEPTANCE / FO_4_TECHNICALLY_VALIDATED_LOCAL_UX_ACCEPTANCE_PENDING / FO_5_AND_LATER_BLOCKED`
 >
@@ -14,9 +14,9 @@
 >
 > **دامنه:** فقط `specialist_clinic/`
 >
-> **طبقه‌بندی محیط فعلی:** `TEST_ONLY / SYNTHETIC_OR_RESETTABLE_DATA`
+> **محیط:** `TEST_ONLY / SYNTHETIC_OR_RESETTABLE_DATA`
 >
-> **خارج از دامنه:** تغییر Rule بالینی، گسترش Hypoglycemia Shadow، تصمیم درمانی خودکار، Write به `clinic_new.db` و تغییر رفتار `webapp/`.
+> **رودمپ کامل FO-0 تا FO-10:** `specialist_clinic/docs/FOLLOWUP_ORCHESTRATION_UX_V1_ROADMAP.md`
 
 ---
 
@@ -29,36 +29,13 @@
 5. متن PRهای تاریخی؛
 6. حافظهٔ گفتگو یا ایجنت.
 
-هر ادعای تکمیل، تست، push یا merge باید SHA و CI evidence داشته باشد.
+هر ادعای تکمیل یا merge باید SHA و CI evidence داشته باشد.
 
 ---
 
-## 2. هدف محصول
+## 2. هدف محصول و معماری
 
-Task، SMS، Contact، Appointment، Clinical Outcome و Encounter Commitment بدون بازنویسی Source of Truthهای فعلی در Episode و Projection بازسازی‌پذیر دیده شوند تا کاربر فوراً بداند:
-
-- چرا مورد ساخته شده؛
-- وضعیت و موعد چیست؛
-- صف مسئول کدام است؛
-- مسئول واقعی چه کسی است؛
-- اقدام بعدی و آخرین رویداد چیست.
-
----
-
-## 3. وضعیت trancheها
-
-| Tranche | وضعیت | Evidence |
-|---|---|---|
-| FO-0 | `VALIDATED` | Issue #71، PR #72/#73 |
-| FO-1 | `VALIDATED` | Issue #74، PR #75 |
-| FO-2 | `VALIDATED` | Issue #77، PR #78 |
-| FO-3 | `VALIDATED_WITH_OWNER_ACCEPTANCE` | Issue #83، PR #81/#85/#88 |
-| FO-4 | `TECHNICALLY_VALIDATED / LOCAL_UX_PENDING` | Issue #94، PR #95 |
-| FO-5 و بعد | `BLOCKED` | validation، owner acceptance و governance مستقل لازم است |
-
----
-
-## 4. معماری حاکم
+Task، SMS، Contact، Appointment، Clinical Outcome و Encounter Commitment بدون بازنویسی Source of Truthهای موجود در Episode و Projection بازسازی‌پذیر دیده شوند تا اپراتور بداند چرا مورد ساخته شده، وضعیت و موعد چیست، صف مسئول کدام است، مسئول واقعی چه کسی است و اقدام بعدی چیست.
 
 ```text
 Authoritative Source Truths
@@ -69,12 +46,10 @@ Deterministic Projection Cache           [FO-2]
         ↓
 Unified Worklist / Timeline              [FO-3]
         ↓
-Ownership / Routing / SLA events         [FO-4]
+Ownership / Routing / effective SLA      [FO-4]
 ```
 
-Source Truthهای قبلی authoritative می‌مانند. Episode حقیقت بالینی نیست و Projection فقط cache است.
-
-### Storageهای معتبر
+Storageهای معتبر:
 
 ```text
 followup_episodes
@@ -83,48 +58,28 @@ followup_episode_events
 followup_work_item_projection
 ```
 
-FO-4 جدول Source Truth جدیدی نساخت؛ ownership از event stream موجود بازسازی می‌شود.
+Episode حقیقت بالینی نیست؛ Projection cache قابل بازسازی است؛ Worklist قدیمی تا cutover مستقل authority بالینی باقی می‌ماند.
 
 ---
 
-## 5. Evidence معتبر
+## 3. وضعیت trancheها
 
-### FO-0
+| Tranche | وضعیت | Evidence اصلی |
+|---|---|---|
+| FO-0 | `VALIDATED` | Issue #71، PR #72/#73، 731 + 54 |
+| FO-1 | `VALIDATED` | Issue #74، PR #75، 736 + 54 |
+| FO-2 | `VALIDATED` | Issue #77، PR #78، CI 30773195914، 747 + 54 |
+| FO-3 | `VALIDATED_WITH_OWNER_ACCEPTANCE` | Issue #83، PR #81/#85/#88، 762 + 54 |
+| FO-4 | `TECHNICALLY_VALIDATED / LOCAL_UX_PENDING` | Issue #94، PR #95، repairهای #97/#98 و #99/#100 |
+| FO-5 و بعد | `BLOCKED` | owner acceptance و governance مستقل لازم است |
 
-```text
-Merge 901dbfdf9c358ecc09d2a60a0680f6a4a8370d17
-731 Specialist + 54 Accounting
-```
+جزئیات کامل FO-5 تا FO-10، dependencyها، feature flagها، exit gateها و KPIهای pilot در رودمپ کامل ثبت شده‌اند.
 
-### FO-1
+---
 
-```text
-Merge 15ef1585c069a74c26fbc0ce859e03906e5f475a
-736 Specialist + 54 Accounting
-```
+## 4. Evidence معتبر
 
-### FO-2
-
-```text
-Merge 6c6e33203376a32165418e0d3c6f2a4a48253e7b
-CI 30773195914
-747 Specialist + 54 Accounting
-100% legacy coverage / deterministic rebuild
-```
-
-### FO-3
-
-```text
-Initial PR #81
-Runtime repair Issue #84 / PR #85
-Operator-copy repair Issue #87 / PR #88
-Runtime/UI commit 020803868e1c2755f7669d52da92cb8050a46018
-Governance merge f6fb9f87c7fe302c6e18d7f5909aed4128a7f5ca
-Latest FO-3 CI 30828272752
-762 Specialist + 54 Accounting
-```
-
-Owner acceptance در Issue #83:
+### FO-3 owner acceptance
 
 ```text
 FO3_UX_ACCEPTED = true
@@ -134,7 +89,7 @@ reviewed_on_test_data = true
 critical_ux_defects = 0
 ```
 
-### FO-4 — Claim, Assignment, Routing & SLA
+### FO-4 ownership / routing
 
 ```text
 Authorization Issue #90 / PR #91
@@ -147,51 +102,90 @@ Final CI 30844075841
 
 قابلیت‌های معتبر:
 
-- eventهای append-only از نوع `ROUTED`، `CLAIMED` و `ASSIGNED`؛
-- atomic claim با `BEGIN IMMEDIATE` و دقیقاً یک winner؛
-- exact replay idempotent و conflict detection؛
-- stale expected-event guard؛
-- release توسط owner یا مدیر؛
-- assign/reassign و route با permission سازگار؛
-- terminal mutation rejection پیش از role/owner checks؛
-- actual queue و actual owner در list/detail؛
-- role filter براساس صف مؤثر بعد از routing؛
-- ownership overlay به‌صورت batch و بدون N+1؛
+- append-only `ROUTED / CLAIMED / ASSIGNED`؛
+- atomic claim با یک winner؛
+- exact replay idempotent؛
+- stale form، permission و terminal checks به‌صورت fail closed؛
+- release، assign/reassign و تغییر صف؛
+- صف مؤثر و مسئول واقعی در list/detail؛
+- ownership overlay بدون N+1؛
 - حفظ ownership پس از Projection rebuild؛
-- routeهای mutation با feature flag خاموش = 404؛
-- Source Truth digest بدون تغییر.
+- POSTهای FO-4 با flag خاموش = 404؛
+- Source Truth بدون تغییر.
 
-### اصلاحات کشف‌شده توسط CI
+### FO-4 repair — Seeded Unified Worklist
 
-اجرای اول fixture قدیمی terminal را ناقص می‌ساخت و schema به‌درستی آن را رد کرد؛ fixture به قرارداد کامل ارتقا یافت و policy ضعیف نشد.
+```text
+Issue #97 / PR #98
+Final head 452b7c6eb89eb0b19da1e0de0167860fff8f6c71
+Merge 24119671b8b93fdb20db3064a59d416e02d81ef6
+CI 30851594179
+781 Specialist + 54 Accounting
+```
 
-اجرای بعدی نشان داد Claim روی terminal قبل از terminal check به `OWNER_ROLE_MISSING` می‌رسید. سرویس اصلاح شد تا Claim، Release، Assign و Route همگی ابتدا terminal بودن را fail closed رد کنند.
+علت قطعی:
+
+- seed منبع `followup_tasks` را می‌ساخت، اما Episode/Link reconciliation و Projection rebuild را اجرا نمی‌کرد؛
+- جدول Projection موجود ولی خالی، به‌اشتباه READY تلقی می‌شد؛
+- fixture taskها mapping پایدار بیرونی نداشتند.
+
+اصلاح معتبر:
+
+- `seed_demo_data.py` و action مدیریتی `prepare-demo-cohort` پس از commit منبع، Episode و Projection را صریح آماده می‌کنند؛
+- recovery command مستقل برای دیتابیس seedشده اضافه شد؛
+- GET و startup هیچ rebuild پنهانی انجام نمی‌دهند؛
+- fixture task IDها با namespace تستی `settings` پایدار می‌مانند؛
+- پیگیری دستی بیمار TEST حفظ می‌شود؛
+- seed تکراری Episode/Link/Event تکراری نمی‌سازد؛
+- وضعیت `PROJECTION_EMPTY_WITH_SOURCE_DATA` جای empty-result گمراه‌کننده را می‌گیرد؛
+- SQL مربوط به persistence در `DemoSeedFollowupRepository` باقی می‌ماند.
+
+### FO-4 repair — Canonical effective SLA
+
+```text
+Issue #99 / PR #100
+Final head 3c11ef590581b60a140c27f4924adc4ad9f67c41
+Merge cd243424ecbae98892e0dfde1780bb846554942f
+CI 30852909213
+784 Specialist + 54 Accounting
+```
+
+واژگان canonical:
+
+```text
+FUTURE
+DUE_TODAY
+OVERDUE
+DUE_UNKNOWN
+WAITING
+BLOCKED
+TERMINAL
+```
+
+Dropdown، read model و badgeها فقط همین واژگان را مصرف می‌کنند. SLA مؤثر در زمان request از `state_class`، `action_due_at` و Tehran-local `now` محاسبه می‌شود؛ بنابراین موردی که موعدش پس از آخرین rebuild گذشته است فوراً زیر `OVERDUE` دیده می‌شود، بدون read-time write.
 
 ---
 
-## 6. Invariantهای غیرقابل‌مذاکره
+## 5. Invariantهای غیرقابل‌مذاکره
 
-1. Source Truthهای قبلی authoritative می‌مانند.
+1. Source Truthهای موجود authoritative می‌مانند.
 2. Episode و Projection حقیقت بالینی نیستند.
 3. relation، event، due date، target، outcome یا assignment جعل نمی‌شود.
-4. Clinical completion فقط با Evidence و transition معتبر انجام می‌شود.
-5. Appointment به‌تنهایی Clinical Task را complete نمی‌کند.
-6. Worklist قدیمی تا cutover مستقل authority بالینی باقی می‌ماند.
-7. Rule و Hypoglycemia Shadow خارج از scope هستند.
-8. `clinic_new.db` فقط read-only است.
-9. feature flag خاموش رفتار FO-3 read-only را بازمی‌گرداند.
-10. ownership mutationها append-only، idempotent و audit‌شده‌اند.
-11. claim هم‌زمان دقیقاً یک winner دارد.
-12. reassignment پنهان ممنوع است.
-13. stale form/current-head mismatch fail closed است.
-14. owner role و owner user دو مفهوم جدا هستند.
-15. نقش پیشنهادی FO-2 به‌تنهایی assignment واقعی نیست.
-16. terminal item قابل دریافت، آزادکردن، route یا assignment نیست.
-17. FO-5 و بعد بدون owner acceptance و governance جدید ممنوع است.
+4. هیچ GET یا startup، backfill/rebuild پنهانی انجام نمی‌دهد.
+5. Clinical completion فقط با Evidence و transition معتبر انجام می‌شود.
+6. Appointment به‌تنهایی Clinical Task را complete نمی‌کند.
+7. owner role و owner user دو مفهوم جدا هستند.
+8. ownership mutationها append-only، idempotent و audit‌شده‌اند.
+9. claim هم‌زمان دقیقاً یک winner دارد.
+10. stale form و terminal mutation fail closed هستند.
+11. seed تکراری نباید task دستی یا Episode history را حذف/تکرار کند.
+12. effective SLA فقط read model است و Projection یا Source Truth را در request تغییر نمی‌دهد.
+13. `clinic_new.db` فقط read-only است.
+14. FO-5 و بعد بدون owner acceptance و governance مستقل ممنوع است.
 
 ---
 
-## 7. Feature Flags
+## 6. Feature Flags
 
 همه default OFF:
 
@@ -216,58 +210,48 @@ FOLLOWUP_UNIFIED_WORKLIST_ACTIONS=1
 FOLLOWUP_AUTO_ROUTING=1
 ```
 
-خاموش‌کردن Actions باید همهٔ mutation routeها و controlها را مخفی و unavailable کند. خاموش‌کردن Auto Routing فقط تغییر صف مدیریتی را غیرفعال می‌کند.
-
 ---
 
-## 8. قدم مجاز فعلی — FO-4 Local UX Acceptance
+## 7. قدم مجاز فعلی — FO-4 Local Owner UX Acceptance
 
 Issue حاکم: `#94`
 
-هیچ توسعهٔ FO-5 یا اتوماسیون جدیدی پیش از نتیجهٔ این مرور مجاز نیست. فقط defect متمرکز FO-4 می‌تواند اصلاح شود.
+فقط مرور لوکال یا defect متمرکز FO-4 مجاز است. FO-5 و اتوماسیون جدید ممنوع‌اند.
 
-### اجرای لوکال
+### راه‌اندازی و آماده‌سازی seed
 
 ```powershell
 git checkout main
 git pull origin main
 cd specialist_clinic
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
-```
 
-در صورت نیاز Projection را بازسازی کنید:
-
-```powershell
 $env:FOLLOWUP_PROJECTION_SHADOW = "1"
-.\.venv\Scripts\python.exe scripts\rebuild_followup_projection.py `
-  --database specialist.db `
-  --as-of "2026-08-03 12:00:00" `
-  --apply
-```
+.\.venv\Scripts\python.exe scripts\prepare_seeded_followup_view.py `
+  --database specialist.db
 
-FO-4 را فعال و برنامه را اجرا کنید:
-
-```powershell
 $env:FOLLOWUP_UNIFIED_WORKLIST_READONLY = "1"
 $env:FOLLOWUP_UNIFIED_WORKLIST_ACTIONS = "1"
 $env:FOLLOWUP_AUTO_ROUTING = "1"
 .\.venv\Scripts\python.exe start.py
 ```
 
+اجرای دوبارهٔ `seed_demo_data.py` نیز seed و نمای یکپارچه را با هم آماده می‌کند.
+
 ### Checklist پذیرش
 
-- در لیست، «صف مسئول» و «مسئول فعلی» جدا باشند؛
-- مورد بدون مسئول با متن روشن نمایش داده شود؛
-- «دریافت برای رسیدگی» نام کاربر فعلی را ثبت کند؛
-- «آزادکردن و بازگرداندن به صف» مسئول فردی را حذف ولی صف را حفظ کند؛
-- مدیر بتواند کاربر سازگار را assign/reassign کند؛
-- مدیر بتواند صف را تغییر دهد و مسئول ناسازگار حذف شود؛
+- seed موجود باید itemهای نمای یکپارچه را نشان دهد؛
+- اگر Source Data هست ولی Projection آماده نیست، پیام recovery روشن دیده شود، نه «فیلتر نتیجه ندارد»؛
+- seed دوباره، پیگیری دستی TEST را حفظ و Episode/Link/Event تکراری نسازد؛
+- «صف مسئول» و «مسئول فعلی» جدا باشند؛
+- دریافت، آزادکردن، assign/reassign و تغییر صف درست کار کنند؛
 - Timeline تغییر صف و مسئول را نشان دهد؛
-- کلیک تکراری event تکراری نسازد؛
-- فرم stale پیام «صفحه را تازه کنید» بدهد و mutation نکند؛
-- terminal item هیچ control عملیاتی نداشته باشد؛
-- action due و target همچنان جدا باشند؛
-- با Actions=0 صفحه دقیقاً read-only شود و POSTها 404 باشند؛
+- stale form mutation نکند؛
+- terminal item control عملیاتی نداشته باشد؛
+- dropdown موعد فقط هفت وضعیت canonical را داشته باشد؛
+- هر row badge وضعیت موعد واقعی داشته باشد؛
+- موردی که موعدش گذشته فوراً در فیلتر «موعدگذشته» دیده شود، حتی بدون rebuild؛
+- با Actions=0 رابط FO-3 read-only و POSTها 404 باشند؛
 - Worklist قدیمی، SMS، Appointment و Clinical behavior تغییر نکرده باشند.
 
 ### Attestation لازم
@@ -275,7 +259,7 @@ $env:FOLLOWUP_AUTO_ROUTING = "1"
 ```text
 FO4_UX_ACCEPTED = true|false
 reviewer = Emad211
-reviewed_commit = 27ccb992f2cb43c78bfe98549c3f0414b88fd1d8
+reviewed_commit = cd243424ecbae98892e0dfde1780bb846554942f
 reviewed_on_test_data = true
 critical_ux_defects = <number>
 notes = <observations or defects>
@@ -283,54 +267,56 @@ notes = <observations or defects>
 
 ---
 
-## 9. Exit Gate برای FO-5
+## 8. Exit Gate برای FO-5
 
 ```text
-FO-4 PR #95 merged                    = PASS
-Final CI 30844075841 green            = PASS
-Atomic one-winner claim               = PASS
-Stale/permission/terminal fail closed = PASS
-Projection rebuild preserves owner    = PASS
-Source Truth unchanged                = PASS
-FO4_UX_ACCEPTED=true                  = PENDING
-critical_ux_defects=0                 = PENDING
-governance authorization PR merged    = PENDING
+FO-4 ownership/routing merged           = PASS
+Seeded Unified Worklist repair          = PASS
+Canonical effective SLA                 = PASS
+Latest code CI 30852909213              = PASS
+FO4_UX_ACCEPTED=true                    = PENDING
+critical_ux_defects=0                   = PENDING
+separate governance authorization       = PENDING
 ```
 
-تا آن زمان Structured Contact automation، Retry/Escalation، SMS automation، Appointment reaction، Outbox/Dead-letter، Evidence Assist و FO-5+ مسدودند.
+Structured Contact، Retry/Escalation، SMS automation، Appointment reaction، Outbox/Dead-letter، Evidence Assist و FO-5+ تا آن زمان مسدودند.
 
 ---
 
-## 10. Rollback
+## 9. Rollback
 
 ```powershell
 $env:FOLLOWUP_UNIFIED_WORKLIST_ACTIONS = "0"
 $env:FOLLOWUP_AUTO_ROUTING = "0"
 ```
 
-نتیجه:
-
-- action controlها و mutation routeها unavailable می‌شوند؛
-- FO-3 read-only باقی می‌ماند؛
-- eventهای audit حذف یا rewrite نمی‌شوند؛
-- Source Truth rollback لازم ندارد؛
-- Projection قابل rebuild است.
+FO-3 read-only باقی می‌ماند؛ audit events حذف نمی‌شوند؛ Source Truth rollback لازم ندارد.
 
 ---
 
-## 11. قواعد ایجنت
+## 10. Roadmap authority and measured progress
 
-1. `main`، Issue #94 و plan v1.5.1 خوانده شوند؛
-2. فقط local UX review یا focused FO-4 defect fix مجاز است؛
-3. ownership eventها append-only باقی بمانند؛
-4. Source Truth، Rule، SMS و Appointment behavior تغییر نکند؛
-5. هر mutation permission، stale guard، terminal guard و idempotency داشته باشد؛
-6. هر fix جدید full CI و owner re-review می‌خواهد؛
-7. بدون FO-4 owner acceptance وارد FO-5 نشود.
+رودمپ کامل FO-0 تا FO-10 در فایل زیر نگهداری می‌شود:
+
+```text
+specialist_clinic/docs/FOLLOWUP_ORCHESTRATION_UX_V1_ROADMAP.md
+```
+
+مدل رسمی tranche-equivalent:
+
+```text
+FO-0..FO-3 validated                     = 4.0
+FO-4 technically validated / UX pending = 0.8
+FO-5..FO-10 blocked/not started          = 0.0
+Progress                                 = 4.8 / 11 = 43.6%
+Remaining                                = 56.4%
+```
+
+این درصد فقط FOUX-V1 است و production-readiness کل Specialist Clinic نیست. نقطهٔ ادامه همچنان Issue #94 و owner acceptance روی runtime commit `cd243424ecbae98892e0dfde1780bb846554942f` است. حضور FO-5 تا FO-10 در رودمپ به‌معنی authorization نیست.
 
 ---
 
-## 12. تصمیم فعلی
+## 11. تصمیم فعلی
 
 ```text
 FO-0 = VALIDATED

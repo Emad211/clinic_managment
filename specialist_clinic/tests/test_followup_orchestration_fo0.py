@@ -193,7 +193,7 @@ def test_project_state_attests_fo4_and_blocks_fo5_pending_owner_review():
 
     stream = state["streams"]["followup_orchestration_ux_v1"]
     assert stream["program_code"] == "FOUX-V1"
-    assert stream["plan_version"] == "1.5.1"
+    assert stream["plan_version"] == "1.5.2"
     assert stream["current_tranche"] == "FO_4_LOCAL_OWNER_UX_ACCEPTANCE"
     assert stream["status"] == (
         "FO_0_VALIDATED_FO_1_VALIDATED_FO_2_VALIDATED_"
@@ -241,12 +241,39 @@ def test_project_state_attests_fo4_and_blocks_fo5_pending_owner_review():
     assert fo4["source_truth_digest_unchanged"] is True
     assert fo4["local_ux_acceptance"] == "PENDING"
     assert fo4["status"] == "TECHNICALLY_VALIDATED"
+    assert fo4["runtime_ui_review_commit"] == (
+        "cd243424ecbae98892e0dfde1780bb846554942f"
+    )
+    seeded = fo4["seeded_worklist_repair"]
+    assert seeded["tracking_issue"] == 97
+    assert seeded["implementation_pr"] == 98
+    assert seeded["final_ci_run"] == 30851594179
+    assert seeded["specialist_tests_passed"] == 781
+    assert seeded["accounting_tests_passed"] == 54
+    assert seeded["request_time_rebuild"] is False
+    assert seeded["manual_test_followups_preserved"] is True
+    assert seeded["duplicate_episode_link_event_count"] == 0
+    assert seeded["status"] == "COMPLETED"
+
+    sla = fo4["effective_sla_repair"]
+    assert sla["tracking_issue"] == 99
+    assert sla["implementation_pr"] == 100
+    assert sla["final_ci_run"] == 30852909213
+    assert sla["specialist_tests_passed"] == 784
+    assert sla["accounting_tests_passed"] == 54
+    assert sla["canonical_states"] == [
+        "FUTURE", "DUE_TODAY", "OVERDUE", "DUE_UNKNOWN",
+        "WAITING", "BLOCKED", "TERMINAL",
+    ]
+    assert sla["request_time_effective_filtering"] is True
+    assert sla["read_time_write"] is False
+    assert sla["status"] == "COMPLETED"
 
     assert stream["fo3_allowed"] is True
     assert stream["fo4_allowed"] is True
     assert stream["fo5_allowed"] is False
     assert stream["next_gate"] == (
-        "ISSUE_94_FO4_LOCAL_OWNER_UX_ACCEPTANCE_ON_27CCB992"
+        "ISSUE_94_FO4_LOCAL_OWNER_UX_ACCEPTANCE_ON_CD243424"
     )
     assert stream["feature_flags"] == {name: False for name in EXPECTED_FLAGS}
     assert state["global_freeze"]["followup_orchestration_fo4"].startswith(
@@ -262,13 +289,21 @@ def test_canonical_docs_and_agent_guard_require_fo4_owner_review():
     baseline = BASELINE_PATH.read_text(encoding="utf-8")
     agent = (SPECIALIST_ROOT / "AGENTS.md").read_text(encoding="utf-8")
 
-    assert "نسخه:** `1.5.1`" in plan
+    assert "نسخه:** `1.5.2`" in plan
     assert "FO_4_TECHNICALLY_VALIDATED_LOCAL_UX_ACCEPTANCE_PENDING" in plan
     assert "FO_5_AND_LATER_BLOCKED" in plan
     assert "Implementation Issue #94 / PR #95" in plan
     assert "Final CI 30844075841" in plan
     assert "773 Specialist + 54 Accounting" in plan
-    assert "reviewed_commit = 27ccb992f2cb43c78bfe98549c3f0414b88fd1d8" in plan
+    assert "Issue #97 / PR #98" in plan
+    assert "CI 30851594179" in plan
+    assert "781 Specialist + 54 Accounting" in plan
+    assert "Issue #99 / PR #100" in plan
+    assert "CI 30852909213" in plan
+    assert "784 Specialist + 54 Accounting" in plan
+    assert "PROJECTION_EMPTY_WITH_SOURCE_DATA" in plan
+    assert "DUE_UNKNOWN" in plan
+    assert "reviewed_commit = cd243424ecbae98892e0dfde1780bb846554942f" in plan
     assert "FO4_UX_ACCEPTED = true|false" in plan
     assert "FO-5 AND LATER = BLOCKED" in plan
     assert "Status:** `VALIDATED`" in baseline
@@ -279,9 +314,14 @@ def test_canonical_docs_and_agent_guard_require_fo4_owner_review():
     assert "CURRENT ISSUE = #94" in agent
     assert "Final CI 30844075841" in agent
     assert "773 Specialist + 54 Accounting" in agent
+    assert "Issue #97 / PR #98" in agent
+    assert "781 Specialist + 54 Accounting" in agent
+    assert "Issue #99 / PR #100" in agent
+    assert "784 Specialist + 54 Accounting" in agent
+    assert "prepare_seeded_followup_view.py" in agent
     assert "FOLLOWUP_UNIFIED_WORKLIST_ACTIONS" in agent
     assert "FOLLOWUP_AUTO_ROUTING" in agent
-    assert "27ccb992f2cb43c78bfe98549c3f0414b88fd1d8" in agent
+    assert "cd243424ecbae98892e0dfde1780bb846554942f" in agent
 
 
 def test_read_only_baseline_capture_remains_non_mutating_and_phi_free(tmp_path):
