@@ -105,8 +105,8 @@ def test_real_flask_app_renders_unified_list_and_timeline(tmp_path):
         assert detail_response.status_code == 200
         detail_html = detail_response.get_data(as_text=True)
         assert "بیمار تست نمای یکپارچه" in detail_html
-        assert "تاریخچهٔ یکپارچه" in detail_html
-        assert "این صفحه فقط خواندنی است" in detail_html
+        assert "Timeline یکپارچه" in detail_html
+        assert "هیچ تغییری در پرونده یا تسک ایجاد نمی‌کند" in detail_html
     finally:
         context.pop()
         core._initialized = False
@@ -128,3 +128,22 @@ def test_real_flask_app_renders_controlled_legacy_cache_state_not_500(tmp_path):
     finally:
         context.pop()
         core._initialized = False
+
+
+def test_unified_templates_do_not_use_ambiguous_dict_items_attribute():
+    list_template = (
+        SPECIALIST_ROOT / "src" / "templates" / "followups" /
+        "unified_worklist.html"
+    ).read_text(encoding="utf-8")
+    detail_template = (
+        SPECIALIST_ROOT / "src" / "templates" / "followups" /
+        "unified_detail.html"
+    ).read_text(encoding="utf-8")
+
+    # Jinja resolves dot attributes before mapping keys. `model.items` therefore
+    # means the built-in dict method rather than the projection rows and caused the
+    # owner-reported HTTP 500. Mapping keys named `items` must use bracket notation.
+    assert "model.items" not in list_template
+    assert "timeline.items" not in detail_template
+    assert "model['items']" in list_template
+    assert "timeline['items']" in detail_template
