@@ -370,14 +370,18 @@ def test_templates_and_registration_preserve_read_only_boundary():
 
     assert "unified_followups_bp" in app_source
     assert "@bp.get" in route_source
-    assert "@bp.post" not in route_source
+    assert route_source.count("@bp.post") == 4
+    assert "_require_actions_flag()" in route_source
+    assert "_require_routing_flag()" in route_source
     assert "methods=[\"POST\"]" not in route_source
     assert "FOLLOWUP_UNIFIED_WORKLIST_READONLY" in route_source
     assert 'method="post"' not in list_page.lower()
-    assert 'method="post"' not in detail_page.lower()
+    assert 'method="post"' in detail_page.lower()
+    assert "actions_enabled" in detail_page
     assert 'method="post"' not in unavailable_page.lower()
     assert "انجام شد" not in list_page
-    assert "به معنی claim یا assignment" in detail_page
+    assert "دریافت برای رسیدگی" in detail_page
+    assert "هیچ تغییری در پرونده یا تسک ایجاد نمی‌کند" in detail_page
     assert "هیچ داده، رابطه یا وضعیت بالینی حدس زده نشده است" in unavailable_page
     assert "config.get('FOLLOWUP_UNIFIED_WORKLIST_READONLY')" in hub
     assert "url_for('unified_followups.index')" in hub

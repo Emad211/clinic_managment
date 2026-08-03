@@ -7,7 +7,11 @@
     <div>
         <a class="muted text-sm" href="{{ url_for('unified_followups.index') }}">بازگشت به نمای یکپارچه</a>
         <h1><svg class="icon"><use href="#i-list-checks"></use></svg> مسیر پیگیری {{ item.patient_name }}</h1>
+        {% if actions_enabled %}
         <p class="muted m-0">وضعیت، صف مسئول، شخص مسئول و تاریخچهٔ مسیر را در یک صفحه بررسی کنید.</p>
+        {% else %}
+        <p class="muted m-0">این صفحه فقط Timeline و پیشنهاد اقدام را نمایش می‌دهد و هیچ تغییری در پرونده یا تسک ایجاد نمی‌کند.</p>
+        {% endif %}
     </div>
 </div>
 
