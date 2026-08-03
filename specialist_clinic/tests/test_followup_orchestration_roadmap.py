@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 
@@ -53,3 +54,44 @@ def test_important_governance_docs_link_the_complete_roadmap():
     assert "cd243424ecbae98892e0dfde1780bb846554942f" in plan
     assert "cd243424ecbae98892e0dfde1780bb846554942f" in state
     assert "cd243424ecbae98892e0dfde1780bb846554942f" in agent
+
+
+def test_project_state_json_registers_machine_readable_progress_and_future_gates():
+    state = json.loads(
+        (REPO_ROOT / "PROJECT_STATE.json").read_text(encoding="utf-8")
+    )
+    stream = state["streams"]["followup_orchestration_ux_v1"]
+
+    assert state["schema_version"] == "2.3"
+    assert stream["canonical_roadmap"].endswith(
+        "FOLLOWUP_ORCHESTRATION_UX_V1_ROADMAP.md"
+    )
+    assert stream["roadmap_version"] == "1.0.0"
+
+    progress = stream["roadmap_progress"]
+    assert progress == {
+        "model": "TRANCHE_EQUIVALENT",
+        "tranche_count": 11,
+        "validated_equivalent": 4.8,
+        "progress_percent": 43.6,
+        "remaining_percent": 56.4,
+        "technical_tranches_implemented": 5,
+        "technical_implementation_percent": 45.5,
+        "fully_accepted_tranches": 4,
+        "current_partial_tranche": "FO-4",
+        "current_partial_credit": 0.8,
+        "next_required_gate": "FO4_OWNER_UX_ACCEPTANCE",
+        "not_a_product_wide_readiness_metric": True,
+    }
+    assert list(stream["future_tranches"]) == [
+        "FO-5",
+        "FO-6",
+        "FO-7",
+        "FO-8",
+        "FO-9",
+        "FO-10",
+    ]
+    assert stream["fo5_allowed"] is False
+    assert state["global_freeze"]["followup_orchestration_fo5_and_later"].startswith(
+        "BLOCKED"
+    )
