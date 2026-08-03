@@ -83,7 +83,10 @@ class SmsGovernanceService:
     SOURCE_LABELS = {
         "NOT_RECORDED_CONSERVATIVE_DEFAULT": "وضعیت اولیه و محافظه‌کارانهٔ سامانه",
         "LEGACY_CARE_RELATIONSHIP": "رابطهٔ مراقبتی موجود با درمانگاه",
+        "CARE_RELATIONSHIP_DEFAULT": "رابطهٔ مراقبتی موجود با درمانگاه",
         "LEGACY_NO_MARKETING_OPT_IN": "رضایت تبلیغاتی صریح ثبت نشده است",
+        "NO_MARKETING_OPT_IN": "رضایت تبلیغاتی صریح ثبت نشده است",
+        "LEGACY_GLOBAL_OPT_OUT": "انصراف کلی ثبت‌شده در پروندهٔ قبلی",
         "CLINIC_STAFF_RECORDED": "ثبت‌شده توسط کارکنان درمانگاه",
         "PATIENT_EXPLICIT_OPT_IN": "رضایت صریح بیمار",
         "PATIENT_REQUEST": "درخواست مستقیم بیمار",
@@ -92,7 +95,10 @@ class SmsGovernanceService:
         "PATIENT_REQUEST": "درخواست بیمار",
         "PATIENT_EXPLICIT_OPT_IN": "رضایت صریح بیمار",
         "LEGACY_CARE_RELATIONSHIP": "رابطهٔ مراقبتی موجود",
+        "CARE_RELATIONSHIP_DEFAULT": "رابطهٔ مراقبتی موجود",
         "LEGACY_NO_MARKETING_OPT_IN": "نبود رضایت صریح تبلیغاتی",
+        "NO_MARKETING_OPT_IN": "نبود رضایت صریح تبلیغاتی",
+        "LEGACY_GLOBAL_OPT_OUT": "انصراف کلی قبلی",
     }
 
     def __init__(self, repository: SmsGovernanceRepository | None = None):
