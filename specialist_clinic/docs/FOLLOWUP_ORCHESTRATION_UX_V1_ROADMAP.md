@@ -2,47 +2,43 @@
 
 > **Program:** `FOUX-V1`
 >
-> **Roadmap version:** `1.0.0`
+> **Roadmap version:** `1.1.0`
 >
-> **Canonical implementation plan:** `specialist_clinic/docs/FOLLOWUP_ORCHESTRATION_UX_V1_IMPLEMENTATION_PLAN.md`
+> **Canonical plan:** `specialist_clinic/docs/FOLLOWUP_ORCHESTRATION_UX_V1_IMPLEMENTATION_PLAN.md`
 >
 > **Last audited:** `2026-08-04`
 >
-> **Current runtime authority:** `main@cd243424ecbae98892e0dfde1780bb846554942f`
->
 > **Environment:** `TEST_ONLY / SYNTHETIC_OR_RESETTABLE`
 >
-> **Current gate:** `FO-4 Local Owner UX Acceptance — Issue #94`
+> **Current gate:** `FO-5 Structured Contact implementation — Issue #103`
 
 ---
 
-## 1. Purpose
+## 1. Governance contract
 
-این سند نمای کامل و مرحله‌بندی‌شدهٔ برنامهٔ Follow-up Orchestration & UX v1 را از FO-0 تا FO-10 نگه می‌دارد. سند implementation plan وضعیت اثبات‌شده، invariantها و دستور اجرای tranche جاری را نگه می‌دارد؛ این سند دامنه، dependency، exit gate و ترتیب تمام trancheهای باقی‌مانده را مشخص می‌کند.
+این سند ترتیب کامل FO-0 تا FO-10، وابستگی‌ها، محدوده و Exit Gate هر مرحله را نگه می‌دارد. حضور یک مرحله در رودمپ به‌معنی مجوز اجرا نیست. هر مرحله نیازمند عبور از گیت قبلی، Issue حاکم، PR مستقل، Feature Flag خاموش، CI کامل و به‌روزرسانی Project State است.
 
-هیچ tranche صرفاً با حضور در این رودمپ مجاز نمی‌شود. شروع هر tranche نیازمند:
+اصول غیرقابل‌مذاکره:
 
-1. عبور از gate مرحلهٔ قبلی؛
-2. Issue حاکم با scope صریح؛
-3. PR مستقل؛
-4. feature flag خاموش به‌صورت پیش‌فرض؛
-5. Specialist و Accounting CI سبز؛
-6. به‌روزرسانی Project State و اسناد حاکمیتی است.
+- Source Truthهای موجود authoritative می‌مانند؛
+- Episode حقیقت بالینی نیست و Projection فقط cache است؛
+- mutationهای orchestration append-only و idempotent هستند؛
+- Clinical Task بدون Evidence و transition معتبر کامل نمی‌شود؛
+- Appointment به‌تنهایی Clinical Task را کامل نمی‌کند؛
+- هیچ Write به `clinic_new.db` انجام نمی‌شود؛
+- SMS، Appointment، Evidence Assist و تصمیم بالینی فقط در tranche مجاز خود تغییر می‌کنند؛
+- تمام Feature Flagها به‌صورت پیش‌فرض OFF هستند.
 
 ---
 
 ## 2. Progress model
 
-برای جلوگیری از درصدسازی مبهم، پیشرفت برنامه با tranche-equivalent محاسبه می‌شود:
-
 ```text
-VALIDATED_WITH_REQUIRED_ACCEPTANCE = 1.0
+VALIDATED_WITH_REQUIRED_ACCEPTANCE       = 1.0
 TECHNICALLY_VALIDATED_ACCEPTANCE_PENDING = 0.8
-AUTHORIZED_NOT_STARTED = 0.0
-BLOCKED_NOT_STARTED = 0.0
+AUTHORIZED_NOT_STARTED                   = 0.0
+BLOCKED_NOT_STARTED                      = 0.0
 ```
-
-FOUX-V1 یازده tranche دارد: `FO-0` تا `FO-10`.
 
 وضعیت فعلی:
 
@@ -51,38 +47,32 @@ FO-0 = 1.0
 FO-1 = 1.0
 FO-2 = 1.0
 FO-3 = 1.0
-FO-4 = 0.8
+FO-4 = 1.0
 FO-5..FO-10 = 0.0
 --------------------------------
-Total = 4.8 / 11 = 43.6%
+Total = 5.0 / 11 = 45.5%
+Remaining = 54.5%
 ```
 
-بنابراین:
-
-- **پیشرفت رسمی roadmap gate:** `43.6%`، گرد شده `44%`؛
-- **پیاده‌سازی فنی FO-0 تا FO-4:** `5 / 11 = 45.5%`؛
-- **کار باقی‌مانده:** `6.2 tranche-equivalent = 56.4%`؛
-- بعد از owner acceptance موفق FO-4، پیشرفت gate به `45.5%` می‌رسد؛ FO-5 همچنان فقط پس از governance مستقل مجاز می‌شود.
-
-این درصد، KPI کسب‌وکار یا production-readiness کل سامانه نیست؛ فقط پیشرفت برنامهٔ FOUX-V1 است.
+این درصد فقط برنامهٔ FOUX-V1 را می‌سنجد و معیار آمادگی Production کل مطب نیست.
 
 ---
 
 ## 3. Master sequence
 
-| Tranche | عنوان | وضعیت فعلی | Feature flag اصلی | Dependency |
+| Tranche | عنوان | وضعیت | Feature Flag | Dependency |
 |---|---|---|---|---|
 | FO-0 | Governance, Baseline & Registration | `VALIDATED` | همه OFF | — |
 | FO-1 | Episode Identity & Append-only Links | `VALIDATED` | `FOLLOWUP_EPISODES_ENABLED` | FO-0 |
 | FO-2 | Projection, Next Action & Shadow Parity | `VALIDATED` | `FOLLOWUP_PROJECTION_SHADOW` | FO-1 |
 | FO-3 | Read-only Unified Worklist & Timeline | `VALIDATED_WITH_OWNER_ACCEPTANCE` | `FOLLOWUP_UNIFIED_WORKLIST_READONLY` | FO-2 |
-| FO-4 | Claim, Assignment, Routing & Effective SLA | `TECHNICALLY_VALIDATED / OWNER_UX_PENDING` | `FOLLOWUP_AUTO_ROUTING` | FO-3 |
-| FO-5 | Structured Contact, Retry & Escalation | `BLOCKED_NOT_STARTED` | `FOLLOWUP_STRUCTURED_CONTACT` | FO-4 acceptance + authorization |
-| FO-6 | Governed SMS Automation & Freshness | `BLOCKED_NOT_STARTED` | `FOLLOWUP_SMS_AUTO_GUARDED` | FO-5 + SMS policy approval |
-| FO-7 | Cross-channel Transitions & Outbox | `BLOCKED_NOT_STARTED` | `FOLLOWUP_APPOINTMENT_SYNC` | FO-5/FO-6 |
+| FO-4 | Claim, Assignment, Routing & Effective SLA | `VALIDATED_WITH_OWNER_ACCEPTANCE` | `FOLLOWUP_AUTO_ROUTING` | FO-3 |
+| FO-5 | Structured Contact, Retry & Escalation | `AUTHORIZED_NOT_STARTED` | `FOLLOWUP_STRUCTURED_CONTACT` | FO-4 + PR #104 |
+| FO-6 | Governed SMS Automation & Freshness | `BLOCKED_NOT_STARTED` | `FOLLOWUP_SMS_AUTO_GUARDED` | FO-5 acceptance + policy approval |
+| FO-7 | Cross-channel Transitions & Operational Outbox | `BLOCKED_NOT_STARTED` | `FOLLOWUP_APPOINTMENT_SYNC` | FO-5/FO-6 |
 | FO-8 | Clinical Evidence Assist | `BLOCKED_NOT_STARTED` | `FOLLOWUP_EVIDENCE_ASSIST` | FO-7 + clinical safety review |
-| FO-9 | Automation Health & Operational Control | `BLOCKED_NOT_STARTED` | `FOLLOWUP_AUTOMATION_HEALTH` | FO-7 operational contracts |
-| FO-10 | Pilot, KPI Proof, Cutover & Legacy Retirement | `BLOCKED_NOT_STARTED` | controlled rollout set | FO-0..FO-9 |
+| FO-9 | Automation Health & Operational Control | `BLOCKED_NOT_STARTED` | `FOLLOWUP_AUTOMATION_HEALTH` | FO-7 contracts |
+| FO-10 | Controlled Pilot, KPI Proof, Cutover & Legacy Retirement | `BLOCKED_NOT_STARTED` | controlled rollout | FO-0..FO-9 |
 
 ---
 
@@ -90,328 +80,195 @@ Total = 4.8 / 11 = 43.6%
 
 ### FO-0 — Governance, Baseline & Registration
 
-**Result:** validated.
-
-- program registered;
-- TEST_ONLY classification recorded;
-- source-of-truth map stored;
-- all ten flags default OFF;
-- baseline capture is read-only and PHI-free;
-- no runtime/schema behavior introduced.
+ثبت برنامه، نقشهٔ Source Truth، طبقه‌بندی TEST_ONLY، Feature Flagهای OFF و baseline خواندنی بدون PHI.
 
 **Evidence:** Issue #71، PR #72/#73، merge `901dbfdf9c358ecc09d2a60a0680f6a4a8370d17`، `731 Specialist + 54 Accounting`.
 
 ### FO-1 — Episode Identity & Append-only Links
 
-**Result:** validated.
-
-- stable Episode identity;
-- append-only Episode/Link/Event storage;
-- deterministic and idempotent backfill;
-- patient mismatch rejection;
-- operational Source Truth unchanged.
+Episode identity پایدار، Link و Event append-only، backfill deterministic و idempotent، بدون تغییر Source Truth.
 
 **Evidence:** Issue #74، PR #75، merge `15ef1585c069a74c26fbc0ce859e03906e5f475a`، `736 + 54`.
 
 ### FO-2 — Projection, Next Action & Shadow Parity
 
-**Result:** validated.
-
-- rebuildable projection cache;
-- canonical next-action policy;
-- explicit action/wait/block state;
-- action due and target separation;
-- 100% legacy coverage in validated fixture;
-- deterministic delete/rebuild equivalence.
+Projection قابل‌بازسازی، policy مرکزی Next Action، جداسازی action due/target و parity کامل fixture معتبر.
 
 **Evidence:** Issue #77، PR #78، merge `6c6e33203376a32165418e0d3c6f2a4a48253e7b`، CI `30773195914`، `747 + 54`.
 
 ### FO-3 — Read-only Unified Worklist & Timeline
 
-**Result:** validated with owner acceptance.
+Unified list/detail/timeline خواندنی، deep-linkها، controlled unavailable state، masked identity و پذیرش مالک با صفر defect بحرانی.
 
-- unified read-only list/detail/timeline;
-- controlled unavailable states;
-- deep links and masked identity;
-- bounded reads without N+1;
-- owner accepted the UX with zero critical defect.
-
-**Evidence:** Issue #83، PR #81/#85/#88، runtime commit `020803868e1c2755f7669d52da92cb8050a46018`، `762 + 54`.
+**Evidence:** Issue #83، PR #81/#85/#88، runtime `020803868e1c2755f7669d52da92cb8050a46018`، `762 + 54`.
 
 ### FO-4 — Claim, Assignment, Routing & Effective SLA
 
-**Result:** technically validated; local owner acceptance pending.
+- append-only `ROUTED / CLAIMED / ASSIGNED`؛
+- atomic one-winner claim؛
+- stale/permission/terminal fail-closed؛
+- release، assign/reassign و routing؛
+- صف مؤثر و مسئول واقعی؛
+- seed → Episode/Link → Projection preparation؛
+- حفظ پیگیری دستی TEST و جلوگیری از duplicate history؛
+- SLAهای canonical و محاسبهٔ effective overdue در زمان مشاهده؛
+- پذیرش مالک با صفر defect بحرانی.
 
-Implemented and validated:
-
-- append-only `ROUTED / CLAIMED / ASSIGNED` events;
-- atomic one-winner claim;
-- exact replay idempotency;
-- stale/permission/terminal fail-closed behavior;
-- owner release and manager assign/reassign/routing;
-- effective queue and current owner shown separately;
-- ownership preserved across projection rebuild;
-- explicit seed → Episode/Link → Projection preparation;
-- stable fixture task IDs and preservation of manual TEST follow-ups;
-- no duplicate Episode/Link/Event on repeated seed;
-- controlled `PROJECTION_EMPTY_WITH_SOURCE_DATA` recovery state;
-- canonical SLA vocabulary:
-  `FUTURE / DUE_TODAY / OVERDUE / DUE_UNKNOWN / WAITING / BLOCKED / TERMINAL`;
-- request-time effective overdue filtering without read-time mutation.
-
-Runtime evidence:
+**Evidence:** Issue #94، PR #95/#98/#100، runtime `cd243424ecbae98892e0dfde1780bb846554942f`.
 
 ```text
-Ownership/routing: Issue #94 / PR #95 / CI 30844075841 / 773 + 54
-Seed repair:       Issue #97 / PR #98 / CI 30851594179 / 781 + 54
-SLA repair:        Issue #99 / PR #100 / CI 30852909213 / 784 + 54
-Review commit:     cd243424ecbae98892e0dfde1780bb846554942f
-```
-
-Remaining FO-4 gate:
-
-```text
-FO4_UX_ACCEPTED=true
-critical_ux_defects=0
-reviewed_commit=cd243424ecbae98892e0dfde1780bb846554942f
+FO4_UX_ACCEPTED = true
+reviewer = Emad211
+reviewed_commit = cd243424ecbae98892e0dfde1780bb846554942f
+reviewed_on_test_data = true
+critical_ux_defects = 0
+notes = بررسی شد و مشکل بحرانی مشاهده نشد
 ```
 
 ---
 
-## 5. Remaining delivery roadmap
-
-## FO-5 — Structured Contact, Retry & Escalation
+## 5. FO-5 — Structured Contact, Retry & Escalation
 
 ### Product outcome
 
-تماس از note آزاد و هماهنگی دستی به یک جریان structured، audit‌شده و قابل ادامه تبدیل شود.
+ثبت تماس از note آزاد به outcome ساختاریافته تبدیل شود و تماس مجدد یا escalation گم نشود.
 
-### Scope
+### Authorized scope
 
-- structured contact outcomes؛
-- append-only contact attempt timeline؛
-- callback scheduling؛
-- attempt policy و threshold؛
-- unreachable escalation؛
-- invalid-phone workflow؛
-- low-click call CTA/form؛
-- optional free-text note فقط به‌عنوان مکمل.
+- outcomeهای ساختاریافته؛
+- Contact Attempt append-only و اتصال به Episode؛
+- callback scheduling با زمان آینده؛
+- retry policy برای `NO_ANSWER` و `BUSY`؛
+- escalation یک‌باره پس از threshold؛
+- workflow شمارهٔ نامعتبر؛
+- CTA و فرم کم‌کلیک در Unified detail؛
+- summary و callback در list/detail/timeline؛
+- idempotency، stale form، permission و terminal guard؛
+- Feature Flag `FOLLOWUP_STRUCTURED_CONTACT` با پیش‌فرض OFF.
 
-Canonical outcomes حداقل شامل:
+### Structured outcomes
 
 ```text
+REACHED
 NO_ANSWER
+BUSY
+CALLBACK_REQUESTED
 PHONE_INVALID
-REACHED_APPOINTMENT_BOOKED
-REACHED_CALLBACK_REQUESTED
-ESCALATED_TO_DOCTOR
+APPOINTMENT_BOOKED
+DECLINED
+ESCALATED_TO_PHYSICIAN
+OTHER
 ```
 
-### Safety boundaries
-
-- outcome متنی آزاد اتوماسیون مهم اجرا نمی‌کند؛
-- escalation بالینی تصمیم درمانی تولید نمی‌کند؛
-- Clinical Task بدون Evidence complete نمی‌شود؛
-- callback، retry و escalation همگی idempotent و stale-protected هستند.
-
-### Exit gate
-
-- حداقل 90% تماس‌های pilot دارای structured outcome؛
-- duplicate submit رویداد دوم نسازد؛
-- callback گم‌شده صفر؛
-- threshold و routing تست‌شده؛
-- owner UX acceptance؛
-- full CI green.
-
-### Authorization state
-
-`BLOCKED` تا FO-4 owner acceptance و governance مستقل.
-
----
-
-## FO-6 — Governed SMS Automation & Freshness
-
-### Product outcome
-
-پیام‌های روتین allowlisted با guard کامل خودکار شوند و موارد حساس همچنان review/clinician-only بمانند.
-
-### Scope
-
-- policy level: `AUTO / AUTO_WITH_GUARDS / REQUIRES_REVIEW / CLINICIAN_ONLY`؛
-- template versioning؛
-- approval expiry؛
-- source revision/content hash؛
-- pre-send revalidation؛
-- stale supersession؛
-- guarded auto path؛
-- limited manager configuration UI؛
-- decision audit event.
-
-### Mandatory guards
+### Required transitions
 
 ```text
-consent
-purpose
-canonical phone
-quiet hours
-daily cap
-cooldown
-idempotency
-source freshness
-template version
-provider readiness
+NO_ANSWER / BUSY before threshold
+→ callback_at
+→ CALLBACK_AT_TIME
+
+NO_ANSWER / BUSY at threshold
+→ one ESCALATED event
+→ MANAGER queue
+→ no duplicate escalation
+
+PHONE_INVALID
+→ stop retry
+→ FIX_CONTACT_DATA
+→ RECEPTION queue
+
+CALLBACK_REQUESTED
+→ future callback required
+
+APPOINTMENT_BOOKED
+→ WAIT_FOR_APPOINTMENT only
+→ no appointment creation or clinical completion
+
+ESCALATED_TO_PHYSICIAN
+→ PHYSICIAN review queue
+→ no clinical decision
 ```
 
+### Safety boundary
+
+- SMS خودکار ارسال نمی‌شود؛
+- Appointment ساخته یا تغییر داده نمی‌شود؛
+- Clinical Task یا Commitment کامل نمی‌شود؛
+- outcome بالینی استنباط نمی‌شود؛
+- note آزاد محرک اتوماسیون مهم نیست؛
+- event قبلی UPDATE/DELETE نمی‌شود؛
+- FO-6+ شروع نمی‌شود.
+
+### Tests
+
+- outcome → next action deterministic؛
+- exact replay بدون duplicate؛
+- callback future validation؛
+- attempt threshold و escalation یک‌باره؛
+- phone-invalid routing؛
+- stale/terminal/permission fail-closed؛
+- Feature OFF → controls hidden و POST=404؛
+- note در Timeline اصلی افشا نشود؛
+- Source Truth، SMS، Appointment، Rule و Accounting بدون تغییر؛
+- full Specialist و Accounting CI.
+
 ### Exit gate
 
-- stale SMS sent = 0؛
-- duplicate SMS = 0؛
-- clinician-only auto-send = 0؛
-- routine allowlisted manual approvals حداقل 80% کاهش؛
-- complete audit trail؛
-- policy/consent review approved.
-
-### Authorization state
-
-`BLOCKED` تا FO-5 validation و SMS governance مستقل.
+- همه outcomeهای مجاز transition مشخص دارند؛
+- callback گم‌شده = صفر در validation؛
+- duplicate contact/escalation = صفر؛
+- automatic clinical decision/completion = صفر؛
+- full CI سبز؛
+- Local Owner UX Acceptance؛
+- governance مستقل برای FO-6.
 
 ---
 
-## FO-7 — Cross-channel Transitions & Operational Outbox
-
-### Product outcome
-
-SMS، Appointment و Work Item transition از دست نرود و replay امن باشد.
+## 6. FO-6 — Governed SMS Automation & Freshness
 
 ### Scope
 
-- operational outbox؛
-- delivered/failed SMS transitions؛
-- permanent failure → call/fix-contact؛
-- appointment booked/cancelled/no-show transitions؛
-- wait-state lifecycle؛
-- administrative goal completion؛
-- retry and dead-letter.
+Policy level، template versioning، approval expiry، pre-send revalidation، stale supersession، allowlisted auto-guarded path و audit decision.
 
-### Safety boundaries
+### Safety and exit
 
-- booking یا SMS delivery، Clinical Task را خودکار complete نمی‌کند؛
-- permanent و retryable failure جدا هستند؛
-- transaction failure و replay duplicate-safe است؛
-- outbox authority بالینی نیست.
+Consent، quiet hours، daily cap، cooldown، phone freshness، template hash و provider readiness fail-closed باشند. `CLINICIAN_ONLY` هرگز خودکار ارسال نشود. Zero stale/duplicate SMS و پذیرش مستقل لازم است.
 
-### Exit gate
-
-- lost cross-channel transition = 0 در validation suite؛
-- replay safe؛
-- dead-letter visible؛
-- rollback rehearsal passed؛
-- delivery/appointment state within defined SLA reflected.
-
-### Authorization state
-
-`BLOCKED` تا FO-5/FO-6 contracts validated.
+**State:** `BLOCKED_NOT_STARTED`.
 
 ---
 
-## FO-8 — Clinical Evidence Assist
+## 7. FO-7 — Cross-channel Transitions & Operational Outbox
 
-### Product outcome
+Operational Outbox، SMS delivered/failed transition، Appointment booked/cancelled/no-show، retry/dead-letter و administrative goal completion؛ بدون تکمیل خودکار Clinical Task.
 
-ورود دوبارهٔ Evidence کاهش یابد، بدون تکمیل خودکار یا کاهش ایمنی.
+**Exit:** lost transition=0، replay-safe، dead-letter visible و rollback rehearsal.
 
-### Scope
-
-- required-evidence contract reader؛
-- candidate matcher؛
-- provenance/confidence UI؛
-- accept/reject candidate؛
-- governed completion handoff؛
-- mismatch explanation.
-
-### Safety boundaries
-
-- wrong patient/task rejected؛
-- missing provenance rejected؛
-- stale evidence rejected؛
-- no automatic clinical completion؛
-- explicit authorized confirmation mandatory؛
-- historical Fact mutation forbidden.
-
-### Exit gate
-
-- clinical completion without confirmation = 0؛
-- measurable reduction in duplicate data entry؛
-- clinical reviewer UX/audit approval؛
-- full safety and permission tests green.
-
-### Authorization state
-
-`BLOCKED` تا cross-channel foundation و clinical safety governance.
+**State:** `BLOCKED_NOT_STARTED`.
 
 ---
 
-## FO-9 — Automation Health & Operational Control
+## 8. FO-8 — Clinical Evidence Assist
 
-### Product outcome
+Required-evidence reader، candidate matcher، provenance/confidence UI و accept/reject handoff؛ بدون auto-completion یا Fact mutation.
 
-failure مهم فقط در log پنهان نماند و اپراتور علت و اقدام بعدی را ببیند.
+**Exit:** zero completion without explicit authorized confirmation و clinical safety approval.
 
-### Scope
-
-- scheduler heartbeat؛
-- job history projection؛
-- outbox/dead-letter dashboard؛
-- projection lag؛
-- stale approval monitor؛
-- safe retry controls؛
-- admin alerts؛
-- recovery runbook.
-
-### Required visibility
-
-```text
-last heartbeat
-last successful tick
-job success/failure
-lease owner and age
-outbox backlog and oldest item
-projection lag
-stale approvals
-SMS pending/unknown/failed
-dead-letter items
-unassigned overdue items
-automation paused reasons
-```
-
-### Exit gate
-
-- hidden critical automation failure = 0؛
-- stale heartbeat detected؛
-- retry permission/idempotency validated؛
-- recovery rehearsal passed؛
-- no guardrail bypass.
-
-### Authorization state
-
-`BLOCKED` until operational contracts from FO-7 exist.
+**State:** `BLOCKED_NOT_STARTED`.
 
 ---
 
-## FO-10 — Controlled Pilot, KPI Proof, Cutover & Legacy Retirement
+## 9. FO-9 — Automation Health & Operational Control
 
-### Product outcome
+Scheduler heartbeat، job history، outbox/dead-letter، projection lag، stale approval monitor، safe retry controls و runbook.
 
-ارزش، ایمنی و قابلیت rollback در cohort محدود اثبات شود؛ سپس cutover مرحله‌ای انجام شود.
+**Exit:** hidden critical failure=0 و recovery rehearsal.
 
-### Pilot constraints
+**State:** `BLOCKED_NOT_STARTED`.
 
-- role محدود و patient cohort محدود؛
-- only test/safely approved data environment before real rollout؛
-- auto SMS فقط allowlisted templates؛
-- daily review در شروع؛
-- rollback switches آماده؛
-- old/new parity monitoring.
+---
+
+## 10. FO-10 — Controlled Pilot, KPI Proof, Cutover & Legacy Retirement
 
 ### KPI gates
 
@@ -430,82 +287,34 @@ reduced cross-screen navigation
 reduced manual callback scheduling
 ```
 
-### Cutover gate
+Security/privacy review، clinical safety review، migration/rebuild rehearsal، rollback rehearsal، user acceptance و لغو صریح TEST_ONLY پیش از PHI واقعی لازم است.
 
-- KPI thresholds met؛
-- security/privacy review؛
-- clinical safety review؛
-- migration/rebuild rehearsal؛
-- rollback rehearsal؛
-- full CI green؛
-- user acceptance signed؛
-- Project State updated؛
-- production TEST_ONLY assumption explicitly revoked before real PHI.
-
-### Legacy retirement
-
-رابط قدیمی ابتدا compatibility read-only می‌شود. حذف UI یا source table فقط با evidence و migration/governance مستقل مجاز است.
-
-### Authorization state
-
-`BLOCKED` تا تکمیل FO-0..FO-9.
+**State:** `BLOCKED_NOT_STARTED`.
 
 ---
 
-## 6. Exact continuation point
+## 11. Exact continuation point
 
 ```text
-CURRENT = FO-4 Local Owner UX Acceptance
-ISSUE   = #94
-REVIEW  = main@cd243424ecbae98892e0dfde1780bb846554942f
-NEXT    = owner attestation with critical_ux_defects=0
-THEN    = separate governance decision whether FO-5 may start
+CURRENT = FO-5 Structured Contact implementation
+ISSUE   = #103
+BASE    = main after governance PR #104
+THEN    = FO-5 technical validation and local owner UX acceptance
+FO-6+   = BLOCKED
 ```
 
-کار مجاز پیش از attestation:
+کار مجاز:
 
-- تکمیل اسناد و review package؛
-- اجرای CI و smoke evidence؛
-- ثبت defectهای مشاهده‌شده؛
-- focused FO-4 fixes با Issue/PR/CI مستقل.
+- فقط scope ثبت‌شدهٔ FO-5؛
+- PR مستقل runtime؛
+- Feature Flag OFF by default؛
+- full CI و owner review.
 
 کار غیرمجاز:
 
-- شروع Structured Contact؛
-- retry/escalation automation؛
 - SMS automation؛
-- Appointment sync/outbox؛
-- Evidence Assist؛
-- Automation Health runtime؛
-- FO-10 pilot.
-
----
-
-## 7. Owner acceptance command
-
-```powershell
-git checkout main
-git pull origin main
-cd specialist_clinic
-.\.venv\Scripts\python.exe -m pip install -r requirements.txt
-
-$env:FOLLOWUP_PROJECTION_SHADOW = "1"
-.\.venv\Scripts\python.exe scripts\prepare_seeded_followup_view.py `
-  --database specialist.db
-
-$env:FOLLOWUP_UNIFIED_WORKLIST_READONLY = "1"
-$env:FOLLOWUP_UNIFIED_WORKLIST_ACTIONS = "1"
-$env:FOLLOWUP_AUTO_ROUTING = "1"
-.\.venv\Scripts\python.exe start.py
-```
-
-Attestation template:
-
-```text
-FO4_UX_ACCEPTED = true|false
-reviewer = Emad211
-reviewed_commit = cd243424ecbae98892e0dfde1780bb846554942f
-reviewed_on_test_data = true
-critical_ux_defects = <number>
-notes = <observations or defects>
-```
+- Appointment mutation؛
+- Outbox/Dead-letter؛
+- Clinical Evidence Assist؛
+- تصمیم یا تکمیل بالینی؛
+- FO-6 تا FO-10.
