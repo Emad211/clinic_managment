@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}نمای یکپارچه در دسترس نیست{% endblock %}
+{% block content %}
+{% include "sms/_hub_tabs.html" %}
+
+<div class="topbar">
+    <div>
+        <h1><svg class="icon"><use href="#i-alert"></use></svg> نمای یکپارچه فعلاً در دسترس نیست</h1>
+        <p class="muted m-0">هیچ داده، رابطه یا وضعیت بالینی حدس زده نشده است.</p>
+    </div>
+</div>
+
+<div class="card error-state" role="status" aria-live="polite">
+    <h2>{{ readiness.label }}</h2>
+    <p class="muted">{{ readiness.help }}</p>
+    <div class="flex gap-2 wrap">
+        <a class="btn" href="{{ url_for('followups.worklist') }}">بازکردن ورک‌لیست فعلی</a>
+        <a class="btn btn-ghost" href="{{ url_for('unified_followups.index') }}">بازگشت به نمای یکپارچه</a>
+    </div>
+    <details class="text-xs muted" style="margin-top:var(--s3);">
+        <summary>شناسهٔ وضعیت برای پشتیبانی</summary>
+        <code dir="ltr">{{ readiness.code }}</code>
+    </details>
+</div>
+{% endblock %}
