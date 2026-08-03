@@ -1,0 +1,56 @@
+name: Temporary fixture-only follow-up completeness count
+
+on:
+  push:
+    branches:
+      - fix/foux-seed-unified-worklist
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/foux-seed-unified-worklist
+          fetch-depth: 0
+      - name: Count only fixture-owned follow-ups in cohort validation
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path("specialist_clinic/src/adapters/sqlite/demo_cohort_repo.py")
+          text = path.read_text(encoding="utf-8")
+          table_line = '''            "followups": "followup_tasks",\n'''
+          if table_line not in text:
+              raise SystemExit("followup table map entry not found")
+          text = text.replace(table_line, "", 1)
+
+          marker = '''            totals["reconciled_collections"] = int(\n'''
+          block = '''            totals["followups"] = int(\n                db.execute(\n                    f"""SELECT COUNT(DISTINCT task.id) AS count\n                        FROM settings seed_map\n                        JOIN followup_tasks task\n                          ON task.id=CAST(seed_map.value AS INTEGER)\n                        WHERE seed_map.key LIKE 'demo_followup_task_id:TEST%:%'\n                          AND task.patient_link_id IN ({patient_marks})""",\n                    patient_ids,\n                ).fetchone()["count"]\n            )\n'''
+          if marker not in text:
+              raise SystemExit("summary count marker not found")
+          text = text.replace(marker, block + marker, 1)
+          path.write_text(text, encoding="utf-8")
+
+          contract = Path("specialist_clinic/tests/test_followup_seed_review_contract.py")
+          source = contract.read_text(encoding="utf-8")
+          needle = '''    assert "ON CONFLICT(key) DO UPDATE SET value=excluded.value" in repository\n'''
+          replacement = needle + '''    assert "COUNT(DISTINCT task.id)" in repository\n    assert '"followups": "followup_tasks"' not in repository\n'''
+          if needle not in source:
+              raise SystemExit("summary contract marker not found")
+          contract.write_text(source.replace(needle, replacement, 1), encoding="utf-8")
+
+          Path(".github/workflows/temp_patch_seed_summary_count.yml").unlink()
+      - name: Commit and remove temporary workflow
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add specialist_clinic/src/adapters/sqlite/demo_cohort_repo.py \
+                  specialist_clinic/tests/test_followup_seed_review_contract.py \
+                  .github/workflows/temp_patch_seed_summary_count.yml
+          git commit -m "fix(seed): validate only fixture-owned follow-ups"
+          git push origin HEAD:fix/foux-seed-unified-worklist
