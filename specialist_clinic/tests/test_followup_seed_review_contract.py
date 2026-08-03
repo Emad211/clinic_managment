@@ -10,8 +10,9 @@ def test_seed_repair_marks_fixture_rows_and_preserves_other_tasks():
     repository = (
         ROOT / "src" / "adapters" / "sqlite" / "demo_cohort_repo.py"
     ).read_text(encoding="utf-8")
-    assert "source_engine='demo_cohort'" in repository
-    assert 'f"demo-followup:{fixture_national_id}:{index}"' in repository
+    assert "demo_followup_task_id:" in repository
+    assert "SELECT value FROM settings WHERE key=?" in repository
+    assert "source_engine='demo_cohort'" not in repository
     assert "fixture_national_id: str" in repository
     assert "fixture_national_id=national_id" in repository
     assert "patient['national_id']" not in repository

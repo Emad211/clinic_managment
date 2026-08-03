@@ -548,24 +548,29 @@ class DemoCohortRepository:
     ) -> None:
         """Upsert only canonical fixture-owned follow-ups with stable IDs.
 
-        User-created administrative tasks for TEST patients are deliberately left
-        untouched. Legacy seed rows are adopted only when their exact canonical
-        content matches and they have no provenance marker.
+        Ownership is recorded in the synthetic seed's settings namespace instead
+        of modifying source provenance fields. This preserves an existing immutable
+        Episode link revision and leaves user-created TEST-patient tasks untouched.
         """
         for index, row in enumerate(patient["followups"], start=1):
-            fixture_key = f"demo-followup:{fixture_national_id}:{index}"
+            fixture_key = (
+                f"demo_followup_task_id:{fixture_national_id}:{index}"
+            )
             fulfillment = "remote" if row["reason"] == "refill" else "in_person"
-            existing = db.execute(
-                """SELECT id FROM followup_tasks
-                   WHERE patient_link_id=?
-                     AND source_engine='demo_cohort'
-                     AND source_rule=?
-                   ORDER BY id LIMIT 1""",
-                (patient_id, fixture_key),
+            mapped = db.execute(
+                "SELECT value FROM settings WHERE key=?",
+                (fixture_key,),
             ).fetchone()
+            existing = None
+            if mapped and str(mapped["value"] or "").isdigit():
+                existing = db.execute(
+                    """SELECT id FROM followup_tasks
+                       WHERE id=? AND patient_link_id=?""",
+                    (int(mapped["value"]), patient_id),
+                ).fetchone()
 
             if not existing:
-                # Adopt rows produced by releases before fixture provenance existed.
+                # Adopt exact rows produced by releases before the mapping existed.
                 existing = db.execute(
                     """SELECT id FROM followup_tasks
                        WHERE patient_link_id=?
@@ -589,26 +594,31 @@ class DemoCohortRepository:
             values = (
                 row["due_date"], row["reason"], row["detail"], row["status"],
                 "تیم درمان", fulfillment, row.get("resolved_at"),
-                "demo_cohort", fixture_key, "demo_cohort_seed",
             )
             if existing:
+                task_id = int(existing["id"])
                 db.execute(
                     """UPDATE followup_tasks
                        SET due_date=?, reason=?, detail=?, status=?, assigned_to=?,
-                           fulfillment=?, resolved_at=?, source_engine=?,
-                           source_rule=?, source_event=?
+                           fulfillment=?, resolved_at=?
                        WHERE id=? AND patient_link_id=?""",
-                    (*values, int(existing["id"]), patient_id),
+                    (*values, task_id, patient_id),
                 )
             else:
-                db.execute(
+                cursor = db.execute(
                     """INSERT INTO followup_tasks
                        (patient_link_id, due_date, reason, detail, status,
-                        assigned_to, fulfillment, resolved_at, created_at,
-                        source_engine, source_rule, source_event)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                    (patient_id, *values[:7], now, *values[7:]),
+                        assigned_to, fulfillment, resolved_at, created_at)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (patient_id, *values, now),
                 )
+                task_id = int(cursor.lastrowid)
+
+            db.execute(
+                """INSERT INTO settings (key, value) VALUES (?, ?)
+                   ON CONFLICT(key) DO UPDATE SET value=excluded.value""",
+                (fixture_key, str(task_id)),
+            )
 
     def summary(self, *, expected_version: str) -> dict:
         ids = [f"TEST{index:04d}" for index in range(1, 11)]
