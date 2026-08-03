@@ -542,52 +542,68 @@ class DemoCohortRepository:
     def _sync_followups(
         db, patient_id: int, patient: dict, *, actor: str, now: str
     ) -> None:
-        """Refresh synthetic follow-ups without changing their stable row IDs.
+        """Upsert only canonical fixture-owned follow-ups with stable IDs.
 
-        FO-1 links include the authoritative task ID. Deleting and reinserting the
-        same fixture rows would therefore orphan immutable Episode links. The demo
-        seed owns administrative follow-ups for TEST patients and updates them by
-        deterministic fixture order instead.
+        User-created administrative tasks for TEST patients are deliberately left
+        untouched. Legacy seed rows are adopted only when their exact canonical
+        content matches and they have no provenance marker.
         """
-        desired = list(patient["followups"])
-        existing = db.execute(
-            """SELECT * FROM followup_tasks
-               WHERE patient_link_id=?
-                 AND COALESCE(source_engine,'') NOT IN ('clinical_v2','encounter_plan')
-               ORDER BY id""",
-            (patient_id,),
-        ).fetchall()
-        if len(existing) > len(desired):
-            raise RuntimeError(
-                "synthetic follow-up fixture shape changed; explicit test-data reset required"
-            )
-
-        for index, row in enumerate(desired):
+        for index, row in enumerate(patient["followups"], start=1):
+            fixture_key = f"demo-followup:{patient['national_id']}:{index}"
             fulfillment = "remote" if row["reason"] == "refill" else "in_person"
+            existing = db.execute(
+                """SELECT id FROM followup_tasks
+                   WHERE patient_link_id=?
+                     AND source_engine='demo_cohort'
+                     AND source_rule=?
+                   ORDER BY id LIMIT 1""",
+                (patient_id, fixture_key),
+            ).fetchone()
+
+            if not existing:
+                # Adopt rows produced by releases before fixture provenance existed.
+                existing = db.execute(
+                    """SELECT id FROM followup_tasks
+                       WHERE patient_link_id=?
+                         AND COALESCE(source_engine,'')=''
+                         AND COALESCE(source_rule,'')=''
+                         AND COALESCE(source_event,'')=''
+                         AND due_date IS ?
+                         AND reason IS ?
+                         AND detail IS ?
+                         AND status=?
+                         AND COALESCE(assigned_to,'')='تیم درمان'
+                         AND COALESCE(fulfillment,'in_person')=?
+                         AND resolved_at IS ?
+                       ORDER BY id LIMIT 1""",
+                    (
+                        patient_id, row["due_date"], row["reason"], row["detail"],
+                        row["status"], fulfillment, row.get("resolved_at"),
+                    ),
+                ).fetchone()
+
             values = (
-                row["due_date"],
-                row["reason"],
-                row["detail"],
-                row["status"],
-                "تیم درمان",
-                fulfillment,
-                row.get("resolved_at"),
+                row["due_date"], row["reason"], row["detail"], row["status"],
+                "تیم درمان", fulfillment, row.get("resolved_at"),
+                "demo_cohort", fixture_key, "demo_cohort_seed",
             )
-            if index < len(existing):
+            if existing:
                 db.execute(
                     """UPDATE followup_tasks
                        SET due_date=?, reason=?, detail=?, status=?, assigned_to=?,
-                           fulfillment=?, resolved_at=?
+                           fulfillment=?, resolved_at=?, source_engine=?,
+                           source_rule=?, source_event=?
                        WHERE id=? AND patient_link_id=?""",
-                    (*values, int(existing[index]["id"]), patient_id),
+                    (*values, int(existing["id"]), patient_id),
                 )
             else:
                 db.execute(
                     """INSERT INTO followup_tasks
                        (patient_link_id, due_date, reason, detail, status,
-                        assigned_to, fulfillment, resolved_at, created_at)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                    (patient_id, *values, now),
+                        assigned_to, fulfillment, resolved_at, created_at,
+                        source_engine, source_rule, source_event)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (patient_id, *values[:7], now, *values[7:]),
                 )
 
     def summary(self, *, expected_version: str) -> dict:
