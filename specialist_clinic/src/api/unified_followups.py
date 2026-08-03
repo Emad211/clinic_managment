@@ -28,6 +28,7 @@ from src.services.followup_orchestration.read_model_service import (
     FollowupUnifiedReadModelService,
     READINESS_COPY,
     ROLE_LABELS,
+    SLA_LABELS,
     STATE_LABELS,
 )
 from src.services.followup_orchestration.timeline_service import FollowupTimelineService
@@ -114,13 +115,7 @@ def index():
         model=model,
         state_labels=STATE_LABELS,
         role_labels=ROLE_LABELS,
-        sla_labels={
-            "ON_TIME": "در مهلت",
-            "DUE_SOON": "نزدیک موعد",
-            "OVERDUE": "موعدگذشته",
-            "BLOCKED": "مسدود",
-            "NONE": "بدون SLA",
-        },
+        sla_labels=SLA_LABELS,
         actions_enabled=bool(
             current_app.config.get("FOLLOWUP_UNIFIED_WORKLIST_ACTIONS", False)
         ),
