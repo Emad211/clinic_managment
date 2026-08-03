@@ -76,7 +76,8 @@ def test_control_room_has_a_balanced_three_level_layout():
 
 def test_message_hub_destinations_share_one_fixed_button_size():
     page = template("sms/_hub_tabs.html")
-    assert page.count("hub-nav-btn") == 6
+    assert page.count("hub-nav-btn") == 7
+    assert "FOLLOWUP_UNIFIED_WORKLIST_READONLY" in page
     css = (ROOT / "src" / "static" / "css" / "app.css").read_text(encoding="utf-8")
     assert ".hub-nav-btn{inline-size:190px;block-size:38px;min-width:190px" in css
 
