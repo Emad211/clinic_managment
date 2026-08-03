@@ -1,12 +1,12 @@
 {
-  "schema_version": "1.8",
-  "audited_at": "2026-08-03T14:35:00+03:30",
+  "schema_version": "1.9",
+  "audited_at": "2026-08-03T18:59:00+03:30",
   "repository": "Emad211/clinic_managment",
   "product_authority": {
     "branch": "main",
-    "head": "8f851c90da5a81f4b7ffce43eaa5bf6010d58fa2",
+    "head": "020803868e1c2755f7669d52da92cb8050a46018",
     "status": "ACTIVE_PRODUCT",
-    "head_note": "FOUX-V1 FO-3 runtime repair merged; post-fix local UX acceptance pending"
+    "head_note": "FOUX-V1 FO-3 runtime and operator-copy repairs merged; post-fix local UX acceptance pending"
   },
   "overall_status": "PRODUCT_OPERATIONAL_PRE_PRODUCTION_TEST_DATA_CLINICAL_CONTENT_NOT_APPROVED_GOVERNANCE_RECONCILIATION_REQUIRED",
   "streams": {
@@ -29,11 +29,11 @@
       "program_code": "FOUX-V1",
       "path": "specialist_clinic/",
       "canonical_plan": "specialist_clinic/docs/FOLLOWUP_ORCHESTRATION_UX_V1_IMPLEMENTATION_PLAN.md",
-      "plan_version": "1.4.3",
+      "plan_version": "1.4.4",
       "baseline_report": "specialist_clinic/docs/FOLLOWUP_ORCHESTRATION_UX_V1_BASELINE.md",
       "owner": "Emad211",
       "current_tranche": "FO_3_POST_FIX_LOCAL_UX_ACCEPTANCE",
-      "status": "FO_0_VALIDATED_FO_1_VALIDATED_FO_2_VALIDATED_FO_3_RUNTIME_REPAIR_TECHNICALLY_VALIDATED_POST_FIX_LOCAL_UX_ACCEPTANCE_PENDING",
+      "status": "FO_0_VALIDATED_FO_1_VALIDATED_FO_2_VALIDATED_FO_3_RUNTIME_AND_OPERATOR_COPY_REPAIRS_TECHNICALLY_VALIDATED_POST_FIX_LOCAL_UX_ACCEPTANCE_PENDING",
       "data_environment": "TEST_ONLY_RESETTABLE",
       "fo0_evidence": {
         "tracking_issue": 71,
@@ -126,6 +126,25 @@
         "episode_digest_unchanged": true,
         "status": "RESOLVED_TECHNICALLY"
       },
+      "fo3_operator_copy_repair": {
+        "incident_code": "FO3_OPERATOR_PROJECTION_JARGON",
+        "tracking_issue": 87,
+        "implementation_pr": 88,
+        "finding_commit": "b977fe5be5683f9d46fccf0e102d0a6dc97d79c7",
+        "final_head": "39ebef3b70470f39292faaa7d986e2f1a90a0e80",
+        "merge_commit": "020803868e1c2755f7669d52da92cb8050a46018",
+        "final_ci_run": 30827033618,
+        "specialist_tests_passed": 762,
+        "accounting_tests_passed": 54,
+        "changed_files": 5,
+        "runtime_logic_changed": false,
+        "schema_or_cache_behavior_changed": false,
+        "source_truth_mutated": false,
+        "machine_readiness_codes_preserved": true,
+        "technical_audit_labels_preserved": true,
+        "operator_copy_regression_test": true,
+        "status": "RESOLVED_TECHNICALLY"
+      },
       "implemented_contracts": {
         "episode_tables": [
           "followup_episodes",
@@ -149,7 +168,7 @@
       },
       "fo3_allowed": true,
       "fo4_allowed": false,
-      "next_gate": "ISSUE_83_POST_FIX_LOCAL_UX_ACCEPTANCE_ON_8F851C90",
+      "next_gate": "ISSUE_83_POST_FIX_LOCAL_UX_ACCEPTANCE_ON_02080386",
       "feature_flags": {
         "FOLLOWUP_EPISODES_ENABLED": false,
         "FOLLOWUP_PROJECTION_SHADOW": false,
@@ -179,6 +198,7 @@
         "JINJA_MAPPING_KEYS_COLLIDING_WITH_DICT_METHODS_USE_BRACKET_NOTATION",
         "ONLY_DISPOSABLE_PROJECTION_CACHE_MAY_BE_RECREATED_FOR_SCHEMA_DRIFT",
         "KNOWN_SCHEMA_DRIFT_MUST_NOT_ESCAPE_AS_GENERIC_HTTP_500",
+        "OPERATOR_FACING_COPY_AVOIDS_PROJECTION_CACHE_JARGON",
         "FO_4_REQUIRES_EXPLICIT_POST_FIX_LOCAL_UX_ACCEPTANCE_ATTESTATION"
       ]
     },
@@ -256,6 +276,7 @@
     "FOUX_V1_FO_2_VALIDATED",
     "FOUX_V1_FO_3_TECHNICALLY_VALIDATED",
     "FOUX_V1_FO3_UI_500_RESOLVED_TECHNICALLY",
+    "FOUX_V1_FO3_OPERATOR_COPY_REPAIR_RESOLVED_TECHNICALLY",
     "FOUX_V1_POST_FIX_LOCAL_UX_ACCEPTANCE_PENDING"
   ],
   "trust_order": [

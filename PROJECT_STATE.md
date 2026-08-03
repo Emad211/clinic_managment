@@ -2,9 +2,9 @@
 
 > **Source of Truth مدیریتی مخزن.** پیش از هر توسعه، وضعیت واقعی GitHub، این فایل و `PROJECT_STATE.json` باید خوانده شوند. حافظهٔ گفتگو یا branch قدیمی به‌تنهایی معتبر نیست.
 
-- آخرین ممیزی: `2026-08-03 14:35 +03:30`
+- آخرین ممیزی: `2026-08-03 18:59 +03:30`
 - شاخهٔ مرجع: `main`
-- head مرجع: `8f851c90da5a81f4b7ffce43eaa5bf6010d58fa2`
+- head مرجع: `020803868e1c2755f7669d52da92cb8050a46018`
 - وضعیت کلی: `PRODUCT_OPERATIONAL / PRE_PRODUCTION_TEST_DATA / CLINICAL_CONTENT_NOT_APPROVED / GOVERNANCE_RECONCILIATION_REQUIRED`
 
 ---
@@ -41,7 +41,7 @@ reset/reseed             = ALLOWED
 | جریان | وضعیت | اختیار فعلی | ممنوعیت |
 |---|---|---|---|
 | محصول عملیاتی | `ACTIVE_PRODUCT_PRE_PRODUCTION` | رفتار واقعی main | تغییر بالینی بدون گیت |
-| FOUX-V1 | `FO_0/1/2_VALIDATED / FO_3_REPAIR_TECHNICALLY_VALIDATED / UX_REVIEW_PENDING` | مرور لوکال یا focused FO-3 defect fix | FO-4، mutation، claim، SMS یا routing |
+| FOUX-V1 | `FO_0/1/2_VALIDATED / FO_3_RUNTIME_AND_COPY_REPAIRS_TECHNICALLY_VALIDATED / UX_REVIEW_PENDING` | مرور لوکال یا focused FO-3 defect fix | FO-4، mutation، claim، SMS یا routing |
 | Clinical Engine v2 | `INFRASTRUCTURE_IMPLEMENTED / ACTIVATION_GATED` | runtime/audit | activation بدون approval |
 | Rule package | `LEGACY_DRAFT_QUARANTINED` | provenance/test | clinical use |
 | ADA research | `FROZEN_V0_9_4` | evidence draft | runtime authority |
@@ -64,7 +64,7 @@ Baseline:
 specialist_clinic/docs/FOLLOWUP_ORCHESTRATION_UX_V1_BASELINE.md
 ```
 
-Plan version: `1.4.3`
+Plan version: `1.4.4`
 
 ### FO-0 — VALIDATED
 
@@ -168,6 +168,24 @@ Hardening ثانویه:
 - controlled Persian error state؛
 - real Flask/Jinja list and Timeline tests.
 
+### FO3_OPERATOR_PROJECTION_JARGON — RESOLVED TECHNICALLY
+
+```text
+Issue #87 / PR #88
+Final head 39ebef3b70470f39292faaa7d986e2f1a90a0e80
+Merge 020803868e1c2755f7669d52da92cb8050a46018
+Final CI 30827033618
+762 Specialist + 54 Accounting
+```
+
+تغییر فقط در کپی عملیاتی و regression test بود:
+
+- `Projection قدیمی` → `اطلاعات نما قدیمی است`؛
+- `سن Projection` → `آخرین بازسازی نما`؛
+- readiness stateهای قابل‌مشاهده با متن فارسی عملیاتی؛
+- machine readiness codeها و audit فنی حفظ شدند؛
+- route، query، schema، cache behavior، Source Truth، workflow و feature defaults تغییر نکردند.
+
 ---
 
 ## 5. قدم مجاز فعلی
@@ -204,7 +222,7 @@ Attestation:
 ```text
 FO3_UX_ACCEPTED = true|false
 reviewer = Emad211
-reviewed_commit = 8f851c90da5a81f4b7ffce43eaa5bf6010d58fa2
+reviewed_commit = 020803868e1c2755f7669d52da92cb8050a46018
 reviewed_on_test_data = true
 critical_ux_defects = <number>
 notes = <observations or defects>
@@ -236,11 +254,12 @@ FOLLOWUP_AUTOMATION_HEALTH
 ## 7. Exit Gate برای FO-4
 
 ```text
-PR #85 merged                       = PASS
-Final CI green                      = PASS
-FO3_UX_ACCEPTED=true                = PENDING
-critical_ux_defects=0               = PENDING
-governance authorization PR merged  = PENDING
+PR #85 runtime repair merged         = PASS
+PR #88 operator copy repair merged   = PASS
+Final CI 30827033618 green           = PASS
+FO3_UX_ACCEPTED=true                 = PENDING
+critical_ux_defects=0                = PENDING
+governance authorization PR merged   = PENDING
 ```
 
 تا آن زمان Claim، Assignment، Routing/SLA، Structured Contact automation، SMS automation، Appointment reaction، Outbox/Retry/Auto-close و Evidence Assist مسدودند.
@@ -275,13 +294,14 @@ Focused bug/security fixes          = ALLOWED
 
 ## 10. قواعد ادامه
 
-1. GitHub، Issue #83، PR #85 و plan v1.4.3 خوانده شوند؛
+1. GitHub، Issue #83، PRهای #85/#88 و plan v1.4.4 خوانده شوند؛
 2. فقط post-fix UX review یا focused FO-3 defect fix انجام شود؛
-3. علت Incident همان Jinja collision ثبت‌شده است؛
+3. علت Incident 500 همان Jinja collision ثبت‌شده است؛
 4. schema hardening علت screenshot معرفی نشود؛
-5. Source Truthها تغییر نکنند؛
-6. هر fix جدید full CI و owner re-review می‌خواهد؛
-7. بدون owner attestation وارد FO-4 نشوید.
+5. repair #87 copy-only و technically validated است؛
+6. Source Truthها تغییر نکنند؛
+7. هر fix جدید full CI و owner re-review می‌خواهد؛
+8. بدون owner attestation وارد FO-4 نشوید.
 
 ---
 
@@ -292,6 +312,7 @@ FO-0 = VALIDATED
 FO-1 = VALIDATED
 FO-2 = VALIDATED
 FO-3 RUNTIME REPAIR = TECHNICALLY VALIDATED
+FO-3 OPERATOR COPY REPAIR = TECHNICALLY VALIDATED
 FO-3 POST-FIX LOCAL UX ACCEPTANCE = PENDING
 FO-4 AND LATER = BLOCKED
 ```
