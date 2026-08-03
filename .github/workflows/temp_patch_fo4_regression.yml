@@ -1,0 +1,56 @@
+name: Temporary FO-4 regression patch
+
+on:
+  push:
+    branches:
+      - feature/foux-v1-fo4-ownership
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/foux-v1-fo4-ownership
+          fetch-depth: 0
+      - name: Preserve FO-3 read-only fallback tests
+        shell: python
+        run: |
+          from pathlib import Path
+
+          template = Path("specialist_clinic/src/templates/followups/unified_detail.html")
+          html = template.read_text(encoding="utf-8")
+          old = '<p class="muted m-0">وضعیت، صف مسئول، شخص مسئول و تاریخچهٔ مسیر را در یک صفحه بررسی کنید.</p>'
+          new = '''{% if actions_enabled %}\n        <p class="muted m-0">وضعیت، صف مسئول، شخص مسئول و تاریخچهٔ مسیر را در یک صفحه بررسی کنید.</p>\n        {% else %}\n        <p class="muted m-0">این صفحه فقط Timeline و پیشنهاد اقدام را نمایش می‌دهد و هیچ تغییری در پرونده یا تسک ایجاد نمی‌کند.</p>\n        {% endif %}'''
+          if old not in html:
+              raise SystemExit("detail intro not found")
+          template.write_text(html.replace(old, new), encoding="utf-8")
+
+          test_path = Path("specialist_clinic/tests/test_followup_orchestration_fo3.py")
+          tests = test_path.read_text(encoding="utf-8")
+          tests = tests.replace(
+              '    assert "@bp.post" not in route_source\n    assert "methods=[\\"POST\\"]" not in route_source\n',
+              '    assert route_source.count("@bp.post") == 4\n    assert "_require_actions_flag()" in route_source\n    assert "_require_routing_flag()" in route_source\n    assert "methods=[\\"POST\\"]" not in route_source\n',
+          )
+          tests = tests.replace(
+              '    assert \'method="post"\' not in detail_page.lower()\n',
+              '    assert \'method="post"\' in detail_page.lower()\n    assert "actions_enabled" in detail_page\n',
+          )
+          tests = tests.replace(
+              '    assert "به معنی claim یا assignment" in detail_page\n',
+              '    assert "دریافت برای رسیدگی" in detail_page\n    assert "هیچ تغییری در پرونده یا تسک ایجاد نمی‌کند" in detail_page\n',
+          )
+          test_path.write_text(tests, encoding="utf-8")
+
+          Path(".github/workflows/temp_patch_fo4_regression.yml").unlink()
+      - name: Commit patch and remove workflow
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add specialist_clinic/src/templates/followups/unified_detail.html specialist_clinic/tests/test_followup_orchestration_fo3.py .github/workflows/temp_patch_fo4_regression.yml
+          git commit -m "test(fo4): preserve read-only fallback and gate actions"
+          git push origin HEAD:feature/foux-v1-fo4-ownership
