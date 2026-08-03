@@ -28,58 +28,60 @@ specialist.db = TEST_ONLY / SYNTHETIC_OR_RESETTABLE
 source        = owner attestation, 2026-08-03
 ```
 
-Reset/reseed و migration rehearsal روی دادهٔ فعلی مجاز است، ولی guardrailهای امنیتی و بالینی حذف نمی‌شوند. پیش از ورود دادهٔ واقعی بیمار، production-readiness و privacy review الزامی است. هیچ shortcut مبتنی بر `TEST_ONLY` وارد runtime نشود.
+Reset/reseed و migration rehearsal روی دادهٔ فعلی مجاز است، اما guardrailهای امنیتی و بالینی حذف نمی‌شوند. پیش از دادهٔ واقعی، production-readiness و privacy review الزامی است. هیچ shortcut مبتنی بر `TEST_ONLY` وارد runtime نشود.
 
 ## وضعیت FOUX-V1
 
 ```text
 FO-0 = VALIDATED
 FO-1 = VALIDATED
-FO-2 = AUTHORIZED
-FO-3 and later = BLOCKED pending FO-2 exit gate
+FO-2 = VALIDATED
+FO-3 = AUTHORIZED
+FO-4 and later = BLOCKED pending FO-3 exit gate
 ```
 
-### FO-1 موجود روی main
+### زیرساخت موجود روی main
 
 ```text
 followup_episodes
 followup_episode_links
 followup_episode_events
+followup_work_item_projection
 ```
 
-Episode و Link immutable هستند؛ Event append-only و linear است. CLI backfill explicit است و startup backfill خودکار ندارد. Relation مبهم باید orphan reason بگیرد، نه relation حدسی.
+Episode/Link immutable، Episode Event append-only و Projection rebuildable cache است. Backfill و projection rebuild خودکار startup ندارند.
 
-## دامنهٔ مجاز فعلی: FO-2
+## دامنهٔ مجاز فعلی: FO-3
 
 ```text
-FO-2 — Projection, Next Action & Shadow Parity
+FO-3 — Read-only Unified Worklist & Timeline
 ```
 
-FO-2 می‌تواند فقط این موارد را اضافه کند:
+FO-3 می‌تواند فقط:
 
-- schema additive/idempotent برای `followup_work_item_projection`؛
-- repository projection؛
-- source-state adapterهای read-only؛
-- policy مرکزی و versioned برای state/next action؛
-- `ACTION_REQUIRED / WAITING / BLOCKED / TERMINAL`؛
-- waiting/block reason؛
-- جداسازی `action_due_at` و `target_at`؛
-- owner role proposal بدون assignment؛
-- deterministic projection hash/rebuild؛
-- parity report با Worklist فعلی؛
-- projection lag/performance metrics؛
-- explicit CLI و focused tests.
+- route GET feature-flagged برای list/detail؛
+- read-model service بدون N+1؛
+- pagination، search و filterهای whitelist؛
+- کارت Work Item با copy عملیاتی؛
+- action/wait/block explanation؛
+- role proposal، action due، target و projection age؛
+- Timeline read-only از Sourceهای حاکم؛
+- permission-safe deep-link به مسیرهای فعلی؛
+- empty/loading/stale/conflict states؛
+- RTL/Jalali/fa number/accessibility؛
+- تست‌های authorization، query count، no mutation و legacy parity.
 
-FO-2 نباید:
+FO-3 نباید:
 
-- Worklist یا template فعلی را تغییر دهد؛
-- route یا CTA جدید عملیاتی بسازد؛
+- POST یا mutation endpoint جدید بسازد؛
 - claim/assignment انجام دهد؛
+- role proposal را assignment واقعی معرفی کند؛
+- routing، SLA یا escalation mutation اجرا کند؛
 - SMS ارسال یا approval را تغییر دهد؛
-- appointment reaction اجرا کند؛
-- outbox، retry، escalation یا auto-close بسازد؛
-- Evidence Assist بسازد؛
-- Clinical Task را transition/complete کند؛
+- appointment reaction یا outbox بسازد؛
+- callback/retry/auto-close اجرا کند؛
+- Evidence Assist یا clinical decision بسازد؛
+- Worklist قدیمی را حذف یا رفتار آن را تغییر دهد؛
 - Rule یا Hypoglycemia Shadow را تغییر دهد؛
 - `clinic_new.db` را بنویسد.
 
@@ -98,65 +100,55 @@ FOLLOWUP_EVIDENCE_ASSIST
 FOLLOWUP_AUTOMATION_HEALTH
 ```
 
-همه default OFF. در FO-2 فقط `FOLLOWUP_PROJECTION_SHADOW` ممکن است توسط اجرای explicit shadow/CLI مصرف شود. request، Scheduler و UI با default OFF باید دقیقاً رفتار قبلی را حفظ کنند.
+همه default OFF. در FO-3 فقط `FOLLOWUP_UNIFIED_WORKLIST_READONLY` مصرف می‌شود. وقتی OFF است:
 
-## قرارداد Projection در FO-2
+- route جدید باید 404 یا unavailable کنترل‌شده بدهد؛
+- navigation جدید پنهان است؛
+- Worklist قدیمی هیچ query یا رفتار جدیدی اجرا نمی‌کند.
 
-هر Work Item nonterminal دقیقاً یکی از این حالت‌هاست:
+وقتی ON است، UI فقط خواندنی است.
 
-```text
-ACTION_REQUIRED
-WAITING
-BLOCKED
-```
+## قرارداد Read-only UI
 
-و باید دقیقاً یک توضیح عملیاتی داشته باشد:
-
-```text
-next_action
-waiting_reason
-blocked_reason
-```
-
-Projection:
-
-- source truth نیست؛
-- از Episode/Links و Sourceهای حاکم rebuild می‌شود؛
-- same source snapshot → same projection hash؛
-- patient scope را دوباره کنترل می‌کند؛
-- raw PHI یا payload بالینی عمومی ذخیره نمی‌کند؛
-- owner فقط role proposal است؛
-- تاریخ یا relation ساختگی تولید نمی‌کند؛
-- conflict/missing/stale را با reason code نشان می‌دهد.
+- Projection source truth نیست.
+- request نباید projection rebuild کند.
+- projection missing/stale باید واضح نمایش داده شود.
+- list query صفحه‌بندی‌شده و بدون N+1 است.
+- patient identity فقط به حداقل لازم محدود می‌شود.
+- raw note، message body و clinical payload در list نمایش داده نمی‌شوند.
+- state فنی و hash در copy اصلی نمایش داده نمی‌شوند.
+- Timeline chronological و provenance-aware است.
+- deep-linkها permission را دور نمی‌زنند.
+- CTA در FO-3 فقط label/deep-link به مسیر حاکم است؛ action داخل UI جدید انجام نمی‌شود.
 
 ## مرزهای دائمی ایمنی
 
 - `clinic_new.db` برای Specialist Clinic read-only است.
 - Source Truthهای فعلی authoritative باقی می‌مانند.
 - Episode/Projection حقیقت بالینی نیستند.
-- Clinical Task completion نیازمند Evidence حاکم است.
+- Clinical Task completion نیازمند Evidence است.
 - Appointment، Clinical Task را complete نمی‌کند.
 - هیچ تصمیم دارویی، تشخیصی یا ارجاعی خودکار نیست.
-- SMS consent/quiet/cap/cooldown/idempotency حفظ می‌شود.
+- SMS guardrailها حفظ می‌شوند.
 - Rule و Hypoglycemia Shadow خارج از FOUX هستند.
-- eventهای append-only هرگز UPDATE/DELETE نمی‌شوند.
+- eventهای append-only UPDATE/DELETE نمی‌شوند.
 
-## تست‌های اجباری FO-2
+## تست‌های اجباری FO-3
 
-- fresh/existing/rerun migration؛
-- deterministic projection hash؛
-- delete/rebuild equivalence؛
-- every nonterminal projection has action/wait/block؛
-- source/patient mismatch becomes blocked/conflict؛
-- stale/missing source reason؛
-- role proposal deterministic؛
-- action_due/target separation؛
-- parity report classifies every mismatch؛
-- source truth unchanged؛
-- feature default OFF causes no existing behavior change؛
-- no UI/Scheduler/SMS mutation؛
-- full Specialist suite؛
-- Accounting suite when governance/shared files change.
+- flag OFF route/navigation hidden؛
+- flag ON authorized GET works؛
+- unauthorized access denied؛
+- no POST/mutation route؛
+- list pagination/search/filter؛
+- no N+1 / bounded query count؛
+- state/role/due filters؛
+- projection empty/stale/conflict states؛
+- Timeline deterministic order/source labels؛
+- permission-safe deep-links؛
+- RTL/Jalali/fa number/accessibility؛
+- no source/projection mutation from GET؛
+- legacy Worklist unchanged؛
+- full Specialist and Accounting CI.
 
 ## PR Contract
 
