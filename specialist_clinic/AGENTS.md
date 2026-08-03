@@ -6,11 +6,11 @@
 
 پیش از هر تغییر:
 
-1. `PROJECT_STATE.md` و `PROJECT_STATE.json`؛
-2. `AGENTS.md` ریشه؛
-3. همین فایل؛
-4. `graphify-out/GRAPH_REPORT.md` در صورت وجود؛
-5. قرارداد نزدیک به کد و سند canonical جریان.
+1. وضعیت واقعی `main`، PRها و Issueها؛
+2. `PROJECT_STATE.md` و `PROJECT_STATE.json`؛
+3. `AGENTS.md` ریشه؛
+4. همین فایل؛
+5. سند canonical نزدیک به جریان.
 
 برای Follow-up، Task، Worklist، SMS، Contact، Appointment یا automation:
 
@@ -19,7 +19,7 @@ docs/FOLLOWUP_ORCHESTRATION_UX_V1_IMPLEMENTATION_PLAN.md
 docs/FOLLOWUP_ORCHESTRATION_UX_V1_BASELINE.md
 ```
 
-حافظهٔ گفتگو، branch قدیمی و PR تاریخی بر `main` و منابع بالا مقدم نیستند.
+حافظهٔ گفتگو، branch قدیمی و PR تاریخی بر منابع بالا مقدم نیستند.
 
 ## طبقه‌بندی محیط فعلی
 
@@ -36,8 +36,20 @@ Reset/reseed و migration rehearsal روی دادهٔ فعلی مجاز است،
 FO-0 = VALIDATED
 FO-1 = VALIDATED
 FO-2 = VALIDATED
-FO-3 = AUTHORIZED
-FO-4 and later = BLOCKED pending FO-3 exit gate
+FO-3 = TECHNICALLY_VALIDATED
+FO-3 LOCAL UX ACCEPTANCE = PENDING
+FO-4 and later = BLOCKED pending owner UX attestation
+```
+
+Evidence FO-3:
+
+```text
+Issue #80
+PR #81
+final head 14e8bf56782ead4ccef46db05eb8c4b6b034d263
+merge afed3545c0a90a1ed7ff7e0a892df89fffac00c2
+CI 30775348057
+754 Specialist + 54 Accounting
 ```
 
 ### زیرساخت موجود روی main
@@ -47,43 +59,57 @@ followup_episodes
 followup_episode_links
 followup_episode_events
 followup_work_item_projection
+GET /followups/unified/
+GET /followups/unified/<episode_id>
 ```
 
-Episode/Link immutable، Episode Event append-only و Projection rebuildable cache است. Backfill و projection rebuild خودکار startup ندارند.
+Episode/Link immutable، Episode Event append-only و Projection rebuildable cache است. Backfill و projection rebuild خودکار startup ندارند. UI جدید feature-gated و فقط خواندنی است.
 
-## دامنهٔ مجاز فعلی: FO-3
+## دامنهٔ مجاز فعلی: FO-3 Local UX Acceptance
 
-```text
-FO-3 — Read-only Unified Worklist & Timeline
-```
+کار مجاز:
 
-FO-3 می‌تواند فقط:
+- اجرای محلی با دادهٔ تست؛
+- روشن‌کردن فقط `FOLLOWUP_PROJECTION_SHADOW` برای rebuild صریح؛
+- روشن‌کردن فقط `FOLLOWUP_UNIFIED_WORKLIST_READONLY` برای مشاهده؛
+- مرور pagination/search/filter؛
+- مرور action/wait/block copy؛
+- مرور role proposal، action due، target و projection age؛
+- مرور Timeline، stale/error states و deep-linkها؛
+- مرور RTL/Jalali/fa number/keyboard/mobile؛
+- patch محدود نقص FO-3؛
+- ثبت attestation مالک.
 
-- route GET feature-flagged برای list/detail؛
-- read-model service بدون N+1؛
-- pagination، search و filterهای whitelist؛
-- کارت Work Item با copy عملیاتی؛
-- action/wait/block explanation؛
-- role proposal، action due، target و projection age؛
-- Timeline read-only از Sourceهای حاکم؛
-- permission-safe deep-link به مسیرهای فعلی؛
-- empty/loading/stale/conflict states؛
-- RTL/Jalali/fa number/accessibility؛
-- تست‌های authorization، query count، no mutation و legacy parity.
+کار ممنوع:
 
-FO-3 نباید:
+- POST یا mutation endpoint جدید؛
+- claim/assignment؛
+- role proposal به‌عنوان assignment واقعی؛
+- routing، SLA یا escalation mutation؛
+- SMS send یا approval change؛
+- appointment reaction یا outbox؛
+- callback/retry/auto-close؛
+- Evidence Assist یا clinical decision؛
+- حذف یا تغییر authority Worklist قدیمی؛
+- Rule یا Hypoglycemia Shadow change؛
+- write به `clinic_new.db`؛
+- آغاز FO-4 بدون attestation جدید سند.
 
-- POST یا mutation endpoint جدید بسازد؛
-- claim/assignment انجام دهد؛
-- role proposal را assignment واقعی معرفی کند؛
-- routing، SLA یا escalation mutation اجرا کند؛
-- SMS ارسال یا approval را تغییر دهد؛
-- appointment reaction یا outbox بسازد؛
-- callback/retry/auto-close اجرا کند؛
-- Evidence Assist یا clinical decision بسازد؛
-- Worklist قدیمی را حذف یا رفتار آن را تغییر دهد؛
-- Rule یا Hypoglycemia Shadow را تغییر دهد؛
-- `clinic_new.db` را بنویسد.
+## قرارداد FO-3 Read-only UI
+
+- Projection source truth نیست.
+- request نباید projection rebuild کند.
+- list/detail فقط GET هستند؛ POST باید 405 باشد.
+- flag OFF باید route را 404 و navigation را مخفی کند.
+- projection missing/stale باید واضح نمایش داده شود.
+- list query صفحه‌بندی‌شده و بدون N+1 است.
+- source linkها batch خوانده می‌شوند.
+- patient identity فقط به حداقل لازم محدود می‌شود.
+- raw note، message body، clinical value و payload JSON در Timeline نمایش داده نمی‌شوند.
+- Timeline chronological و provenance-aware است.
+- deep-linkها permission را دور نمی‌زنند.
+- CTA فقط به مسیر حاکم می‌رود؛ action داخل UI جدید انجام نمی‌شود.
+- role proposal به معنی claim یا assignment نیست.
 
 ## Feature Flagها
 
@@ -100,26 +126,36 @@ FOLLOWUP_EVIDENCE_ASSIST
 FOLLOWUP_AUTOMATION_HEALTH
 ```
 
-همه default OFF. در FO-3 فقط `FOLLOWUP_UNIFIED_WORKLIST_READONLY` مصرف می‌شود. وقتی OFF است:
+همه default OFF. در مرور فعلی فقط دو flag اولِ مرتبط با rebuild صریح و نمایش read-only ممکن است موقتاً ON شوند. `FOLLOWUP_UNIFIED_WORKLIST_ACTIONS` و تمام automation flags ممنوع‌اند.
 
-- route جدید باید 404 یا unavailable کنترل‌شده بدهد؛
-- navigation جدید پنهان است؛
-- Worklist قدیمی هیچ query یا رفتار جدیدی اجرا نمی‌کند.
+## Local UX Review
 
-وقتی ON است، UI فقط خواندنی است.
+```powershell
+cd specialist_clinic
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe seed_demo_data.py
 
-## قرارداد Read-only UI
+$env:FOLLOWUP_PROJECTION_SHADOW = "1"
+.\.venv\Scripts\python.exe scripts\rebuild_followup_projection.py `
+  --database specialist.db `
+  --as-of "2026-08-03 12:00:00" `
+  --apply
 
-- Projection source truth نیست.
-- request نباید projection rebuild کند.
-- projection missing/stale باید واضح نمایش داده شود.
-- list query صفحه‌بندی‌شده و بدون N+1 است.
-- patient identity فقط به حداقل لازم محدود می‌شود.
-- raw note، message body و clinical payload در list نمایش داده نمی‌شوند.
-- state فنی و hash در copy اصلی نمایش داده نمی‌شوند.
-- Timeline chronological و provenance-aware است.
-- deep-linkها permission را دور نمی‌زنند.
-- CTA در FO-3 فقط label/deep-link به مسیر حاکم است؛ action داخل UI جدید انجام نمی‌شود.
+$env:FOLLOWUP_UNIFIED_WORKLIST_READONLY = "1"
+.\.venv\Scripts\python.exe start.py
+```
+
+attestation لازم:
+
+```text
+FO3_UX_ACCEPTED = true|false
+reviewer = Emad211
+reviewed_commit = afed3545c0a90a1ed7ff7e0a892df89fffac00c2
+reviewed_on_test_data = true
+critical_ux_defects = 0
+notes = ...
+```
 
 ## مرزهای دائمی ایمنی
 
@@ -133,17 +169,16 @@ FOLLOWUP_AUTOMATION_HEALTH
 - Rule و Hypoglycemia Shadow خارج از FOUX هستند.
 - eventهای append-only UPDATE/DELETE نمی‌شوند.
 
-## تست‌های اجباری FO-3
+## تست‌های اجباری patchهای FO-3
 
 - flag OFF route/navigation hidden؛
 - flag ON authorized GET works؛
 - unauthorized access denied؛
 - no POST/mutation route؛
-- list pagination/search/filter؛
-- no N+1 / bounded query count؛
-- state/role/due filters؛
+- pagination/search/filter؛
+- bounded query count و no N+1؛
 - projection empty/stale/conflict states؛
-- Timeline deterministic order/source labels؛
+- Timeline deterministic؛
 - permission-safe deep-links؛
 - RTL/Jalali/fa number/accessibility؛
 - no source/projection mutation from GET؛
@@ -152,4 +187,4 @@ FOLLOWUP_AUTOMATION_HEALTH
 
 ## PR Contract
 
-هر PR باید tranche، Requirement ID، scope، schema/data impact، feature flag، focused/full tests، rollback، UX effect و proof مرزهای بالینی/حسابداری را ثبت کند.
+هر PR باید tranche، Requirement ID، scope، schema/data impact، feature flag، focused/full tests، rollback، UX effect و proof مرزهای بالینی/حسابداری را ثبت کند. تا attestation مالک، هیچ PR مربوط به FO-4 مجاز نیست.
