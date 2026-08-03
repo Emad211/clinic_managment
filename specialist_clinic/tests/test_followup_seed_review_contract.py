@@ -14,6 +14,8 @@ def test_seed_repair_maps_fixture_rows_and_preserves_other_tasks():
     assert "SELECT value FROM settings WHERE key=?" in repository
     assert "ON CONFLICT(key) DO UPDATE SET value=excluded.value" in repository
     assert "COUNT(DISTINCT task.id)" in repository
+    assert "JOIN followup_tasks task" in repository
+    assert "seed_map.key LIKE 'demo_followup_task_id:TEST%:%'" in repository
     assert '"followups": "followup_tasks"' not in repository
     assert "source_engine='demo_cohort'" not in repository
     assert "SET due_date=?, reason=?, detail=?, status=?, assigned_to=?" in repository
