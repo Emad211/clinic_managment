@@ -87,9 +87,9 @@
         <p class="muted text-sm m-0">منبع ناقص حذف نشده و با هشدار در Timeline نمایش داده شده است.</p>
     </div>
     {% endif %}
-    {% if timeline.items %}
+    {% if timeline['items'] %}
     <ol class="care-timeline">
-        {% for event in timeline.items %}
+        {% for event in timeline['items'] %}
         <li class="card card-soft">
             <div class="flex items-center gap-2 wrap">
                 <span class="badge {% if event.warning %}badge-danger{% elif event.kind == 'SOURCE_STATE' %}badge-info{% else %}badge-muted{% endif %}">{{ event.source_label }}</span>

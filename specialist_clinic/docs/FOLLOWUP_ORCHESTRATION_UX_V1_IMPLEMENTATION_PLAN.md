@@ -4,11 +4,11 @@
 >
 > **کد برنامه:** `FOUX-V1`
 >
-> **نسخه:** `1.4.0`
+> **نسخه:** `1.4.2`
 >
 > **آخرین بازبینی:** `2026-08-03`
 >
-> **وضعیت:** `FO_0_VALIDATED / FO_1_VALIDATED / FO_2_VALIDATED / FO_3_TECHNICALLY_VALIDATED / FO_3_LOCAL_UX_ACCEPTANCE_PENDING`
+> **وضعیت:** `FO_0_VALIDATED / FO_1_VALIDATED / FO_2_VALIDATED / FO_3_TECHNICALLY_VALIDATED / FO_3_LOCAL_UX_BLOCKED_BY_CONFIRMED_RUNTIME_DEFECT / FOCUSED_FIX_IN_PROGRESS`
 >
 > **مالک:** `Emad211`
 >
@@ -20,261 +20,303 @@
 
 ---
 
-## 1. هدف سند
+## 1. نقش و ترتیب اعتماد
 
-این سند Source of Truth اجرایی برنامهٔ بازطراحی پیگیری است. هدف برنامه این است که بدون جایگزین‌کردن Source of Truthهای موجود، داده‌های پراکندهٔ پیگیری به یک Episode قابل‌ردیابی، Projection بازسازی‌پذیر و تجربهٔ کاربری روشن تبدیل شوند.
+این سند Source of Truth اجرایی برنامهٔ بازطراحی پیگیری است. ترتیب اعتماد:
 
-این سند هم‌زمان تعیین می‌کند:
-
-1. چه چیزی پیاده‌سازی شده است؛
-2. چه چیزی فقط در حالت Shadow یا Read-only مجاز است؛
-3. چه evidenceای برای عبور هر tranche لازم است؛
-4. چه مواردی هنوز مسدود هستند؛
-5. مسیر rollback چیست.
-
-ترتیب اعتماد:
-
-1. وضعیت واقعی `main`، PRها، Issues و CI؛
+1. وضعیت واقعی `main`، PRها، Issueها و CI؛
 2. `PROJECT_STATE.json` و `PROJECT_STATE.md`؛
 3. این سند و `specialist_clinic/AGENTS.md`؛
-4. متن PRهای تاریخی؛
-5. حافظهٔ گفتگو یا ایجنت.
+4. قراردادهای نزدیک به کد؛
+5. متن PRهای تاریخی؛
+6. حافظهٔ گفتگو یا ایجنت.
+
+هر ادعای تکمیل، تست، push یا merge باید SHA و CI evidence داشته باشد.
 
 ---
 
-## 2. وضعیت قطعی فعلی
+## 2. هدف محصول
+
+بدون بازنویسی Source of Truthهای فعلی، Task، SMS، Contact، Appointment، Clinical Outcome و Encounter Commitment باید در یک Episode قابل‌ردیابی و Projection بازسازی‌پذیر دیده شوند تا کاربر فوراً بفهمد:
+
+- چرا این مورد ساخته شده؛
+- وضعیت عملیاتی چیست؛
+- صف پیشنهادی کدام است؛
+- منتظر چه چیزی است؛
+- اقدام بعدی چیست؛
+- آخرین رویداد چه بوده است.
+
+---
+
+## 3. وضعیت trancheها
 
 | Tranche | وضعیت | Evidence اصلی |
 |---|---|---|
-| FO-0 | VALIDATED | baseline مصنوعی deterministic، CI و owner attestation محیط test-only |
-| FO-1 | VALIDATED | Episode/Link/Event، backfill idempotent، PR #75 |
-| FO-2 | VALIDATED | Projection/Policy/Parity، PR #78 |
-| FO-3 | TECHNICALLY_VALIDATED | Unified Worklist و Timeline فقط‌خواندنی، PR #81 |
-| FO-3 UX Acceptance | PENDING | مرور لوکال توسط مالک روی دادهٔ تست |
-| FO-4 و بعد | BLOCKED | تا ثبت attestation مرور UX و تصمیم جدید در سند |
+| FO-0 | `VALIDATED` | baseline/governance، PRهای #72/#73 |
+| FO-1 | `VALIDATED` | Episode/Link/Event، PR #75 |
+| FO-2 | `VALIDATED` | Projection/Policy/Parity، PR #78 |
+| FO-3 | `TECHNICALLY_VALIDATED` | Unified Worklist خواندنی، PR #81 |
+| FO-3 Local UX | `BLOCKED_BY_CONFIRMED_RUNTIME_DEFECT` | owner screenshot + CI traceback، Issue #84 |
+| FO-4 و بعد | `BLOCKED` | repair، full CI، merge و پذیرش UX جدید لازم است |
 
-### 2.1 وضعیت Git حاکم
-
-- FO-3 tracking issue: `#80`
-- FO-3 implementation PR: `#81`
-- FO-3 final head: `14e8bf56782ead4ccef46db05eb8c4b6b034d263`
-- FO-3 merge commit: `afed3545c0a90a1ed7ff7e0a892df89fffac00c2`
-- FO-3 final CI run: `30775348057`
-- Specialist tests: `754 passed`
-- Accounting tests: `54 passed`
-
-### 2.2 تصحیح سابقه
-
-در آغاز FO-3، branch با `main` یکسان و بدون commit بود. هر ادعای قبلی مبنی بر push شدن FO-3 پیش از PR #81 فاقد evidence Git بود و معتبر نیست. فقط commitها، PR و CI ثبت‌شده در بخش 2.1 مبنای وضعیت فعلی‌اند.
-
----
-
-## 3. طبقه‌بندی داده و حدود ایمنی
-
-`specialist.db` در محیط فعلی فقط دادهٔ تستی، مصنوعی یا resettable دارد. بنابراین:
-
-- baseline و cohort تستی می‌توانند deterministic باشند؛
-- ریسک PHI واقعی در این محیط انتظار نمی‌رود؛
-- این فرض قبل از ورود هر دادهٔ واقعی باید لغو و production-readiness review انجام شود؛
-- هیچ گزارش CI یا CLI نباید نام، تلفن، متن پیام، note آزاد یا مقدار بالینی خام را چاپ کند؛
-- `clinic_new.db` برای Specialist همچنان read-only است.
-
-این طبقه‌بندی مجوز کاهش کنترل‌های امنیتی، audit، authorization یا clinical safety نیست.
-
----
-
-## 4. معماری حاکم
+### Evidence پایهٔ FO-3
 
 ```text
-Authoritative source tables
-        │
-        ▼
-Follow-up Episode / Link / Event      [FO-1]
-        │
-        ▼
-Deterministic Work Item Projection    [FO-2, cache only]
-        │
-        ▼
-Read-only Unified Worklist/Timeline   [FO-3, feature gated]
-        │
-        └── deep-link only ──► Legacy authoritative action surfaces
+Tracking Issue       = #80
+Implementation PR    = #81
+Final head           = 14e8bf56782ead4ccef46db05eb8c4b6b034d263
+Merge commit         = afed3545c0a90a1ed7ff7e0a892df89fffac00c2
+Final CI run         = 30775348057
+Specialist tests     = 754 passed
+Accounting tests     = 54 passed
 ```
-
-### 4.1 Source of Truthهای موجود
-
-منابع فعلی همچنان حاکم‌اند، از جمله:
-
-- `followup_tasks`
-- `clinical_task_events`
-- `clinical_outcome_events`
-- `care_plan_commitments`
-- `care_plan_commitment_events`
-- `engagement_approvals`
-- `sms_messages` و delivery state
-- `appointments`
-- `followup_contact_events`
-
-Episode و Projection جایگزین حقیقت بالینی یا عملیاتی نیستند.
-
-### 4.2 قراردادهای ذخیره‌سازی پیاده‌شده
-
-FO-1:
-
-- `followup_episodes`
-- `followup_episode_links`
-- `followup_episode_events`
-- Episode identity version: `1.0`
-- backfill صریح، dry-run/apply و idempotent
-- عدم ساخت رابطهٔ حدسی؛ موارد مبهم orphan می‌مانند
-
-FO-2:
-
-- `followup_work_item_projection`
-- Projection version: `1.0`
-- Policy version: `FOUX-NEXT-ACTION-V1`
-- state classes: `ACTION_REQUIRED`, `WAITING`, `BLOCKED`, `TERMINAL`
-- projection hash و source fingerprint deterministic
-- cache قابل حذف و بازسازی
-- role فقط proposal؛ `owner_user_id` تا FO-4 خالی است
-
-FO-3:
-
-- schema جدید ندارد؛
-- Read Model محدود و صفحه‌بندی‌شده روی cache FO-2؛
-- source-linkها batch خوانده می‌شوند و N+1 per item وجود ندارد؛
-- Timeline از Episode Eventهای append-only و snapshot خواندنی Source State ساخته می‌شود؛
-- متن پیام، note آزاد، raw clinical value و payload JSON وارد Timeline نمی‌شوند؛
-- request هیچ Projection rebuild یا write انجام نمی‌دهد.
 
 ---
 
-## 5. Invariantهای غیرقابل‌مذاکره
+## 4. Incident FO3_UI_500
+
+### 4.1 مشاهدهٔ مالک
+
+در مرور لوکال دادهٔ تست، کلیک روی «نمای یکپارچه» generic HTTP 500 نشان داد. پذیرش UX فوراً متوقف و Issue #84 ساخته شد.
+
+### 4.2 علت قطعی
+
+تست integration با Flask و Jinja واقعی در CI run `30808217800` traceback دقیق را ثبت کرد:
+
+```text
+TypeError: 'builtin_function_or_method' object is not iterable
+src/templates/followups/unified_worklist.html
+{% for item in model.items %}
+```
+
+علت:
+
+- `model` یک `dict` است؛
+- Jinja در dot notation، attribute را قبل از mapping key resolve می‌کند؛
+- بنابراین `model.items` به متد داخلی `dict.items` اشاره کرد، نه آرایهٔ Work Itemها؛
+- همین collision علت مستقیم 500 گزارش‌شده بود؛
+- `timeline.items` نیز همان ریسک را داشت و پیشگیرانه اصلاح شد.
+
+اصلاح حاکم:
+
+```jinja2
+model['items']
+timeline['items']
+```
+
+Guard دائمی باید بازگشت `model.items` و `timeline.items` را رد کند.
+
+### 4.3 Hardening ثانویه
+
+در بررسی incident، gap مستقلی نیز تأیید شد:
+
+- Read Model فقط وجود table را بررسی می‌کرد؛
+- required columns/schema compatibility را پیش از query نمی‌سنجید؛
+- SQLite با `CREATE TABLE IF NOT EXISTS` جدول قدیمی را upgrade نمی‌کند؛
+- persisted pre-final Projection cache می‌توانست generic 500 دیگری تولید کند.
+
+بنابراین repair شامل دو لایه است:
+
+1. رفع علت قطعی Jinja collision؛
+2. fail-safe کردن disposable cache/schema drift.
+
+این hardening نباید به‌عنوان علت قطعی screenshot معرفی شود؛ علت screenshot با traceback Jinja اثبات شده است.
+
+### 4.4 مجوز فعلی
+
+```text
+Focused repair issue = #84
+Implementation PR    = #85
+Allowed work         = FO-3 defect repair only
+FO-4 allowed         = false
+```
+
+---
+
+## 5. معماری حاکم
+
+```text
+Authoritative Source Truths
+        ↓
+Episode / Link / Event              [FO-1]
+        ↓
+Deterministic Projection Cache      [FO-2]
+        ↓
+Read-only Unified Worklist/Timeline [FO-3]
+        ↓
+Deep-link to legacy action surfaces
+```
+
+Source Truthهای قبلی authoritative می‌مانند. Episode فقط lineage و Projection فقط cache است.
+
+### Storageهای موجود
+
+```text
+followup_episodes
+followup_episode_links
+followup_episode_events
+followup_work_item_projection
+```
+
+### Routeهای FO-3
+
+```text
+GET /followups/unified/
+GET /followups/unified/<episode_id>
+```
+
+FO-3 هیچ POST، mutation، request-time rebuild یا action داخلی ندارد.
+
+---
+
+## 6. Invariantهای غیرقابل‌مذاکره
 
 1. Source Truthهای قبلی authoritative می‌مانند.
 2. Episode و Projection حقیقت بالینی نیستند.
-3. هیچ relation، event، due date، target، outcome یا assignment جعل نمی‌شود.
-4. هر Projection غیرنهایی دقیقاً یک explanation از نوع action، wait یا block دارد.
-5. completion بالینی فقط با evidence معتبر در lifecycle حاکم انجام می‌شود.
-6. رزرو نوبت به‌تنهایی task بالینی را complete نمی‌کند.
-7. FO-3 فقط خواندنی است و هیچ endpoint جدید POST/mutation ندارد.
-8. CTAهای FO-3 فقط deep-link به مسیرهای حاکم‌اند.
-9. role proposal به معنی claim یا assignment نیست.
-10. Worklist قدیمی تا تصمیم FO-4 authority عملیاتی باقی می‌ماند.
-11. هیچ تغییر در Clinical Rules یا Hypoglycemia Shadow این برنامه مجاز نیست.
-12. هیچ write به دیتابیس حسابداری مجاز نیست.
-13. flag خاموش باید رفتار قابل‌مشاهدهٔ قبلی را بازگرداند.
-14. FO-4 و بعد بدون attestation صریح سند ممنوع است.
+3. relation، event، due date، target، outcome یا assignment جعل نمی‌شود.
+4. هر Projection غیرنهایی دقیقاً action، wait یا block دارد.
+5. completion بالینی فقط با Evidence معتبر انجام می‌شود.
+6. Appointment به‌تنهایی Clinical Task را complete نمی‌کند.
+7. FO-3 فقط GET/read است.
+8. CTAهای FO-3 فقط deep-link هستند.
+9. role proposal به معنی claim/assignment نیست.
+10. Worklist قدیمی authority عملیاتی باقی می‌ماند.
+11. Rule و Hypoglycemia Shadow خارج از scope هستند.
+12. `clinic_new.db` فقط read-only است.
+13. feature flag خاموش باید رفتار قبلی را بازگرداند.
+14. mapping keyهای متعارض با متدهای dict در Jinja باید bracket notation داشته باشند.
+15. known schema drift نباید generic 500 تولید کند.
+16. فقط cache disposable می‌تواند recreate شود؛ Source Truth هرگز drop/rewrite نمی‌شود.
+17. FO-4 و بعد بدون attestation جدید ممنوع است.
 
 ---
 
-## 6. Feature Flags
+## 7. قرارداد Focused Repair
 
-همهٔ flagها به‌صورت پیش‌فرض `OFF` هستند:
+### 7.1 Template correctness
 
-| Flag | وضعیت فعلی | کاربرد |
-|---|---:|---|
-| `FOLLOWUP_EPISODES_ENABLED` | OFF | گیت Episode runtime |
-| `FOLLOWUP_PROJECTION_SHADOW` | OFF | rebuild صریح Projection سایه |
-| `FOLLOWUP_UNIFIED_WORKLIST_READONLY` | OFF | نمایش FO-3 فقط‌خواندنی |
-| `FOLLOWUP_UNIFIED_WORKLIST_ACTIONS` | OFF | FO-4؛ هنوز ممنوع |
-| `FOLLOWUP_AUTO_ROUTING` | OFF | routing خودکار؛ ممنوع |
-| `FOLLOWUP_STRUCTURED_CONTACT` | OFF | tranche بعدی؛ ممنوع |
-| `FOLLOWUP_SMS_AUTO_GUARDED` | OFF | ارسال خودکار؛ ممنوع |
-| `FOLLOWUP_APPOINTMENT_SYNC` | OFF | واکنش خودکار نوبت؛ ممنوع |
-| `FOLLOWUP_EVIDENCE_ASSIST` | OFF | Evidence Assist؛ ممنوع |
-| `FOLLOWUP_AUTOMATION_HEALTH` | OFF | health automation؛ ممنوع |
+- list و detail باید با Flask/Jinja واقعی render شوند؛
+- `model.items` و `timeline.items` ممنوع‌اند؛
+- integration test باید list و Timeline واقعی را render کند؛
+- error template نیز باید با Jinja واقعی render شود؛
+- mock کردن `render_template` به‌تنهایی برای Exit Gate کافی نیست.
 
-FO-3 فقط با `FOLLOWUP_UNIFIED_WORKLIST_READONLY=1` قابل مشاهده است. در حالت OFF:
+### 7.2 Projection cache compatibility
 
-- tab جدید مخفی است؛
-- routeهای `/followups/unified/` و detail، `404` می‌دهند؛
-- Worklist قدیمی بدون تغییر کار می‌کند.
+اگر `followup_work_item_projection` موجود، required columns canonical را ندارد:
 
----
+1. فقط همین cache حذف شود؛
+2. schema canonical دوباره ساخته شود؛
+3. cache خالی بماند؛
+4. rebuild فقط صریح اجرا شود؛
+5. Episode/Link/Event و Source Truthها تغییر نکنند؛
+6. rerun idempotent باشد.
 
-## 7. Evidence trancheها
+### 7.3 Read-model preflight
 
-### 7.1 FO-0 — Baseline & Governance
+پیش از product query، حداقل read contract بررسی می‌شود:
 
-- Issue `#71`
-- plan PR `#70`
-- implementation/attestation PRهای `#72` و `#73`
-- merge evidence: `901dbfdf9c358ecc09d2a60a0680f6a4a8370d17`
-- `731` تست Specialist و `54` تست Accounting در evidence ثبت‌شده
-- baseline aggregate و PHI-free
-- owner attestation: محیط test-only
+```text
+followup_work_item_projection
+patient_links
+followup_episode_links
+```
 
-### 7.2 FO-1 — Episode, Link & Event
+Readiness codeهای PHI-free:
 
-- Issue `#74`
-- PR `#75`
-- merge: `15ef1585c069a74c26fbc0ce859e03906e5f475a`
-- `736` تست Specialist و `54` تست Accounting
-- cohort مصنوعی: `4` Episode و `12` Link
-- اجرای دوم: صفر Episode/Link جدید
-- source truth digest بدون تغییر
+```text
+READY
+PROJECTION_NOT_BUILT
+PROJECTION_SCHEMA_INCOMPATIBLE
+PATIENT_IDENTITY_SCHEMA_INCOMPATIBLE
+EPISODE_LINK_SCHEMA_INCOMPATIBLE
+PROJECTION_READ_FAILED
+```
 
-### 7.3 FO-2 — Projection, Policy & Parity
+### 7.4 Controlled UX state
 
-- Issue `#77`
-- PR `#78`
-- merge: `6c6e33203376a32165418e0d3c6f2a4a48253e7b`
-- final CI: `30773195914`
-- `747` تست Specialist و `54` تست Accounting
-- `4` Projection در cohort canonical
-- legacy coverage: `100%`
-- hidden legacy sources: `0`
-- explainable mismatch: `100%`
-- hash deterministic و delete/rebuild equivalent
-- missing source و patient drift به‌صورت fail-closed
+در خطاهای SQLite/schema شناخته‌شده:
 
-### 7.4 FO-3 — Read-only Unified Worklist & Timeline
+- صفحهٔ فارسی کنترل‌شده نمایش داده شود، نه generic 500؛
+- Worklist قدیمی مسیر اصلی باقی بماند؛
+- هیچ داده یا رابطه‌ای حدس زده نشود؛
+- raw exception یا PHI نمایش داده نشود؛
+- خطاهای ناشناخته با `except Exception` پنهان نشوند.
 
-- Issue `#80`
-- PR `#81`
-- final head: `14e8bf56782ead4ccef46db05eb8c4b6b034d263`
-- merge: `afed3545c0a90a1ed7ff7e0a892df89fffac00c2`
-- final CI: `30775348057`
-- `754` تست Specialist و `54` تست Accounting
+### 7.5 Test requirements
 
-گیت‌های فنی عبورکرده:
-
-- تمام Projectionهای cohort از UI صفحه‌بندی‌شده قابل کشف‌اند؛
-- state/role/SLA filterها whitelist-only هستند؛
-- query count لیست bounded است و source linkها batch خوانده می‌شوند؛
-- routeها GET-only هستند و POST برابر `405` است؛
-- flag-off برابر `404` و navigation مخفی است؛
-- GET routeها digest Source Truth و Projection را تغییر نمی‌دهند؛
-- Timeline deterministic و provenance-aware است؛
-- Timeline فاقد SMS body، note آزاد، raw clinical value و payload JSON است؛
-- stale، overdue، empty و unavailable projection states متن روشن دارند؛
-- role به‌صورت «پیشنهادی» نمایش داده می‌شود؛
-- Worklist قدیمی authority اقدام باقی مانده است؛
-- cache-control برابر private/no-store است.
-
-اولین CI، پنج failure ناشی از fixture فشردهٔ FO-1 بدون ستون‌های واقعی هویت بیمار پیدا کرد. fixture به schema واقعی ارتقا یافت و query محصول تضعیف نشد. دور دوم کامل سبز شد.
+- real Flask/Jinja list render؛
+- real Flask/Jinja Timeline render؛
+- static guard علیه Jinja dict-method collision؛
+- legacy cache safely recreated empty؛
+- migration rerun idempotent؛
+- Source Truth و Episode digest ثابت؛
+- incompatible read schema → controlled page؛
+- feature OFF → 404/navigation hidden؛
+- POST → 405؛
+- full Specialist و Accounting CI سبز.
 
 ---
 
-## 8. FO-3 Local UX Acceptance Gate — گام جاری
+## 8. Feature Flags
 
-FO-3 از نظر کد، تست و CI معتبر است؛ ولی تجربهٔ کاربری rendered باید روی اجرای لوکال و دادهٔ تست توسط مالک مشاهده شود. تا ثبت نتیجهٔ این مرور، FO-4 ممنوع است.
+همه default OFF:
 
-### 8.1 آماده‌سازی ویندوز
+```text
+FOLLOWUP_EPISODES_ENABLED
+FOLLOWUP_PROJECTION_SHADOW
+FOLLOWUP_UNIFIED_WORKLIST_READONLY
+FOLLOWUP_UNIFIED_WORKLIST_ACTIONS
+FOLLOWUP_AUTO_ROUTING
+FOLLOWUP_STRUCTURED_CONTACT
+FOLLOWUP_SMS_AUTO_GUARDED
+FOLLOWUP_APPOINTMENT_SYNC
+FOLLOWUP_EVIDENCE_ASSIST
+FOLLOWUP_AUTOMATION_HEALTH
+```
+
+در repair فقط Read-only flag مصرف می‌شود. Action flags ممنوع‌اند.
+
+---
+
+## 9. Evidence trancheهای قبلی
+
+```text
+FO-0: Issue #71 / PR #72/#73 / 731 Specialist + 54 Accounting
+FO-1: Issue #74 / PR #75 / 736 Specialist + 54 Accounting
+FO-2: Issue #77 / PR #78 / 747 Specialist + 54 Accounting
+FO-3: Issue #80 / PR #81 / 754 Specialist + 54 Accounting
+```
+
+### Repair evidence
+
+```text
+Issue                     = #84
+PR                        = #85
+Owner screenshot          = generic HTTP 500
+Root-cause CI run         = 30808217800
+Root-cause failed test    = real Flask/Jinja rendering test
+Root cause                = JINJA_DICT_METHOD_COLLISION_ON_ITEMS_KEY
+Repair final head         = pending
+Repair final CI           = pending
+Repair merge              = pending
+Post-fix local UX review  = pending
+```
+
+---
+
+## 10. Local UX re-review after repair
+
+پس از merge:
 
 ```powershell
+git checkout main
+git pull origin main
 cd specialist_clinic
-python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
 ```
 
-در صورت نیاز، دادهٔ demo استاندارد بازسازی شود:
-
-```powershell
-.\.venv\Scripts\python.exe seed_demo_data.py
-```
-
-Projection فقط به‌صورت صریح ساخته شود:
+برنامه یک بار اجرا و بسته شود تا cache migration اعمال شود. سپس:
 
 ```powershell
 $env:FOLLOWUP_PROJECTION_SHADOW = "1"
@@ -282,91 +324,40 @@ $env:FOLLOWUP_PROJECTION_SHADOW = "1"
   --database specialist.db `
   --as-of "2026-08-03 12:00:00" `
   --apply
-```
 
-سپس UI فقط‌خواندنی فعال و برنامه اجرا شود:
-
-```powershell
 $env:FOLLOWUP_UNIFIED_WORKLIST_READONLY = "1"
 .\.venv\Scripts\python.exe start.py
 ```
 
-ورود توسعه طبق README فعلی: `admin / admin`؛ آدرس: `http://127.0.0.1:8090`.
+مرور باید شامل list، search/filter، Timeline، stale/overdue، deep-link، RTL/keyboard و flag-off باشد. Attestation باید commit نهایی repair را ثبت کند.
 
-### 8.2 مسیر مرور
+---
 
-1. ورود به «هاب پیام»؛
-2. انتخاب «نمای یکپارچه»؛
-3. تست جستجو و فیلترهای وضعیت، نقش و موعد؛
-4. بررسی badgeهای stale و overdue؛
-5. بازکردن detail هر چهار Episode تستی؛
-6. بررسی خوانایی Timeline و audit details؛
-7. بررسی deep-link به Worklist فعلی، پرونده و صف پیام؛
-8. بررسی موبایل/عرض کم، keyboard focus و RTL؛
-9. تأیید اینکه هیچ CTA حس «تکمیل داخل این صفحه» ایجاد نمی‌کند؛
-10. خاموش‌کردن flag و تأیید ناپدیدشدن tab و `404` route.
+## 11. Trancheهای آینده
 
-### 8.3 معیار attestation مالک
+### FO-4 — Claim, Assignment & Controlled Actions
 
-برای عبور gate باید نتیجهٔ زیر ثبت شود:
+**وضعیت: BLOCKED**
+
+فقط پس از:
 
 ```text
-FO3_UX_ACCEPTED = true|false
-reviewer = Emad211
-reviewed_commit = afed3545c0a90a1ed7ff7e0a892df89fffac00c2
-reviewed_on_test_data = true
-critical_ux_defects = 0
-notes = <خلاصه مشاهده یا نقص‌ها>
+PR #85 merged
+full CI green
+post-fix FO3_UX_ACCEPTED=true
+critical_ux_defects=0
+governance PR مستقل
 ```
 
-اگر نقص critical وجود داشته باشد، فقط patch محدود FO-3 مجاز است و FO-4 همچنان blocked می‌ماند.
+### FO-5 تا FO-10
+
+**وضعیت: BLOCKED**
+
+Routing/SLA، Structured Contact، SMS automation، Appointment reaction، Outbox، Evidence Assist و Automation Health هرکدام contract، Issue، flag، CI و rollback مستقل می‌خواهند.
 
 ---
 
-## 9. Trancheهای آینده
-
-### FO-4 — Controlled Actions, Claim & Assignment
-
-**وضعیت: BLOCKED**
-
-پس از attestation UX می‌تواند صرفاً برای طراحی و issue رسمی مجاز شود. دامنهٔ پیشنهادی:
-
-- claim/assignment با optimistic concurrency؛
-- append-only event و idempotency؛
-- permission جداگانه؛
-- stale projection recheck پیش از mutation؛
-- بدون auto-routing یا تصمیم بالینی؛
-- Worklist authority فقط پس از parity و rollback evidence تغییر می‌کند.
-
-### FO-5 — Routing & SLA
-
-**وضعیت: BLOCKED**
-
-- queue policy نسخه‌دار؛
-- SLA محاسباتی، نه clinical truth؛
-- escalation event؛
-- بدون واگذاری خودکار تا validation مستقل.
-
-### FO-6 — Structured Contact
-
-**وضعیت: BLOCKED**
-
-- outcomeهای ساختاریافته؛
-- idempotency؛
-- note آزاد اختیاری و غیرحاکم؛
-- عدم completion بالینی بدون evidence.
-
-### FO-7 تا FO-10
-
-**وضعیت: BLOCKED**
-
-شامل SMS guarded automation، appointment reactions، Evidence Assist، outbox/retry و observability است. هر کدام به plan version، Issue، PR، flag، CI و rollback مستقل نیاز دارد.
-
----
-
-## 10. Rollback
-
-### FO-3
+## 12. Rollback
 
 ```powershell
 $env:FOLLOWUP_UNIFIED_WORKLIST_READONLY = "0"
@@ -374,71 +365,52 @@ $env:FOLLOWUP_UNIFIED_WORKLIST_READONLY = "0"
 
 نتیجه:
 
-- navigation جدید مخفی می‌شود؛
-- routeهای جدید قابل مشاهده نیستند؛
+- tab و routeهای FO-3 از دید کاربر خارج می‌شوند؛
 - Worklist قدیمی ادامه می‌دهد؛
-- هیچ data rollback لازم نیست؛
-- Episode و Projection برای audit باقی می‌مانند.
-
-### FO-2
-
-`FOLLOWUP_PROJECTION_SHADOW=0` نگه داشته شود. Projection cache قابل حذف و rebuild است؛ Source Truth تغییر نمی‌کند.
-
-### FO-1
-
-Episode/Link/Event additive هستند. rollback رفتاری با خاموش نگه‌داشتن flags انجام می‌شود؛ حذف تاریخچه فقط با migration مستقل و تأییدشده مجاز است.
+- data rollback لازم نیست؛
+- Projection cache قابل rebuild است؛
+- Source Truthها دست‌نخورده می‌مانند.
 
 ---
 
-## 11. قواعد اجرای ایجنت
+## 13. قواعد ایجنت
 
-هر ایجنت پیش از کار باید:
-
-1. `main` و open PR/Issueها را بخواند؛
-2. این سند، `PROJECT_STATE.json`، `PROJECT_STATE.md` و `AGENTS.md` را تطبیق دهد؛
-3. از branch تازهٔ `main` شروع کند؛
-4. scope را به tranche مجاز محدود کند؛
-5. CI کامل را پیش از merge اجرا کند؛
-6. failure واقعی را از log اصلاح کند؛
-7. ادعای push، merge یا test را فقط با SHA/run evidence مطرح کند؛
-8. هیچ tranche بعدی را خودکار مجاز نکند.
-
-در وضعیت نسخهٔ `1.4.0` تنها کارهای مجاز عبارت‌اند از:
-
-- مرور لوکال FO-3؛
-- patch محدود نقص FO-3؛
-- مستندسازی attestation؛
-- bug/security fix متمرکز.
-
-FO-4 و بعد مجاز نیستند.
+1. `main`، Issue #84 و PR #85 را بخواند؛
+2. plan، Project State و AGENTS را تطبیق دهد؛
+3. فقط focused repair را تغییر دهد؛
+4. علت قطعی را مطابق traceback Jinja گزارش کند؛
+5. schema hardening را علت قطعی screenshot معرفی نکند؛
+6. فقط cache disposable را repair کند؛
+7. Source Truthها را تغییر ندهد؛
+8. full CI را پس از آخرین commit اجرا کند؛
+9. FO-4 را مجاز نکند.
 
 ---
 
-## 12. Progress Ledger
+## 14. Progress Ledger
 
 | تاریخ | رویداد | وضعیت |
 |---|---|---|
-| 2026-08-03 | owner طبقه‌بندی `specialist.db` را test-only اعلام کرد | ثبت شد |
-| 2026-08-03 | FO-0 validated | بسته شد |
-| 2026-08-03 | FO-1 در PR #75 merge شد | validated |
-| 2026-08-03 | FO-2 در PR #78 merge شد | validated |
-| 2026-08-03 | attestation v1.3.0 در PR #79 merge شد | FO-3 authorized |
-| 2026-08-03 | branch FO-3 ابتدا خالی تشخیص داده شد | ادعای قبلی اصلاح شد |
-| 2026-08-03 | FO-3 در PR #81 با CI کامل merge شد | technically validated |
-| 2026-08-03 | Issue #80 با evidence بسته شد | completed |
-| 2026-08-03 | Local UX Acceptance Gate تعریف شد | pending |
+| 2026-08-03 | FO-0 validated | completed |
+| 2026-08-03 | FO-1 PR #75 | validated |
+| 2026-08-03 | FO-2 PR #78 | validated |
+| 2026-08-03 | FO-3 PR #81 | technically validated |
+| 2026-08-03 | Plan v1.4.0 / PR #82 | UX gate defined |
+| 2026-08-03 | مالک generic 500 گزارش کرد | UX blocked |
+| 2026-08-03 | Issue #84 / PR #85 | focused repair in progress |
+| 2026-08-03 | real render test علت Jinja collision را ثبت کرد | root cause confirmed |
+| 2026-08-03 | bracket notation و cache hardening اعمال شد | CI pending |
 
 ---
 
-## 13. تصمیم فعلی
+## 15. تصمیم فعلی
 
 ```text
 FO-0 = VALIDATED
 FO-1 = VALIDATED
 FO-2 = VALIDATED
 FO-3 = TECHNICALLY_VALIDATED
-FO-3 LOCAL UX ACCEPTANCE = PENDING
+FO-3 LOCAL UX ACCEPTANCE = BLOCKED BY CONFIRMED JINJA RUNTIME DEFECT
+FOCUSED FO-3 FIX = IN PROGRESS
 FO-4 AND LATER = BLOCKED
 ```
-
-نقطهٔ ادامهٔ صحیح پروژه، اجرای مرور لوکال نسخهٔ merge‌شدهٔ FO-3 و ثبت attestation مالک است؛ نه آغاز mutation، assignment یا automation.

@@ -52,12 +52,21 @@
 </div>
 
 {% if not model.projection_ready %}
-<div class="card error-state" role="status">
-    <h2>Projection هنوز آماده نشده است</h2>
-    <p class="muted">این نما چیزی را حدس نمی‌زند. ابتدا Projection سایه باید از مسیر عملیاتی مجاز بازسازی شود.</p>
-    <a class="btn btn-ghost" href="{{ url_for('followups.worklist') }}">بازگشت به ورک‌لیست فعلی</a>
+<div class="card error-state" role="status" aria-live="polite">
+    <h2>{{ model.read_error_label or 'نمای یکپارچه هنوز آماده نیست' }}</h2>
+    <p class="muted">{{ model.read_error_help or 'هیچ داده یا رابطه‌ای حدس زده نشد. از ورک‌لیست فعلی استفاده کنید.' }}</p>
+    <div class="flex gap-2 wrap">
+        <a class="btn" href="{{ url_for('followups.worklist') }}">بازگشت به ورک‌لیست فعلی</a>
+        <a class="btn btn-ghost" href="{{ url_for('unified_followups.index') }}">تلاش دوباره</a>
+    </div>
+    {% if model.read_error_code %}
+    <details class="text-xs muted" style="margin-top:var(--s3);">
+        <summary>شناسهٔ وضعیت برای پشتیبانی</summary>
+        <code dir="ltr">{{ model.read_error_code }}</code>
+    </details>
+    {% endif %}
 </div>
-{% elif not model.items %}
+{% elif not model['items'] %}
 <div class="card error-state" role="status">
     <h2>موردی مطابق فیلتر پیدا نشد</h2>
     <p class="muted">فیلترها را تغییر دهید یا ورک‌لیست فعلی را بررسی کنید.</p>
@@ -83,7 +92,7 @@
                 </tr>
             </thead>
             <tbody>
-            {% for item in model.items %}
+            {% for item in model['items'] %}
                 <tr>
                     <td>
                         <a href="{{ url_for('unified_followups.detail', episode_id=item.episode_id) }}"><b>{{ item.patient_name }}</b></a>

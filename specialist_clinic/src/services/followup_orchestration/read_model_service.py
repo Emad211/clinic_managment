@@ -1,14 +1,19 @@
 """Bounded, read-only FO-3 projection queries for the Unified Worklist.
 
-This service never installs schema, rebuilds projection rows, or mutates a source of
-truth.  It is deliberately limited to paginated reads over the FO-2 cache plus the
-minimum patient identity and source-link metadata needed by the UI.
+The service never installs schema, rebuilds projection rows, or mutates a source of
+truth. Before issuing product queries it verifies the minimum read contract. Known
+SQLite/schema drift is returned as a PHI-free controlled state instead of escaping as
+an HTTP 500. Unknown programming errors are deliberately not swallowed.
 """
 from __future__ import annotations
 
 from datetime import datetime
 import math
 import sqlite3
+
+from src.adapters.sqlite.followup_projection_schema import (
+    PROJECTION_REQUIRED_COLUMNS,
+)
 
 
 STATE_LABELS = {
@@ -23,9 +28,39 @@ ROLE_LABELS = {
     "PHYSICIAN": "نیازمند بررسی پزشک",
     "MANAGER": "نیازمند بررسی مدیر عملیات",
 }
+READINESS_COPY = {
+    "READY": {
+        "label": "نمای یکپارچه آماده است",
+        "help": "",
+    },
+    "PROJECTION_NOT_BUILT": {
+        "label": "Projection هنوز ساخته نشده است",
+        "help": "ابتدا Projection سایه را با دستور مستندشده و به‌صورت صریح بازسازی کنید.",
+    },
+    "PROJECTION_SCHEMA_INCOMPATIBLE": {
+        "label": "نسخهٔ cache محلی با برنامه سازگار نیست",
+        "help": "برنامه را یک‌بار با نسخهٔ جدید اجرا کنید تا cache قابل‌بازسازی اصلاح شود؛ سپس Projection را صریحاً بازسازی کنید.",
+    },
+    "PATIENT_IDENTITY_SCHEMA_INCOMPATIBLE": {
+        "label": "ساختار هویت بیمار برای این نما کامل نیست",
+        "help": "نسخهٔ دیتابیس محلی باید با migrationهای فعلی هماهنگ شود. ورک‌لیست قبلی همچنان مسیر امن اقدام است.",
+    },
+    "EPISODE_LINK_SCHEMA_INCOMPATIBLE": {
+        "label": "ساختار ارتباط Episodeها کامل نیست",
+        "help": "هیچ رابطه‌ای حدس زده نشد. migration فعلی را اجرا و Projection را دوباره بسازید.",
+    },
+    "PROJECTION_READ_FAILED": {
+        "label": "خواندن نمای یکپارچه موقتاً ممکن نشد",
+        "help": "از ورک‌لیست فعلی استفاده کنید و پس از راه‌اندازی مجدد دوباره تلاش کنید.",
+    },
+}
 _ALLOWED_STATES = frozenset(STATE_LABELS)
 _ALLOWED_ROLES = frozenset(ROLE_LABELS)
 _ALLOWED_SLA = frozenset({"ON_TIME", "DUE_SOON", "OVERDUE", "BLOCKED", "NONE"})
+_PATIENT_REQUIRED_COLUMNS = frozenset({"id", "full_name", "national_id", "phone_number"})
+_LINK_REQUIRED_COLUMNS = frozenset(
+    {"id", "episode_id", "source_type", "source_id", "relation_type", "linked_at"}
+)
 
 
 def _as_datetime(value: object) -> datetime | None:
@@ -45,6 +80,16 @@ def _masked_national_id(value: object) -> str:
     return "••••••" + rendered[-4:]
 
 
+def _readiness_payload(code: str) -> dict:
+    copy = READINESS_COPY[code]
+    return {
+        "ready": code == "READY",
+        "code": code,
+        "label": copy["label"],
+        "help": copy["help"],
+    }
+
+
 class FollowupUnifiedReadModelService:
     """Serve deterministic list/detail models without N+1 or request-time writes."""
 
@@ -52,13 +97,30 @@ class FollowupUnifiedReadModelService:
         self.db = db
         self.db.row_factory = sqlite3.Row
 
-    def _table(self, name: str) -> bool:
-        return bool(
-            self.db.execute(
-                "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
-                (name,),
-            ).fetchone()
-        )
+    def _columns(self, name: str) -> frozenset[str]:
+        try:
+            return frozenset(
+                str(row[1]) for row in self.db.execute(f"PRAGMA table_info({name})")
+            )
+        except sqlite3.Error:
+            return frozenset()
+
+    def readiness(self) -> dict:
+        """Return a PHI-free preflight result for the read-only surface."""
+        projection = self._columns("followup_work_item_projection")
+        if not projection:
+            return _readiness_payload("PROJECTION_NOT_BUILT")
+        if not PROJECTION_REQUIRED_COLUMNS <= projection:
+            return _readiness_payload("PROJECTION_SCHEMA_INCOMPATIBLE")
+
+        patient = self._columns("patient_links")
+        if not _PATIENT_REQUIRED_COLUMNS <= patient:
+            return _readiness_payload("PATIENT_IDENTITY_SCHEMA_INCOMPATIBLE")
+
+        links = self._columns("followup_episode_links")
+        if not _LINK_REQUIRED_COLUMNS <= links:
+            return _readiness_payload("EPISODE_LINK_SCHEMA_INCOMPATIBLE")
+        return _readiness_payload("READY")
 
     @staticmethod
     def _normalize_page(value: object, *, default: int, maximum: int) -> int:
@@ -67,6 +129,39 @@ class FollowupUnifiedReadModelService:
         except (TypeError, ValueError):
             return default
         return min(max(parsed, 1), maximum)
+
+    @staticmethod
+    def _normalize_filters(
+        *, query: str | None, state_class: str | None,
+        role: str | None, sla_state: str | None,
+    ) -> dict:
+        state = str(state_class or "").strip().upper()
+        role_value = str(role or "").strip().upper()
+        sla = str(sla_state or "").strip().upper()
+        return {
+            "q": str(query or "").strip()[:120],
+            "state": state if state in _ALLOWED_STATES else "",
+            "role": role_value if role_value in _ALLOWED_ROLES else "",
+            "sla": sla if sla in _ALLOWED_SLA else "",
+        }
+
+    @staticmethod
+    def _empty_model(*, page_size: int, filters: dict, readiness: dict) -> dict:
+        return {
+            "projection_ready": False,
+            "readiness": readiness,
+            "read_error_code": readiness["code"],
+            "read_error_label": readiness["label"],
+            "read_error_help": readiness["help"],
+            "items": [],
+            "page": 1,
+            "per_page": page_size,
+            "total": 0,
+            "pages": 0,
+            "has_previous": False,
+            "has_next": False,
+            "filters": filters,
+        }
 
     @staticmethod
     def _explanation(row: dict) -> str:
@@ -92,7 +187,7 @@ class FollowupUnifiedReadModelService:
         return result
 
     def _links_for(self, episode_ids: list[str]) -> dict[str, list[dict]]:
-        if not episode_ids or not self._table("followup_episode_links"):
+        if not episode_ids:
             return {}
         placeholders = ",".join("?" for _ in episode_ids)
         rows = self.db.execute(
@@ -134,6 +229,7 @@ class FollowupUnifiedReadModelService:
             due_at = due_at.replace(tzinfo=due_now.tzinfo)
         item.update(
             {
+                "patient_name": str(item.get("patient_name") or "بیمار بدون نام"),
                 "patient_national_id_masked": _masked_national_id(
                     item.pop("patient_national_id", "")
                 ),
@@ -152,9 +248,9 @@ class FollowupUnifiedReadModelService:
                     and due_at < due_now
                 ),
                 "sources": sources,
-                "source_types": list(dict.fromkeys(
-                    source["source_type"] for source in sources
-                )),
+                "source_types": list(
+                    dict.fromkeys(source["source_type"] for source in sources)
+                ),
                 "primary_source": next(
                     (
                         source
@@ -182,44 +278,33 @@ class FollowupUnifiedReadModelService:
         page_number = self._normalize_page(page, default=1, maximum=1_000_000)
         page_size = self._normalize_page(per_page, default=20, maximum=50)
         current = now or datetime.now().replace(microsecond=0)
-
-        if not self._table("followup_work_item_projection"):
-            return {
-                "projection_ready": False,
-                "items": [],
-                "page": 1,
-                "per_page": page_size,
-                "total": 0,
-                "pages": 0,
-                "has_previous": False,
-                "has_next": False,
-                "filters": {},
-            }
+        filters = self._normalize_filters(
+            query=query,
+            state_class=state_class,
+            role=role,
+            sla_state=sla_state,
+        )
+        readiness = self.readiness()
+        if not readiness["ready"]:
+            return self._empty_model(
+                page_size=page_size,
+                filters=filters,
+                readiness=readiness,
+            )
 
         clauses: list[str] = []
         params: list[object] = []
-        normalized_state = str(state_class or "").strip().upper()
-        normalized_role = str(role or "").strip().upper()
-        normalized_sla = str(sla_state or "").strip().upper()
-        normalized_query = str(query or "").strip()[:120]
-
-        if normalized_state in _ALLOWED_STATES:
+        if filters["state"]:
             clauses.append("projection.state_class=?")
-            params.append(normalized_state)
-        else:
-            normalized_state = ""
-        if normalized_role in _ALLOWED_ROLES:
+            params.append(filters["state"])
+        if filters["role"]:
             clauses.append("projection.owner_role_proposal=?")
-            params.append(normalized_role)
-        else:
-            normalized_role = ""
-        if normalized_sla in _ALLOWED_SLA:
+            params.append(filters["role"])
+        if filters["sla"]:
             clauses.append("projection.sla_state=?")
-            params.append(normalized_sla)
-        else:
-            normalized_sla = ""
-        if normalized_query:
-            like = f"%{normalized_query}%"
+            params.append(filters["sla"])
+        if filters["q"]:
+            like = f"%{filters['q']}%"
             clauses.append(
                 "(patient.full_name LIKE ? OR patient.national_id LIKE ? "
                 "OR patient.phone_number LIKE ? OR projection.reason_label LIKE ? "
@@ -231,42 +316,51 @@ class FollowupUnifiedReadModelService:
         base = """ FROM followup_work_item_projection projection
                    JOIN patient_links patient
                      ON patient.id=projection.patient_link_id"""
-        total = int(
-            self.db.execute(
-                "SELECT COUNT(*)" + base + where,
-                params,
-            ).fetchone()[0]
-        )
-        pages = int(math.ceil(total / page_size)) if total else 0
-        if pages and page_number > pages:
-            page_number = pages
-        offset = (page_number - 1) * page_size
-        rows = self.db.execute(
-            """SELECT projection.*,
-                      patient.full_name AS patient_name,
-                      patient.national_id AS patient_national_id
-               """
-            + base
-            + where
-            + """ ORDER BY
-                    CASE projection.state_class
-                      WHEN 'BLOCKED' THEN 0
-                      WHEN 'ACTION_REQUIRED' THEN 1
-                      WHEN 'WAITING' THEN 2
-                      ELSE 3
-                    END,
-                    projection.priority DESC,
-                    COALESCE(
-                      projection.action_due_at,
-                      projection.target_at,
-                      '9999-12-31 23:59:59'
-                    ),
-                    projection.episode_id
-                   LIMIT ? OFFSET ?""",
-            [*params, page_size, offset],
-        ).fetchall()
-        episode_ids = [str(row["episode_id"]) for row in rows]
-        links = self._links_for(episode_ids)
+        try:
+            total = int(
+                self.db.execute(
+                    "SELECT COUNT(*)" + base + where,
+                    params,
+                ).fetchone()[0]
+            )
+            pages = int(math.ceil(total / page_size)) if total else 0
+            if pages and page_number > pages:
+                page_number = pages
+            offset = (page_number - 1) * page_size
+            rows = self.db.execute(
+                """SELECT projection.*,
+                          patient.full_name AS patient_name,
+                          patient.national_id AS patient_national_id
+                   """
+                + base
+                + where
+                + """ ORDER BY
+                        CASE projection.state_class
+                          WHEN 'BLOCKED' THEN 0
+                          WHEN 'ACTION_REQUIRED' THEN 1
+                          WHEN 'WAITING' THEN 2
+                          ELSE 3
+                        END,
+                        projection.priority DESC,
+                        COALESCE(
+                          projection.action_due_at,
+                          projection.target_at,
+                          '9999-12-31 23:59:59'
+                        ),
+                        projection.episode_id
+                       LIMIT ? OFFSET ?""",
+                [*params, page_size, offset],
+            ).fetchall()
+            episode_ids = [str(row["episode_id"]) for row in rows]
+            links = self._links_for(episode_ids)
+        except sqlite3.Error:
+            failed = _readiness_payload("PROJECTION_READ_FAILED")
+            return self._empty_model(
+                page_size=page_size,
+                filters=filters,
+                readiness=failed,
+            )
+
         items = [
             self._decorate(
                 row,
@@ -278,6 +372,10 @@ class FollowupUnifiedReadModelService:
         ]
         return {
             "projection_ready": True,
+            "readiness": readiness,
+            "read_error_code": None,
+            "read_error_label": "",
+            "read_error_help": "",
             "items": items,
             "page": page_number,
             "per_page": page_size,
@@ -285,12 +383,46 @@ class FollowupUnifiedReadModelService:
             "pages": pages,
             "has_previous": page_number > 1,
             "has_next": bool(pages and page_number < pages),
-            "filters": {
-                "q": normalized_query,
-                "state": normalized_state,
-                "role": normalized_role,
-                "sla": normalized_sla,
-            },
+            "filters": filters,
+        }
+
+    def get_item_result(
+        self,
+        episode_id: str,
+        *,
+        now: datetime | None = None,
+        stale_after_minutes: int = 120,
+    ) -> dict:
+        readiness = self.readiness()
+        if not readiness["ready"]:
+            return {"readiness": readiness, "item": None}
+        try:
+            row = self.db.execute(
+                """SELECT projection.*,
+                          patient.full_name AS patient_name,
+                          patient.national_id AS patient_national_id
+                   FROM followup_work_item_projection projection
+                   JOIN patient_links patient
+                     ON patient.id=projection.patient_link_id
+                   WHERE projection.episode_id=?""",
+                (str(episode_id),),
+            ).fetchone()
+            if not row:
+                return {"readiness": readiness, "item": None}
+            links = self._links_for([str(episode_id)])
+        except sqlite3.Error:
+            return {
+                "readiness": _readiness_payload("PROJECTION_READ_FAILED"),
+                "item": None,
+            }
+        return {
+            "readiness": readiness,
+            "item": self._decorate(
+                row,
+                sources=links.get(str(episode_id), []),
+                now=now or datetime.now().replace(microsecond=0),
+                stale_after_minutes=stale_after_minutes,
+            ),
         }
 
     def get_item(
@@ -300,31 +432,16 @@ class FollowupUnifiedReadModelService:
         now: datetime | None = None,
         stale_after_minutes: int = 120,
     ) -> dict | None:
-        if not self._table("followup_work_item_projection"):
-            return None
-        row = self.db.execute(
-            """SELECT projection.*,
-                      patient.full_name AS patient_name,
-                      patient.national_id AS patient_national_id
-               FROM followup_work_item_projection projection
-               JOIN patient_links patient
-                 ON patient.id=projection.patient_link_id
-               WHERE projection.episode_id=?""",
-            (str(episode_id),),
-        ).fetchone()
-        if not row:
-            return None
-        links = self._links_for([str(episode_id)])
-        return self._decorate(
-            row,
-            sources=links.get(str(episode_id), []),
-            now=now or datetime.now().replace(microsecond=0),
+        return self.get_item_result(
+            episode_id,
+            now=now,
             stale_after_minutes=stale_after_minutes,
-        )
+        )["item"]
 
 
 __all__ = [
     "FollowupUnifiedReadModelService",
+    "READINESS_COPY",
     "ROLE_LABELS",
     "STATE_LABELS",
 ]
