@@ -1,6 +1,8 @@
 """FO-3 feature-flagged, GET-only Unified Worklist and episode Timeline."""
 from __future__ import annotations
 
+import sqlite3
+
 from flask import (
     Blueprint,
     abort,
@@ -15,6 +17,7 @@ from src.common.utils import iran_now
 from src.security.permissions import Permission, has_permission, permission_required
 from src.services.followup_orchestration.read_model_service import (
     FollowupUnifiedReadModelService,
+    READINESS_COPY,
     ROLE_LABELS,
     STATE_LABELS,
 )
@@ -29,6 +32,27 @@ bp = Blueprint("unified_followups", __name__, url_prefix="/followups/unified")
 def _require_flag() -> None:
     if not current_app.config.get("FOLLOWUP_UNIFIED_WORKLIST_READONLY", False):
         abort(404)
+
+
+def _read_failure() -> dict:
+    copy = READINESS_COPY["PROJECTION_READ_FAILED"]
+    return {
+        "ready": False,
+        "code": "PROJECTION_READ_FAILED",
+        "label": copy["label"],
+        "help": copy["help"],
+    }
+
+
+def _render_unavailable(readiness: dict):
+    return render_template(
+        "followups/unified_unavailable.html",
+        readiness=readiness,
+        hub_tab="unified",
+        hub_pending=0,
+        alert_pending=0,
+        active_page="sms",
+    )
 
 
 @bp.after_request
@@ -75,15 +99,23 @@ def index():
 def detail(episode_id: str):
     _require_flag()
     db = get_db()
-    item = FollowupUnifiedReadModelService(db).get_item(
+    read_model = FollowupUnifiedReadModelService(db)
+    result = read_model.get_item_result(
         episode_id,
         now=iran_now().replace(tzinfo=None, microsecond=0),
     )
+    if not result["readiness"]["ready"]:
+        return _render_unavailable(result["readiness"])
+    item = result["item"]
     if item is None:
         abort(404)
-    timeline = FollowupTimelineService(db).build(episode_id)
+
+    try:
+        timeline = FollowupTimelineService(db).build(episode_id)
+    except sqlite3.Error:
+        return _render_unavailable(_read_failure())
     if timeline is None:
-        abort(404)
+        return _render_unavailable(_read_failure())
 
     deep_links = [
         {
