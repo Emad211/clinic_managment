@@ -103,7 +103,7 @@
                     <td>
                         <span class="badge {% if item.state_class == 'BLOCKED' %}badge-danger{% elif item.state_class == 'ACTION_REQUIRED' %}badge-warn{% elif item.state_class == 'WAITING' %}badge-info{% else %}badge-muted{% endif %}">{{ item.state_label }}</span>
                         {% if item.is_overdue %}<span class="badge badge-danger">موعدگذشته</span>{% endif %}
-                        {% if item.is_stale %}<span class="badge badge-warn">Projection قدیمی</span>{% endif %}
+                        {% if item.is_stale %}<span class="badge badge-warn">اطلاعات نما قدیمی است</span>{% endif %}
                         <div class="text-sm">{{ item.primary_explanation }}</div>
                         <div class="muted text-xs">آخرین وضعیت منبع: {{ item.last_source_event_at|jalali if item.last_source_event_at else 'نامشخص' }}</div>
                     </td>
@@ -114,7 +114,13 @@
                     <td class="nums">
                         <div>اقدام: {{ item.action_due_at|jalali if item.action_due_at else '—' }}</div>
                         <div>هدف: {{ item.target_at|jalali if item.target_at else '—' }}</div>
-                        <div class="muted text-xs">سن Projection: {{ item.projection_age_minutes|fa_num if item.projection_age_minutes is not none else 'نامشخص' }} دقیقه</div>
+                        <div class="muted text-xs">
+                            {% if item.projection_age_minutes is not none %}
+                            آخرین بازسازی نما: {{ item.projection_age_minutes|fa_num }} دقیقه پیش
+                            {% else %}
+                            زمان بازسازی نما نامشخص است
+                            {% endif %}
+                        </div>
                     </td>
                     <td>
                         <a class="btn btn-sm" href="{{ url_for('unified_followups.detail', episode_id=item.episode_id) }}">مشاهدهٔ Timeline</a>
