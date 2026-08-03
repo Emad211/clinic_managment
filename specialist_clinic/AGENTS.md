@@ -47,7 +47,7 @@ Canonical plan: `v1.5.2`.
 ```text
 Issue #94 / PR #95
 Merge 27ccb992f2cb43c78bfe98549c3f0414b88fd1d8
-CI 30844075841
+Final CI 30844075841
 773 Specialist + 54 Accounting
 ```
 
