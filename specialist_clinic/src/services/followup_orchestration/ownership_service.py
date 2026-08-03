@@ -259,7 +259,8 @@ class FollowupOwnershipService:
         episode_id: str,
         event_type: str,
         idempotency_key: str,
-        payload: dict,
+        payload: dict | None = None,
+        request_fields: dict | None = None,
     ) -> OwnershipState | None:
         row = self.db.execute(
             """SELECT episode_id, event_type, payload_json
@@ -268,11 +269,18 @@ class FollowupOwnershipService:
         ).fetchone()
         if not row:
             return None
-        if (
+        existing = _payload(row)
+        mismatch = (
             str(row["episode_id"]) != str(episode_id)
             or str(row["event_type"]) != str(event_type)
-            or canonical_json(_payload(row)) != canonical_json(payload)
-        ):
+        )
+        if payload is not None:
+            mismatch = mismatch or canonical_json(existing) != canonical_json(payload)
+        if request_fields is not None:
+            mismatch = mismatch or any(
+                existing.get(key) != value for key, value in request_fields.items()
+            )
+        if mismatch:
             raise FollowupOwnershipError(
                 "OWNERSHIP_IDEMPOTENCY_CONFLICT",
                 "شناسهٔ تکرار قبلاً برای اقدام دیگری استفاده شده است.",
@@ -305,6 +313,7 @@ class FollowupOwnershipService:
             return replay
 
         expected = _normalize_expected(expected_event_id)
+        repository = FollowupEpisodeRepository(self.db)
         try:
             self.db.execute("BEGIN IMMEDIATE")
             projection = self._projection(episode_id)
@@ -319,7 +328,7 @@ class FollowupOwnershipService:
                     "STALE_OWNERSHIP_FORM",
                     "مسئول این مورد تغییر کرده است؛ صفحه را تازه کنید و دوباره بررسی کنید.",
                 )
-            FollowupEpisodeRepository(self.db).append_event_once(
+            repository.append_event_once(
                 episode_id=str(episode_id),
                 event_type=event_type,
                 actor_username=str(actor["username"]),
@@ -345,6 +354,15 @@ class FollowupOwnershipService:
         idempotency_key: str,
     ) -> OwnershipState:
         current = self.state(episode_id)
+        key = str(idempotency_key or "").strip()
+        replay = self._existing_replay(
+            episode_id=episode_id,
+            event_type="CLAIMED",
+            idempotency_key=key,
+            request_fields={"action": "CLAIM", "owner_user_id": int(actor["id"])},
+        )
+        if replay:
+            return replay
         if not current.owner_role:
             raise FollowupOwnershipError(
                 "OWNER_ROLE_MISSING", "این مسیر هنوز صف مسئول مشخصی ندارد."
@@ -379,6 +397,15 @@ class FollowupOwnershipService:
         reason_code: str = "OWNER_RELEASE",
     ) -> OwnershipState:
         current = self.state(episode_id)
+        key = str(idempotency_key or "").strip()
+        replay = self._existing_replay(
+            episode_id=episode_id,
+            event_type="ASSIGNED",
+            idempotency_key=key,
+            request_fields={"action": "RELEASE"},
+        )
+        if replay:
+            return replay
         if current.owner_user_id is None:
             raise FollowupOwnershipError(
                 "NOT_ASSIGNED", "این مورد در حال حاضر مسئول مشخصی ندارد."
@@ -419,6 +446,15 @@ class FollowupOwnershipService:
     ) -> OwnershipState:
         self._require_admin(actor)
         role = _normalize_role(owner_role)
+        key = str(idempotency_key or "").strip()
+        replay = self._existing_replay(
+            episode_id=episode_id,
+            event_type="ROUTED",
+            idempotency_key=key,
+            request_fields={"action": "ROUTE", "owner_role": role},
+        )
+        if replay:
+            return replay
         current = self.state(episode_id)
         payload = {
             "action": "ROUTE",
@@ -448,12 +484,22 @@ class FollowupOwnershipService:
         reason_code: str,
     ) -> OwnershipState:
         self._require_admin(actor)
+        target_id = int(owner_user_id)
+        key = str(idempotency_key or "").strip()
+        replay = self._existing_replay(
+            episode_id=episode_id,
+            event_type="ASSIGNED",
+            idempotency_key=key,
+            request_fields={"owner_user_id": target_id},
+        )
+        if replay:
+            return replay
         current = self.state(episode_id)
         if not current.owner_role:
             raise FollowupOwnershipError(
                 "OWNER_ROLE_MISSING", "ابتدا صف مسئول این مسیر را مشخص کنید."
             )
-        target = self._user(int(owner_user_id))
+        target = self._user(target_id)
         self._require_role_compatible(target, current.owner_role)
         action = "REASSIGN" if current.owner_user_id else "ASSIGN"
         payload = {
