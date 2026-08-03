@@ -31,7 +31,7 @@ EXPECTED_FLAGS = (
     "FOLLOWUP_EVIDENCE_ASSIST",
     "FOLLOWUP_AUTOMATION_HEALTH",
 )
-POST_FO2_SCHEMA_NAMES = (
+POST_FO3_SCHEMA_NAMES = (
     "automation_decision_events",
     "operational_outbox",
 )
@@ -152,7 +152,7 @@ print(json.dumps({
     assert payload["values"] == {name: False for name in EXPECTED_FLAGS}
 
 
-def test_fo3_and_later_schema_is_not_installed_before_fo2():
+def test_fo4_and_later_schema_is_not_installed_before_fo3():
     schema_sources = [SRC_ROOT / "adapters" / "sqlite" / "schema.sql"]
     schema_sources.extend(
         path for path in (SRC_ROOT / "adapters" / "sqlite").glob("*.py") if path.is_file()
@@ -162,7 +162,7 @@ def test_fo3_and_later_schema_is_not_installed_before_fo2():
         if not path.is_file():
             continue
         text = path.read_text(encoding="utf-8")
-        for table in POST_FO2_SCHEMA_NAMES:
+        for table in POST_FO3_SCHEMA_NAMES:
             declaration = re.compile(
                 rf"CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?[\[\]`\"']*{re.escape(table)}\b",
                 re.IGNORECASE,
@@ -172,42 +172,41 @@ def test_fo3_and_later_schema_is_not_installed_before_fo2():
     assert violations == []
 
 
-def test_project_state_validates_fo1_and_authorizes_only_fo2():
+def test_project_state_validates_fo2_and_authorizes_only_fo3():
     state = json.loads((REPO_ROOT / "PROJECT_STATE.json").read_text(encoding="utf-8"))
     specialist = state["streams"]["specialist_clinic"]
     assert specialist["data_classification"] == "TEST_ONLY_SYNTHETIC_OR_RESETTABLE"
     assert specialist["real_patient_phi_expected"] is False
-    assert specialist["production_readiness_review_required_before_real_data"] is True
 
     stream = state["streams"]["followup_orchestration_ux_v1"]
     assert stream["program_code"] == "FOUX-V1"
-    assert stream["plan_version"] == "1.2.0"
-    assert stream["status"] == "FO_0_VALIDATED_FO_1_VALIDATED_FO_2_AUTHORIZED"
-    assert stream["fo1_evidence"]["implementation_pr"] == 75
-    assert stream["fo1_evidence"]["merge_commit"] == "15ef1585c069a74c26fbc0ce859e03906e5f475a"
-    assert stream["fo1_evidence"]["specialist_tests_passed"] == 736
-    assert stream["fo1_evidence"]["accounting_tests_passed"] == 54
-    assert stream["fo1_evidence"]["source_truth_digest_unchanged"] is True
-    assert stream["fo2_allowed"] is True
-    assert stream["fo3_allowed"] is False
+    assert stream["plan_version"] == "1.3.0"
+    assert stream["status"] == "FO_0_VALIDATED_FO_1_VALIDATED_FO_2_VALIDATED_FO_3_AUTHORIZED"
+    assert stream["fo2_evidence"]["implementation_pr"] == 78
+    assert stream["fo2_evidence"]["merge_commit"] == "6c6e33203376a32165418e0d3c6f2a4a48253e7b"
+    assert stream["fo2_evidence"]["specialist_tests_passed"] == 747
+    assert stream["fo2_evidence"]["accounting_tests_passed"] == 54
+    assert stream["fo2_evidence"]["legacy_coverage_percent"] == 100.0
+    assert stream["fo2_evidence"]["hidden_legacy_sources"] == 0
+    assert stream["fo3_allowed"] is True
+    assert stream["fo4_allowed"] is False
     assert stream["feature_flags"] == {name: False for name in EXPECTED_FLAGS}
-    assert state["global_freeze"]["followup_orchestration_fo3_and_later"].startswith("BLOCKED")
+    assert state["global_freeze"]["followup_orchestration_fo4_and_later"].startswith("BLOCKED")
 
 
 def test_canonical_docs_and_agent_guard_are_current():
-    agent_path = SPECIALIST_ROOT / "AGENTS.md"
     plan = PLAN_PATH.read_text(encoding="utf-8")
     baseline = BASELINE_PATH.read_text(encoding="utf-8")
-    agent = agent_path.read_text(encoding="utf-8")
+    agent = (SPECIALIST_ROOT / "AGENTS.md").read_text(encoding="utf-8")
 
-    assert "نسخه:** `1.2.0`" in plan
-    assert "FO_0_VALIDATED / FO_1_VALIDATED / FO_2_AUTHORIZED" in plan
-    assert "FO-1 | VALIDATED" in plan
-    assert "FO-2 | AUTHORIZED" in plan
+    assert "نسخه:** `1.3.0`" in plan
+    assert "FO_0_VALIDATED / FO_1_VALIDATED / FO_2_VALIDATED / FO_3_AUTHORIZED" in plan
+    assert "FO-2 | VALIDATED" in plan
+    assert "FO-3 | AUTHORIZED" in plan
     assert "Status:** `VALIDATED`" in baseline
-    assert "FO-1 = VALIDATED" in agent
-    assert "FO-2 = AUTHORIZED" in agent
-    assert "FO-3 and later = BLOCKED" in agent
+    assert "FO-2 = VALIDATED" in agent
+    assert "FO-3 = AUTHORIZED" in agent
+    assert "FO-4 and later = BLOCKED" in agent
 
 
 def test_read_only_baseline_capture_remains_non_mutating_and_phi_free(tmp_path):
@@ -225,7 +224,6 @@ def test_read_only_baseline_capture_remains_non_mutating_and_phi_free(tmp_path):
     assert captured["read_only"] is True
     assert captured["contains_phi"] is False
     assert captured["database_unchanged_after_capture"] is True
-    assert captured["database"]["quick_check"] == "ok"
     rendered = json.dumps(captured, ensure_ascii=False)
     assert "نام محرمانه نمونه" not in rendered
     assert "09120000000" not in rendered

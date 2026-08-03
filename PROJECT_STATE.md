@@ -2,19 +2,17 @@
 
 > **Source of Truth مدیریتی مخزن.** پیش از هر توسعه، وضعیت واقعی GitHub، این فایل و `PROJECT_STATE.json` باید خوانده شوند. حافظهٔ گفتگو یا branch قدیمی به‌تنهایی معتبر نیست.
 
-- آخرین ممیزی: `2026-08-03 02:51 +03:30`
-- شاخهٔ مرجع محصول: `main`
-- head مرجع پیش از این attestation: `15ef1585c069a74c26fbc0ce859e03906e5f475a`
+- آخرین ممیزی: `2026-08-03 03:32 +03:30`
+- شاخهٔ مرجع: `main`
+- head مرجع پیش از این attestation: `6c6e33203376a32165418e0d3c6f2a4a48253e7b`
 - وضعیت کلی: `PRODUCT_OPERATIONAL / PRE_PRODUCTION_TEST_DATA / CLINICAL_CONTENT_NOT_APPROVED / GOVERNANCE_RECONCILIATION_REQUIRED`
 
 ---
 
-## 1. تعریف پروژه
-
-Monorepo شامل جریان‌های مستقل زیر است:
+## 1. جریان‌های مستقل
 
 1. `webapp/` — حسابداری Flask + SQLite؛
-2. `specialist_clinic/` — مدیریت بیماری مزمن، Worklist، SMS، نوبت، پرونده و Clinical Engine v2؛
+2. `specialist_clinic/` — محصول مدیریت بیماری مزمن؛
 3. Clinical Engine v2؛
 4. Clinical Rule Research؛
 5. Hypoglycemia Shadow؛
@@ -22,13 +20,11 @@ Monorepo شامل جریان‌های مستقل زیر است:
 7. Release Engineering؛
 8. Halqe Migration.
 
-این جریان‌ها اختیار یکدیگر را ندارند.
+هیچ جریان، اختیار ضمنی برای تغییر جریان دیگر ندارد.
 
 ---
 
-## 2. طبقه‌بندی دادهٔ محیط فعلی
-
-طبق attestation مالک در `2026-08-03`:
+## 2. طبقه‌بندی محیط
 
 ```text
 specialist.db data class = TEST_ONLY / SYNTHETIC_OR_RESETTABLE
@@ -36,29 +32,29 @@ real patient PHI         = NOT EXPECTED
 reset/reseed             = ALLOWED
 ```
 
-این وضعیت فقط برای محیط فعلی است. پیش از ورود دادهٔ واقعی بیمار، production-readiness، privacy، backup/restore، role/consent review و baseline بدون PHI الزامی است. هیچ shortcut مبتنی بر `TEST_ONLY` نباید وارد runtime شود.
+این attestation فقط برای محیط فعلی است. قبل از دادهٔ واقعی، production-readiness، privacy، backup/restore، consent/role review و baseline بدون PHI اجباری است. هیچ shortcut مبتنی بر `TEST_ONLY` وارد runtime نمی‌شود.
 
 ---
 
 ## 3. ماتریس جریان‌ها
 
-| جریان | مرجع | وضعیت | اختیار | ممنوعیت |
-|---|---|---|---|---|
-| محصول عملیاتی | `main` | `ACTIVE_PRODUCT_PRE_PRODUCTION` | رفتار واقعی برنامه | تغییر بالینی بدون گیت |
-| FOUX-V1 | plan canonical / Project State | `FO_0_VALIDATED / FO_1_VALIDATED / FO_2_AUTHORIZED` | shadow projection در FO-2 | UI/mutation/routing/automation |
-| Clinical Engine v2 | code/tests main | `INFRASTRUCTURE_IMPLEMENTED / ACTIVATION_GATED` | runtime/audit | activation بدون approval |
-| Rule package | `2026.1-draft.3` | `LEGACY_DRAFT_QUARANTINED` | provenance/test | clinical use |
-| پژوهش ADA | PR #60 | `FROZEN_V0_9_4` | evidence draft | runtime authority |
-| Hypoglycemia Shadow | PR #62–#67 | `PAUSED_FOR_RECONCILIATION` | experiment | expansion/Rule/Task/Alert |
-| Shadow disposition | branch مربوط | `PAUSED_DO_NOT_MERGE` | ندارد | merge/development |
-| Release A15 | PR #59 | `STALE_DIVERGED_DRAFT` | requirements | direct merge |
-| Halqe | PRهای قدیمی | `SEPARATE_STRATEGIC_STREAM` | design/rehearsal | automatic cutover |
+| جریان | وضعیت | اختیار فعلی | ممنوعیت |
+|---|---|---|---|
+| محصول عملیاتی | `ACTIVE_PRODUCT_PRE_PRODUCTION` | رفتار واقعی main | تغییر بالینی بدون گیت |
+| FOUX-V1 | `FO_0/1/2_VALIDATED / FO_3_AUTHORIZED` | UI خواندنی FO-3 | هر mutation، claim، SMS یا routing |
+| Clinical Engine v2 | `INFRASTRUCTURE_IMPLEMENTED / ACTIVATION_GATED` | runtime/audit | activation بدون approval |
+| Rule package | `LEGACY_DRAFT_QUARANTINED` | provenance/test | clinical use |
+| ADA research | `FROZEN_V0_9_4` | evidence draft | runtime authority |
+| Hypoglycemia Shadow | `PAUSED_FOR_RECONCILIATION` | experiment | expansion/Rule/Task/Alert |
+| Shadow disposition | `PAUSED_DO_NOT_MERGE` | ندارد | merge/development |
+| Release A15 | `STALE_DIVERGED_DRAFT` | requirement reference | direct merge |
+| Halqe | `SEPARATE_STRATEGIC_STREAM` | design/rehearsal | automatic cutover |
 
 ---
 
-## 4. Follow-up Orchestration & UX v1
+## 4. FOUX-V1
 
-### 4.1 مرجع‌ها
+### منابع
 
 ```text
 Plan:
@@ -68,80 +64,101 @@ Baseline:
 specialist_clinic/docs/FOLLOWUP_ORCHESTRATION_UX_V1_BASELINE.md
 ```
 
-### 4.2 FO-0 — VALIDATED
+### FO-0 — VALIDATED
 
 ```text
-Issue           = #71
-Implementation  = PR #72
-Attestation     = PR #73
-Merge           = 901dbfdf9c358ecc09d2a60a0680f6a4a8370d17
-Specialist CI   = 731 passed
-Accounting CI   = 54 passed
-Flags           = 10/10 OFF
+Issue #71
+PR #72 / #73
+merge 901dbfdf9c358ecc09d2a60a0680f6a4a8370d17
+731 Specialist + 54 Accounting
 ```
 
-### 4.3 FO-1 — VALIDATED
+### FO-1 — VALIDATED
 
 ```text
-Issue           = #74
-Implementation  = PR #75
-Merge           = 15ef1585c069a74c26fbc0ce859e03906e5f475a
-Specialist CI   = 736 passed
-Accounting CI   = 54 passed
-Synthetic run   = 4 Episodes / 12 Links
-Second apply    = 0 new Episodes / 0 new Links
-Source digest   = unchanged
+Issue #74
+PR #75
+merge 15ef1585c069a74c26fbc0ce859e03906e5f475a
+736 Specialist + 54 Accounting
+4 Episodes / 12 Links / zero duplicates on second apply
+source truth unchanged
 ```
 
-FO-1 قابلیت‌های زیر را اضافه کرد:
-
-- `followup_episodes` با identity immutable و versioned؛
-- `followup_episode_links` با patient-scope و source revision؛
-- `followup_episode_events` append-only و linear؛
-- explicit orphan reason به‌جای حدس؛
-- dry-run/apply backfill CLI؛
-- schema additive/idempotent؛
-- بدون automatic startup backfill؛
-- بدون تغییر Worklist، Scheduler، SMS، Appointment، Rule یا source truth.
-
-### 4.4 قدم مجاز فعلی
+FO-1 روی main:
 
 ```text
-FO-2 — Projection, Next Action & Shadow Parity
+followup_episodes              immutable identity
+followup_episode_links         immutable patient-safe links
+followup_episode_events        append-only linear lineage
 ```
 
-دامنهٔ مجاز FO-2:
+Backfill explicit است و startup backfill خودکار ندارد.
 
-- `followup_work_item_projection` به‌عنوان cache/read model؛
-- source-state adapterهای read-only؛
-- state class: `ACTION_REQUIRED / WAITING / BLOCKED / TERMINAL`؛
-- next action، waiting reason و blocked reason؛
-- جداسازی `action_due_at` و `target_at`؛
-- owner role proposal فقط به‌صورت پیشنهاد؛
-- deterministic projection hash/rebuild؛
-- parity report با Worklist فعلی؛
-- lag/performance metrics؛
-- explicit CLI/test execution؛
-- flag `FOLLOWUP_PROJECTION_SHADOW` default OFF.
+### FO-2 — VALIDATED
 
-ممنوع در FO-2:
+```text
+Issue #77
+PR #78
+merge 6c6e33203376a32165418e0d3c6f2a4a48253e7b
+Final CI run 30773195914
+747 Specialist + 54 Accounting
+100% legacy coverage
+0 hidden legacy sources
+100% explainable mismatch
+rebuild deterministic
+source truth unchanged
+```
 
-- UI جدید؛
+FO-2 روی main:
+
+```text
+followup_work_item_projection   rebuildable cache
+source-state readers            read-only
+FOUX-NEXT-ACTION-V1             fail-closed policy
+state classes                   ACTION_REQUIRED / WAITING / BLOCKED / TERMINAL
+role                            proposal only
+CLI                             explicit shadow rebuild
+```
+
+هیچ Worklist، Scheduler، SMS، Appointment یا Clinical behavior به Projection متصل نشده است.
+
+### قدم مجاز فعلی: FO-3
+
+```text
+FO-3 — Read-only Unified Worklist & Timeline
+```
+
+دامنهٔ مجاز:
+
+- route و template خواندنی و feature-flagged؛
+- pagination، search و filter؛
+- کارت با زبان عملیاتی؛
+- action/wait/block copy؛
+- role proposal؛
+- projection age/stale state؛
+- Timeline read-only؛
+- permission-safe deep-links؛
+- accessibility/RTL/Jalali؛
+- no POST/mutation endpoint؛
+- Worklist قدیمی همچنان operational authority.
+
+ممنوع:
+
 - claim/assignment؛
-- routing mutation یا SLA escalation؛
-- SMS auto-send؛
+- routing mutation و SLA escalation؛
+- SMS auto-send یا approval change؛
 - appointment reaction؛
-- outbox؛
-- automatic closure؛
+- outbox/retry/auto-close؛
 - Evidence Assist؛
-- clinical decision؛
-- Rule/Shadow change.
+- Clinical decision؛
+- Rule/Shadow change؛
+- accounting write.
 
-FO-3 و بالاتر تا Exit Gate FO-2 مسدودند.
+FO-4 و بالاتر تا Exit Gate FO-3 مسدودند.
 
 ---
 
-## 5. Feature Flagهای FOUX-V1
+## 5. Feature Flagها
 
 همه default OFF:
 
@@ -158,31 +175,31 @@ FOLLOWUP_EVIDENCE_ASSIST
 FOLLOWUP_AUTOMATION_HEALTH
 ```
 
-Episode schema و CLI روی main وجود دارند، ولی backfill و projection فقط با اجرای صریح انجام می‌شوند. هیچ request/Scheduler/UI behavior به‌طور پیش‌فرض تغییر نکرده است.
+در FO-3 فقط `FOLLOWUP_UNIFIED_WORKLIST_READONLY` ممکن است مصرف شود. وقتی OFF است، route/navigation جدید نباید قابل مشاهده باشد و رفتار قدیمی دقیقاً حفظ شود.
 
 ---
 
-## 6. Specialist Clinic Product State
+## 6. وضعیت Specialist Clinic
 
 قابلیت‌های موجود:
 
 - patient link و پروندهٔ طولی؛
-- medication/allergy/lab/vital؛
+- دارو، آلرژی، آزمایش و vital؛
 - Appointment و Doctor Queue؛
 - Encounter documentation append-only؛
 - Plan Commitment و Worklist؛
-- Contact events append-only؛
-- SMS consent/approval/campaign/delivery/attribution؛
+- Contact Event append-only؛
+- SMS consent/approval/campaign/delivery؛
 - financial bridge read-only؛
-- Scheduler با lease/fencing/idempotency؛
+- Scheduler lease/fencing/idempotency؛
 - Clinical Engine v2 suggestion-only؛
-- FOUX Episode lineage.
+- FOUX Episode lineage و Shadow Projection.
 
-Specialist Clinic فقط `clinic_new.db` را read-only می‌خواند. هر Write به دیتابیس حسابداری ممنوع است.
+Specialist Clinic فقط `clinic_new.db` را read-only می‌خواند.
 
 ---
 
-## 7. Clinical Engine و Rule Content
+## 7. Clinical Engine و Ruleها
 
 ```text
 Engine infrastructure       = IMPLEMENTED
@@ -190,13 +207,13 @@ Clinical content approval   = NOT COMPLETED
 Visible clinical activation = BLOCKED
 ```
 
-Ruleهای `2026.1-draft.3` quarantined هستند و باید بعداً `REVALIDATE / REPLACE / RETIRE` شوند. تست فنی معادل clinical approval نیست.
+Ruleهای `2026.1-draft.3` quarantined هستند و باید `REVALIDATE / REPLACE / RETIRE` شوند. تست فنی معادل clinical approval نیست.
 
 ---
 
-## 8. پژوهش ADA و Hypoglycemia Shadow
+## 8. ADA Research و Hypoglycemia Shadow
 
-PR #60 فقط Evidence Authority draft است:
+PR #60:
 
 ```text
 Rule Candidate = 0
@@ -212,50 +229,42 @@ EXPERIMENTAL_INTERNAL_SHADOW
 PAUSED_FOR_RECONCILIATION
 ```
 
-افزودن Task/SLA/Alert/medication logic یا معرفی آن به‌عنوان Rule معتبر ممنوع است.
+Task/SLA/Alert/medication expansion یا معرفی به‌عنوان Rule معتبر ممنوع است.
 
 ---
 
-## 9. Release Engineering و Halqe
+## 9. Release و Halqe
 
 A15 باید از main فعلی بازسازی شود و Windows build، self-test و backup/restore rehearsal داشته باشد. PR #59 مستقیم merge نمی‌شود.
 
-Halqe جریان استراتژیک جداست. Flask/SQLite فعلی تا تصمیم رسمی cutover، Product Authority باقی می‌ماند.
+Halqe جریان مستقل است. Flask/SQLite فعلی تا cutover رسمی Product Authority است.
 
 ---
 
-## 10. قوانین Scope و توسعه
+## 10. قوانین ثابت توسعه
 
-پیش از هر tranche:
-
-1. جریان و خروجی مشخص شود؛
-2. Scope متناسب با ریسک باشد؛
-3. feature flag و rollback تعریف شود؛
-4. focused/full tests تعریف شود؛
-5. source truth و clinical safety ثابت بماند؛
-6. بعد از merge، Project State و plan به‌روزرسانی شوند.
-
-قواعد ثابت:
-
-- relation مبهم → orphan reason؛
-- projection حقیقت بالینی نیست؛
-- FO-2 فقط shadow/read-only است؛
-- owner role در FO-2 فقط proposal است؛
-- هیچ تاریخ یا next action ساختگی بدون policy/version تولید نمی‌شود؛
-- هر nonterminal projection باید action/wait/block روشن داشته باشد؛
-- same source snapshot باید same projection hash بدهد؛
-- feature branch نیمه‌کاره مسیر پروژه را تعیین نمی‌کند.
+- Source Truthها authoritative می‌مانند.
+- Episode و Projection حقیقت بالینی نیستند.
+- relation مبهم با reason code ثبت می‌شود.
+- same snapshot + same as-of → same projection hash.
+- FO-3 فقط read-only است.
+- Worklist قدیمی در FO-3 حذف یا تغییر نمی‌کند.
+- deep-link permission را دور نمی‌زند.
+- no N+1 و pagination اجباری است.
+- state فنی در copy اصلی نمایش داده نمی‌شود.
+- Clinical completion بدون Evidence ممنوع است.
+- branch نیمه‌کاره مسیر پروژه را تعیین نمی‌کند.
 
 ---
 
-## 11. ترتیب ادامهٔ FOUX
+## 11. ترتیب FOUX
 
 ```text
 FO-0 Governance                 VALIDATED
 FO-1 Episode/Link/Event         VALIDATED
-FO-2 Projection Shadow          AUTHORIZED
-FO-3 Read-only Worklist         BLOCKED
-FO-4 Ownership/Routing/SLA      NOT_STARTED
+FO-2 Projection Shadow          VALIDATED
+FO-3 Read-only Worklist         AUTHORIZED
+FO-4 Ownership/Routing/SLA      BLOCKED
 FO-5 Structured Contact         NOT_STARTED
 FO-6 Governed SMS               NOT_STARTED
 FO-7 Cross-channel/Outbox       NOT_STARTED
@@ -271,8 +280,9 @@ FO-10 Pilot/Cutover             NOT_STARTED
 ```text
 FOUX FO-0                     = VALIDATED
 FOUX FO-1                     = VALIDATED
-FOUX FO-2                     = ALLOWED_WITHIN_CANONICAL_SHADOW_SCOPE
-FOUX FO-3+                    = BLOCKED_PENDING_FO_2_EXIT
+FOUX FO-2                     = VALIDATED
+FOUX FO-3                     = ALLOWED_READ_ONLY
+FOUX FO-4+                    = BLOCKED_PENDING_FO_3_EXIT
 New clinical rules           = PAUSED
 Hypoglycemia Shadow expansion= PAUSED
 Disposition branch           = DO_NOT_MERGE
