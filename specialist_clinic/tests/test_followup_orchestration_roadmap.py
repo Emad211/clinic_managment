@@ -31,12 +31,12 @@ def test_complete_roadmap_preserves_fo5_through_fo10_and_current_gate():
     ):
         assert tranche in roadmap
 
+    assert roadmap.count("BLOCKED_NOT_STARTED") >= 6
     assert "4.8 / 11 = 43.6%" in roadmap
     assert "Remaining                                = 56.4%" in roadmap
     assert "CURRENT = FO-4 Local Owner UX Acceptance" in roadmap
     assert "ISSUE   = #94" in roadmap
     assert "THEN    = separate governance decision whether FO-5 may start" in roadmap
-    assert "FO-5  Structured Contact, Retry & Escalation       = BLOCKED" in roadmap
 
 
 def test_important_governance_docs_link_the_complete_roadmap():
