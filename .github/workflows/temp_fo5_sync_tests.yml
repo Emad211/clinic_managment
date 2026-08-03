@@ -1,0 +1,243 @@
+name: Temporary FO-5 authorization guard sync
+
+on:
+  push:
+    branches:
+      - docs/foux-v1-fo5-authorization
+    paths:
+      - .github/workflows/temp_fo5_sync_tests.yml
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: docs/foux-v1-fo5-authorization
+      - name: Update governance guards
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          tests = Path('specialist_clinic/tests')
+
+          fo0 = tests / 'test_followup_orchestration_fo0.py'
+          text = fo0.read_text(encoding='utf-8')
+          start = text.index('def test_project_state_attests_fo4_and_blocks_fo5_pending_owner_review():')
+          end = text.index('\ndef test_read_only_baseline_capture_remains_non_mutating_and_phi_free', start)
+          replacement = '''def test_project_state_attests_fo4_acceptance_and_authorizes_bounded_fo5():
+    state = json.loads((REPO_ROOT / "PROJECT_STATE.json").read_text(encoding="utf-8"))
+    specialist = state["streams"]["specialist_clinic"]
+    assert specialist["data_classification"] == "TEST_ONLY_SYNTHETIC_OR_RESETTABLE"
+    assert specialist["real_patient_phi_expected"] is False
+
+    stream = state["streams"]["followup_orchestration_ux_v1"]
+    assert stream["program_code"] == "FOUX-V1"
+    assert stream["plan_version"] == "1.6.0"
+    assert stream["current_tranche"] == "FO_5_AUTHORIZED_IMPLEMENTATION_PENDING"
+    assert "FO_4_OWNER_ACCEPTED" in stream["status"]
+    assert "FO_5_AUTHORIZED_NOT_STARTED" in stream["status"]
+    assert "FO_6_AND_LATER_BLOCKED" in stream["status"]
+
+    fo4 = stream["fo4_evidence"]
+    assert fo4["tracking_issue"] == 94
+    assert fo4["runtime_ui_review_commit"] == (
+        "cd243424ecbae98892e0dfde1780bb846554942f"
+    )
+    assert fo4["owner_acceptance_issue"] == 94
+    assert fo4["local_ux_acceptance"] is True
+    assert fo4["reviewer"] == "Emad211"
+    assert fo4["reviewed_commit"] == (
+        "cd243424ecbae98892e0dfde1780bb846554942f"
+    )
+    assert fo4["reviewed_on_test_data"] is True
+    assert fo4["critical_ux_defects"] == 0
+    assert fo4["status"] == "VALIDATED_WITH_OWNER_ACCEPTANCE"
+
+    seeded = fo4["seeded_worklist_repair"]
+    assert seeded["final_ci_run"] == 30851594179
+    assert seeded["manual_test_followups_preserved"] is True
+    assert seeded["duplicate_episode_link_event_count"] == 0
+    sla = fo4["effective_sla_repair"]
+    assert sla["final_ci_run"] == 30852909213
+    assert sla["request_time_effective_filtering"] is True
+    assert sla["read_time_write"] is False
+
+    authorization = stream["fo5_authorization"]
+    assert authorization["tracking_issue"] == 103
+    assert authorization["governance_pr"] == 104
+    assert authorization["scope"] == "STRUCTURED_CONTACT_RETRY_ESCALATION_ONLY"
+    assert authorization["feature_flag"] == "FOLLOWUP_STRUCTURED_CONTACT"
+    assert authorization["default_enabled"] is False
+    assert authorization["status"] == "AUTHORIZED"
+    assert stream["fo5_allowed"] is True
+    assert stream["fo6_allowed"] is False
+    assert stream["next_gate"] == "FO5_IMPLEMENTATION_ISSUE_AND_PR"
+    assert stream["feature_flags"] == {name: False for name in EXPECTED_FLAGS}
+    assert state["global_freeze"]["followup_orchestration_fo5"].startswith(
+        "AUTHORIZED_IMPLEMENTATION_ONLY"
+    )
+    assert state["global_freeze"]["followup_orchestration_fo6_and_later"].startswith(
+        "BLOCKED"
+    )
+
+
+def test_canonical_docs_and_agent_guard_authorize_fo5_but_block_fo6():
+    plan = PLAN_PATH.read_text(encoding="utf-8")
+    baseline = BASELINE_PATH.read_text(encoding="utf-8")
+    roadmap = (
+        SPECIALIST_ROOT / "docs" / "FOLLOWUP_ORCHESTRATION_UX_V1_ROADMAP.md"
+    ).read_text(encoding="utf-8")
+    agent = (SPECIALIST_ROOT / "AGENTS.md").read_text(encoding="utf-8")
+
+    assert "نسخه:** `1.6.0`" in plan
+    assert "FO_5_AUTHORIZED_IMPLEMENTATION_PENDING" in plan
+    assert "FO_6_AND_LATER_BLOCKED" in plan
+    assert "FO4_UX_ACCEPTED = true" in plan
+    assert "reviewed_commit = cd243424ecbae98892e0dfde1780bb846554942f" in plan
+    assert "Issue #103" in plan
+    assert "FOLLOWUP_STRUCTURED_CONTACT" in plan
+    assert "SMS automation" in plan
+    assert "FO-5 Structured Contact implementation" in roadmap
+    assert "AUTHORIZED_NOT_STARTED" in roadmap
+    assert "5.0 / 11 = 45.5%" in roadmap
+    assert "FO-5 = AUTHORIZED / IMPLEMENTATION PENDING" in agent
+    assert "FO-6 and later = BLOCKED" in agent
+    assert "CURRENT ISSUE = #103" in agent
+    assert "Status:** `VALIDATED`" in baseline
+
+'''
+          fo0.write_text(text[:start] + replacement + text[end+1:], encoding='utf-8')
+
+          fo4_path = tests / 'test_followup_orchestration_fo4_repair_attestation.py'
+          fo4_path.write_text('''from __future__ import annotations
+
+import json
+from pathlib import Path
+
+SPECIALIST_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = SPECIALIST_ROOT.parent
+
+
+def test_fo4_repairs_remain_attested_after_owner_acceptance():
+    state = json.loads((REPO_ROOT / "PROJECT_STATE.json").read_text(encoding="utf-8"))
+    stream = state["streams"]["followup_orchestration_ux_v1"]
+    fo4 = stream["fo4_evidence"]
+
+    assert stream["plan_version"] == "1.6.0"
+    assert stream["current_tranche"] == "FO_5_AUTHORIZED_IMPLEMENTATION_PENDING"
+    assert stream["fo4_allowed"] is True
+    assert stream["fo5_allowed"] is True
+    assert stream["fo6_allowed"] is False
+    assert fo4["runtime_ui_review_commit"] == "cd243424ecbae98892e0dfde1780bb846554942f"
+    assert fo4["local_ux_acceptance"] is True
+    assert fo4["critical_ux_defects"] == 0
+    assert fo4["status"] == "VALIDATED_WITH_OWNER_ACCEPTANCE"
+
+    seeded = fo4["seeded_worklist_repair"]
+    assert seeded["merge_commit"] == "24119671b8b93fdb20db3064a59d416e02d81ef6"
+    assert seeded["explicit_seed_preparation"] is True
+    assert seeded["request_time_rebuild"] is False
+    assert seeded["manual_test_followups_preserved"] is True
+    assert seeded["duplicate_episode_link_event_count"] == 0
+
+    sla = fo4["effective_sla_repair"]
+    assert sla["merge_commit"] == "cd243424ecbae98892e0dfde1780bb846554942f"
+    assert sla["request_time_effective_filtering"] is True
+    assert sla["read_time_write"] is False
+
+
+def test_plan_and_agent_preserve_fo4_evidence_while_authorizing_fo5():
+    plan = (SPECIALIST_ROOT / "docs" / "FOLLOWUP_ORCHESTRATION_UX_V1_IMPLEMENTATION_PLAN.md").read_text(encoding="utf-8")
+    agent = (SPECIALIST_ROOT / "AGENTS.md").read_text(encoding="utf-8")
+    for value in ("cd243424ecbae98892e0dfde1780bb846554942f", "prepare_seeded_followup_view.py"):
+        assert value in plan
+        assert value in agent
+    assert "Final CI 30844075841" in plan
+    assert "CI 30851594179" in plan
+    assert "CI 30852909213" in plan
+    assert "FO-5 = AUTHORIZED / IMPLEMENTATION PENDING" in agent
+    assert "FO-6 and later = BLOCKED" in agent
+''', encoding='utf-8')
+
+          roadmap_path = tests / 'test_followup_orchestration_roadmap.py'
+          roadmap_path.write_text('''from __future__ import annotations
+
+import json
+from pathlib import Path
+
+SPECIALIST_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = SPECIALIST_ROOT.parent
+ROADMAP = SPECIALIST_ROOT / "docs" / "FOLLOWUP_ORCHESTRATION_UX_V1_ROADMAP.md"
+PLAN = SPECIALIST_ROOT / "docs" / "FOLLOWUP_ORCHESTRATION_UX_V1_IMPLEMENTATION_PLAN.md"
+
+
+def test_complete_roadmap_preserves_fo5_through_fo10_and_current_gate():
+    roadmap = ROADMAP.read_text(encoding="utf-8")
+    for tranche in (
+        "FO-5 — Structured Contact, Retry & Escalation",
+        "FO-6 — Governed SMS Automation & Freshness",
+        "FO-7 — Cross-channel Transitions & Operational Outbox",
+        "FO-8 — Clinical Evidence Assist",
+        "FO-9 — Automation Health & Operational Control",
+        "FO-10 — Controlled Pilot, KPI Proof, Cutover & Legacy Retirement",
+    ):
+        assert tranche in roadmap
+    assert "5.0 / 11 = 45.5%" in roadmap
+    assert "54.5%" in roadmap
+    assert "CURRENT = FO-5 Structured Contact implementation" in roadmap
+    assert "ISSUE   = #103" in roadmap
+    assert "FO-5 technical validation and local owner UX acceptance" in roadmap
+    assert "AUTHORIZED_NOT_STARTED" in roadmap
+    assert roadmap.count("BLOCKED_NOT_STARTED") >= 5
+
+
+def test_important_governance_docs_link_the_complete_roadmap():
+    plan = PLAN.read_text(encoding="utf-8")
+    state = (REPO_ROOT / "PROJECT_STATE.md").read_text(encoding="utf-8")
+    agent = (SPECIALIST_ROOT / "AGENTS.md").read_text(encoding="utf-8")
+    roadmap_name = "FOLLOWUP_ORCHESTRATION_UX_V1_ROADMAP.md"
+    assert roadmap_name in plan and roadmap_name in state and roadmap_name in agent
+    assert "5.0 / 11 = 45.5%" in plan
+    assert "Gate progress = 5.0 / 11 = 45.5%" in state
+    assert "ROADMAP PROGRESS = 5.0 / 11 = 45.5%" in agent
+    assert "cd243424ecbae98892e0dfde1780bb846554942f" in plan
+
+
+def test_project_state_json_registers_fo5_authorization_and_future_gates():
+    state = json.loads((REPO_ROOT / "PROJECT_STATE.json").read_text(encoding="utf-8"))
+    stream = state["streams"]["followup_orchestration_ux_v1"]
+    assert state["schema_version"] == "2.4"
+    assert stream["roadmap_version"] == "1.0.0"
+    progress = stream["roadmap_progress"]
+    assert progress["validated_equivalent"] == 5.0
+    assert progress["progress_percent"] == 45.5
+    assert progress["remaining_percent"] == 54.5
+    assert progress["fully_accepted_tranches"] == 5
+    assert progress["next_required_gate"] == "FO5_TECHNICAL_IMPLEMENTATION"
+    assert stream["future_tranches"]["FO-5"] == "AUTHORIZED_NOT_STARTED"
+    assert stream["fo5_allowed"] is True
+    assert stream["fo6_allowed"] is False
+    assert state["global_freeze"]["followup_orchestration_fo6_and_later"].startswith("BLOCKED")
+''', encoding='utf-8')
+
+          auth = tests / 'test_followup_orchestration_fo5_authorization.py'
+          auth_text = auth.read_text(encoding='utf-8')
+          auth_text = auth_text.replace(
+              'assert "FO-5_AUTHORIZED_IMPLEMENTATION_PENDING" in plan',
+              'assert "FO_5_AUTHORIZED_IMPLEMENTATION_PENDING" in plan',
+          )
+          auth.write_text(auth_text, encoding='utf-8')
+          PY
+      - name: Commit synchronized guards
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/temp_fo5_sync_tests.yml
+          git add specialist_clinic/tests
+          git commit -m "test(foux): synchronize FO-5 authorization guards"
+          git push origin HEAD:docs/foux-v1-fo5-authorization
