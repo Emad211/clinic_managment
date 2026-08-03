@@ -2,9 +2,9 @@
 
 > **Source of Truth مدیریتی مخزن.** پیش از هر توسعه، وضعیت واقعی GitHub، این فایل و `PROJECT_STATE.json` باید خوانده شوند. حافظهٔ گفتگو یا branch قدیمی به‌تنهایی معتبر نیست.
 
-- آخرین ممیزی: `2026-08-03 14:25 +03:30`
+- آخرین ممیزی: `2026-08-03 14:35 +03:30`
 - شاخهٔ مرجع: `main`
-- head مرجع هنگام شروع repair: `527b9c981e742d0cbd796766535044414580ab14`
+- head مرجع: `8f851c90da5a81f4b7ffce43eaa5bf6010d58fa2`
 - وضعیت کلی: `PRODUCT_OPERATIONAL / PRE_PRODUCTION_TEST_DATA / CLINICAL_CONTENT_NOT_APPROVED / GOVERNANCE_RECONCILIATION_REQUIRED`
 
 ---
@@ -41,7 +41,7 @@ reset/reseed             = ALLOWED
 | جریان | وضعیت | اختیار فعلی | ممنوعیت |
 |---|---|---|---|
 | محصول عملیاتی | `ACTIVE_PRODUCT_PRE_PRODUCTION` | رفتار واقعی main | تغییر بالینی بدون گیت |
-| FOUX-V1 | `FO_0/1/2_VALIDATED / FO_3_TECHNICALLY_VALIDATED / LOCAL_UX_BLOCKED_BY_CONFIRMED_DEFECT` | فقط repair متمرکز PR #85 | FO-4، mutation، claim، SMS یا routing |
+| FOUX-V1 | `FO_0/1/2_VALIDATED / FO_3_REPAIR_TECHNICALLY_VALIDATED / UX_REVIEW_PENDING` | مرور لوکال یا focused FO-3 defect fix | FO-4، mutation، claim، SMS یا routing |
 | Clinical Engine v2 | `INFRASTRUCTURE_IMPLEMENTED / ACTIVATION_GATED` | runtime/audit | activation بدون approval |
 | Rule package | `LEGACY_DRAFT_QUARANTINED` | provenance/test | clinical use |
 | ADA research | `FROZEN_V0_9_4` | evidence draft | runtime authority |
@@ -64,7 +64,7 @@ Baseline:
 specialist_clinic/docs/FOLLOWUP_ORCHESTRATION_UX_V1_BASELINE.md
 ```
 
-Plan version: `1.4.2`
+Plan version: `1.4.3`
 
 ### FO-0 — VALIDATED
 
@@ -134,32 +134,23 @@ feature flag: FOLLOWUP_UNIFIED_WORKLIST_READONLY
 - Worklist قدیمی authority اقدام؛
 - هیچ SMS، Appointment، Scheduler، Rule، Shadow یا Accounting behavior تغییر نکرد.
 
----
-
-## 5. Incident جاری — FO3_UI_500
-
-### مشاهده
-
-مالک هنگام مرور لوکال روی دادهٔ تست، generic HTTP 500 را پس از کلیک «نمای یکپارچه» گزارش کرد.
+### FO3_UI_500 — RESOLVED TECHNICALLY
 
 ```text
-Issue             = #84
-Repair PR         = #85
-Owner evidence    = screenshot
-UX acceptance     = BLOCKED
-FO-4              = BLOCKED
+Issue #84 / PR #85
+Final head 8809252b2ca25fb55f200d783016d30ec10134d7
+Merge 8f851c90da5a81f4b7ffce43eaa5bf6010d58fa2
+Root-cause CI 30808217800
+Final CI 30809363219
+761 Specialist + 54 Accounting
 ```
 
-### علت قطعی
-
-CI integration run `30808217800` با Flask/Jinja واقعی این traceback را ثبت کرد:
+علت قطعی:
 
 ```text
-TypeError: 'builtin_function_or_method' object is not iterable
-{% for item in model.items %}
+JINJA_DICT_METHOD_COLLISION_ON_ITEMS_KEY
+model.items → dict.items method
 ```
-
-Jinja، `model.items` را به متد داخلی `dict.items` resolve کرده بود، نه mapping key `items`. همین collision علت مستقیم 500 بود.
 
 اصلاح:
 
@@ -168,42 +159,60 @@ model['items']
 timeline['items']
 ```
 
-`timeline.items` نیز همان ریسک را داشت و پیشگیرانه اصلاح شد. guard static بازگشت dot notation را رد می‌کند.
+Hardening ثانویه:
 
-### Hardening ثانویه
-
-یک gap مستقل نیز رفع می‌شود:
-
-- Projection cache قدیمی ممکن است required columns نداشته باشد؛
-- `CREATE TABLE IF NOT EXISTS` آن را upgrade نمی‌کند؛
-- فقط cache disposable در incompatibility recreate و خالی می‌شود؛
-- rebuild همچنان صریح است؛
-- Source Truth و Episodeها تغییر نمی‌کنند؛
-- Read Model schema را preflight و known failures را به صفحهٔ کنترل‌شده تبدیل می‌کند.
-
-این hardening علت قطعی screenshot نیست؛ علت قطعی Jinja collision است.
+- required-column preflight؛
+- recreate فقط برای Projection cache ناسازگار؛
+- cache خالی و rebuild صریح؛
+- ثابت‌ماندن Source Truth و Episode digest؛
+- controlled Persian error state؛
+- real Flask/Jinja list and Timeline tests.
 
 ---
 
-## 6. Exit Gate PR #85
+## 5. قدم مجاز فعلی
 
-PR فقط وقتی معتبر است که:
+```text
+Issue #83 — Post-fix local UX acceptance
+```
 
-1. real Flask/Jinja list render سبز باشد؛
-2. real Flask/Jinja Timeline render سبز باشد؛
-3. `model.items` و `timeline.items` در templateها وجود نداشته باشند؛
-4. cache ناقص safely recreate و خالی شود؛
-5. migration rerun idempotent باشد؛
-6. Source Truth و Episode digest تغییر نکند؛
-7. schema drift شناخته‌شده صفحهٔ کنترل‌شده بدهد، نه 500؛
-8. flag OFF و GET-only boundary حفظ شود؛
-9. Specialist و Accounting CI کامل سبز باشد؛
-10. PR merge شود؛
-11. مالک UX را روی commit repair تکرار کند.
+دستور اجرا:
+
+```powershell
+git checkout main
+git pull origin main
+cd specialist_clinic
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe start.py
+```
+
+پس از اجرای یک‌باره و توقف برنامه:
+
+```powershell
+$env:FOLLOWUP_PROJECTION_SHADOW = "1"
+.\.venv\Scripts\python.exe scripts\rebuild_followup_projection.py `
+  --database specialist.db `
+  --as-of "2026-08-03 12:00:00" `
+  --apply
+
+$env:FOLLOWUP_UNIFIED_WORKLIST_READONLY = "1"
+.\.venv\Scripts\python.exe start.py
+```
+
+Attestation:
+
+```text
+FO3_UX_ACCEPTED = true|false
+reviewer = Emad211
+reviewed_commit = 8f851c90da5a81f4b7ffce43eaa5bf6010d58fa2
+reviewed_on_test_data = true
+critical_ux_defects = <number>
+notes = <observations or defects>
+```
 
 ---
 
-## 7. Feature Flagها
+## 6. Feature Flagها
 
 همه default OFF:
 
@@ -220,65 +229,59 @@ FOLLOWUP_EVIDENCE_ASSIST
 FOLLOWUP_AUTOMATION_HEALTH
 ```
 
-در repair فقط Read-only flag مصرف می‌شود؛ rebuild تستی با Shadow flag صریح است. Action flags ممنوع‌اند.
+در مرور فعلی فقط Read-only flag مصرف می‌شود. Action flags ممنوع‌اند.
 
 ---
 
-## 8. مرور لوکال پس از repair
+## 7. Exit Gate برای FO-4
 
-پس از merge PR #85:
-
-```powershell
-git checkout main
-git pull origin main
-cd specialist_clinic
-.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+```text
+PR #85 merged                       = PASS
+Final CI green                      = PASS
+FO3_UX_ACCEPTED=true                = PENDING
+critical_ux_defects=0               = PENDING
+governance authorization PR merged  = PENDING
 ```
 
-برنامه یک بار اجرا و بسته شود تا cache migration اعمال شود. سپس:
+تا آن زمان Claim، Assignment، Routing/SLA، Structured Contact automation، SMS automation، Appointment reaction، Outbox/Retry/Auto-close و Evidence Assist مسدودند.
 
-```powershell
-$env:FOLLOWUP_PROJECTION_SHADOW = "1"
-.\.venv\Scripts\python.exe scripts\rebuild_followup_projection.py `
-  --database specialist.db `
-  --as-of "2026-08-03 12:00:00" `
-  --apply
+---
 
-$env:FOLLOWUP_UNIFIED_WORKLIST_READONLY = "1"
-.\.venv\Scripts\python.exe start.py
+## 8. Clinical Engine و Ruleها
+
+```text
+Engine infrastructure       = IMPLEMENTED
+Clinical content approval   = NOT COMPLETED
+Visible clinical activation = BLOCKED
 ```
 
-Attestation باید commit نهایی repair را ثبت کند و `critical_ux_defects=0` باشد.
+Ruleهای `2026.1-draft.3` quarantined هستند و باید `REVALIDATE / REPLACE / RETIRE` شوند. تست فنی معادل clinical approval نیست.
 
 ---
 
 ## 9. Freeze فعلی
 
 ```text
-FOUX PR #85 focused repair        = ALLOWED
-FOUX FO-3 local UX review         = BLOCKED UNTIL FIX MERGE
-FOUX FO-4 and later               = BLOCKED
-New clinical rules                = PAUSED
-Hypoglycemia Shadow expansion     = PAUSED
-Disposition branch                = DO NOT MERGE
-Focused bug/security fixes        = ALLOWED
+FOUX post-fix local UX review       = ALLOWED
+FOUX focused FO-3 defect fix        = ALLOWED IF NEW DEFECT FOUND
+FOUX FO-4 and later                 = BLOCKED
+New clinical rules                  = PAUSED
+Hypoglycemia Shadow expansion       = PAUSED
+Disposition branch                  = DO NOT MERGE
+Focused bug/security fixes          = ALLOWED
 ```
 
 ---
 
 ## 10. قواعد ادامه
 
-هر ایجنت باید:
-
-1. GitHub، Issue #84 و PR #85 را بخواند؛
-2. plan v1.4.2، JSON state و AGENTS را تطبیق دهد؛
-3. فقط focused repair را تغییر دهد؛
-4. علت قطعی را Jinja dict-method collision گزارش کند؛
-5. schema hardening را علت قطعی screenshot معرفی نکند؛
-6. فقط cache disposable را repair کند؛
-7. Source Truthها را تغییر ندهد؛
-8. full CI را پس از آخرین commit اجرا کند؛
-9. بدون post-fix owner attestation وارد FO-4 نشود.
+1. GitHub، Issue #83، PR #85 و plan v1.4.3 خوانده شوند؛
+2. فقط post-fix UX review یا focused FO-3 defect fix انجام شود؛
+3. علت Incident همان Jinja collision ثبت‌شده است؛
+4. schema hardening علت screenshot معرفی نشود؛
+5. Source Truthها تغییر نکنند؛
+6. هر fix جدید full CI و owner re-review می‌خواهد؛
+7. بدون owner attestation وارد FO-4 نشوید.
 
 ---
 
@@ -288,8 +291,7 @@ Focused bug/security fixes        = ALLOWED
 FO-0 = VALIDATED
 FO-1 = VALIDATED
 FO-2 = VALIDATED
-FO-3 = TECHNICALLY_VALIDATED
-FO-3 LOCAL UX ACCEPTANCE = BLOCKED BY CONFIRMED JINJA RUNTIME DEFECT
-FOCUSED FO-3 FIX = IN PROGRESS IN PR #85
+FO-3 RUNTIME REPAIR = TECHNICALLY VALIDATED
+FO-3 POST-FIX LOCAL UX ACCEPTANCE = PENDING
 FO-4 AND LATER = BLOCKED
 ```
