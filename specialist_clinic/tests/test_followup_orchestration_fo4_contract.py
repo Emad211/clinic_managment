@@ -40,6 +40,9 @@ def test_fo4_runtime_is_flagged_and_does_not_write_operational_sources():
     assert 'self.db.execute("BEGIN IMMEDIATE")' in ownership
     assert "STALE_OWNERSHIP_FORM" in ownership
     assert "OWNERSHIP_IDEMPOTENCY_CONFLICT" in ownership
+    assert "def _require_nonterminal" in ownership
+    assert ownership.count("self._require_nonterminal(episode_id)") >= 4
+    assert "TERMINAL_OWNERSHIP_MUTATION" in ownership
 
 
 def test_fo4_ui_distinguishes_queue_from_personal_owner():
