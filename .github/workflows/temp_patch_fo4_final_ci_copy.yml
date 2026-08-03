@@ -1,0 +1,43 @@
+name: Temporary FO-4 evidence copy alignment
+
+on:
+  push:
+    branches:
+      - docs/foux-v1-fo4-seed-sla-attestation
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: docs/foux-v1-fo4-seed-sla-attestation
+          fetch-depth: 0
+      - name: Align canonical evidence wording
+        shell: python
+        run: |
+          from pathlib import Path
+          path = Path(
+              "specialist_clinic/docs/FOLLOWUP_ORCHESTRATION_UX_V1_IMPLEMENTATION_PLAN.md"
+          )
+          text = path.read_text(encoding="utf-8")
+          old = "CI 30844075841\n773 Specialist + 54 Accounting"
+          new = "Final CI 30844075841\n773 Specialist + 54 Accounting"
+          if old not in text:
+              raise SystemExit("FO-4 CI evidence block not found")
+          path.write_text(text.replace(old, new, 1), encoding="utf-8")
+          Path(
+              ".github/workflows/temp_patch_fo4_final_ci_copy.yml"
+          ).unlink()
+      - name: Commit and remove temporary workflow
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add specialist_clinic/docs/FOLLOWUP_ORCHESTRATION_UX_V1_IMPLEMENTATION_PLAN.md \
+                  .github/workflows/temp_patch_fo4_final_ci_copy.yml
+          git commit -m "docs(foux): align FO-4 final CI evidence wording"
+          git push origin HEAD:docs/foux-v1-fo4-seed-sla-attestation
