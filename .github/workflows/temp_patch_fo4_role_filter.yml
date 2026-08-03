@@ -1,0 +1,48 @@
+name: Temporary FO-4 role filter patch
+
+on:
+  push:
+    branches:
+      - feature/foux-v1-fo4-ownership
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/foux-v1-fo4-ownership
+          fetch-depth: 0
+      - name: Filter by effective queue role
+        shell: python
+        run: |
+          from pathlib import Path
+
+          read_model = Path("specialist_clinic/src/services/followup_orchestration/read_model_service.py")
+          text = read_model.read_text(encoding="utf-8")
+          old = '''        if filters["role"]:\n            clauses.append("projection.owner_role_proposal=?")\n            params.append(filters["role"])\n'''
+          new = '''        if filters["role"]:\n            clauses.append(\n                "COALESCE((SELECT json_extract(owner_event.payload_json, '$.owner_role') "\n                "FROM followup_episode_events owner_event "\n                "WHERE owner_event.episode_id=projection.episode_id "\n                "AND owner_event.event_type IN ('ROUTED','CLAIMED','ASSIGNED') "\n                "ORDER BY owner_event.id DESC LIMIT 1), "\n                "projection.owner_role_proposal)=?"\n            )\n            params.append(filters["role"])\n'''
+          if old not in text:
+              raise SystemExit("role filter block not found")
+          read_model.write_text(text.replace(old, new), encoding="utf-8")
+
+          template = Path("specialist_clinic/src/templates/followups/unified_worklist.html")
+          html = template.read_text(encoding="utf-8")
+          html = html.replace(
+              '<label for="unified-role">صف پیشنهادی نقش</label>',
+              '<label for="unified-role">صف مسئول</label>',
+          )
+          template.write_text(html, encoding="utf-8")
+
+          Path(".github/workflows/temp_patch_fo4_role_filter.yml").unlink()
+      - name: Commit patch and remove workflow
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add specialist_clinic/src/services/followup_orchestration/read_model_service.py specialist_clinic/src/templates/followups/unified_worklist.html .github/workflows/temp_patch_fo4_role_filter.yml
+          git commit -m "fix(fo4): filter by effective queue role"
+          git push origin HEAD:feature/foux-v1-fo4-ownership
