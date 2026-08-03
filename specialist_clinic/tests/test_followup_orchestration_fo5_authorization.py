@@ -36,6 +36,14 @@ def test_fo4_owner_acceptance_and_fo5_authorization_are_consistent():
     assert progress["validated_equivalent"] == 5.0
     assert progress["progress_percent"] == 45.5
     assert progress["remaining_percent"] == 54.5
+    freeze = state["global_freeze"]
+    assert "followup_orchestration_fo5_and_later" not in freeze
+    assert freeze["followup_orchestration_fo5"].startswith(
+        "AUTHORIZED_IMPLEMENTATION_ONLY"
+    )
+    assert freeze["followup_orchestration_fo6_and_later"].startswith(
+        "BLOCKED"
+    )
 
 
 def test_docs_keep_fo5_bounded_and_fo6_blocked():
