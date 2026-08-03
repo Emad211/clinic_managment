@@ -4,11 +4,11 @@
 >
 > **کد برنامه:** `FOUX-V1`
 >
-> **نسخه:** `1.2.0`
+> **نسخه:** `1.3.0`
 >
 > **آخرین بازبینی:** `2026-08-03`
 >
-> **وضعیت:** `FO_0_VALIDATED / FO_1_VALIDATED / FO_2_AUTHORIZED`
+> **وضعیت:** `FO_0_VALIDATED / FO_1_VALIDATED / FO_2_VALIDATED / FO_3_AUTHORIZED`
 >
 > **مالک:** `Emad211`
 >
@@ -31,7 +31,7 @@
 5. Issue و PRهای همین جریان؛
 6. متن گفتگو یا حافظهٔ ایجنت.
 
-در صورت تعارض، منبع پایین‌تر پیش از ادامه اصلاح می‌شود. هر PR این جریان باید در body خود موارد زیر را مشخص کند:
+در صورت تعارض، منبع پایین‌تر قبل از توسعه اصلاح می‌شود. هر PR باید در body خود مشخص کند:
 
 ```text
 Program / Tranche
@@ -45,13 +45,13 @@ UX impact
 Clinical-safety impact
 ```
 
-وجود branch، commit یا PR به معنی تکمیل tranche نیست. فقط merge روی `main` همراه با evidence، CI و به‌روزرسانی دفتر پیشرفت معتبر است.
+وجود branch یا PR به معنی تکمیل نیست. فقط merge روی `main` همراه با evidence، CI و به‌روزرسانی دفتر پیشرفت معتبر است.
 
 ---
 
 ## 1. مسئلهٔ محصول
 
-سامانه در تشخیص رویدادها و ساخت Task، پیام، نوبت و رویداد تماس توانمند است، اما کاربر برای دنبال‌کردن یک پیگیری مجبور است چند Source of Truth را ذهنی کنار هم بگذارد:
+سامانه رویدادها و تسک‌ها را می‌سازد، اما یک پیگیری از دید کاربر میان چند Source of Truth پخش می‌شود:
 
 ```text
 followup_tasks
@@ -67,16 +67,16 @@ appointments
 operational_job_runs
 ```
 
-پیامدهای فعلی:
+نتیجهٔ UX فعلی:
 
-- اقدام بعدی روشن نیست؛
-- مالک یا صف مسئول همیشه واضح نیست؛
-- SMS، تماس، نوبت و Task یک Timeline مشترک ندارند؛
-- callback، retry، escalation و closure هنوز دستی‌اند؛
-- چند source مرتبط زیر reason کلی پنهان می‌شوند؛
-- stateهای فنی به‌جای زبان عملیاتی نمایش داده می‌شوند؛
-- پزشک ممکن است با کارهای روتین درگیر شود؛
-- سلامت Scheduler و شکست اتوماسیون برای اپراتور شفاف نیست.
+- اقدام بعدی فوری فهمیده نمی‌شود؛
+- مسئول یا صف نقش همیشه روشن نیست؛
+- SMS، تماس، نوبت و Task Timeline مشترک ندارند؛
+- callback، retry، escalation و closure دستی‌اند؛
+- چند source مرتبط زیر reason کلی گم می‌شوند؛
+- state فنی به‌جای زبان عملیاتی دیده می‌شود؛
+- پزشک ممکن است با کار روتین درگیر شود؛
+- سلامت automation برای اپراتور قابل مشاهده نیست.
 
 صورت مسئله:
 
@@ -84,9 +84,9 @@ operational_job_runs
 
 ---
 
-## 2. تصمیم محیط و Baseline
+## 2. طبقه‌بندی داده و Baseline
 
-مالک محصول در تاریخ `2026-08-03` تأیید کرده است که دیتابیس فعلی Specialist Clinic فقط دادهٔ تستی دارد:
+طبق attestation مالک در تاریخ `2026-08-03`:
 
 ```text
 Current specialist.db data class = TEST_ONLY
@@ -95,16 +95,16 @@ Data may be reset/reseeded       = YES
 Production-volume inference      = FORBIDDEN
 ```
 
-این طبقه‌بندی فقط governance محیط فعلی است و نباید وارد منطق runtime شود. پیش از ورود اولین دادهٔ واقعی بیمار:
+این طبقه‌بندی فقط governance محیط فعلی است و نباید shortcut runtime ایجاد کند. پیش از ورود اولین دادهٔ واقعی بیمار:
 
 - production-readiness review؛
 - privacy/security review؛
 - backup/restore rehearsal؛
 - role/consent review؛
 - baseline بدون PHI؛
-- و بازبینی همهٔ automation flagها الزامی است.
+- و بازبینی automation flagها الزامی است.
 
-دادهٔ تستی برای اثبات correctness، migration و parity استفاده می‌شود، نه برای ادعای KPI تجاری.
+دادهٔ تستی correctness، migration، parity و usability اولیه را اثبات می‌کند؛ نه KPI تجاری.
 
 ---
 
@@ -115,23 +115,23 @@ Production-volume inference      = FORBIDDEN
 - تبدیل Task، SMS، Contact، Appointment و Outcome به Episode قابل‌ردیابی؛
 - ساخت Unified Work Item Projection قابل‌بازسازی؛
 - محاسبهٔ مرکزی `next_action`، `waiting_reason` و `blocked_reason`؛
-- routing به صف نقش مناسب؛
+- پیشنهاد role مناسب؛
 - نمایش یک CTA اصلی؛
 - Timeline واحد؛
 - کاهش navigation و ورود تکراری داده؛
-- کاهش تأیید دستی پیام‌های روتین allowlisted؛
-- مشاهده‌پذیری سلامت اتوماسیون.
+- کاهش تأیید دستی پیام‌های allowlisted در tranche مربوط؛
+- مشاهده‌پذیری سلامت automation.
 
 ### 3.2 فنی
 
-- migrationهای additive و idempotent؛
-- eventهای append-only؛
-- mutationهای idempotent؛
+- migration additive و idempotent؛
+- lineage event append-only؛
+- mutation idempotent؛
 - Projection deterministic و rebuildable؛
-- source hash/revision؛
+- source revision/fingerprint؛
 - stale protection؛
-- feature flag و rollback برای هر tranche؛
-- عدم بازنویسی Source of Truthهای فعلی.
+- flag و rollback برای هر tranche؛
+- عدم بازنویسی Source of Truthهای موجود.
 
 ---
 
@@ -140,15 +140,15 @@ Production-volume inference      = FORBIDDEN
 این برنامه نباید:
 
 - workflow builder عمومی مانند n8n بسازد؛
-- Rule بالینی جدید تولید یا فعال کند؛
+- Rule بالینی تولید یا فعال کند؛
 - تشخیص، نسخه، دارو، دوز یا ارجاع را خودکار کند؛
 - Recommendation بالینی را بدون انسان بپذیرد؛
 - Clinical Task را بدون Evidence تکمیل کند؛
 - Consent، quiet hours، cap، cooldown یا idempotency را دور بزند؛
-- Source of Truth بالینی را با Episode یا Projection جایگزین کند؛
+- Episode/Projection را جای Source of Truth بالینی بنشاند؛
 - migration destructive ایجاد کند؛
 - UI قدیمی را پیش از parity و rollback حذف کند؛
-- منطق دامنه را در template یا JavaScript پراکنده کند؛
+- منطق دامنه را در template/JavaScript پراکنده کند؛
 - `clinic_new.db` را از Specialist Clinic mutate کند.
 
 ---
@@ -156,18 +156,20 @@ Production-volume inference      = FORBIDDEN
 ## 5. Invariantهای غیرقابل‌مذاکره
 
 1. `followup_tasks` حقیقت تسک اداری باقی می‌ماند.
-2. Clinical Task identity و lifecycle حاکم فعلی حفظ می‌شود.
-3. completion بالینی بدون Evidence معتبر غیرممکن می‌ماند.
-4. Appointment، Clinical Task را completed نمی‌کند.
+2. Clinical Task identity/lifecycle حاکم حفظ می‌شود.
+3. completion بالینی بدون Evidence معتبر غیرممکن است.
+4. Appointment، Clinical Task را complete نمی‌کند.
 5. Episode فقط حقیقت رابطه و lineage عملیاتی است.
 6. Projection cache/read model است، نه source truth.
 7. هر mutation orchestration idempotency key دارد.
-8. هر event actor، time، policy/version و content hash دارد.
-9. هیچ رابطه یا outcome ساختگی تولید نمی‌شود.
-10. Relation مبهم با orphan reason ثبت می‌شود، نه حدس.
+8. هر event actor، time، version و content hash دارد.
+9. relation یا outcome ساختگی تولید نمی‌شود.
+10. ambiguity با orphan/conflict reason ثبت می‌شود.
 11. Rule و Hypoglycemia Shadow خارج از scope هستند.
-12. همهٔ flagها default OFF باقی می‌مانند تا tranche مربوط merge و تأیید شود.
-13. فرض `TEST_ONLY` باعث کاهش security یا clinical guardrail نمی‌شود.
+12. flagها default OFF می‌مانند تا tranche مربوط validated شود.
+13. فرض `TEST_ONLY` باعث کاهش guardrail نمی‌شود.
+14. FO-3 فقط خواندنی است و هیچ mutation جدیدی ندارد.
+15. UI قدیمی در FO-3 همچنان مسیر عملیاتی اصلی است.
 
 ---
 
@@ -185,12 +187,13 @@ Production-volume inference      = FORBIDDEN
 | Engagement candidate | `engagement_approvals` | approval workflow |
 | Engagement dedupe | `engagement_dispatch` | idempotent ledger |
 | SMS state | `sms_messages` | submission/delivery reconciliation |
-| Appointment | `appointments` | existing appointment workflow |
+| Appointment | `appointments` | existing workflow |
 | Scheduler ownership | `operational_leases` | lease/fencing |
-| Durable job result | `operational_job_runs` | idempotent job lifecycle |
-| Episode identity | `followup_episodes` | immutable, added in FO-1 |
-| Episode-source relation | `followup_episode_links` | immutable, added in FO-1 |
-| Episode lineage event | `followup_episode_events` | append-only, added in FO-1 |
+| Durable job result | `operational_job_runs` | idempotent lifecycle |
+| Episode identity | `followup_episodes` | immutable — FO-1 |
+| Episode-source relation | `followup_episode_links` | immutable — FO-1 |
+| Episode lineage event | `followup_episode_events` | append-only — FO-1 |
+| Unified shadow read model | `followup_work_item_projection` | disposable/rebuildable cache — FO-2 |
 
 ---
 
@@ -201,33 +204,34 @@ Existing Source Truths
         ↓
 Read Adapters
         ↓
-Episode Identity + Source Linker       ← FO-1 completed
+Episode Identity + Source Linker       ← FO-1 validated
         ↓
-Append-only Episode Event Stream       ← FO-1 completed
+Append-only Episode Event Stream       ← FO-1 validated
         ↓
-Projection / Policy Layer              ← FO-2 current
-  ├─ source-state adapters
-  ├─ current state
-  ├─ next action
-  ├─ waiting / blocked reason
-  ├─ action_due / target_at
-  ├─ role-routing proposal
-  └─ parity / lag / rebuild metrics
+Projection / Policy Layer              ← FO-2 validated
+  ├─ current source state
+  ├─ next action / wait / block
+  ├─ action_due / target
+  ├─ role proposal
+  ├─ parity
+  └─ lag / rebuild metrics
         ↓
-Read-only Unified Worklist             ← FO-3
+Read-only Unified Worklist + Timeline  ← FO-3 current
         ↓
-Ownership / Contact / SMS / Outbox / Evidence / Health
+Claim/Assignment/Contact/SMS/Outbox/Evidence/Health
 ```
 
-پوشه‌های مسئولیت:
+مسئولیت‌ها:
 
 ```text
 src/services/followup_orchestration/
   identity.py
   backfill.py
   source_state.py
-  projection_service.py
   next_action_policy.py
+  projection_service.py
+  read_model_service.py
+  timeline_service.py
   routing_policy.py
   sla_policy.py
   contact_policy.py
@@ -244,13 +248,13 @@ src/adapters/sqlite/
   operational_outbox_repo.py
 ```
 
-از God Service جلوگیری شود. Policy، persistence و HTTP/UI باید جدا بمانند.
+از God Service جلوگیری شود؛ persistence، policy، HTTP و presentation جدا باشند.
 
 ---
 
 ## 8. FO-1 Contract — Episode Identity & Links
 
-FO-1 روی `main` پیاده و validated شده است.
+FO-1 validated است.
 
 ### 8.1 Episode identity
 
@@ -267,21 +271,9 @@ created_by
 identity_hash
 ```
 
-Identity از JSON canonical این ابعاد ساخته می‌شود:
-
-```text
-patient_link_id
-episode_type
-semantic_key
-period_key
-identity_version
-```
-
-SHA-256 کامل و prefix ثابت `fuep_` استفاده می‌شود. متن فارسی قابل‌ویرایش یا state جاری در identity دخالت ندارد.
+Identity از patient/type/semantic/period/version با JSON canonical و SHA-256 ساخته می‌شود. متن فارسی و state mutable در identity نیست.
 
 ### 8.2 Source links
-
-Source typeهای فعلی:
 
 ```text
 ADMIN_TASK
@@ -294,108 +286,64 @@ CONTACT_EVENT
 CLINICAL_OUTCOME
 ```
 
-هر link:
-
-```text
-episode_id
-patient_link_id
-source_type
-source_id
-source_revision
-relation_type
-linked_at
-linked_by
-idempotency_key
-content_hash
-```
-
-Source revision فقط از identity/provenance ثابت source ساخته می‌شود، نه lifecycle mutable.
+هر link patient-safe، immutable و دارای source revision است.
 
 ### 8.3 Episode events
 
-FO-1 فقط این eventها را ایجاد می‌کند:
+FO-1 فقط:
 
 ```text
 EPISODE_OPENED
 SOURCE_LINKED
 ```
 
-Event stream:
-
-- append-only؛
-- first event اجباری `EPISODE_OPENED`؛
-- linear supersession؛
-- patient/scope safe؛
-- recorded time non-decreasing؛
-- content-hashed و idempotent.
+Event stream append-only، linear، idempotent و content-hashed است.
 
 ### 8.4 Backfill
 
-CLI:
-
-```bash
-python specialist_clinic/scripts/backfill_followup_episodes.py \
-  --database specialist_clinic/specialist.db
-
-python specialist_clinic/scripts/backfill_followup_episodes.py \
-  --database specialist_clinic/specialist.db --apply
-```
-
-ویژگی‌ها:
-
-- dry-run به‌صورت `mode=ro`؛
+- dry-run read-only؛
+- explicit apply؛
 - aggregate-only output؛
-- no patient name/phone/message/clinical value؛
-- explicit orphan reasons؛
-- repeated apply بدون duplicate؛
-- source truth digest قبل/بعد باید برابر باشد؛
-- startup فقط schema additive را نصب می‌کند و backfill خودکار اجرا نمی‌شود.
+- orphan reason برای ambiguity؛
+- no startup backfill؛
+- source digest before/after برابر.
 
-### 8.5 Evidence FO-1
+### 8.5 Evidence
 
 ```text
 Issue               = #74
 PR                  = #75
-Merge commit        = 15ef1585c069a74c26fbc0ce859e03906e5f475a
-Specialist tests    = 736 passed
-Accounting tests    = 54 passed
+Merge               = 15ef1585c069a74c26fbc0ce859e03906e5f475a
+Specialist tests    = 736
+Accounting tests    = 54
 Synthetic Episodes  = 4
 Synthetic Links     = 12
 Second apply new    = 0
 Source digest       = unchanged
 ```
 
-FO-1 Exit Gate: **PASS**.
-
 ---
 
 ## 9. FO-2 Contract — Projection, Next Action & Shadow Parity
 
-**وضعیت فعلی:** `AUTHORIZED`
+FO-2 validated است.
 
-FO-2 فقط یک Shadow Projection می‌سازد. هیچ UI اصلی، assignment، SMS، appointment reaction یا mutation عملیاتی جدیدی فعال نمی‌کند.
+### 9.1 Projection cache
 
-### 9.1 خروجی داده
-
-جدول پیشنهادی `followup_work_item_projection`:
+`followup_work_item_projection` شامل:
 
 ```text
-episode_id PRIMARY KEY
+episode_id
 patient_link_id
 episode_type
-reason_code
-reason_label
-why_created
+reason_code / reason_label / why_created
 current_state
-state_class             ACTION_REQUIRED | WAITING | BLOCKED | TERMINAL
-next_action_code
-next_action_label
-waiting_reason_code
-waiting_reason_label
-blocked_reason_code
-blocked_reason_label
+state_class
+next_action_code / label
+waiting_reason_code / label
+blocked_reason_code / label
 owner_role_proposal
-owner_user_id           NULL in FO-2
+owner_user_id = NULL in FO-2
 action_due_at
 target_at
 priority
@@ -407,171 +355,19 @@ appointment_state
 evidence_state
 source_count
 source_fingerprint
+state_detail_json
 projection_version
+policy_version
+as_of_at
 projection_hash
 rebuilt_at
 ```
 
-قواعد:
+Projection disposable و rebuildable است؛ source truth نیست.
 
-- projection source truth نیست؛
-- UPDATE توسط policy rebuild مجاز است، ولی delete/rebuild باید معادل تولید کند؛
-- هر nonterminal item دقیقاً یکی از `ACTION_REQUIRED / WAITING / BLOCKED` است؛
-- اگر `ACTION_REQUIRED` است، `next_action_code` الزامی است؛
-- اگر `WAITING` است، waiting reason الزامی است؛
-- اگر `BLOCKED` است، blocked reason الزامی است؛
-- state raw فقط در audit نگهداری می‌شود؛
-- owner فقط role proposal است؛ assignment واقعی FO-4 است.
+### 9.2 State invariant
 
-### 9.2 Source-state adapters
-
-Adapterها باید state حاکم را بدون mutation بخوانند:
-
-```text
-ADMIN_TASK               followup_tasks.status
-CLINICAL_TASK            head clinical_task_events
-ENCOUNTER_COMMITMENT     head care_plan_commitment_events
-ENGAGEMENT_APPROVAL      engagement_approvals.status
-SMS_MESSAGE              sms_messages status/delivery
-APPOINTMENT              appointments.status
-CONTACT_EVENT            latest contact event
-CLINICAL_OUTCOME         latest valid outcome reference
-```
-
-هر adapter باید:
-
-- patient scope را دوباره کنترل کند؛
-- source revision/fingerprint بدهد؛
-- missing/stale/conflict را fail-loud کند؛
-- هیچ SQL mutation انجام ندهد؛
-- raw PHI را وارد generic projection نکند.
-
-### 9.3 Next-action policy v1
-
-Policy versioned و deterministic باشد. حداقل mapping:
-
-```text
-Administrative task open + no contact/appointment
-→ ACTION_REQUIRED / CONTACT_PATIENT
-
-Approval pending
-→ ACTION_REQUIRED / REVIEW_SMS
-
-SMS delivered + هنوز target نرسیده
-→ WAITING / WAITING_FOR_PATIENT_OR_TARGET
-
-SMS permanent failure
-→ ACTION_REQUIRED / CALL_PATIENT
-
-Phone invalid
-→ BLOCKED / CONTACT_DATA_INVALID
-
-Appointment scheduled
-→ WAITING / WAITING_FOR_APPOINTMENT
-
-Appointment cancelled
-→ ACTION_REQUIRED / REBOOK_APPOINTMENT
-
-Appointment no_show
-→ ACTION_REQUIRED / FOLLOW_UP_NO_SHOW
-
-Clinical task missing required outcome
-→ ACTION_REQUIRED / RECORD_CLINICAL_EVIDENCE
-
-Clinical task awaiting clinician decision
-→ BLOCKED / CLINICIAN_DECISION_REQUIRED
-
-Terminal source state
-→ TERMINAL / no next action
-```
-
-FO-2 فقط **نمایش پیشنهادی** تولید می‌کند؛ هیچ transitionی اجرا نمی‌شود.
-
-### 9.4 action_due_at و target_at
-
-```text
-action_due_at = زمانی که کارمند باید کاری انجام دهد
-target_at     = موعد نوبت، دارو، آزمایش یا هدف پیگیری
-```
-
-نباید یکی فرض شوند. اگر تاریخ اقدام قابل‌اثبات نیست:
-
-- policy fallback versioned؛ یا
-- `BLOCKED / ACTION_DUE_UNKNOWN`؛
-
-اما تاریخ ساختگی تولید نمی‌شود.
-
-### 9.5 Role routing proposal
-
-FO-2 فقط پیشنهاد role می‌دهد:
-
-```text
-Reception:
-  appointment coordination, no-show, invalid phone, lapsed admin
-
-Nursing:
-  vitals, labs, education, non-prescriptive clinical follow-up
-
-Physician:
-  clinician decision, clinical conflict, governed recommendation review
-
-Manager:
-  policy/schema conflict, orphan, dead-letter-like operational block
-```
-
-Auto assignment به user ممنوع است.
-
-### 9.6 Shadow parity
-
-Projection جدید باید با Worklist فعلی مقایسه شود:
-
-```text
-legacy open item count
-projected nonterminal episode count
-matched
-projection-only
-legacy-only
-blocked/conflict
-explainable mismatch reason
-```
-
-Exit Gate:
-
-- حداقل ۹۹٪ parity explainable روی cohort تستی؛
-- zero hidden source؛
-- تمام mismatchها reason code؛
-- same source snapshot → same projection hash؛
-- rebuild دوم بدون اختلاف؛
-- source truth unchanged؛
-- feature default OFF؛
-- full CI green.
-
-### 9.7 Feature flag
-
-```text
-FOLLOWUP_PROJECTION_SHADOW
-```
-
-Default OFF. اجرای explicit CLI/test مجاز است. Scheduler یا request path فقط در PR مستقل و پس از اثبات performance می‌تواند shadow rebuild را فراخوانی کند.
-
-### 9.8 خارج از scope FO-2
-
-- Worklist جدید؛
-- primary CTA واقعی؛
-- claim/assignment؛
-- SMS auto-send؛
-- retry/escalation mutation؛
-- appointment reaction؛
-- outbox؛
-- Evidence Assist؛
-- automatic close؛
-- clinical decision.
-
----
-
-## 10. State و زبان کاربر
-
-هر Work Item nonterminal یکی از این سه حالت است:
+هر nonterminal item دقیقاً یکی از این حالت‌هاست:
 
 ```text
 ACTION_REQUIRED
@@ -579,7 +375,7 @@ WAITING
 BLOCKED
 ```
 
-و دقیقاً یکی از این فیلدها باید توضیح کامل داشته باشد:
+و دقیقاً یک explanation دارد:
 
 ```text
 next_action
@@ -587,7 +383,328 @@ waiting_reason
 blocked_reason
 ```
 
-نمونهٔ زبان عملیاتی:
+Terminal هیچ action/wait/block و owner proposal ندارد.
+
+### 9.3 Source-state reader
+
+Adapterهای read-only برای همهٔ source typeهای FO-1:
+
+- patient scope دوباره کنترل می‌شود؛
+- head lifecycle حاکم خوانده می‌شود؛
+- raw PHI، message body، note و clinical value وارد projection نمی‌شود؛
+- missing/mismatch/read failure به BLOCKED reason تبدیل می‌شود.
+
+### 9.4 Policy v1
+
+`FOUX-NEXT-ACTION-V1` fail-closed است. نمونه:
+
+```text
+pending approval       → REVIEW_SMS
+SMS permanent failure  → CALL_PATIENT
+scheduled appointment  → WAITING_FOR_APPOINTMENT
+cancelled appointment  → REBOOK_APPOINTMENT
+no-show                → FOLLOW_UP_NO_SHOW
+clinical outcome       → REVIEW_CLINICAL_EVIDENCE
+missing/mismatch       → SOURCE_STATE_UNAVAILABLE
+wrong number           → CONTACT_DATA_INVALID
+terminal source        → TERMINAL
+```
+
+Policy فقط state را توصیف می‌کند؛ هیچ actionی اجرا نمی‌کند.
+
+### 9.5 Parity و rebuild
+
+- legacy admin/clinical/commitment open sources شمرده می‌شوند؛
+- matched، legacy-only و projection-only reason-code دارند؛
+- same source + same as-of → same projection hash؛
+- `rebuilt_at` در hash نیست؛
+- delete/rebuild باید equivalent باشد؛
+- lag و duration metric تولید می‌شود.
+
+### 9.6 CLI و flag
+
+```bash
+python specialist_clinic/scripts/rebuild_followup_projection.py \
+  --database specialist_clinic/specialist.db \
+  --as-of "2026-08-03 12:00:00"
+
+FOLLOWUP_PROJECTION_SHADOW=1 \
+python specialist_clinic/scripts/rebuild_followup_projection.py \
+  --database specialist_clinic/specialist.db \
+  --as-of "2026-08-03 12:00:00" --apply
+```
+
+Apply نیازمند flag صریح است. Scheduler/request/UI در FO-2 به projection متصل نشدند.
+
+### 9.7 Evidence
+
+```text
+Issue                         = #77
+PR                            = #78
+Merge                         = 6c6e33203376a32165418e0d3c6f2a4a48253e7b
+Final CI run                  = 30773195914
+Specialist tests              = 747
+Accounting tests              = 54
+Canonical projections         = 4
+Legacy coverage               = 100%
+Hidden legacy sources         = 0
+Explainable mismatches        = 100%
+Rebuild equivalence           = PASS
+Source truth unchanged        = PASS
+Missing/patient drift blocked = PASS
+```
+
+اجرای اول CI نقص fixture را کشف کرد؛ fixture به schema حاکم lifecycle ارتقا یافت و policy تضعیف نشد. اجرای کامل دوباره سبز شد.
+
+FO-2 Exit Gate: **PASS**.
+
+---
+
+## 10. FO-3 Contract — Read-only Unified Worklist & Timeline
+
+**وضعیت فعلی:** `AUTHORIZED`
+
+FO-3 اولین تغییر قابل‌مشاهده برای کاربر است، اما فقط read-only. UI قدیمی همچنان مسیر انجام کار و Source of Truth عملیاتی است.
+
+### 10.1 Feature flag
+
+```text
+FOLLOWUP_UNIFIED_WORKLIST_READONLY
+```
+
+Default OFF. وقتی OFF است:
+
+- route جدید نباید در navigation ظاهر شود؛
+- Worklist قدیمی بدون تغییر کار می‌کند؛
+- هیچ query/rebuild اضافه در request قدیمی اجرا نمی‌شود.
+
+وقتی ON است، فقط route و UI خواندنی جدید قابل مشاهده است. این flag اجازهٔ mutation نمی‌دهد.
+
+### 10.2 Route و authorization
+
+مسیر پیشنهادی:
+
+```text
+/followups/unified
+/followups/unified/<episode_id>
+```
+
+قواعد:
+
+- همان permission مشاهدهٔ Task/Worklist؛
+- server-side authorization؛
+- pagination و search؛
+- filterهای whitelist‌شده؛
+- episode متعلق به بیمار معتبر؛
+- no POST/mutation endpoint در FO-3؛
+- no PHI در log یا query diagnostics.
+
+### 10.3 Read Model Service
+
+UI مستقیم SQL پراکنده اجرا نمی‌کند. Service خواندنی:
+
+```text
+projection cache
++ minimum patient identity for list view
++ episode links
++ source summary/deep links
++ timeline events
+```
+
+باید:
+
+- بدون N+1 باشد؛
+- pagination اجباری داشته باشد؛
+- state/role/due/search filter را پشتیبانی کند؛
+- Projection missing/stale را به empty/error state قابل‌فهم تبدیل کند؛
+- rebuild خودکار در request انجام ندهد؛
+- stale projection age را نشان دهد؛
+- raw note/message body/clinical payload را در list view نیاورد.
+
+### 10.4 صفحهٔ لیست
+
+Tabs/filters اولیه:
+
+```text
+همه
+نیازمند اقدام
+در انتظار
+مسدود
+پایان‌یافته
+پیشنهاد صف پذیرش
+پیشنهاد صف پرستاری
+نیازمند پزشک
+موعدگذشته
+```
+
+در FO-3 «کارهای من» واقعی نیست، چون assignment هنوز FO-4 است. عنوان باید صادقانه `صف پیشنهادی نقش` باشد.
+
+### 10.5 کارت Work Item
+
+هر کارت/ردیف حداقل:
+
+```text
+نام بیمار
+دلیل قابل‌فهم
+چرا ساخته شده
+state class
+اقدام بعدی یا waiting/block reason
+role proposal
+زمان اقدام
+target time
+آخرین رویداد
+SMS/Appointment/Evidence summary
+source count
+projection age
+```
+
+CTA اصلی در FO-3 **اجرا نمی‌شود**. فقط label خواندنی یا deep-link به مسیر فعلی حاکم نمایش داده می‌شود:
+
+```text
+اقدام پیشنهادی: تماس با بیمار
+[بازکردن Worklist فعلی]
+```
+
+نباید دکمه‌ای وانمود کند action داخل Unified UI انجام شده است.
+
+### 10.6 Timeline
+
+Timeline ترکیب read-only این منابع است:
+
+```text
+Episode opened / source linked
+Administrative task created/resolved
+Clinical task events
+Clinical outcome events
+Encounter commitment events
+Contact events
+Engagement approval state
+SMS submission/delivery
+Appointment state
+```
+
+نمایش Timeline:
+
+- زبان کاربر؛
+- ترتیب زمانی deterministic؛
+- source type و provenance؛
+- deep-link به صفحهٔ حاکم در صورت وجود؛
+- hash/ID technical فقط در بخش audit؛
+- no free-text sensitive detail مگر permission و نیاز صریح؛
+- conflict/missing source به‌صورت warning، نه حذف.
+
+### 10.7 Deep-linkها
+
+FO-3 فقط deep-link می‌دهد:
+
+```text
+Worklist قدیمی
+پروندهٔ بیمار
+صف تأیید پیام
+گزارش پیام
+نوبت مرتبط
+صف/صفحهٔ Clinical Task حاکم
+```
+
+هیچ deep-link نباید permission را دور بزند.
+
+### 10.8 UX states
+
+ضروری:
+
+```text
+loading
+empty
+no projection yet
+projection stale
+blocked/conflict
+permission denied
+pagination boundary
+search no result
+```
+
+عبارات فنی مثل enum/hash در متن اصلی نمایش داده نشوند.
+
+### 10.9 Accessibility و RTL
+
+- RTL کامل؛
+- keyboard navigation؛
+- focus visible؛
+- semantic headings/table/list؛
+- badge تنها حامل رنگ نباشد؛
+- mobile/tablet/desktop؛
+- جلالی و اعداد فارسی مطابق conventions؛
+- action/wait/block با متن و icon قابل‌تفکیک.
+
+### 10.10 Telemetry اولیه
+
+بدون ذخیرهٔ PHI:
+
+```text
+view opened
+filter used
+episode detail opened
+deep-link clicked
+projection stale/error viewed
+```
+
+Telemetry اختیاری است؛ اگر در FO-3 اضافه شود باید aggregate و فاقد patient identifier در log عمومی باشد. KPI usability می‌تواند در تست دستی ثبت شود.
+
+### 10.11 تست FO-3
+
+- flag OFF → route/navigation unavailable or hidden؛
+- flag ON → authorized GET works؛
+- no POST/mutation route؛
+- no N+1 برای list؛
+- pagination/search/filter correctness؛
+- role/state/due filters؛
+- projection stale/empty/error states؛
+- timeline order و source labels؛
+- deep-link correctness و permission؛
+- RTL/Jalali/fa number؛
+- no raw technical state in primary copy؛
+- no source mutation؛
+- legacy Worklist unchanged؛
+- full regression.
+
+### 10.12 Exit Gate FO-3
+
+```text
+100% projected items discoverable in read-only UI
+zero source/projection mutation from GET routes
+legacy Worklist parity preserved
+all states have understandable primary copy
+all deep-links permission-safe
+no critical accessibility defect
+no N+1 / pagination required
+flag OFF restores exact prior visible behavior
+full CI green
+manual UX review confirms next action understood rapidly
+```
+
+FO-4 و mutationهای ownership تا این gate مسدودند.
+
+---
+
+## 11. State و زبان کاربر
+
+هر nonterminal item یکی از:
+
+```text
+ACTION_REQUIRED
+WAITING
+BLOCKED
+```
+
+و دقیقاً یکی از:
+
+```text
+next_action
+waiting_reason
+blocked_reason
+```
+
+نمونهٔ copy:
 
 | State فنی | نمایش کاربر |
 |---|---|
@@ -598,19 +715,19 @@ blocked_reason
 | cancelled | نوبت لغو شد؛ هماهنگی مجدد لازم است |
 | evidence missing | برای تکمیل، شاهد معتبر ثبت کنید |
 
-Enumها و hashها فقط در audit/debug نمایش داده می‌شوند.
+Enum/hash فقط در audit نمایش داده می‌شود.
 
 ---
 
-## 11. Routing، Ownership و SLA آینده
+## 12. Routing، Ownership و SLA آینده
 
-ترتیب هدف:
+ترتیب:
 
 ```text
-role queue proposal      FO-2
-read-only display        FO-3
-claim/assignment         FO-4
-SLA and escalation       FO-4/FO-5
+role proposal        FO-2 validated
+read-only display    FO-3 current
+claim/assignment     FO-4
+SLA/escalation       FO-4/FO-5
 ```
 
 Roleهای هدف:
@@ -622,13 +739,11 @@ Physician
 Manager / Operations
 ```
 
-Auto-assign فردی تا وجود شیفت و availability معتبر ممنوع است.
+Auto-assign فردی تا وجود shift/availability معتبر ممنوع است.
 
 ---
 
-## 12. Contact Outcome آینده
-
-Outcomeهای ساختاری موجود/هدف:
+## 13. Contact Outcome آینده
 
 ```text
 REACHED
@@ -643,13 +758,11 @@ MESSAGE_DELIVERED
 OTHER
 ```
 
-در FO-5 هر outcome policy مشخص خواهد داشت. یادداشت متن آزاد فقط مکمل است.
+در FO-5 outcomeها action بعدی را policy-driven می‌کنند. note فقط مکمل است.
 
 ---
 
-## 13. SMS Policy آینده
-
-چهار سطح:
+## 14. SMS Policy آینده
 
 ```text
 AUTO
@@ -662,7 +775,7 @@ Auto فقط با allowlist، consent، شماره canonical، quiet hours، cap�
 
 ---
 
-## 14. Cross-channel و Outbox آینده
+## 15. Cross-channel و Outbox آینده
 
 از FO-7:
 
@@ -675,51 +788,19 @@ Appointment no-show       → FOLLOW_UP_REQUIRED
 Administrative goal met   → close administrative episode
 ```
 
-هیچ cross-channel transitionی Clinical Task را خودکار complete نمی‌کند.
+هیچ transitionی Clinical Task را خودکار complete نمی‌کند.
 
 ---
 
-## 15. Clinical Evidence Assist آینده
+## 16. Clinical Evidence Assist آینده
 
-Evidence Assist فقط candidate را پیدا، provenance را نمایش و form را prefill می‌کند. accept/reject و completion انسانی باقی می‌ماند. شاهد stale، بدون provenance یا متعلق به بیمار/task دیگر رد می‌شود.
-
----
-
-## 16. UX هدف
-
-صف‌ها:
-
-```text
-کارهای من
-صف نقش من
-بدون مسئول
-در انتظار بیمار
-در انتظار نوبت/نتیجه
-نیازمند پزشک
-موعدگذشته
-```
-
-کارت Work Item:
-
-```text
-نام بیمار
-دلیل قابل‌فهم
-چرا ساخته شده
-اقدام بعدی
-مسئول یا صف نقش
-action_due و target
-آخرین رویداد
-خلاصه SMS/Appointment/Evidence
-یک CTA اصلی
-```
-
-Timeline باید تمام source eventها را با زبان کاربر نشان دهد و جزئیات فنی در drawer audit باشد.
+Evidence Assist candidate را پیدا، provenance را نمایش و form را prefill می‌کند. accept/reject و completion انسانی باقی می‌ماند. شاهد stale، بدون provenance یا متعلق به بیمار/task دیگر رد می‌شود.
 
 ---
 
 ## 17. Automation Health آینده
 
-در FO-9 مدیر باید ببیند:
+در FO-9:
 
 ```text
 scheduler heartbeat
@@ -728,7 +809,7 @@ job failures
 lease owner and age
 outbox backlog
 projection lag
-stale approval count
+stale approvals
 SMS unknown/failed
 unassigned overdue
 dead-letter
@@ -754,12 +835,13 @@ FOLLOWUP_EVIDENCE_ASSIST
 FOLLOWUP_AUTOMATION_HEALTH
 ```
 
-همه default OFF. وضعیت فعلی:
+همه default OFF. وضعیت:
 
 ```text
-Episode schema/backfill infrastructure = merged, explicit-use only
-Projection shadow                      = not implemented yet
-UI/action flags                        = OFF and unused
+Episode infrastructure          = merged, explicit backfill only
+Projection shadow infrastructure= merged, explicit rebuild only
+Unified read-only UI            = not implemented yet
+Action/mutation flags           = OFF and unused
 ```
 
 ---
@@ -770,136 +852,81 @@ UI/action flags                        = OFF and unused
 
 **Status:** `VALIDATED`
 
-Evidence:
-
 ```text
-PR #72
+PR #72 / #73
 merge 901dbfdf9c358ecc09d2a60a0680f6a4a8370d17
-731 Specialist tests
-54 Accounting tests
-owner test-only attestation via PR #73
+731 Specialist + 54 Accounting
 ```
 
 ### FO-1 — Episode Identity & Append-only Links
 
 **Status:** `VALIDATED`
 
-Evidence:
-
 ```text
-Issue #74
-PR #75
+Issue #74 / PR #75
 merge 15ef1585c069a74c26fbc0ce859e03906e5f475a
-736 Specialist tests
-54 Accounting tests
-4 Episodes / 12 Links synthetic fixture
-second apply: 0 new records
-source digest unchanged
+736 Specialist + 54 Accounting
+4 Episodes / 12 Links / idempotent
 ```
 
 ### FO-2 — Projection, Next Action & Shadow Parity
 
+**Status:** `VALIDATED`
+
+```text
+Issue #77 / PR #78
+merge 6c6e33203376a32165418e0d3c6f2a4a48253e7b
+747 Specialist + 54 Accounting
+100% coverage / 0 hidden / deterministic rebuild
+```
+
+### FO-3 — Read-only Unified Worklist & Timeline
+
 **Status:** `AUTHORIZED`
 
-کارها:
-
-- projection schema/repository؛
-- source-state adapters؛
-- central state/next-action policy؛
-- waiting/block reasons؛
-- action_due/target separation؛
-- owner role proposal؛
-- deterministic hash/rebuild؛
-- parity report؛
-- lag/performance metrics؛
-- explicit CLI و focused/full tests.
-
-Flag: `FOLLOWUP_PROJECTION_SHADOW`.
-
-### FO-3 — Read-only Unified Worklist
-
-**Status:** `BLOCKED_PENDING_FO_2`
-
-- read-only page؛
-- role/owner/waiting/overdue tabs؛
-- one read-only CTA label؛
-- detail drawer/Timeline؛
-- deep links؛
-- usability telemetry.
+- feature-flagged read-only route؛
+- list/filter/search/pagination؛
+- understandable card copy؛
+- role proposal؛
+- projection age/stale state؛
+- read-only Timeline؛
+- permission-safe deep-links؛
+- no mutation؛
+- legacy Worklist unchanged.
 
 ### FO-4 — Claim, Assignment, Routing & SLA
 
-**Status:** `NOT_STARTED`
+**Status:** `BLOCKED_PENDING_FO_3`
 
 - atomic claim/release/reassign؛
 - role queues؛
-- routing policy؛
+- assignment؛
 - SLA state؛
-- audit and stale protection.
+- audit/stale protection.
 
 ### FO-5 — Structured Contact, Retry & Escalation
 
 **Status:** `NOT_STARTED`
 
-- outcome-driven next action؛
-- callback scheduling؛
-- attempt policy؛
-- invalid phone/unreachable flow؛
-- low-click contact UI.
-
 ### FO-6 — Governed SMS Automation & Freshness
 
 **Status:** `NOT_STARTED`
-
-- policy level؛
-- template versioning؛
-- approval expiry؛
-- source revision/freshness؛
-- stale supersession؛
-- guarded auto path؛
-- audit decision event.
 
 ### FO-7 — Cross-channel Transition & Outbox
 
 **Status:** `NOT_STARTED`
 
-- durable outbox؛
-- SMS/appointment reactions؛
-- administrative goal completion؛
-- retry/dead-letter.
-
 ### FO-8 — Clinical Evidence Assist
 
 **Status:** `NOT_STARTED`
-
-- contract reader؛
-- evidence matcher؛
-- provenance UI؛
-- human accept/reject؛
-- governed completion handoff.
 
 ### FO-9 — Automation Health
 
 **Status:** `NOT_STARTED`
 
-- heartbeat/job history؛
-- outbox/dead-letter؛
-- projection lag؛
-- stale approval monitor؛
-- safe retry controls؛
-- runbook.
-
 ### FO-10 — Pilot, KPI, Cutover & Legacy Retirement
 
 **Status:** `NOT_STARTED`
-
-- cohort/role محدود؛
-- allowlisted SMS only؛
-- old/new parity؛
-- production baseline؛
-- rollback rehearsal؛
-- KPI proof؛
-- retirement فقط پس از evidence.
 
 ---
 
@@ -907,52 +934,32 @@ Flag: `FOLLOWUP_PROJECTION_SHADOW`.
 
 ### Unit
 
-- identity/hash؛
-- source adapters؛
-- projection policy؛
-- routing proposal؛
-- SLA؛
-- contact policy؛
-- SMS policy؛
-- transition؛
-- evidence match.
+identity/hash، source adapters، projection policy، read model mapping، Timeline mapping، routing، SLA، contact، SMS، transition و evidence match.
 
 ### Schema/Repository
 
-- fresh DB؛
-- existing/copied DB؛
-- rerun migration؛
-- append-only trigger؛
-- unique/idempotency؛
-- patient scope؛
-- deterministic rebuild؛
-- stale source.
+fresh/existing/rerun، append-only، idempotency، patient scope، projection rebuild و stale source.
 
 ### Integration
 
-- source → Episode → Projection؛
-- rebuild/replay؛
-- Scheduler rerun؛
-- outbox replay؛
-- delivery/appointment states؛
-- source digest unchanged.
+source → Episode → Projection → read-only UI، rebuild، delivery/appointment state و source digest.
 
 ### E2E هدف
 
 1. appointment reminder؛
 2. SMS delivered then wait؛
-3. permanent SMS failure then call؛
+3. permanent failure then call؛
 4. two medications in one Episode؛
 5. no-answer/callback/escalation؛
 6. wrong phone؛
 7. appointment booking؛
 8. cancellation؛
 9. no-show؛
-10. clinical recommendation requiring confirmation؛
-11. evidence suggested then human confirmed؛
-12. duplicate Scheduler and fencing؛
+10. clinical recommendation confirmation؛
+11. evidence suggestion؛
+12. Scheduler fencing؛
 13. projection rebuild؛
-14. stale approval superseded؛
+14. stale approval؛
 15. dead-letter retry.
 
 هر PR:
@@ -961,7 +968,7 @@ Flag: `FOLLOWUP_PROJECTION_SHADOW`.
 focused tests
 full Specialist suite
 Accounting suite when shared/governance impact exists
-fresh/existing migration tests when schema changes
+migration tests when schema changes
 git diff check
 CI artifacts
 ```
@@ -970,38 +977,37 @@ CI artifacts
 
 ## 21. Security، Privacy و Reliability
 
-- least privilege و permission server-side؛
-- CSRF برای mutation؛
+- permission server-side؛
+- CSRF برای mutationهای آینده؛
 - no PHI in logs/aggregate reports؛
 - actor/time/policy/version audit؛
-- consent and phone revalidation؛
 - source revision/hash؛
-- bounded batches؛
-- lease/fencing retained؛
-- one bad source does not stop whole batch؛
+- bounded query/pagination؛
+- no N+1؛
+- one bad source does not break list؛
 - explicit transaction boundaries؛
 - projection rebuild resumable؛
-- no raw clinical payload in generic projection مگر ضرورت قراردادی.
+- list view حداقل دادهٔ حساس را نمایش می‌دهد.
 
 ---
 
 ## 22. Rollback
 
-### UI rollback
+### FO-3 UI rollback
 
-flag UI OFF و UI قدیمی باقی می‌ماند.
+`FOLLOWUP_UNIFIED_WORKLIST_READONLY=0` و route/navigation جدید حذف از دید کاربر؛ Worklist قدیمی بدون تغییر باقی می‌ماند.
 
 ### Projection rollback
 
-`FOLLOWUP_PROJECTION_SHADOW=0`؛ projection table retained-but-unused؛ Episode lineage باقی می‌ماند.
+`FOLLOWUP_PROJECTION_SHADOW=0`؛ cache retained-but-unused یا rebuildable.
 
 ### Orchestration rollback
 
-action flags OFF؛ هیچ source truth حذف یا بازنویسی نمی‌شود.
+Action flags OFF؛ Source Truth حذف/بازنویسی نمی‌شود.
 
 ### Data rollback
 
-schema additive retained-but-unused؛ destructive rollback ممنوع.
+Schema additive retained-but-unused؛ destructive rollback ممنوع.
 
 ---
 
@@ -1009,19 +1015,19 @@ schema additive retained-but-unused؛ destructive rollback ممنوع.
 
 ```text
 100% nonterminal item has action/wait/block
-100% item has owner role or explicit unassigned reason
+100% item has owner role or explicit reason
 median next-action comprehension ≤ 5 sec
-primary action starts ≤ 2 interactions
+primary action starts ≤ 2 interactions after FO-4+
 zero stale SMS
-zero duplicate mutation on rerun
+zero duplicate mutation
 zero clinical completion without evidence
 zero hidden critical automation failure
-≥80% reduction in routine SMS manual approval
+≥80% reduction routine manual SMS approval
 unassigned overdue <5% in pilot
 reduced navigation and duplicate entry
 ```
 
-KPIهای واقعی فقط در Pilot معتبرند؛ دادهٔ تستی correctness و parity را اثبات می‌کند.
+FO-3 فقط discoverability و comprehension را می‌سنجد؛ operational action KPI از trancheهای mutationدار شروع می‌شود.
 
 ---
 
@@ -1031,9 +1037,9 @@ KPIهای واقعی فقط در Pilot معتبرند؛ دادهٔ تستی corr
 
 - `GOV-001` این سند مرجع اجرایی است.
 - `GOV-002` `PROJECT_STATE.*` مقدم است.
-- `GOV-003` هر PR tranche/requirement/flag/rollback را ذکر می‌کند.
-- `GOV-004` هر contract نسخه و evidence دارد.
-- `GOV-005` طبقه‌بندی محیط و تاریخ اعتبار ثبت می‌شود.
+- `GOV-003` هر PR tranche/requirement/flag/rollback دارد.
+- `GOV-004` هر contract نسخه/evidence دارد.
+- `GOV-005` طبقه‌بندی محیط ثبت می‌شود.
 
 ### Data
 
@@ -1054,25 +1060,29 @@ KPIهای واقعی فقط در Pilot معتبرند؛ دادهٔ تستی corr
 - `ORCH-004` contact structured.
 - `ORCH-005` cross-channel via outbox.
 - `ORCH-006` retry/escalation versioned.
-- `ORCH-007` FO-2 فقط shadow/read-only است.
-
-### SMS
-
-- `SMS-001` چهار policy level.
-- `SMS-002` auto فقط allowlisted + guarded.
-- `SMS-003` clinician-only never auto.
-- `SMS-004` pre-send freshness.
-- `SMS-005` stale superseded.
-- `SMS-006` consent/quiet/cap/cooldown/idempotency.
+- `ORCH-007` FO-2 shadow/read-only.
+- `ORCH-008` FO-3 UI has no mutation.
 
 ### UX
 
-- `UX-001` یک primary CTA.
+- `UX-001` یک primary action label.
 - `UX-002` زبان عملیاتی.
 - `UX-003` Timeline واحد.
 - `UX-004` کاهش navigation.
 - `UX-005` role/waiting/overdue views.
 - `UX-006` blocked reason قابل‌فهم.
+- `UX-007` read-only UI never implies action completion.
+- `UX-008` projection age/stale state visible.
+- `UX-009` pagination/accessibility/RTL mandatory.
+
+### SMS
+
+- `SMS-001` چهار policy level.
+- `SMS-002` auto فقط allowlisted+guarded.
+- `SMS-003` clinician-only never auto.
+- `SMS-004` pre-send freshness.
+- `SMS-005` stale superseded.
+- `SMS-006` consent/quiet/cap/cooldown/idempotency.
 
 ### Clinical
 
@@ -1100,30 +1110,16 @@ KPIهای واقعی فقط در Pilot معتبرند؛ دادهٔ تستی corr
 | Tranche | Status | Main commit | PR | CI/Evidence |
 |---|---|---|---|---|
 | FO-0 | VALIDATED | `901dbfdf9c358ecc09d2a60a0680f6a4a8370d17` | #72/#73 | 731 + 54؛ test-only attestation |
-| FO-1 | VALIDATED | `15ef1585c069a74c26fbc0ce859e03906e5f475a` | #75 | 736 + 54؛ 4 Episodes/12 Links؛ idempotent |
-| FO-2 | AUTHORIZED | — | — | Projection/next-action shadow only |
-| FO-3 | BLOCKED | — | — | pending FO-2 gate |
-| FO-4 | NOT_STARTED | — | — | — |
+| FO-1 | VALIDATED | `15ef1585c069a74c26fbc0ce859e03906e5f475a` | #75 | 736 + 54؛ 4 Episodes/12 Links |
+| FO-2 | VALIDATED | `6c6e33203376a32165418e0d3c6f2a4a48253e7b` | #78 | 747 + 54؛ 100% parity coverage |
+| FO-3 | AUTHORIZED | — | — | read-only UI/Timeline only |
+| FO-4 | BLOCKED | — | — | pending FO-3 gate |
 | FO-5 | NOT_STARTED | — | — | — |
 | FO-6 | NOT_STARTED | — | — | — |
 | FO-7 | NOT_STARTED | — | — | — |
 | FO-8 | NOT_STARTED | — | — | — |
 | FO-9 | NOT_STARTED | — | — | — |
 | FO-10 | NOT_STARTED | — | — | — |
-
-Statusهای مجاز:
-
-```text
-NOT_STARTED
-AUTHORIZED
-IN_PROGRESS
-BLOCKED
-PR_OPEN
-MERGED
-VALIDATED
-ROLLED_BACK
-SUPERSEDED
-```
 
 ---
 
@@ -1139,11 +1135,14 @@ SUPERSEDED
 | DEC-006 | 2026-08-03 | legacy UI تا parity حذف نمی‌شود | ACCEPTED |
 | DEC-007 | 2026-08-03 | Rule و Shadow خارج از scope | ACCEPTED |
 | DEC-008 | 2026-08-03 | محیط فعلی test-only/resettable | OWNER_ATTESTED |
-| DEC-009 | 2026-08-03 | deterministic synthetic baseline برای FO-0 | ACCEPTED |
-| DEC-010 | 2026-08-03 | FO-0 validated و FO-1 authorized | COMPLETED |
-| DEC-011 | 2026-08-03 | Episode identity/link/event بدون runtime reaction | IMPLEMENTED |
-| DEC-012 | 2026-08-03 | ambiguous relation → orphan reason، نه حدس | IMPLEMENTED |
-| DEC-013 | 2026-08-03 | FO-1 validated؛ FO-2 فقط shadow projection | ACCEPTED |
+| DEC-009 | 2026-08-03 | deterministic baseline برای FO-0 | ACCEPTED |
+| DEC-010 | 2026-08-03 | FO-0 validated | COMPLETED |
+| DEC-011 | 2026-08-03 | Episode identity/link/event بدون reaction | IMPLEMENTED |
+| DEC-012 | 2026-08-03 | ambiguity → orphan reason | IMPLEMENTED |
+| DEC-013 | 2026-08-03 | FO-1 validated | COMPLETED |
+| DEC-014 | 2026-08-03 | Projection fail-closed و deterministic | IMPLEMENTED |
+| DEC-015 | 2026-08-03 | owner در FO-2 فقط role proposal | IMPLEMENTED |
+| DEC-016 | 2026-08-03 | FO-2 validated؛ FO-3 فقط read-only | ACCEPTED |
 
 ---
 
@@ -1166,7 +1165,7 @@ SUPERSEDED
 ## 28. قدم مجاز فعلی
 
 ```text
-FO-2 — Projection, Next Action & Shadow Parity
+FO-3 — Read-only Unified Worklist & Timeline
 ```
 
-FO-3 یا هر UI/automation mutation پیش از بسته‌شدن Exit Gate FO-2 ممنوع است.
+FO-4 یا هر mutation ownership/routing پیش از Exit Gate FO-3 ممنوع است.
