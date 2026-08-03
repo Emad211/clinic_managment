@@ -14,6 +14,7 @@ import sqlite3
 from src.adapters.sqlite.followup_projection_schema import (
     PROJECTION_REQUIRED_COLUMNS,
 )
+from src.common.utils import iran_now
 
 
 STATE_LABELS = {
@@ -70,6 +71,17 @@ READINESS_COPY = {
 _ALLOWED_STATES = frozenset(STATE_LABELS)
 _ALLOWED_ROLES = frozenset(ROLE_LABELS)
 _ALLOWED_SLA = frozenset(SLA_LABELS)
+_EFFECTIVE_SLA_SQL = """
+CASE
+  WHEN projection.state_class='TERMINAL' THEN 'TERMINAL'
+  WHEN projection.state_class='BLOCKED' THEN 'BLOCKED'
+  WHEN projection.state_class='WAITING' THEN 'WAITING'
+  WHEN projection.action_due_at IS NULL THEN 'DUE_UNKNOWN'
+  WHEN datetime(projection.action_due_at) < datetime(?) THEN 'OVERDUE'
+  WHEN date(projection.action_due_at) = date(?) THEN 'DUE_TODAY'
+  ELSE 'FUTURE'
+END
+"""
 _PATIENT_REQUIRED_COLUMNS = frozenset({"id", "full_name", "national_id", "phone_number"})
 _LINK_REQUIRED_COLUMNS = frozenset(
     {"id", "episode_id", "source_type", "source_id", "relation_type", "linked_at"}
@@ -84,6 +96,32 @@ def _as_datetime(value: object) -> datetime | None:
         return datetime.fromisoformat(rendered.replace("Z", "+00:00"))
     except ValueError:
         return None
+
+
+def _effective_sla_state(
+    state_class: object, action_due_at: object, now: datetime
+) -> str:
+    state = str(state_class or "").strip().upper()
+    if state == "TERMINAL":
+        return "TERMINAL"
+    if state == "BLOCKED":
+        return "BLOCKED"
+    if state == "WAITING":
+        return "WAITING"
+
+    due_at = _as_datetime(action_due_at)
+    if due_at is None:
+        return "DUE_UNKNOWN"
+    compare_now = now
+    if due_at.tzinfo and compare_now.tzinfo is None:
+        compare_now = compare_now.replace(tzinfo=due_at.tzinfo)
+    if due_at.tzinfo is None and compare_now.tzinfo:
+        due_at = due_at.replace(tzinfo=compare_now.tzinfo)
+    if due_at < compare_now:
+        return "OVERDUE"
+    if due_at.date() == compare_now.date():
+        return "DUE_TODAY"
+    return "FUTURE"
 
 
 def _masked_national_id(value: object) -> str:
@@ -258,6 +296,10 @@ class FollowupUnifiedReadModelService:
             due_now = due_now.replace(tzinfo=due_at.tzinfo)
         if due_at and due_at.tzinfo is None and due_now.tzinfo:
             due_at = due_at.replace(tzinfo=due_now.tzinfo)
+        effective_sla = _effective_sla_state(
+            item.get("state_class"), item.get("action_due_at"), now
+        )
+        item["sla_state"] = effective_sla
         item.update(
             {
                 "patient_name": str(item.get("patient_name") or "بیمار بدون نام"),
@@ -320,7 +362,7 @@ class FollowupUnifiedReadModelService:
     ) -> dict:
         page_number = self._normalize_page(page, default=1, maximum=1_000_000)
         page_size = self._normalize_page(per_page, default=20, maximum=50)
-        current = now or datetime.now().replace(microsecond=0)
+        current = now or iran_now().replace(microsecond=0)
         filters = self._normalize_filters(
             query=query,
             state_class=state_class,
@@ -351,8 +393,9 @@ class FollowupUnifiedReadModelService:
             )
             params.append(filters["role"])
         if filters["sla"]:
-            clauses.append("projection.sla_state=?")
-            params.append(filters["sla"])
+            current_text = current.isoformat(sep=" ", timespec="seconds")
+            clauses.append(f"({_EFFECTIVE_SLA_SQL})=?")
+            params.extend((current_text, current_text, filters["sla"]))
         if filters["q"]:
             like = f"%{filters['q']}%"
             clauses.append(
@@ -470,7 +513,7 @@ class FollowupUnifiedReadModelService:
             "item": self._decorate(
                 row,
                 sources=links.get(str(episode_id), []),
-                now=now or datetime.now().replace(microsecond=0),
+                now=now or iran_now().replace(microsecond=0),
                 stale_after_minutes=stale_after_minutes,
             ),
         }
