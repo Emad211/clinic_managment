@@ -1,0 +1,24 @@
+{
+  "version": "0.4",
+  "date": "2026-07-30",
+  "guideline": "ADA Standards of Care in Diabetes—2026",
+  "section_6_recommendation_records": 24,
+  "studies_screened_rec_6_19": 11,
+  "fulltext_extractions": 9,
+  "article_level_appraisals": 9,
+  "formal_appraisals_completed": [
+    "AMSTAR2:ART-ADA-S06-0008",
+    "ROBINS-I:ART-ADA-S06-0009",
+    "ROBINS-I-adapted:ART-ADA-S06-0011"
+  ],
+  "open_conflicts": 12,
+  "rule_candidates": 0,
+  "accepted_rules": 0,
+  "licensing": "HOLD",
+  "review_model": "two-pass same evaluator; not independent human appraisal",
+  "google_sheet_id": "1lkEa9Iu3vO1QcPUoAigVcRWiKsSRz1350OiGChghHc8",
+  "formal_appraisal_doc_id": "1J9sL-_iAvw1w3Qh4DCVcjvtjrhfHDhKTaINfqmNsQk8",
+  "workspace_sha256": "ca67ef5b2816d97fee7f79429cadb8bd5b29e3b8dfd5db09f087ec645f692a58",
+  "v0_4_evidence_commit": "08bf08bca98ce62082569a97dde8f43612929de0",
+  "primary_rec_6_19_conclusion": "no causal evidence currently supports an automated medication action after one verified level 2/3 event"
+}

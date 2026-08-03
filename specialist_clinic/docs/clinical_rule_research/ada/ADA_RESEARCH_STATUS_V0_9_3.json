@@ -1,0 +1,65 @@
+{
+  "version": "0.9.3",
+  "date": "2026-08-01",
+  "guideline": "ADA Standards of Care in Diabetes—2026",
+  "workstream": "ADA-04 Recommendation 6.19 local computability assessment",
+  "parent_version": "0.9.2",
+  "branch": "research/ada-2026-evidence-v0.2",
+  "pull_request": 60,
+  "native_google_sheet": {
+    "spreadsheet_id": "1x2tHD54tphkDXgmjQzmxHwHbA1CNXWTfzC236Z5j830",
+    "url": "https://docs.google.com/spreadsheets/d/1x2tHD54tphkDXgmjQzmxHwHbA1CNXWTfzC236Z5j830/edit",
+    "title": "ADA Clinical Rule Evidence Master v0.9.3 — Local Computability Gap Assessment",
+    "parent_v0_9_2_preserved": "https://docs.google.com/spreadsheets/d/1p-ugp_yQ3pVqbSN1I-IwremZ4P65sSEi3AtReFeyVbc/edit"
+  },
+  "metrics": {
+    "section_6_recommendations": 24,
+    "studies_screened_rec_6_19": 17,
+    "fulltext_extractions": 10,
+    "article_level_appraisals": 16,
+    "sealed_formal_appraisals": 9,
+    "provisional_pht2_appraisals": 1,
+    "grade_evidence_units": 10,
+    "search_log_records": 45,
+    "open_conflicts": 43,
+    "decision_records": 74,
+    "computability_requirements_audited": 28,
+    "minimum_data_contract_fields": 43,
+    "rule_candidates": 0,
+    "accepted_clinical_rules": 0,
+    "runtime_changes": 0,
+    "ui_changes": 0
+  },
+  "computability": {
+    "verified_hypoglycemia_review_trigger": "NOT_COMPUTABLE",
+    "medication_action": "HARD_BLOCK",
+    "clinician_task_infrastructure": "PARTIAL_FOUNDATION_ONLY",
+    "event_contract": "MISSING",
+    "structured_review_disposition": "MISSING",
+    "minimum_data_contract": "DEFINED_RESEARCH_ONLY"
+  },
+  "existing_foundations": [
+    "append-only medication/condition/allergy reconciliation",
+    "time/source/unit/verification-aware observations",
+    "canonical eGFR, UACR and HbA1c lab concepts",
+    "conflict-aware collection facts",
+    "immutable clinician task contracts"
+  ],
+  "hard_gaps": [
+    "stable hypoglycemia event identity and level",
+    "external assistance and altered functioning",
+    "event-level provenance and deduplication",
+    "medication indication",
+    "actual administration/adherence relative to event",
+    "medication causality adjudication",
+    "renal trajectory/AKI/KRT and HbA1c validity",
+    "CGM data sufficiency",
+    "awareness/cognition/function/frailty/nutrition/caregiver/preferences",
+    "local access/cost/referral capability",
+    "structured clinician review disposition"
+  ],
+  "licensing": "HOLD",
+  "independent_human_review": "NOT_AVAILABLE",
+  "clinical_activation": "BLOCKED",
+  "next_phase": "research design and validation planning for event/review contracts; no clinical action coding"
+}

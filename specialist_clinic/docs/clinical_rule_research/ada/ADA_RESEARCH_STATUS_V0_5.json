@@ -1,0 +1,20 @@
+{
+  "version": "0.5",
+  "date": "2026-07-30",
+  "guideline": "ADA Standards of Care in Diabetes—2026",
+  "section_6_recommendation_records": 24,
+  "studies_screened_rec_6_19": 11,
+  "fulltext_extractions": 9,
+  "article_level_appraisals": 9,
+  "formal_method_appraisals": 3,
+  "cross_section_dependencies_mapped": 14,
+  "open_conflicts": 15,
+  "rule_candidates": 0,
+  "accepted_rules": 0,
+  "licensing": "HOLD",
+  "review_model": "two-pass same evaluator; not independent human appraisal",
+  "google_sheet_id": "1Rpd41jOQOoXXlrkCeAu0Xlp8dwCTeLRgzyLvmfnjYTI",
+  "cross_section_doc_id": "1-s5A2HPpZs3Kxn8GK6xTWSMcoNsji0zgWBNzj1pYCss",
+  "workspace_sha256": "b13fbb1d7d80c52603952ae537836a8f9bb22c58e1e5bbbdf400f064270efd18",
+  "primary_conclusion": "section 6 alone cannot determine any medication action after a verified level 2/3 event"
+}

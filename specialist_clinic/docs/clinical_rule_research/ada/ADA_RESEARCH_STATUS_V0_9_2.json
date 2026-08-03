@@ -1,0 +1,59 @@
+{
+  "version": "0.9.2",
+  "date": "2026-08-01",
+  "guideline": "ADA Standards of Care in Diabetes—2026",
+  "workstream": "ADA-03 Recommendation 6.19",
+  "base_version": "0.8",
+  "intermediate_version": "0.9.1",
+  "branch": "research/ada-2026-evidence-v0.2",
+  "pull_request": 60,
+  "native_google_sheet": {
+    "spreadsheet_id": "1p-ugp_yQ3pVqbSN1I-IwremZ4P65sSEi3AtReFeyVbc",
+    "url": "https://docs.google.com/spreadsheets/d/1p-ugp_yQ3pVqbSN1I-IwremZ4P65sSEi3AtReFeyVbc/edit",
+    "title": "ADA Clinical Rule Evidence Master v0.9.2 — PHT2 + HOAP Reporting Audit",
+    "parent_preserved": "https://docs.google.com/spreadsheets/d/1E99uz5cBc1vENqMMi6r25Sb2ZkeGCQf3MhJz0dZU90w/edit"
+  },
+  "review_model": "two analytical passes by the same evaluator; not independent human duplication",
+  "metrics": {
+    "registered_ada_sections": 17,
+    "section_6_recommendations": 24,
+    "studies_screened_for_rec_6_19": 17,
+    "fulltext_extractions": 10,
+    "article_level_appraisals": 16,
+    "sealed_formal_appraisals": 9,
+    "provisional_pht2_appraisals": 1,
+    "grade_evidence_units": 10,
+    "search_log_records": 39,
+    "open_conflicts": 34,
+    "decision_records": 66,
+    "rule_candidates": 0,
+    "accepted_clinical_rules": 0,
+    "runtime_changes": 0
+  },
+  "pht2": {
+    "protocol_and_sap": "PUBLIC_VERSION_7_EXTRACTED",
+    "prospective_registry": "YES_BEFORE_FIRST_ENROLLMENT",
+    "results_full_article": "PENDING",
+    "final_pcori_report": "NOT_POSTED_AS_OF_2026-08-01",
+    "completion_denominator": "OPEN_92_PERCENT_VS_230_OF_259",
+    "rob2": "SOME_CONCERNS_PROVISIONAL_MAY_ESCALATE",
+    "grade_eu_6_19_10": "VERY_LOW_PROVISIONAL_NOT_FINAL"
+  },
+  "hoap": {
+    "article": "FULLTEXT_EXTRACTED_AND_REPORTING_AUDITED",
+    "registry": "RETROSPECTIVE_PUBLIC_POSTING_AFTER_PRIMARY_COMPLETION",
+    "supplement_1": "LISTED_BUT_BINARY_VERSION_DATES_NOT_AUDITED",
+    "post_randomization_exclusions": "200_RANDOMIZED_191_ANALYZED_OPEN_CONFLICT",
+    "assignment_start_baseline_chronology": "OPEN_CONFLICT",
+    "primary_estimand": "FULL_COHORT_AND_141_TARGET_DRUG_SUBSET_NOT_RULE_PORTABLE",
+    "ed_ip_signal": "SECONDARY_SPARSE_NOT_DURABLE_VERY_LOW_CERTAINTY",
+    "internal_guideline": "NOT_PUBLICLY_ACCESSIBLE",
+    "software_reuse_rights": "HOLD",
+    "evidence_role": "PROCESS_WORKFLOW_EVIDENCE_ONLY",
+    "grade_eu_6_19_08": "VERY_LOW",
+    "grade_eu_6_19_09": "VERY_LOW"
+  },
+  "licensing": "HOLD",
+  "clinical_activation": "BLOCKED",
+  "primary_conclusion": "PHT2 and HOAP provide research support for clinician-owned review workflows, but neither supplies a portable autonomous medication action. All Rule and Runtime gates remain closed."
+}

@@ -1,0 +1,22 @@
+{
+  "version": "0.7",
+  "date": "2026-07-30",
+  "guideline": "ADA Standards of Care in Diabetes—2026",
+  "section_6_recommendation_records": 24,
+  "studies_screened_rec_6_19": 16,
+  "fulltext_extractions": 10,
+  "article_level_appraisals": 16,
+  "formal_method_appraisals": 9,
+  "post_cutoff_evidence_records": 5,
+  "grade_evidence_units": 10,
+  "kdigo_dependency_records": 8,
+  "cross_section_dependencies_mapped": 14,
+  "open_conflicts": 23,
+  "decision_records": 48,
+  "rule_candidates": 0,
+  "accepted_rules": 0,
+  "licensing": "HOLD",
+  "review_model": "two-pass same evaluator; not independent human appraisal",
+  "history_reconciliation": "v0.3-v0.6 unique ID merge completed",
+  "primary_conclusion": "team-based proactive workflow evidence improved; no autonomous medication action is supported"
+}

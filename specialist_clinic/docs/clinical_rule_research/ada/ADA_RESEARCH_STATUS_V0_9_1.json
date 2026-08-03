@@ -1,0 +1,49 @@
+{
+  "version": "0.9.1",
+  "date": "2026-08-01",
+  "guideline": "ADA Standards of Care in Diabetes—2026",
+  "workstream": "ADA-03 Recommendation 6.19",
+  "base_version": "0.8",
+  "base_branch": "research/ada-2026-evidence-v0.2",
+  "base_pull_request": 60,
+  "review_model": "two analytical passes by the same evaluator; not independent human duplication",
+  "corrigendum": {
+    "supersedes": "0.9-proposed",
+    "reason": "Public PHT2 Protocol/SAP Version 7 was located; prior SAP-pending statement is obsolete.",
+    "do_not_apply_patch": "ada-rec-6-19-v0.9-proposed.patch"
+  },
+  "pht2": {
+    "protocol_and_sap": "PUBLIC_VERSION_7_EXTRACTED",
+    "prospective_registry": "YES_BEFORE_FIRST_ENROLLMENT",
+    "results_article_fulltext": "SUBSCRIPTION_ACCESS_HOLD",
+    "official_supplement": "EXTRACTED_IN_PRIOR_REVIEW",
+    "pcori_results_and_peer_review": "EXTRACTED",
+    "pcori_final_research_report": "NOT_POSTED_AS_OF_2026-08-01",
+    "primary_outcome": "PRESPECIFIED_AND_NONSIGNIFICANT",
+    "completion_statement": "UNRESOLVED_92_PERCENT_VS_230_OF_259",
+    "rob2": "PROVISIONAL_SOME_CONCERNS_NOT_FINAL",
+    "grade_for_portable_actionable_rule": "VERY_LOW_PROVISIONAL_NOT_FINAL"
+  },
+  "hoap": {
+    "trial_protocol_and_sap": "LOCATED_IN_JAMA_SUPPLEMENT_1",
+    "public_prospective_registration": "NOT_ESTABLISHED_REGISTRATION_AFTER_PRIMARY_COMPLETION",
+    "internal_guideline": "NOT_PUBLICLY_ACCESSIBLE",
+    "development_method_full_appraisal": "HOLD",
+    "software_adaptation_rights": "HOLD",
+    "evidence_role": "PROCESS_WORKFLOW_EVIDENCE_ONLY"
+  },
+  "metrics": {
+    "search_log_records": 35,
+    "open_conflicts": 29,
+    "decision_records": 59,
+    "fulltext_extractions": 10,
+    "formal_method_appraisals_sealed": 9,
+    "provisional_result_appraisals": 1,
+    "rule_candidates": 0,
+    "accepted_clinical_rules": 0,
+    "runtime_changes": 0
+  },
+  "licensing": "HOLD",
+  "clinical_activation": "BLOCKED",
+  "primary_conclusion": "PHT2 Protocol/SAP availability permits a provisional outcome-specific appraisal, but denominator inconsistency, amendment chronology, imprecision and indirectness still prevent any portable medication-action Rule. HOAP remains workflow evidence only."
+}
