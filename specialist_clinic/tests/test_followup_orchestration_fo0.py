@@ -152,7 +152,7 @@ print(json.dumps({
     assert payload["values"] == {name: False for name in EXPECTED_FLAGS}
 
 
-def test_fo4_and_later_schema_is_not_installed_before_ux_acceptance():
+def test_fo4_and_later_schema_is_not_installed_before_post_fix_ux_acceptance():
     schema_sources = [SRC_ROOT / "adapters" / "sqlite" / "schema.sql"]
     schema_sources.extend(
         path for path in (SRC_ROOT / "adapters" / "sqlite").glob("*.py") if path.is_file()
@@ -172,7 +172,7 @@ def test_fo4_and_later_schema_is_not_installed_before_ux_acceptance():
     assert violations == []
 
 
-def test_project_state_validates_fo3_technically_and_blocks_fo4():
+def test_project_state_records_issue84_and_blocks_fo4():
     state = json.loads((REPO_ROOT / "PROJECT_STATE.json").read_text(encoding="utf-8"))
     specialist = state["streams"]["specialist_clinic"]
     assert specialist["data_classification"] == "TEST_ONLY_SYNTHETIC_OR_RESETTABLE"
@@ -180,24 +180,39 @@ def test_project_state_validates_fo3_technically_and_blocks_fo4():
 
     stream = state["streams"]["followup_orchestration_ux_v1"]
     assert stream["program_code"] == "FOUX-V1"
-    assert stream["plan_version"] == "1.4.0"
+    assert stream["plan_version"] == "1.4.1"
+    assert stream["current_tranche"] == "FO_3_FOCUSED_RUNTIME_REPAIR"
     assert stream["status"] == (
         "FO_0_VALIDATED_FO_1_VALIDATED_FO_2_VALIDATED_"
-        "FO_3_TECHNICALLY_VALIDATED_UX_ACCEPTANCE_PENDING"
+        "FO_3_TECHNICALLY_VALIDATED_LOCAL_UX_BLOCKED_BY_RUNTIME_DEFECT_"
+        "FOCUSED_FIX_IN_PROGRESS"
     )
-    assert stream["fo2_evidence"]["implementation_pr"] == 78
-    assert stream["fo2_evidence"]["merge_commit"] == "6c6e33203376a32165418e0d3c6f2a4a48253e7b"
     assert stream["fo3_evidence"]["implementation_pr"] == 81
     assert stream["fo3_evidence"]["merge_commit"] == "afed3545c0a90a1ed7ff7e0a892df89fffac00c2"
     assert stream["fo3_evidence"]["specialist_tests_passed"] == 754
     assert stream["fo3_evidence"]["accounting_tests_passed"] == 54
-    assert stream["fo3_evidence"]["get_only_routes"] is True
-    assert stream["fo3_evidence"]["local_ux_acceptance"] == "PENDING"
+    assert stream["fo3_evidence"]["local_ux_acceptance"] == "BLOCKED_BY_RUNTIME_DEFECT"
+
+    incident = stream["fo3_runtime_incident"]
+    assert incident["incident_code"] == "FO3_UI_500"
+    assert incident["tracking_issue"] == 84
+    assert incident["exact_local_traceback_available"] is False
+    assert incident["focused_fix_branch"] == "fix/foux-v1-fo3-unified-500-v1"
+    assert incident["status"] == "IN_PROGRESS"
+
+    assert stream["implemented_contracts"]["projection_storage_schema_version_target"] == "1.1"
     assert stream["fo3_allowed"] is True
     assert stream["fo4_allowed"] is False
-    assert stream["next_gate"] == "FO_3_LOCAL_MANUAL_UX_ACCEPTANCE_ATTESTATION"
+    assert stream["next_gate"] == (
+        "ISSUE_84_FOCUSED_FIX_FULL_CI_MERGE_AND_REPEAT_LOCAL_UX_ACCEPTANCE"
+    )
     assert stream["feature_flags"] == {name: False for name in EXPECTED_FLAGS}
-    assert state["global_freeze"]["followup_orchestration_fo4_and_later"].startswith("BLOCKED")
+    assert state["global_freeze"]["followup_orchestration_fo3"].endswith(
+        "FOCUSED_RUNTIME_REPAIR_ONLY"
+    )
+    assert state["global_freeze"]["followup_orchestration_fo4_and_later"].startswith(
+        "BLOCKED"
+    )
 
 
 def test_canonical_docs_and_agent_guard_are_current():
@@ -205,14 +220,18 @@ def test_canonical_docs_and_agent_guard_are_current():
     baseline = BASELINE_PATH.read_text(encoding="utf-8")
     agent = (SPECIALIST_ROOT / "AGENTS.md").read_text(encoding="utf-8")
 
-    assert "نسخه:** `1.4.0`" in plan
-    assert "FO_3_TECHNICALLY_VALIDATED" in plan
-    assert "FO-3 | TECHNICALLY_VALIDATED" in plan
-    assert "FO-3 Local UX Acceptance Gate" in plan
+    assert "نسخه:** `1.4.1`" in plan
+    assert "FO_3_LOCAL_UX_BLOCKED_BY_RUNTIME_DEFECT" in plan
+    assert "Incident FO-3-UI-500" in plan
+    assert "Issue #84" in plan
+    assert "FOCUSED FO-3 FIX = IN PROGRESS" in plan
     assert "FO-4 AND LATER = BLOCKED" in plan
     assert "Status:** `VALIDATED`" in baseline
-    assert "FO-3 = TECHNICALLY_VALIDATED" in agent
-    assert "FO-3 LOCAL UX ACCEPTANCE = PENDING" in agent
+
+    assert "FO-3 LOCAL UX ACCEPTANCE = BLOCKED BY RUNTIME DEFECT" in agent
+    assert "FOCUSED FIX ISSUE = #84" in agent
+    assert "Only disposable projection cache" not in agent
+    assert "فقط Projection cache disposable" in agent
     assert "FO-4 and later = BLOCKED" in agent
 
 
