@@ -1,0 +1,73 @@
+<section class="card card-soft" id="sms-consent" aria-labelledby="sms-consent-title">
+    <div class="section-title">
+        <svg class="icon"><use href="#i-bell"></use></svg>
+        <div>
+            <div id="sms-consent-title">تنظیم دریافت پیامک</div>
+            <div class="section-sub">مشخص می‌کند درمانگاه اجازه دارد چه نوع پیامکی برای این بیمار ارسال کند.</div>
+        </div>
+    </div>
+
+    <div class="card" role="note" style="margin:0 0 var(--s4);box-shadow:none;">
+        <b>دو نوع پیام کاملاً مستقل هستند</b>
+        <p class="muted text-sm m-0" style="margin-top:var(--s2);">
+            توقف پیام‌های عمومی و تبلیغاتی، پیام‌های مراقبتی مانند یادآوری نوبت و پیگیری درمان را متوقف نمی‌کند.
+            هر تغییر فقط ارسال‌های آینده را کنترل می‌کند و تاریخچهٔ رضایت حذف نمی‌شود.
+        </p>
+    </div>
+
+    <div class="grid grid-2 gap-3">
+        {% for purpose in ['CARE','MARKETING'] %}
+        {% set consent = sms_consent.get(purpose) %}
+        <article class="card" style="margin:0;" aria-labelledby="sms-consent-{{ purpose|lower }}">
+            <div class="flex items-center gap-2 wrap" style="justify-content:space-between;align-items:flex-start;">
+                <div style="max-width:78%;">
+                    <h3 id="sms-consent-{{ purpose|lower }}" style="margin:0;">{{ consent.label }}</h3>
+                    <p class="muted text-sm" style="margin:var(--s2) 0 0;">{{ consent.description }}</p>
+                </div>
+                <span class="badge {% if consent.allowed %}badge-ok{% else %}badge-danger{% endif %}" role="status">
+                    {{ consent.status_label }}
+                </span>
+            </div>
+
+            <div class="card card-soft" style="margin:var(--s3) 0 0;padding:var(--s3);">
+                <div class="text-sm"><b>شامل:</b> {{ consent.examples }}</div>
+                <div class="muted text-sm" style="margin-top:var(--s2);">{{ consent.status_help }}</div>
+            </div>
+
+            <div class="muted text-xs" style="margin-top:var(--s3);">
+                آخرین تغییر:
+                {% if consent.recorded_at %}{{ consent.recorded_at|jalali }}{% else %}هنوز تغییر دستی ثبت نشده است{% endif %}
+            </div>
+
+            {% if permissions.get('sms.consent.manage') %}
+            <form method="post" action="{{ url_for('patients.sms_consent_update', pid=patient.id) }}" style="margin-top:var(--s3);">
+                <input type="hidden" name="purpose" value="{{ purpose }}">
+                <input type="hidden" name="decision" value="{{ 'REVOKED' if consent.allowed else 'GRANTED' }}">
+                <input type="hidden" name="expected_current_event_id" value="{{ consent.id }}">
+                <div class="fld">
+                    <label for="sms-consent-note-{{ purpose|lower }}">دلیل یا توضیح تغییر <span class="muted">(اختیاری)</span></label>
+                    <input id="sms-consent-note-{{ purpose|lower }}" name="note" placeholder="مثلاً: درخواست بیمار در تماس تلفنی">
+                </div>
+                <div class="flex items-center gap-2 wrap" style="justify-content:flex-end;margin-top:var(--s3);">
+                    <button class="btn {% if consent.allowed %}btn-danger{% else %}btn-ok{% endif %}" type="submit">
+                        {{ consent.action_label }}
+                    </button>
+                </div>
+            </form>
+            {% endif %}
+
+            <details class="text-xs muted" style="margin-top:var(--s3);">
+                <summary>جزئیات ثبت برای پشتیبانی</summary>
+                <dl style="margin:var(--s2) 0 0;">
+                    <dt>مبنای وضعیت</dt>
+                    <dd>{{ consent.source_label }}</dd>
+                    <dt>دلیل ثبت</dt>
+                    <dd>{{ consent.reason_label }}</dd>
+                    <dt>کدهای فنی</dt>
+                    <dd><code dir="ltr">{{ consent.source_code }}{% if consent.reason_code %} / {{ consent.reason_code }}{% endif %}</code></dd>
+                </dl>
+            </details>
+        </article>
+        {% endfor %}
+    </div>
+</section>
