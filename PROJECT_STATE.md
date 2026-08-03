@@ -2,9 +2,8 @@
 
 > **Source of Truth مدیریتی مخزن.** پیش از توسعه، وضعیت واقعی GitHub، این فایل و `PROJECT_STATE.json` خوانده شوند.
 
-- آخرین ممیزی: `2026-08-04 01:20 +03:30`
+- آخرین ممیزی: `2026-08-04 02:24 +03:30`
 - شاخهٔ مرجع: `main`
-- head مرجع runtime/UI برای مرور: `cd243424ecbae98892e0dfde1780bb846554942f`
 - محیط Specialist: `TEST_ONLY / SYNTHETIC_OR_RESETTABLE`
 - دادهٔ واقعی بیمار: `NOT EXPECTED`
 
@@ -16,7 +15,7 @@
 |---|---|---|---|
 | Specialist Product | `ACTIVE_PRE_PRODUCTION` | رفتار واقعی main | تغییر بالینی بدون گیت |
 | SMS Consent UX | `COMPLETED` | رابط روشن رضایت پیامکی | تغییر policy یا consent defaults |
-| FOUX-V1 | `FO_0/1/2_VALIDATED / FO_3_OWNER_ACCEPTED / FO_4_TECHNICALLY_VALIDATED / UX_PENDING` | مرور لوکال یا defect متمرکز FO-4 | FO-5+ و اتوماسیون‌های بعدی |
+| FOUX-V1 | `FO_0..FO_4_VALIDATED / FO_5_AUTHORIZED` | فقط Structured Contact، Retry و Escalation | FO-6+ و اتوماسیون کانال‌ها |
 | Clinical Engine v2 | `INFRASTRUCTURE_IMPLEMENTED / ACTIVATION_GATED` | runtime/audit | activation بدون approval |
 | Rule package | `LEGACY_DRAFT_QUARANTINED` | provenance/test | clinical use |
 | ADA research | `FROZEN_V0_9_4` | evidence draft | runtime authority |
@@ -35,30 +34,29 @@ CI 30842741569
 765 Specialist + 54 Accounting
 ```
 
-Presentation روشن شد؛ consent defaults، append-only history، stale guard و send policy تغییر نکردند.
+Consent defaults، append-only history، stale guard و send policy تغییر نکردند.
 
 ---
 
-## FOUX-V1
-
-Canonical plan:
+## FOUX-V1 authority
 
 ```text
+Canonical plan:
 specialist_clinic/docs/FOLLOWUP_ORCHESTRATION_UX_V1_IMPLEMENTATION_PLAN.md
 Version 1.6.0
-```
 
 Complete roadmap:
-
-```text
 specialist_clinic/docs/FOLLOWUP_ORCHESTRATION_UX_V1_ROADMAP.md
-FO-0 through FO-10
-Gate progress = 4.8 / 11 = 43.6% (~44%)
-Technical implementation through FO-4 = 5 / 11 = 45.5%
-Remaining = 56.4%
+Roadmap version 1.1.0
 ```
 
-مدل درصد رسمی فقط trancheهای FOUX-V1 را می‌سنجد: FO-0 تا FO-3 امتیاز کامل و FO-4 به‌دلیل pending بودن owner acceptance امتیاز 0.8 دارد. این درصد production-readiness کل Specialist Clinic نیست.
+```text
+Gate progress = 5.0 / 11 = 45.5% (~46%)
+Technical implementation through FO-4 = 5 / 11 = 45.5%
+Remaining = 54.5%
+```
+
+این درصد فقط trancheهای FOUX-V1 را می‌سنجد و production-readiness کل Specialist Clinic نیست.
 
 ### FO-0 / FO-1 / FO-2
 
@@ -78,139 +76,36 @@ reviewed_on_test_data = true
 critical_ux_defects = 0
 ```
 
-### FO-4 ownership/routing — TECHNICALLY VALIDATED
+### FO-4 — VALIDATED WITH OWNER ACCEPTANCE
+
+Ownership/routing:
 
 ```text
 Issue #94 / PR #95
 Merge 27ccb992f2cb43c78bfe98549c3f0414b88fd1d8
-CI 30844075841
+Final CI 30844075841
 773 Specialist + 54 Accounting
 ```
 
-قابلیت‌ها: atomic one-winner claim، append-only ownership events، stale/permission/terminal fail-closed، release و assign/reassign، صف مؤثر و مسئول واقعی، rebuild-preserved ownership و flag-off POST=404.
-
-### FO-4 seeded Worklist repair — COMPLETED
+Seeded Unified Worklist repair:
 
 ```text
 Issue #97 / PR #98
-Final head 452b7c6eb89eb0b19da1e0de0167860fff8f6c71
 Merge 24119671b8b93fdb20db3064a59d416e02d81ef6
 CI 30851594179
 781 Specialist + 54 Accounting
 ```
 
-- seed، Episode/Link reconciliation و Projection rebuild را صریح اجرا می‌کند؛
-- دیتابیس seedشده recovery command دارد؛
-- Source Data + empty Projection به‌صورت controlled state دیده می‌شود؛
-- fixture task ID پایدار است؛
-- پیگیری دستی TEST حفظ می‌شود؛
-- seed تکراری Episode/Link/Event تکراری نمی‌سازد؛
-- GET/startup rebuild پنهانی ندارد.
-
-### FO-4 canonical effective SLA — COMPLETED
+Effective SLA repair:
 
 ```text
 Issue #99 / PR #100
-Final head 3c11ef590581b60a140c27f4924adc4ad9f67c41
 Merge cd243424ecbae98892e0dfde1780bb846554942f
 CI 30852909213
 784 Specialist + 54 Accounting
 ```
 
-وضعیت‌های معتبر موعد:
-
-```text
-FUTURE / DUE_TODAY / OVERDUE / DUE_UNKNOWN / WAITING / BLOCKED / TERMINAL
-```
-
-فیلتر و badge بر اساس SLA مؤثر در زمان مشاهده کار می‌کنند؛ گذشت موعد بدون Projection rebuild نیز فوراً در `OVERDUE` دیده می‌شود و هیچ read-time write انجام نمی‌شود.
-
-### مراحل باقی‌ماندهٔ ثبت‌شده در رودمپ
-
-```text
-FO-5  Structured Contact, Retry & Escalation       = BLOCKED
-FO-6  Governed SMS Automation & Freshness          = BLOCKED
-FO-7  Cross-channel Transitions & Outbox            = BLOCKED
-FO-8  Clinical Evidence Assist                      = BLOCKED
-FO-9  Automation Health & Operational Control       = BLOCKED
-FO-10 Controlled Pilot, KPI Proof & Cutover         = BLOCKED
-```
-
-تعریف کامل scope، safety boundary، exit gate و KPI این مراحل در رودمپ کامل موجود است. حضور آن‌ها در سند به‌معنی authorization نیست.
-
----
-
-## قدم مجاز فعلی
-
-```text
-Issue #94 — FO-4 Local Owner UX Acceptance
-Runtime/UI review commit = cd243424ecbae98892e0dfde1780bb846554942f
-```
-
-راه‌اندازی:
-
-```powershell
-git checkout main
-git pull origin main
-cd specialist_clinic
-
-$env:FOLLOWUP_PROJECTION_SHADOW = "1"
-.\.venv\Scripts\python.exe scripts\prepare_seeded_followup_view.py `
-  --database specialist.db
-
-$env:FOLLOWUP_UNIFIED_WORKLIST_READONLY = "1"
-$env:FOLLOWUP_UNIFIED_WORKLIST_ACTIONS = "1"
-$env:FOLLOWUP_AUTO_ROUTING = "1"
-.\.venv\Scripts\python.exe start.py
-```
-
-Attestation:
-
-```text
-FO4_UX_ACCEPTED = true|false
-reviewer = Emad211
-reviewed_commit = cd243424ecbae98892e0dfde1780bb846554942f
-reviewed_on_test_data = true
-critical_ux_defects = <number>
-notes = <observations or defects>
-```
-
----
-
-## Exit Gate برای FO-5
-
-```text
-FO-4 ownership/routing                 = PASS
-Seeded Unified Worklist repair         = PASS
-Canonical effective SLA                = PASS
-Latest code CI 30852909213             = PASS
-FO4_UX_ACCEPTED=true                   = PENDING
-critical_ux_defects=0                  = PENDING
-separate governance authorization      = PENDING
-```
-
-تا آن زمان Structured Contact، Retry/Escalation، SMS automation، Appointment reaction، Outbox/Dead-letter، Evidence Assist و FO-5+ مسدودند.
-
----
-
-## Freeze و تصمیم فعلی
-
-```text
-FOUX FO-4 local UX review       = ALLOWED
-FOUX focused FO-4 defect fix    = ALLOWED IF DEFECT FOUND
-FOUX FO-5 and later             = BLOCKED
-New clinical rules              = PAUSED
-Hypoglycemia Shadow expansion   = PAUSED
-Write to clinic_new.db          = FORBIDDEN
-
-FO-0 = VALIDATED
-FO-1 = VALIDATED
-FO-2 = VALIDATED
-FO-3 = VALIDATED WITH OWNER ACCEPTANCE
-FO-4 = TECHNICALLY VALIDATED / LOCAL UX ACCEPTANCE PENDING
-FO-5 AND LATER = BLOCKED
-```
-## FO-4 Owner Acceptance / FO-5 Authorization
+Owner attestation:
 
 ```text
 FO4_UX_ACCEPTED = true
@@ -221,11 +116,77 @@ critical_ux_defects = 0
 notes = بررسی شد و مشکل بحرانی مشاهده نشد
 ```
 
+### FO-5 — AUTHORIZED / IMPLEMENTATION PENDING
+
 ```text
-FO-5 authorization issue = #103
-FO-5 scope = Structured Contact, Retry & Escalation only
-FOLLOWUP_STRUCTURED_CONTACT default = OFF
-FO-6 and later = BLOCKED
+Authorization Issue = #103
+Governance PR = #104
+Scope = Structured Contact, Retry & Escalation only
+Feature Flag = FOLLOWUP_STRUCTURED_CONTACT
+Default = OFF
+```
+
+دامنهٔ مجاز:
+
+- outcomeهای ساختاریافتهٔ تماس؛
+- callback scheduling؛
+- retry محدود برای `NO_ANSWER` و `BUSY`؛
+- escalation یک‌باره پس از threshold؛
+- phone-invalid workflow؛
+- فرم و summary در Unified Worklist؛
+- append-only/idempotent audit؛
+- stale/permission/terminal fail-closed.
+
+خارج از دامنه:
+
+- SMS automation؛
+- Appointment mutation؛
+- Clinical completion/decision؛
+- Outbox/Dead-letter؛
+- Evidence Assist؛
+- Rule یا Hypoglycemia Shadow؛
+- Write به `clinic_new.db`؛
+- FO-6 و بعد.
+
+---
+
+## Feature Flags
+
+همه default OFF:
+
+```text
+FOLLOWUP_EPISODES_ENABLED
+FOLLOWUP_PROJECTION_SHADOW
+FOLLOWUP_UNIFIED_WORKLIST_READONLY
+FOLLOWUP_UNIFIED_WORKLIST_ACTIONS
+FOLLOWUP_AUTO_ROUTING
+FOLLOWUP_STRUCTURED_CONTACT
+FOLLOWUP_SMS_AUTO_GUARDED
+FOLLOWUP_APPOINTMENT_SYNC
+FOLLOWUP_EVIDENCE_ASSIST
+FOLLOWUP_AUTOMATION_HEALTH
 ```
 
 ---
+
+## Exact continuation point
+
+```text
+CURRENT = FO-5 Structured Contact implementation
+ISSUE = #103
+IMPLEMENTATION = separate runtime Issue/PR after governance PR #104
+FO-6 AND LATER = BLOCKED
+```
+
+Exit Gate FO-5:
+
+- transition deterministic برای outcomeها؛
+- exact replay بدون duplicate؛
+- callback future validation؛
+- escalation threshold دقیقاً یک‌بار؛
+- phone-invalid → reception/contact repair؛
+- Feature OFF → controls hidden و POST=404؛
+- Source Truth، SMS، Appointment، Rule و Accounting بدون تغییر؛
+- full CI سبز؛
+- Local Owner UX Acceptance؛
+- governance مستقل پیش از FO-6.
