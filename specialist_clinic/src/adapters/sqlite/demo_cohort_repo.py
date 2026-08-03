@@ -186,7 +186,6 @@ class DemoCohortRepository:
             "clinical_notes",
             "surgery_history",
             "medical_history",
-            "followup_tasks",
             "appointments",
             "allergies",
             "medication_events",
@@ -200,6 +199,15 @@ class DemoCohortRepository:
                 f"DELETE FROM {table} WHERE patient_link_id=?",
                 (patient_id,),
             )
+        # Preserve administrative demo follow-up row IDs so immutable Episode links
+        # remain valid across repeated canonical seed runs. Governed clinical/plan
+        # tasks are still reset with the rest of the synthetic clinical source set.
+        db.execute(
+            """DELETE FROM followup_tasks
+               WHERE patient_link_id=?
+                 AND COALESCE(source_engine,'') IN ('clinical_v2','encounter_plan')""",
+            (patient_id,),
+        )
 
     @staticmethod
     def _insert_patient_records(
@@ -511,28 +519,8 @@ class DemoCohortRepository:
                 for row in patient["appointments"]
             ],
         )
-        db.executemany(
-            """INSERT INTO followup_tasks
-               (patient_link_id, due_date, reason, detail, status, assigned_to,
-                fulfillment, resolved_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-            [
-                (
-                    patient_id,
-                    row["due_date"],
-                    row["reason"],
-                    row["detail"],
-                    row["status"],
-                    "تیم درمان",
-                    (
-                        "remote"
-                        if row["reason"] == "refill"
-                        else "in_person"
-                    ),
-                    row.get("resolved_at"),
-                )
-                for row in patient["followups"]
-            ],
+        DemoCohortRepository._sync_followups(
+            db, patient_id, patient, actor=actor, now=now
         )
         db.executemany(
             """INSERT INTO prescriptions
@@ -549,6 +537,58 @@ class DemoCohortRepository:
                 for row in patient["prescriptions"]
             ],
         )
+
+    @staticmethod
+    def _sync_followups(
+        db, patient_id: int, patient: dict, *, actor: str, now: str
+    ) -> None:
+        """Refresh synthetic follow-ups without changing their stable row IDs.
+
+        FO-1 links include the authoritative task ID. Deleting and reinserting the
+        same fixture rows would therefore orphan immutable Episode links. The demo
+        seed owns administrative follow-ups for TEST patients and updates them by
+        deterministic fixture order instead.
+        """
+        desired = list(patient["followups"])
+        existing = db.execute(
+            """SELECT * FROM followup_tasks
+               WHERE patient_link_id=?
+                 AND COALESCE(source_engine,'') NOT IN ('clinical_v2','encounter_plan')
+               ORDER BY id""",
+            (patient_id,),
+        ).fetchall()
+        if len(existing) > len(desired):
+            raise RuntimeError(
+                "synthetic follow-up fixture shape changed; explicit test-data reset required"
+            )
+
+        for index, row in enumerate(desired):
+            fulfillment = "remote" if row["reason"] == "refill" else "in_person"
+            values = (
+                row["due_date"],
+                row["reason"],
+                row["detail"],
+                row["status"],
+                "تیم درمان",
+                fulfillment,
+                row.get("resolved_at"),
+            )
+            if index < len(existing):
+                db.execute(
+                    """UPDATE followup_tasks
+                       SET due_date=?, reason=?, detail=?, status=?, assigned_to=?,
+                           fulfillment=?, resolved_at=?
+                       WHERE id=? AND patient_link_id=?""",
+                    (*values, int(existing[index]["id"]), patient_id),
+                )
+            else:
+                db.execute(
+                    """INSERT INTO followup_tasks
+                       (patient_link_id, due_date, reason, detail, status,
+                        assigned_to, fulfillment, resolved_at, created_at)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (patient_id, *values, now),
+                )
 
     def summary(self, *, expected_version: str) -> dict:
         ids = [f"TEST{index:04d}" for index in range(1, 11)]

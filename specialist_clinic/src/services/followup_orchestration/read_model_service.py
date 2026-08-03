@@ -37,6 +37,10 @@ READINESS_COPY = {
         "label": "اطلاعات نمای یکپارچه هنوز آماده نشده است",
         "help": "اطلاعات خواندنی این نما را طبق راهنمای راه‌اندازی بازسازی کنید. تا آن زمان از ورک‌لیست فعلی استفاده کنید.",
     },
+    "PROJECTION_EMPTY_WITH_SOURCE_DATA": {
+        "label": "دادهٔ پیگیری وجود دارد اما نمای یکپارچه هنوز آماده نشده است",
+        "help": "پس از ساخت دادهٔ نمونه، seed_demo_data.py را دوباره اجرا کنید؛ یا دستور prepare_seeded_followup_view.py را اجرا کنید. هیچ داده‌ای در این صفحه حدس زده یا خودکار بازسازی نمی‌شود.",
+    },
     "PROJECTION_SCHEMA_INCOMPATIBLE": {
         "label": "اطلاعات ذخیره‌شدهٔ این نما با نسخهٔ جدید سازگار نیست",
         "help": "برنامه را یک‌بار با نسخهٔ جدید اجرا کنید و سپس اطلاعات نمای یکپارچه را طبق راهنما دوباره بسازید.",
@@ -105,6 +109,12 @@ class FollowupUnifiedReadModelService:
         except sqlite3.Error:
             return frozenset()
 
+    def _count_rows(self, name: str) -> int:
+        try:
+            return int(self.db.execute(f"SELECT COUNT(*) FROM {name}").fetchone()[0])
+        except sqlite3.Error:
+            return 0
+
     def readiness(self) -> dict:
         """Return a PHI-free preflight result for the read-only surface."""
         projection = self._columns("followup_work_item_projection")
@@ -120,6 +130,18 @@ class FollowupUnifiedReadModelService:
         links = self._columns("followup_episode_links")
         if not _LINK_REQUIRED_COLUMNS <= links:
             return _readiness_payload("EPISODE_LINK_SCHEMA_INCOMPATIBLE")
+
+        if self._count_rows("followup_work_item_projection") == 0:
+            operational_sources = sum(
+                self._count_rows(table)
+                for table in (
+                    "followup_tasks",
+                    "care_plan_commitments",
+                    "engagement_approvals",
+                )
+            )
+            if operational_sources or self._count_rows("followup_episodes"):
+                return _readiness_payload("PROJECTION_EMPTY_WITH_SOURCE_DATA")
         return _readiness_payload("READY")
 
     @staticmethod
