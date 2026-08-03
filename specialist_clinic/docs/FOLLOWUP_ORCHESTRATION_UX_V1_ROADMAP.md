@@ -12,7 +12,7 @@
 >
 > **Environment:** `TEST_ONLY / SYNTHETIC_OR_RESETTABLE`
 >
-> **Current gate:** `FO-4 Local Owner UX Acceptance — Issue #94`
+> **Current gate:** `FO-5 Structured Contact implementation — Issue #103`
 
 ---
 
@@ -51,17 +51,17 @@ FO-0 = 1.0
 FO-1 = 1.0
 FO-2 = 1.0
 FO-3 = 1.0
-FO-4 = 0.8
+FO-4 = 1.0
 FO-5..FO-10 = 0.0
 --------------------------------
-Total = 4.8 / 11 = 43.6%
+Total = 5.0 / 11 = 45.5%
 ```
 
 بنابراین:
 
-- **پیشرفت رسمی roadmap gate:** `43.6%`، گرد شده `44%`؛
+- **پیشرفت رسمی roadmap gate:** `45.5%`، گرد شده `46%`؛
 - **پیاده‌سازی فنی FO-0 تا FO-4:** `5 / 11 = 45.5%`؛
-- **کار باقی‌مانده:** `6.2 tranche-equivalent = 56.4%`؛
+- **کار باقی‌مانده:** `6.0 tranche-equivalent = 54.5%`؛
 - بعد از owner acceptance موفق FO-4، پیشرفت gate به `45.5%` می‌رسد؛ FO-5 همچنان فقط پس از governance مستقل مجاز می‌شود.
 
 این درصد، KPI کسب‌وکار یا production-readiness کل سامانه نیست؛ فقط پیشرفت برنامهٔ FOUX-V1 است.
@@ -76,8 +76,8 @@ Total = 4.8 / 11 = 43.6%
 | FO-1 | Episode Identity & Append-only Links | `VALIDATED` | `FOLLOWUP_EPISODES_ENABLED` | FO-0 |
 | FO-2 | Projection, Next Action & Shadow Parity | `VALIDATED` | `FOLLOWUP_PROJECTION_SHADOW` | FO-1 |
 | FO-3 | Read-only Unified Worklist & Timeline | `VALIDATED_WITH_OWNER_ACCEPTANCE` | `FOLLOWUP_UNIFIED_WORKLIST_READONLY` | FO-2 |
-| FO-4 | Claim, Assignment, Routing & Effective SLA | `TECHNICALLY_VALIDATED / OWNER_UX_PENDING` | `FOLLOWUP_AUTO_ROUTING` | FO-3 |
-| FO-5 | Structured Contact, Retry & Escalation | `BLOCKED_NOT_STARTED` | `FOLLOWUP_STRUCTURED_CONTACT` | FO-4 acceptance + authorization |
+| FO-4 | Claim, Assignment, Routing & Effective SLA | `VALIDATED_WITH_OWNER_ACCEPTANCE` | `FOLLOWUP_AUTO_ROUTING` | FO-3 |
+| FO-5 | Structured Contact, Retry & Escalation | `AUTHORIZED_NOT_STARTED` | `FOLLOWUP_STRUCTURED_CONTACT` | FO-4 acceptance + authorization |
 | FO-6 | Governed SMS Automation & Freshness | `BLOCKED_NOT_STARTED` | `FOLLOWUP_SMS_AUTO_GUARDED` | FO-5 + SMS policy approval |
 | FO-7 | Cross-channel Transitions & Outbox | `BLOCKED_NOT_STARTED` | `FOLLOWUP_APPOINTMENT_SYNC` | FO-5/FO-6 |
 | FO-8 | Clinical Evidence Assist | `BLOCKED_NOT_STARTED` | `FOLLOWUP_EVIDENCE_ASSIST` | FO-7 + clinical safety review |
@@ -140,7 +140,7 @@ Total = 4.8 / 11 = 43.6%
 
 ### FO-4 — Claim, Assignment, Routing & Effective SLA
 
-**Result:** technically validated; local owner acceptance pending.
+**Result:** validated with owner acceptance; FO-5 dependency satisfied.
 
 Implemented and validated:
 

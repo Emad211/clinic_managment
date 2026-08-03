@@ -4,11 +4,11 @@
 >
 > **کد برنامه:** `FOUX-V1`
 >
-> **نسخه:** `1.5.2`
+> **نسخه:** `1.6.0`
 >
 > **آخرین بازبینی:** `2026-08-04`
 >
-> **وضعیت:** `FO_0_VALIDATED / FO_1_VALIDATED / FO_2_VALIDATED / FO_3_VALIDATED_WITH_OWNER_ACCEPTANCE / FO_4_TECHNICALLY_VALIDATED_LOCAL_UX_ACCEPTANCE_PENDING / FO_5_AND_LATER_BLOCKED`
+> **وضعیت:** `FO_0_VALIDATED / FO_1_VALIDATED / FO_2_VALIDATED / FO_3_VALIDATED_WITH_OWNER_ACCEPTANCE / FO_4_VALIDATED_WITH_OWNER_ACCEPTANCE / FO_5_AUTHORIZED_IMPLEMENTATION_PENDING / FO_6_AND_LATER_BLOCKED`
 >
 > **مالک:** `Emad211`
 >
@@ -294,6 +294,34 @@ FO-3 read-only باقی می‌ماند؛ audit events حذف نمی‌شوند�
 
 ---
 
+## FO-4 Owner Acceptance and FO-5 Authorization
+
+FO-4 owner acceptance در Issue #94 ثبت شد:
+
+```text
+FO4_UX_ACCEPTED = true
+reviewer = Emad211
+reviewed_commit = cd243424ecbae98892e0dfde1780bb846554942f
+reviewed_on_test_data = true
+critical_ux_defects = 0
+notes = بررسی شد و مشکل بحرانی مشاهده نشد
+```
+
+FO-5 با Issue #103 و PR حاکمیتی #104 فقط برای دامنهٔ زیر مجاز است:
+
+- structured contact outcomes؛
+- callback scheduling؛
+- bounded retry/attempt policy؛
+- unreachable escalation؛
+- phone-invalid workflow؛
+- Unified contact UX؛
+- append-only/idempotent audit؛
+- feature flag `FOLLOWUP_STRUCTURED_CONTACT` با پیش‌فرض OFF.
+
+SMS automation، Appointment mutation، Clinical completion/decision، Outbox و FO-6+ همچنان ممنوع‌اند.
+
+---
+
 ## 10. Roadmap authority and measured progress
 
 رودمپ کامل FO-0 تا FO-10 در فایل زیر نگهداری می‌شود:
@@ -308,11 +336,11 @@ specialist_clinic/docs/FOLLOWUP_ORCHESTRATION_UX_V1_ROADMAP.md
 FO-0..FO-3 validated                     = 4.0
 FO-4 technically validated / UX pending = 0.8
 FO-5..FO-10 blocked/not started          = 0.0
-Progress                                 = 4.8 / 11 = 43.6%
-Remaining                                = 56.4%
+Progress                                 = 5.0 / 11 = 45.5%
+Remaining                                = 54.5%
 ```
 
-این درصد فقط FOUX-V1 است و production-readiness کل Specialist Clinic نیست. نقطهٔ ادامه همچنان Issue #94 و owner acceptance روی runtime commit `cd243424ecbae98892e0dfde1780bb846554942f` است. حضور FO-5 تا FO-10 در رودمپ به‌معنی authorization نیست.
+این درصد فقط FOUX-V1 است و production-readiness کل Specialist Clinic نیست. نقطهٔ ادامه Issue #103 و پیاده‌سازی FO-5 در یک Issue/PR مستقل است. حضور FO-5 تا FO-10 در رودمپ به‌معنی authorization نیست.
 
 ---
 
@@ -323,6 +351,7 @@ FO-0 = VALIDATED
 FO-1 = VALIDATED
 FO-2 = VALIDATED
 FO-3 = VALIDATED WITH OWNER ACCEPTANCE
-FO-4 = TECHNICALLY VALIDATED / LOCAL UX ACCEPTANCE PENDING
-FO-5 AND LATER = BLOCKED
+FO-4 = VALIDATED WITH OWNER ACCEPTANCE
+FO-5 = AUTHORIZED / IMPLEMENTATION PENDING
+FO-6 AND LATER = BLOCKED
 ```

@@ -45,7 +45,7 @@ Canonical plan:
 
 ```text
 specialist_clinic/docs/FOLLOWUP_ORCHESTRATION_UX_V1_IMPLEMENTATION_PLAN.md
-Version 1.5.2
+Version 1.6.0
 ```
 
 Complete roadmap:
@@ -210,3 +210,22 @@ FO-3 = VALIDATED WITH OWNER ACCEPTANCE
 FO-4 = TECHNICALLY VALIDATED / LOCAL UX ACCEPTANCE PENDING
 FO-5 AND LATER = BLOCKED
 ```
+## FO-4 Owner Acceptance / FO-5 Authorization
+
+```text
+FO4_UX_ACCEPTED = true
+reviewer = Emad211
+reviewed_commit = cd243424ecbae98892e0dfde1780bb846554942f
+reviewed_on_test_data = true
+critical_ux_defects = 0
+notes = بررسی شد و مشکل بحرانی مشاهده نشد
+```
+
+```text
+FO-5 authorization issue = #103
+FO-5 scope = Structured Contact, Retry & Escalation only
+FOLLOWUP_STRUCTURED_CONTACT default = OFF
+FO-6 and later = BLOCKED
+```
+
+---

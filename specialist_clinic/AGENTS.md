@@ -33,14 +33,14 @@ FO-0 = VALIDATED
 FO-1 = VALIDATED
 FO-2 = VALIDATED
 FO-3 = VALIDATED WITH OWNER ACCEPTANCE
-FO-4 = TECHNICALLY VALIDATED
-FO-4 LOCAL UX ACCEPTANCE = PENDING
-FO-5 and later = BLOCKED
-CURRENT ISSUE = #94
-ROADMAP PROGRESS = 4.8 / 11 = 43.6% (~44%)
+FO-4 = VALIDATED WITH OWNER ACCEPTANCE
+FO-5 = AUTHORIZED / IMPLEMENTATION PENDING
+FO-6 and later = BLOCKED
+CURRENT ISSUE = #103
+ROADMAP PROGRESS = 5.0 / 11 = 45.5% (~44%)
 ```
 
-Canonical plan: `v1.5.2`.
+Canonical plan: `v1.6.0`.
 Complete roadmap: `docs/FOLLOWUP_ORCHESTRATION_UX_V1_ROADMAP.md`.
 
 درصد بالا فقط پیشرفت FOUX-V1 است؛ production-readiness کل Specialist Clinic نیست.
@@ -98,6 +98,11 @@ CI 30852909213
 
 فقط:
 
+- طراحی و پیاده‌سازی FO-5 تحت Issue #103 و PR مستقل؛
+- structured outcomes، callback، bounded retry و escalation؛
+- Unified contact form و timeline؛
+- تست‌های idempotency، stale/terminal/permission و flag OFF؛
+
 - مرور لوکال Issue #94 روی runtime/UI commit `cd243424ecbae98892e0dfde1780bb846554942f`؛
 - ثبت feedback و owner attestation؛
 - focused FO-4 defect fix با Issue/PR/CI مستقل؛
@@ -105,7 +110,6 @@ CI 30852909213
 
 ## دامنهٔ ممنوع
 
-- شروع FO-5؛
 - Clinical Task completion یا clinical decision؛
 - Structured Contact، callback، retry یا escalation؛
 - SMS automation یا approval change؛
@@ -160,4 +164,4 @@ notes = <observations or defects>
 
 هر fix باید Issue، scope، feature flag، permission، stale/terminal/idempotency guard، full tests، rollback و ثابت‌ماندن Source Truth/Accounting/Clinical Rule را ثبت کند.
 
-بدون `FO4_UX_ACCEPTED=true`، `critical_ux_defects=0` و governance مستقل وارد FO-5 نشوید.
+FO-5 فقط تحت Issue #103 مجاز است؛ بدون FO-5 validation و owner acceptance وارد FO-6 نشوید.
