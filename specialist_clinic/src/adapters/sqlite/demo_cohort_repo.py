@@ -663,7 +663,6 @@ class DemoCohortRepository:
             "medication_events": "medication_events",
             "notes": "clinical_notes",
             "appointments": "appointments",
-            "followups": "followup_tasks",
             "prescriptions": "prescriptions",
             "history": "medical_history",
             "allergies": "allergies",
@@ -680,6 +679,17 @@ class DemoCohortRepository:
                         patient_ids,
                     ).fetchone()["count"]
                 )
+            totals["followups"] = int(
+                db.execute(
+                    f"""SELECT COUNT(DISTINCT task.id) AS count
+                        FROM settings seed_map
+                        JOIN followup_tasks task
+                          ON task.id=CAST(seed_map.value AS INTEGER)
+                        WHERE seed_map.key LIKE 'demo_followup_task_id:TEST%:%'
+                          AND task.patient_link_id IN ({patient_marks})""",
+                    patient_ids,
+                ).fetchone()["count"]
+            )
             totals["reconciled_collections"] = int(
                 db.execute(
                     f"""SELECT COUNT(*) AS count FROM (
