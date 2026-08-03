@@ -1,5 +1,5 @@
 {# Shared "messaging hub" tab bar. Including template sets `hub_tab` to one of
-   'campaigns' | 'messages' | 'approvals' | 'engagement' | 'alerts' | 'worklist'. #}
+   'campaigns' | 'messages' | 'approvals' | 'engagement' | 'alerts' | 'worklist' | 'unified'. #}
 <div class="card card-soft hub-nav-card">
     <div class="hub-nav">
         <span class="hub-nav-label muted text-sm"><svg class="icon icon-sm"><use href="#i-megaphone"></use></svg> هابِ پیام</span>
@@ -14,6 +14,9 @@
         <a class="btn btn-sm hub-nav-btn {% if hub_tab=='alerts' %}btn{% else %}btn-ghost{% endif %}"{% if hub_tab=='alerts' %} aria-current="page"{% endif %} href="{{ url_for('clinical_alerts.index') }}"><svg class="icon icon-sm"><use href="#i-alert"></use></svg> هشدارهای بالینی{% if alert_pending %} <span class="pill pill-danger">{{ alert_pending|fa_num }}</span>{% endif %}</a>
         {% endif %}
         <a class="btn btn-sm hub-nav-btn {% if hub_tab=='worklist' %}btn{% else %}btn-ghost{% endif %}"{% if hub_tab=='worklist' %} aria-current="page"{% endif %} href="{{ url_for('followups.worklist') }}"><svg class="icon icon-sm"><use href="#i-list-checks"></use></svg> ورک‌لیستِ تماس</a>
+        {% if config.get('FOLLOWUP_UNIFIED_WORKLIST_READONLY') and permissions.get('clinical.task.view') %}
+        <a class="btn btn-sm hub-nav-btn {% if hub_tab=='unified' %}btn{% else %}btn-ghost{% endif %}"{% if hub_tab=='unified' %} aria-current="page"{% endif %} href="{{ url_for('unified_followups.index') }}"><svg class="icon icon-sm"><use href="#i-activity"></use></svg> نمای یکپارچه</a>
+        {% endif %}
         </div>
     </div>
 </div>

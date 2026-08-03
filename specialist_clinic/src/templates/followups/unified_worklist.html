@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+{% block title %}نمای یکپارچهٔ پیگیری{% endblock %}
+{% block content %}
+{% include "sms/_hub_tabs.html" %}
+
+<div class="topbar">
+    <div>
+        <h1><svg class="icon"><use href="#i-list-checks"></use></svg> نمای یکپارچهٔ پیگیری</h1>
+        <p class="muted m-0">این صفحه فقط خواندنی است. انجام و ثبت اقدام همچنان در ورک‌لیست فعلی انجام می‌شود.</p>
+    </div>
+    <a class="btn btn-ghost" href="{{ url_for('followups.worklist') }}">بازکردن ورک‌لیست فعلی</a>
+</div>
+
+<div class="card card-soft">
+    <form method="get" action="{{ url_for('unified_followups.index') }}" class="grid grid-4">
+        <div class="fld">
+            <label for="unified-q">جستجو</label>
+            <input id="unified-q" name="q" value="{{ model.filters.q }}" placeholder="نام، کد ملی، موبایل یا دلیل پیگیری">
+        </div>
+        <div class="fld">
+            <label for="unified-state">وضعیت</label>
+            <select id="unified-state" name="state">
+                <option value="">همهٔ وضعیت‌ها</option>
+                {% for key, label in state_labels.items() %}
+                <option value="{{ key }}" {% if model.filters.state == key %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="fld">
+            <label for="unified-role">صف پیشنهادی نقش</label>
+            <select id="unified-role" name="role">
+                <option value="">همهٔ صف‌ها</option>
+                {% for key, label in role_labels.items() %}
+                <option value="{{ key }}" {% if model.filters.role == key %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="fld">
+            <label for="unified-sla">وضعیت موعد</label>
+            <select id="unified-sla" name="sla">
+                <option value="">همهٔ موعدها</option>
+                {% for key, label in sla_labels.items() %}
+                <option value="{{ key }}" {% if model.filters.sla == key %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="flex items-center gap-2 wrap">
+            <button class="btn" type="submit"><svg class="icon icon-sm"><use href="#i-search"></use></svg> اعمال فیلتر</button>
+            <a class="btn btn-ghost" href="{{ url_for('unified_followups.index') }}">پاک‌کردن</a>
+        </div>
+    </form>
+</div>
+
+{% if not model.projection_ready %}
+<div class="card error-state" role="status">
+    <h2>Projection هنوز آماده نشده است</h2>
+    <p class="muted">این نما چیزی را حدس نمی‌زند. ابتدا Projection سایه باید از مسیر عملیاتی مجاز بازسازی شود.</p>
+    <a class="btn btn-ghost" href="{{ url_for('followups.worklist') }}">بازگشت به ورک‌لیست فعلی</a>
+</div>
+{% elif not model.items %}
+<div class="card error-state" role="status">
+    <h2>موردی مطابق فیلتر پیدا نشد</h2>
+    <p class="muted">فیلترها را تغییر دهید یا ورک‌لیست فعلی را بررسی کنید.</p>
+</div>
+{% else %}
+<div class="card">
+    <div class="section-title">
+        <svg class="icon"><use href="#i-list-checks"></use></svg>
+        <div>
+            <div>{{ model.total|fa_num }} مسیر پیگیری</div>
+            <div class="section-sub">صفحهٔ {{ model.page|fa_num }} از {{ model.pages|fa_num }}؛ نقش‌ها فقط پیشنهاد صف هستند و واگذاری فردی محسوب نمی‌شوند.</div>
+        </div>
+    </div>
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>بیمار و دلیل</th>
+                    <th>وضعیت و توضیح</th>
+                    <th>صف پیشنهادی</th>
+                    <th>زمان‌ها</th>
+                    <th>مسیر فعلی</th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for item in model.items %}
+                <tr>
+                    <td>
+                        <a href="{{ url_for('unified_followups.detail', episode_id=item.episode_id) }}"><b>{{ item.patient_name }}</b></a>
+                        {% if item.patient_national_id_masked %}<div class="muted text-xs nums">کد ملی: {{ item.patient_national_id_masked }}</div>{% endif %}
+                        <div><span class="badge badge-info">{{ item.reason_label }}</span></div>
+                        <div class="muted text-sm">{{ item.why_created }}</div>
+                    </td>
+                    <td>
+                        <span class="badge {% if item.state_class == 'BLOCKED' %}badge-danger{% elif item.state_class == 'ACTION_REQUIRED' %}badge-warn{% elif item.state_class == 'WAITING' %}badge-info{% else %}badge-muted{% endif %}">{{ item.state_label }}</span>
+                        {% if item.is_overdue %}<span class="badge badge-danger">موعدگذشته</span>{% endif %}
+                        {% if item.is_stale %}<span class="badge badge-warn">Projection قدیمی</span>{% endif %}
+                        <div class="text-sm">{{ item.primary_explanation }}</div>
+                        <div class="muted text-xs">آخرین وضعیت منبع: {{ item.last_source_event_at|jalali if item.last_source_event_at else 'نامشخص' }}</div>
+                    </td>
+                    <td>
+                        <b>{{ item.role_label }}</b>
+                        <div class="muted text-xs">پیشنهاد سیستمی؛ هنوز به شخصی واگذار نشده است.</div>
+                    </td>
+                    <td class="nums">
+                        <div>اقدام: {{ item.action_due_at|jalali if item.action_due_at else '—' }}</div>
+                        <div>هدف: {{ item.target_at|jalali if item.target_at else '—' }}</div>
+                        <div class="muted text-xs">سن Projection: {{ item.projection_age_minutes|fa_num if item.projection_age_minutes is not none else 'نامشخص' }} دقیقه</div>
+                    </td>
+                    <td>
+                        <a class="btn btn-sm" href="{{ url_for('unified_followups.detail', episode_id=item.episode_id) }}">مشاهدهٔ Timeline</a>
+                        <a class="btn btn-sm btn-ghost" href="{{ url_for('followups.worklist', q=item.patient_name) }}">بازکردن مسیر فعلی</a>
+                    </td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<nav class="flex items-center gap-2 wrap" aria-label="صفحه‌بندی نمای یکپارچه">
+    {% if model.has_previous %}
+    <a class="btn btn-ghost" rel="prev" href="{{ url_for('unified_followups.index', page=model.page-1, per_page=model.per_page, q=model.filters.q, state=model.filters.state, role=model.filters.role, sla=model.filters.sla) }}">صفحهٔ قبل</a>
+    {% endif %}
+    <span class="muted">صفحهٔ {{ model.page|fa_num }} از {{ model.pages|fa_num }}</span>
+    {% if model.has_next %}
+    <a class="btn btn-ghost" rel="next" href="{{ url_for('unified_followups.index', page=model.page+1, per_page=model.per_page, q=model.filters.q, state=model.filters.state, role=model.filters.role, sla=model.filters.sla) }}">صفحهٔ بعد</a>
+    {% endif %}
+</nav>
+{% endif %}
+{% endblock %}

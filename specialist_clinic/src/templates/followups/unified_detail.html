@@ -1,0 +1,133 @@
+{% extends "base.html" %}
+{% block title %}جزئیات مسیر پیگیری{% endblock %}
+{% block content %}
+{% include "sms/_hub_tabs.html" %}
+
+<div class="topbar">
+    <div>
+        <a class="muted text-sm" href="{{ url_for('unified_followups.index') }}">بازگشت به نمای یکپارچه</a>
+        <h1><svg class="icon"><use href="#i-list-checks"></use></svg> مسیر پیگیری {{ item.patient_name }}</h1>
+        <p class="muted m-0">این صفحه فقط Timeline و پیشنهاد اقدام را نمایش می‌دهد و هیچ تغییری در پرونده یا تسک ایجاد نمی‌کند.</p>
+    </div>
+</div>
+
+{% if item.is_stale %}
+<div class="card card-soft" role="alert">
+    <div class="section-title">
+        <svg class="icon"><use href="#i-alert"></use></svg>
+        <div>
+            <div>Projection قدیمی یا فاقد زمان معتبر است</div>
+            <div class="section-sub">قبل از تصمیم عملیاتی، وضعیت را در مسیر فعلی بررسی کنید. این صفحه بازسازی خودکار انجام نمی‌دهد.</div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<div class="grid grid-3">
+    <section class="card">
+        <h2>چرا این مسیر وجود دارد؟</h2>
+        <p><span class="badge badge-info">{{ item.reason_label }}</span></p>
+        <p>{{ item.why_created }}</p>
+        <p class="muted text-sm">{{ item.source_count|fa_num }} منبع معتبر به این مسیر متصل است.</p>
+    </section>
+    <section class="card">
+        <h2>وضعیت فعلی</h2>
+        <p><span class="badge {% if item.state_class == 'BLOCKED' %}badge-danger{% elif item.state_class == 'ACTION_REQUIRED' %}badge-warn{% elif item.state_class == 'WAITING' %}badge-info{% else %}badge-muted{% endif %}">{{ item.state_label }}</span></p>
+        <p><b>{{ item.primary_explanation }}</b></p>
+        {% if item.is_overdue %}<p><span class="badge badge-danger">موعد اقدام گذشته است</span></p>{% endif %}
+    </section>
+    <section class="card">
+        <h2>صف پیشنهادی</h2>
+        <p><b>{{ item.role_label }}</b></p>
+        <p class="muted text-sm">این مقدار فقط پیشنهاد نقش است و به معنی claim یا assignment فردی نیست.</p>
+    </section>
+</div>
+
+<section class="card">
+    <div class="section-title">
+        <svg class="icon"><use href="#i-calendar"></use></svg>
+        <div>
+            <div>زمان‌بندی</div>
+            <div class="section-sub">زمان اقدام و زمان هدف دو مفهوم مستقل‌اند.</div>
+        </div>
+    </div>
+    <div class="grid grid-3">
+        <div><span class="muted text-sm">زمان اقدام</span><div class="nums"><b>{{ item.action_due_at|jalali if item.action_due_at else '—' }}</b></div></div>
+        <div><span class="muted text-sm">زمان هدف</span><div class="nums"><b>{{ item.target_at|jalali if item.target_at else '—' }}</b></div></div>
+        <div><span class="muted text-sm">سن Projection</span><div><b>{{ item.projection_age_minutes|fa_num if item.projection_age_minutes is not none else 'نامشخص' }} دقیقه</b></div></div>
+    </div>
+</section>
+
+<section class="card">
+    <div class="section-title">
+        <svg class="icon"><use href="#i-zap"></use></svg>
+        <div>
+            <div>مسیرهای مجاز برای ادامهٔ کار</div>
+            <div class="section-sub">هیچ اقدامی داخل این صفحه اجرا نمی‌شود.</div>
+        </div>
+    </div>
+    <div class="flex gap-2 wrap">
+        {% for link in deep_links %}
+        <a class="btn {% if not link.primary %}btn-ghost{% endif %}" href="{{ link.href }}">{{ link.label }}</a>
+        {% endfor %}
+    </div>
+</section>
+
+<section class="card">
+    <div class="section-title">
+        <svg class="icon"><use href="#i-activity"></use></svg>
+        <div>
+            <div>Timeline یکپارچه</div>
+            <div class="section-sub">رویدادهای مسیر و آخرین وضعیت منابع، بدون متن پیام، note آزاد یا مقدار بالینی.</div>
+        </div>
+    </div>
+    {% if timeline.errors %}
+    <div class="card card-soft" role="alert">
+        <b>برخی منابع نیازمند بررسی‌اند</b>
+        <p class="muted text-sm m-0">منبع ناقص حذف نشده و با هشدار در Timeline نمایش داده شده است.</p>
+    </div>
+    {% endif %}
+    {% if timeline.items %}
+    <ol class="care-timeline">
+        {% for event in timeline.items %}
+        <li class="card card-soft">
+            <div class="flex items-center gap-2 wrap">
+                <span class="badge {% if event.warning %}badge-danger{% elif event.kind == 'SOURCE_STATE' %}badge-info{% else %}badge-muted{% endif %}">{{ event.source_label }}</span>
+                {% if event.status_label %}<span class="badge badge-muted">{{ event.status_label }}</span>{% endif %}
+                <span class="muted text-xs nums">{{ event.occurred_at|jalali if event.occurred_at else 'زمان نامشخص' }}</span>
+            </div>
+            <h3>{{ event.title }}</h3>
+            <p class="muted text-sm">{{ event.subtitle }}</p>
+            <details>
+                <summary class="muted text-xs">جزئیات audit فنی</summary>
+                <dl class="text-xs nums">
+                    {% for key, value in event.audit.items() %}
+                    {% if value is not none %}<dt>{{ key }}</dt><dd><code dir="ltr">{{ value }}</code></dd>{% endif %}
+                    {% endfor %}
+                </dl>
+            </details>
+        </li>
+        {% endfor %}
+    </ol>
+    {% else %}
+    <div class="error-state" role="status">
+        <h2>رویدادی برای نمایش وجود ندارد</h2>
+        <p class="muted">مسیر فعلی را برای بررسی Source of Truth باز کنید.</p>
+    </div>
+    {% endif %}
+</section>
+
+<section class="card card-soft">
+    <details>
+        <summary>اطلاعات audit مسیر</summary>
+        <div class="grid grid-3 text-xs nums">
+            <div><span class="muted">Episode</span><br><code dir="ltr">{{ item.episode_id }}</code></div>
+            <div><span class="muted">Projection version</span><br><code dir="ltr">{{ item.projection_version }}</code></div>
+            <div><span class="muted">Policy version</span><br><code dir="ltr">{{ item.policy_version }}</code></div>
+            <div><span class="muted">Projection hash</span><br><code dir="ltr">{{ item.projection_hash }}</code></div>
+            <div><span class="muted">Source fingerprint</span><br><code dir="ltr">{{ timeline.source_fingerprint }}</code></div>
+            <div><span class="muted">بازسازی</span><br>{{ item.rebuilt_at|jalali }}</div>
+        </div>
+    </details>
+</section>
+{% endblock %}
