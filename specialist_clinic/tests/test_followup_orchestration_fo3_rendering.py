@@ -121,7 +121,7 @@ def test_real_flask_app_renders_controlled_legacy_cache_state_not_500(tmp_path):
         response = client.get("/followups/unified/")
         assert response.status_code == 200
         html = response.get_data(as_text=True)
-        assert "نسخهٔ cache محلی با برنامه سازگار نیست" in html
+        assert "اطلاعات ذخیره‌شدهٔ این نما با نسخهٔ جدید سازگار نیست" in html
         assert "بازگشت به ورک‌لیست فعلی" in html
         assert "PROJECTION_SCHEMA_INCOMPATIBLE" in html
         assert "خطای غیرمنتظره" not in html
@@ -147,3 +147,38 @@ def test_unified_templates_do_not_use_ambiguous_dict_items_attribute():
     assert "timeline.items" not in detail_template
     assert "model['items']" in list_template
     assert "timeline['items']" in detail_template
+
+
+def test_user_facing_copy_avoids_projection_jargon():
+    from src.services.followup_orchestration.read_model_service import READINESS_COPY
+
+    list_template = (
+        SPECIALIST_ROOT / "src" / "templates" / "followups" /
+        "unified_worklist.html"
+    ).read_text(encoding="utf-8")
+    detail_template = (
+        SPECIALIST_ROOT / "src" / "templates" / "followups" /
+        "unified_detail.html"
+    ).read_text(encoding="utf-8")
+    readiness_copy = "\n".join(
+        value
+        for copy in READINESS_COPY.values()
+        for value in (copy["label"], copy["help"])
+    )
+
+    visible_copy = "\n".join((list_template, readiness_copy))
+    for forbidden in (
+        "Projection قدیمی",
+        "سن Projection",
+        "Projection هنوز ساخته نشده است",
+        "Projection را صریحاً بازسازی کنید",
+    ):
+        assert forbidden not in visible_copy
+        assert forbidden not in detail_template
+
+    assert "اطلاعات نما قدیمی است" in list_template
+    assert "آخرین بازسازی نما" in list_template
+    assert "اطلاعات این نما قدیمی است یا زمان بازسازی معتبری ندارد" in detail_template
+    assert "آخرین بازسازی نما" in detail_template
+    assert "اطلاعات نمای یکپارچه هنوز آماده نشده است" in readiness_copy
+    assert "اطلاعات ذخیره‌شدهٔ این نما با نسخهٔ جدید سازگار نیست" in readiness_copy
