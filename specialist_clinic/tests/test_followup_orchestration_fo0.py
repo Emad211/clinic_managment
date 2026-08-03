@@ -152,7 +152,7 @@ print(json.dumps({
     assert payload["values"] == {name: False for name in EXPECTED_FLAGS}
 
 
-def test_fo4_and_later_schema_is_not_installed_before_fo3():
+def test_fo4_and_later_schema_is_not_installed_before_ux_acceptance():
     schema_sources = [SRC_ROOT / "adapters" / "sqlite" / "schema.sql"]
     schema_sources.extend(
         path for path in (SRC_ROOT / "adapters" / "sqlite").glob("*.py") if path.is_file()
@@ -172,7 +172,7 @@ def test_fo4_and_later_schema_is_not_installed_before_fo3():
     assert violations == []
 
 
-def test_project_state_validates_fo2_and_authorizes_only_fo3():
+def test_project_state_validates_fo3_technically_and_blocks_fo4():
     state = json.loads((REPO_ROOT / "PROJECT_STATE.json").read_text(encoding="utf-8"))
     specialist = state["streams"]["specialist_clinic"]
     assert specialist["data_classification"] == "TEST_ONLY_SYNTHETIC_OR_RESETTABLE"
@@ -180,16 +180,22 @@ def test_project_state_validates_fo2_and_authorizes_only_fo3():
 
     stream = state["streams"]["followup_orchestration_ux_v1"]
     assert stream["program_code"] == "FOUX-V1"
-    assert stream["plan_version"] == "1.3.0"
-    assert stream["status"] == "FO_0_VALIDATED_FO_1_VALIDATED_FO_2_VALIDATED_FO_3_AUTHORIZED"
+    assert stream["plan_version"] == "1.4.0"
+    assert stream["status"] == (
+        "FO_0_VALIDATED_FO_1_VALIDATED_FO_2_VALIDATED_"
+        "FO_3_TECHNICALLY_VALIDATED_UX_ACCEPTANCE_PENDING"
+    )
     assert stream["fo2_evidence"]["implementation_pr"] == 78
     assert stream["fo2_evidence"]["merge_commit"] == "6c6e33203376a32165418e0d3c6f2a4a48253e7b"
-    assert stream["fo2_evidence"]["specialist_tests_passed"] == 747
-    assert stream["fo2_evidence"]["accounting_tests_passed"] == 54
-    assert stream["fo2_evidence"]["legacy_coverage_percent"] == 100.0
-    assert stream["fo2_evidence"]["hidden_legacy_sources"] == 0
+    assert stream["fo3_evidence"]["implementation_pr"] == 81
+    assert stream["fo3_evidence"]["merge_commit"] == "afed3545c0a90a1ed7ff7e0a892df89fffac00c2"
+    assert stream["fo3_evidence"]["specialist_tests_passed"] == 754
+    assert stream["fo3_evidence"]["accounting_tests_passed"] == 54
+    assert stream["fo3_evidence"]["get_only_routes"] is True
+    assert stream["fo3_evidence"]["local_ux_acceptance"] == "PENDING"
     assert stream["fo3_allowed"] is True
     assert stream["fo4_allowed"] is False
+    assert stream["next_gate"] == "FO_3_LOCAL_MANUAL_UX_ACCEPTANCE_ATTESTATION"
     assert stream["feature_flags"] == {name: False for name in EXPECTED_FLAGS}
     assert state["global_freeze"]["followup_orchestration_fo4_and_later"].startswith("BLOCKED")
 
@@ -199,13 +205,14 @@ def test_canonical_docs_and_agent_guard_are_current():
     baseline = BASELINE_PATH.read_text(encoding="utf-8")
     agent = (SPECIALIST_ROOT / "AGENTS.md").read_text(encoding="utf-8")
 
-    assert "نسخه:** `1.3.0`" in plan
-    assert "FO_0_VALIDATED / FO_1_VALIDATED / FO_2_VALIDATED / FO_3_AUTHORIZED" in plan
-    assert "FO-2 | VALIDATED" in plan
-    assert "FO-3 | AUTHORIZED" in plan
+    assert "نسخه:** `1.4.0`" in plan
+    assert "FO_3_TECHNICALLY_VALIDATED" in plan
+    assert "FO-3 | TECHNICALLY_VALIDATED" in plan
+    assert "FO-3 Local UX Acceptance Gate" in plan
+    assert "FO-4 AND LATER = BLOCKED" in plan
     assert "Status:** `VALIDATED`" in baseline
-    assert "FO-2 = VALIDATED" in agent
-    assert "FO-3 = AUTHORIZED" in agent
+    assert "FO-3 = TECHNICALLY_VALIDATED" in agent
+    assert "FO-3 LOCAL UX ACCEPTANCE = PENDING" in agent
     assert "FO-4 and later = BLOCKED" in agent
 
 
