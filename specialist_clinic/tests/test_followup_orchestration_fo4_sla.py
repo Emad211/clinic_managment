@@ -14,6 +14,7 @@ from src.services.followup_orchestration.read_model_service import (
 )
 
 
+# Policy, SQL filtering and rendered badges must expose one effective vocabulary.
 EXPECTED_SLA_STATES = (
     "FUTURE",
     "DUE_TODAY",
