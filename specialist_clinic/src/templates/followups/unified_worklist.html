@@ -66,7 +66,7 @@
     </details>
     {% endif %}
 </div>
-{% elif not model.items %}
+{% elif not model['items'] %}
 <div class="card error-state" role="status">
     <h2>موردی مطابق فیلتر پیدا نشد</h2>
     <p class="muted">فیلترها را تغییر دهید یا ورک‌لیست فعلی را بررسی کنید.</p>
@@ -92,7 +92,7 @@
                 </tr>
             </thead>
             <tbody>
-            {% for item in model.items %}
+            {% for item in model['items'] %}
                 <tr>
                     <td>
                         <a href="{{ url_for('unified_followups.detail', episode_id=item.episode_id) }}"><b>{{ item.patient_name }}</b></a>
