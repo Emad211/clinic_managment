@@ -48,13 +48,10 @@ def _demo_task_ids(db) -> list[int]:
     return [
         int(row[0])
         for row in db.execute(
-            """SELECT task.id
-               FROM followup_tasks task
-               JOIN patient_links patient ON patient.id=task.patient_link_id
-               WHERE patient.national_id GLOB 'TEST[0-9][0-9][0-9][0-9]'
-                 AND task.source_engine='demo_cohort'
-                 AND task.source_rule LIKE 'demo-followup:%'
-               ORDER BY patient.national_id, task.id"""
+            """SELECT CAST(value AS INTEGER)
+               FROM settings
+               WHERE key LIKE 'demo_followup_task_id:TEST%:%'
+               ORDER BY key"""
         ).fetchall()
     ]
 
