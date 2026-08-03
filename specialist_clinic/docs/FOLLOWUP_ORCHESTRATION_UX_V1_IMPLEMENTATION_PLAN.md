@@ -15,6 +15,8 @@
 > **دامنه:** فقط `specialist_clinic/`
 >
 > **محیط:** `TEST_ONLY / SYNTHETIC_OR_RESETTABLE_DATA`
+>
+> **رودمپ کامل FO-0 تا FO-10:** `specialist_clinic/docs/FOLLOWUP_ORCHESTRATION_UX_V1_ROADMAP.md`
 
 ---
 
@@ -70,6 +72,8 @@ Episode حقیقت بالینی نیست؛ Projection cache قابل بازسا�
 | FO-3 | `VALIDATED_WITH_OWNER_ACCEPTANCE` | Issue #83، PR #81/#85/#88، 762 + 54 |
 | FO-4 | `TECHNICALLY_VALIDATED / LOCAL_UX_PENDING` | Issue #94، PR #95، repairهای #97/#98 و #99/#100 |
 | FO-5 و بعد | `BLOCKED` | owner acceptance و governance مستقل لازم است |
+
+جزئیات کامل FO-5 تا FO-10، dependencyها، feature flagها، exit gateها و KPIهای pilot در رودمپ کامل ثبت شده‌اند.
 
 ---
 
@@ -267,12 +271,12 @@ notes = <observations or defects>
 
 ```text
 FO-4 ownership/routing merged           = PASS
-Seeded Unified Worklist repair           = PASS
-Canonical effective SLA                  = PASS
-Latest code CI 30852909213               = PASS
-FO4_UX_ACCEPTED=true                     = PENDING
-critical_ux_defects=0                    = PENDING
-separate governance authorization        = PENDING
+Seeded Unified Worklist repair          = PASS
+Canonical effective SLA                 = PASS
+Latest code CI 30852909213              = PASS
+FO4_UX_ACCEPTED=true                    = PENDING
+critical_ux_defects=0                   = PENDING
+separate governance authorization       = PENDING
 ```
 
 Structured Contact، Retry/Escalation، SMS automation، Appointment reaction، Outbox/Dead-letter، Evidence Assist و FO-5+ تا آن زمان مسدودند.
@@ -290,7 +294,29 @@ FO-3 read-only باقی می‌ماند؛ audit events حذف نمی‌شوند�
 
 ---
 
-## 10. تصمیم فعلی
+## 10. Roadmap authority and measured progress
+
+رودمپ کامل FO-0 تا FO-10 در فایل زیر نگهداری می‌شود:
+
+```text
+specialist_clinic/docs/FOLLOWUP_ORCHESTRATION_UX_V1_ROADMAP.md
+```
+
+مدل رسمی tranche-equivalent:
+
+```text
+FO-0..FO-3 validated                     = 4.0
+FO-4 technically validated / UX pending = 0.8
+FO-5..FO-10 blocked/not started          = 0.0
+Progress                                 = 4.8 / 11 = 43.6%
+Remaining                                = 56.4%
+```
+
+این درصد فقط FOUX-V1 است و production-readiness کل Specialist Clinic نیست. نقطهٔ ادامه همچنان Issue #94 و owner acceptance روی runtime commit `cd243424ecbae98892e0dfde1780bb846554942f` است. حضور FO-5 تا FO-10 در رودمپ به‌معنی authorization نیست.
+
+---
+
+## 11. تصمیم فعلی
 
 ```text
 FO-0 = VALIDATED
