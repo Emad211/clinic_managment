@@ -48,7 +48,7 @@ def fo4_app(tmp_path):
         """INSERT INTO followup_tasks
            (patient_link_id, due_date, reason, detail, status,
             source_event, fulfillment, created_at)
-           VALUES (?, '2026-08-04', 'manual', 'پیگیری فعال FO-4', 'open',
+           VALUES (?, '2026-08-02', 'manual', 'پیگیری فعال FO-4', 'open',
                    'manual', 'in_person', '2026-08-03 09:05:00')""",
         (patient_id,),
     )
@@ -265,7 +265,12 @@ def test_terminal_item_rejects_ownership_mutation(fo4_app):
     from src.adapters.sqlite.core import get_db
 
     db = get_db()
-    episode_id = _episode(db, "TERMINAL")
+    episode_id = _episode(db, "ACTION_REQUIRED")
+    db.execute(
+        "UPDATE followup_work_item_projection SET state_class='TERMINAL' WHERE episode_id=?",
+        (episode_id,),
+    )
+    db.commit()
     manager = _row(db, "admin")
 
     with pytest.raises(FollowupOwnershipError) as error:
@@ -326,3 +331,24 @@ def test_routes_are_actions_flagged_and_render_actual_owner(fo4_app):
         },
     )
     assert route_disabled.status_code == 404
+
+
+def test_list_ownership_overlay_has_bounded_query_count(fo4_app):
+    from src.adapters.sqlite.core import get_db
+    from src.services.followup_orchestration.read_model_service import (
+        FollowupUnifiedReadModelService,
+    )
+
+    db = get_db()
+    model = FollowupUnifiedReadModelService(db).list_items(per_page=50)
+    statements: list[str] = []
+    db.set_trace_callback(
+        lambda sql: statements.append(sql)
+        if sql.lstrip().upper().startswith("SELECT")
+        else None
+    )
+    FollowupOwnershipService(db).decorate_items(model["items"])
+    db.set_trace_callback(None)
+    assert len(statements) <= 3
+    assert sum("followup_episode_events" in sql for sql in statements) == 1
+    assert sum("FROM users" in sql for sql in statements) <= 1

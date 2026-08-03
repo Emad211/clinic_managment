@@ -138,54 +138,116 @@ class FollowupOwnershipService:
         return str(user["full_name"] or user["username"] or "").strip() or None
 
     def state(self, episode_id: str) -> OwnershipState:
-        projection = self._projection(episode_id)
-        owner_role = str(projection["owner_role_proposal"] or "").strip() or None
-        owner_user_id: int | None = None
-        event_id: int | None = None
-        event_type: str | None = None
+        states = self.states([str(episode_id)])
+        try:
+            return states[str(episode_id)]
+        except KeyError as exc:
+            raise FollowupOwnershipError(
+                "OWNERSHIP_PROJECTION_UNAVAILABLE",
+                "این مسیر در نمای جاری موجود نیست؛ ابتدا نمای یکپارچه را بازسازی کنید.",
+            ) from exc
 
-        rows = self.db.execute(
-            """SELECT id, event_type, payload_json
-               FROM followup_episode_events
-               WHERE episode_id=?
-                 AND event_type IN ('ROUTED','CLAIMED','ASSIGNED')
-               ORDER BY id""",
-            (str(episode_id),),
+    def states(self, episode_ids: Iterable[str]) -> dict[str, OwnershipState]:
+        ids = list(dict.fromkeys(str(value) for value in episode_ids if str(value)))
+        if not ids:
+            return {}
+        placeholders = ",".join("?" for _ in ids)
+        projections = self.db.execute(
+            f"""SELECT episode_id, owner_role_proposal
+                FROM followup_work_item_projection
+                WHERE episode_id IN ({placeholders})""",
+            ids,
         ).fetchall()
-        for row in rows:
+        role_by_episode = {
+            str(row["episode_id"]): (
+                str(row["owner_role_proposal"] or "").strip() or None
+            )
+            for row in projections
+        }
+        missing = [episode_id for episode_id in ids if episode_id not in role_by_episode]
+        if missing:
+            raise FollowupOwnershipError(
+                "OWNERSHIP_PROJECTION_UNAVAILABLE",
+                "یکی از مسیرها در نمای جاری موجود نیست؛ ابتدا نمای یکپارچه را بازسازی کنید.",
+            )
+
+        working = {
+            episode_id: {
+                "owner_role": role_by_episode[episode_id],
+                "owner_user_id": None,
+                "event_id": None,
+                "event_type": None,
+            }
+            for episode_id in ids
+        }
+        events = self.db.execute(
+            f"""SELECT episode_id, id, event_type, payload_json
+                FROM followup_episode_events
+                WHERE episode_id IN ({placeholders})
+                  AND event_type IN ('ROUTED','CLAIMED','ASSIGNED')
+                ORDER BY episode_id, id""",
+            ids,
+        ).fetchall()
+        for row in events:
+            episode_id = str(row["episode_id"])
+            current = working[episode_id]
             data = _payload(row)
             kind = str(row["event_type"])
             if data.get("owner_role") in ROLE_LABELS:
-                owner_role = str(data["owner_role"])
+                current["owner_role"] = str(data["owner_role"])
             if kind == "ROUTED":
-                owner_user_id = None
+                current["owner_user_id"] = None
             elif kind in {"CLAIMED", "ASSIGNED"}:
                 action = str(data.get("action") or "").upper()
                 raw_user = data.get("owner_user_id")
-                owner_user_id = (
+                current["owner_user_id"] = (
                     int(raw_user)
                     if raw_user not in (None, "") and action != "RELEASE"
                     else None
                 )
-            event_id = int(row["id"])
-            event_type = kind
+            current["event_id"] = int(row["id"])
+            current["event_type"] = kind
 
-        user = self._user(owner_user_id) if owner_user_id is not None else None
-        return OwnershipState(
-            episode_id=str(episode_id),
-            owner_role=owner_role,
-            owner_user_id=owner_user_id,
-            owner_name=self._user_label(user),
-            ownership_event_id=event_id,
-            ownership_event_type=event_type,
+        user_ids = sorted(
+            {
+                int(current["owner_user_id"])
+                for current in working.values()
+                if current["owner_user_id"] is not None
+            }
         )
+        users = {}
+        if user_ids:
+            user_placeholders = ",".join("?" for _ in user_ids)
+            users = {
+                int(row["id"]): row
+                for row in self.db.execute(
+                    f"""SELECT id, username, full_name, role, is_active
+                        FROM users WHERE id IN ({user_placeholders})""",
+                    user_ids,
+                ).fetchall()
+            }
 
-    def states(self, episode_ids: Iterable[str]) -> dict[str, OwnershipState]:
-        return {str(episode_id): self.state(str(episode_id)) for episode_id in episode_ids}
+        result: dict[str, OwnershipState] = {}
+        for episode_id, current in working.items():
+            owner_user_id = current["owner_user_id"]
+            user = users.get(int(owner_user_id)) if owner_user_id is not None else None
+            owner_name = self._user_label(user)
+            if owner_user_id is not None and not owner_name:
+                owner_name = "کاربر غیرفعال یا ناموجود"
+            result[episode_id] = OwnershipState(
+                episode_id=episode_id,
+                owner_role=current["owner_role"],
+                owner_user_id=owner_user_id,
+                owner_name=owner_name,
+                ownership_event_id=current["event_id"],
+                ownership_event_type=current["event_type"],
+            )
+        return result
 
     def decorate_items(self, items: list[dict]) -> list[dict]:
+        states = self.states([str(item["episode_id"]) for item in items])
         for item in items:
-            item["ownership"] = self.state(str(item["episode_id"])).as_dict()
+            item["ownership"] = states[str(item["episode_id"])].as_dict()
         return items
 
     @staticmethod
