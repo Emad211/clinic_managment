@@ -172,7 +172,7 @@ def test_fo4_and_later_schema_is_not_installed_before_post_fix_ux_acceptance():
     assert violations == []
 
 
-def test_project_state_records_confirmed_issue84_root_cause_and_blocks_fo4():
+def test_project_state_attests_repair_and_blocks_fo4_pending_owner_review():
     state = json.loads((REPO_ROOT / "PROJECT_STATE.json").read_text(encoding="utf-8"))
     specialist = state["streams"]["specialist_clinic"]
     assert specialist["data_classification"] == "TEST_ONLY_SYNTHETIC_OR_RESETTABLE"
@@ -180,19 +180,15 @@ def test_project_state_records_confirmed_issue84_root_cause_and_blocks_fo4():
 
     stream = state["streams"]["followup_orchestration_ux_v1"]
     assert stream["program_code"] == "FOUX-V1"
-    assert stream["plan_version"] == "1.4.2"
-    assert stream["current_tranche"] == "FO_3_FOCUSED_RUNTIME_REPAIR"
+    assert stream["plan_version"] == "1.4.3"
+    assert stream["current_tranche"] == "FO_3_POST_FIX_LOCAL_UX_ACCEPTANCE"
     assert stream["status"] == (
         "FO_0_VALIDATED_FO_1_VALIDATED_FO_2_VALIDATED_"
-        "FO_3_TECHNICALLY_VALIDATED_LOCAL_UX_BLOCKED_BY_CONFIRMED_"
-        "RUNTIME_DEFECT_FOCUSED_FIX_IN_PROGRESS"
+        "FO_3_RUNTIME_REPAIR_TECHNICALLY_VALIDATED_"
+        "POST_FIX_LOCAL_UX_ACCEPTANCE_PENDING"
     )
     assert stream["fo3_evidence"]["implementation_pr"] == 81
-    assert stream["fo3_evidence"]["merge_commit"] == "afed3545c0a90a1ed7ff7e0a892df89fffac00c2"
-    assert stream["fo3_evidence"]["specialist_tests_passed"] == 754
-    assert stream["fo3_evidence"]["local_ux_acceptance"] == (
-        "BLOCKED_BY_CONFIRMED_RUNTIME_DEFECT"
-    )
+    assert stream["fo3_evidence"]["local_ux_acceptance"] == "PENDING_POST_FIX_REVIEW"
 
     incident = stream["fo3_runtime_incident"]
     assert incident["incident_code"] == "FO3_UI_500"
@@ -200,25 +196,30 @@ def test_project_state_records_confirmed_issue84_root_cause_and_blocks_fo4():
     assert incident["implementation_pr"] == 85
     assert incident["root_cause_confirmed"] is True
     assert incident["root_cause_ci_run"] == 30808217800
-    assert incident["root_cause_code"] == (
-        "JINJA_DICT_METHOD_COLLISION_ON_ITEMS_KEY"
+    assert incident["root_cause_code"] == "JINJA_DICT_METHOD_COLLISION_ON_ITEMS_KEY"
+    assert incident["focused_fix_final_head"] == (
+        "8809252b2ca25fb55f200d783016d30ec10134d7"
     )
-    assert incident["root_cause_template_expression"] == "model.items"
-    assert incident["preventive_expression_fixed"] == "timeline.items"
-    assert incident["secondary_hardening"] == (
-        "DISPOSABLE_PROJECTION_CACHE_SCHEMA_PREFLIGHT_AND_REPAIR"
+    assert incident["focused_fix_merge_commit"] == (
+        "8f851c90da5a81f4b7ffce43eaa5bf6010d58fa2"
     )
-    assert incident["status"] == "IN_PROGRESS"
+    assert incident["focused_fix_final_ci_run"] == 30809363219
+    assert incident["focused_fix_specialist_tests_passed"] == 761
+    assert incident["focused_fix_accounting_tests_passed"] == 54
+    assert incident["real_list_render_passed"] is True
+    assert incident["real_timeline_render_passed"] is True
+    assert incident["legacy_cache_repair_passed"] is True
+    assert incident["source_truth_digest_unchanged"] is True
+    assert incident["episode_digest_unchanged"] is True
+    assert incident["status"] == "RESOLVED_TECHNICALLY"
 
-    assert stream["implemented_contracts"]["projection_storage_schema_version_target"] == "1.1"
+    assert stream["implemented_contracts"]["projection_storage_schema_version"] == "1.1"
     assert stream["fo3_allowed"] is True
     assert stream["fo4_allowed"] is False
-    assert stream["next_gate"] == (
-        "PR_85_FULL_CI_MERGE_AND_REPEAT_LOCAL_UX_ACCEPTANCE"
-    )
+    assert stream["next_gate"] == "ISSUE_83_POST_FIX_LOCAL_UX_ACCEPTANCE_ON_8F851C90"
     assert stream["feature_flags"] == {name: False for name in EXPECTED_FLAGS}
-    assert state["global_freeze"]["followup_orchestration_fo3"].endswith(
-        "FOCUSED_RUNTIME_REPAIR_ONLY"
+    assert state["global_freeze"]["followup_orchestration_fo3"].startswith(
+        "ALLOWED_POST_FIX_LOCAL_UX_REVIEW"
     )
     assert state["global_freeze"]["followup_orchestration_fo4_and_later"].startswith(
         "BLOCKED"
@@ -230,16 +231,17 @@ def test_canonical_docs_and_agent_guard_are_current():
     baseline = BASELINE_PATH.read_text(encoding="utf-8")
     agent = (SPECIALIST_ROOT / "AGENTS.md").read_text(encoding="utf-8")
 
-    assert "نسخه:** `1.4.2`" in plan
-    assert "FO_3_LOCAL_UX_BLOCKED_BY_CONFIRMED_RUNTIME_DEFECT" in plan
-    assert "JINJA_DICT_METHOD_COLLISION_ON_ITEMS_KEY" in plan
-    assert "Root-cause CI run" in plan
-    assert "PR #85" in plan
+    assert "نسخه:** `1.4.3`" in plan
+    assert "FO_3_RUNTIME_REPAIR_TECHNICALLY_VALIDATED" in plan
+    assert "FO_3_POST_FIX_LOCAL_UX_ACCEPTANCE_PENDING" in plan
+    assert "Final CI 30809363219" in plan
+    assert "761 Specialist + 54 Accounting" in plan
     assert "FO-4 AND LATER = BLOCKED" in plan
     assert "Status:** `VALIDATED`" in baseline
 
-    assert "FO-3 LOCAL UX ACCEPTANCE = BLOCKED BY CONFIRMED JINJA" in agent
-    assert "FOCUSED FIX PR = #85" in agent
+    assert "FO-3 RUNTIME REPAIR = TECHNICALLY VALIDATED" in agent
+    assert "FO-3 POST-FIX LOCAL UX ACCEPTANCE = PENDING" in agent
+    assert "CURRENT REVIEW ISSUE = #83" in agent
     assert "model['items']" in agent
     assert "timeline['items']" in agent
     assert "FO-4 and later = BLOCKED" in agent
