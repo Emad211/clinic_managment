@@ -52,9 +52,8 @@ def _demo_task_ids(db) -> list[int]:
                FROM followup_tasks task
                JOIN patient_links patient ON patient.id=task.patient_link_id
                WHERE patient.national_id GLOB 'TEST[0-9][0-9][0-9][0-9]'
-                 AND COALESCE(task.source_engine,'') NOT IN (
-                     'clinical_v2','encounter_plan'
-                 )
+                 AND task.source_engine='demo_cohort'
+                 AND task.source_rule LIKE 'demo-followup:%'
                ORDER BY patient.national_id, task.id"""
         ).fetchall()
     ]
@@ -182,3 +181,53 @@ def test_manager_prepare_demo_cohort_also_prepares_unified(seeded_app):
         "SELECT COUNT(*) FROM followup_work_item_projection"
     ).fetchone()[0] > 0
     assert FollowupUnifiedReadModelService(db).readiness()["ready"] is True
+
+
+def test_reseed_preserves_user_created_followup_for_test_patient(seeded_app):
+    _app, _database, db = seeded_app
+    from src.services.clinical_engine.demo_cohort import DemoCohortService
+
+    patient_id = int(
+        db.execute(
+            "SELECT id FROM patient_links WHERE national_id='TEST0001'"
+        ).fetchone()[0]
+    )
+    canonical_before = _demo_task_ids(db)
+    cursor = db.execute(
+        """INSERT INTO followup_tasks
+           (patient_link_id, due_date, reason, detail, status, assigned_to,
+            fulfillment, source_event, created_at)
+           VALUES (?, '2026-08-20', 'manual',
+                   'پیگیری دستی ثبت‌شده هنگام مرور UX', 'open',
+                   'کاربر تست', 'in_person', 'manual-user-entry',
+                   '2026-08-03 18:00:00')""",
+        (patient_id,),
+    )
+    extra_id = int(cursor.lastrowid)
+    db.commit()
+
+    DemoCohortService().ensure(actor="pytest-seed-with-extra", force=True)
+    preserved = db.execute(
+        "SELECT detail, source_event FROM followup_tasks WHERE id=?",
+        (extra_id,),
+    ).fetchone()
+    assert preserved
+    assert preserved["detail"] == "پیگیری دستی ثبت‌شده هنگام مرور UX"
+    assert preserved["source_event"] == "manual-user-entry"
+    assert _demo_task_ids(db) == canonical_before
+
+
+def test_seed_preparation_service_keeps_sql_in_repository():
+    root = Path(__file__).resolve().parents[1]
+    service = (
+        root / "src" / "services" / "followup_orchestration"
+        / "demo_seed_preparation.py"
+    ).read_text(encoding="utf-8")
+    repository = (
+        root / "src" / "adapters" / "sqlite"
+        / "demo_seed_followup_repo.py"
+    ).read_text(encoding="utf-8")
+
+    assert "DemoSeedFollowupRepository" in service
+    assert "SELECT " not in service.upper()
+    assert "WITH demo_patients AS" in repository
