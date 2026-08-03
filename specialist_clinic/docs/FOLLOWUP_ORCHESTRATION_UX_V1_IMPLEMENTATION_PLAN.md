@@ -57,7 +57,7 @@
 | FO-2 | `VALIDATED` | Projection/Policy/Parity، PR #78 |
 | FO-3 | `TECHNICALLY_VALIDATED` | Unified Worklist خواندنی، PR #81 |
 | FO-3 Runtime Repair | `TECHNICALLY_VALIDATED` | Issue #84 / PR #85 |
-| FO-3 Post-fix UX | `PENDING_OWNER_ACCEPTANCE` | Issue #83 |
+| FO-3 Post-fix UX | `PENDING_OWNER_ACCEPTANCE` | Issue #83؛ focused copy defect #87 |
 | FO-4 و بعد | `BLOCKED` | پذیرش UX صریح و governance PR مستقل لازم است |
 
 ---
@@ -192,6 +192,28 @@ timeline['items']
 
 این hardening علت screenshot نبود؛ علت قطعی همان Jinja collision بود.
 
+### 6.1. یافتهٔ مرور UX پس از اصلاح — Issue #87
+
+مرور ایستای `main` روی commit `b977fe5be5683f9d46fccf0e102d0a6dc97d79c7` نشان داد که رابط خواندنی هنوز اصطلاح فنی `Projection` را مستقیماً به کاربر درمانگاه نمایش می‌دهد، از جمله:
+
+```text
+Projection قدیمی
+سن Projection
+Projection هنوز ساخته نشده است
+```
+
+این مورد با معیار پذیرش «stale/overdue قابل‌فهم باشد» سازگار نیست. Issue `#87` فقط برای repair کپی کاربرمحور باز شد.
+
+محدودهٔ مجاز repair:
+
+- جایگزینی اصطلاح فنی قابل‌مشاهده با متن عملیاتی فارسی؛
+- حفظ readiness codeها، نام فیلدها و audit فنی؛
+- حفظ کامل GET-only، feature flag و deep-linkها؛
+- عدم تغییر query، schema، cache behavior، Source Truth یا workflow؛
+- افزودن regression test برای جلوگیری از بازگشت jargon.
+
+این یافته owner acceptance را جعل یا تکمیل نمی‌کند. پس از merge و CI سبز، Issue #83 باید روی commit نهایی دوباره مرور شود.
+
 ---
 
 ## 7. Invariantهای غیرقابل‌مذاکره
@@ -213,6 +235,7 @@ timeline['items']
 15. known schema drift نباید generic 500 تولید کند.
 16. فقط cache disposable می‌تواند recreate شود؛ Source Truth هرگز drop/rewrite نمی‌شود.
 17. FO-4 و بعد بدون owner acceptance و governance PR جدید ممنوع است.
+18. اصطلاح‌های فنی cache/projection نباید در کپی اصلی اپراتوری نمایش داده شوند؛ audit جمع‌شونده استثنا است.
 
 ---
 
@@ -240,6 +263,8 @@ FOLLOWUP_AUTOMATION_HEALTH
 ## 9. قدم مجاز فعلی — Post-fix Local UX Acceptance
 
 Issue حاکم: `#83`
+
+Focused defect فعلی: `#87`
 
 هیچ توسعهٔ جدیدی پیش از نتیجهٔ این مرور مجاز نیست، مگر defect متمرکز جدیدی در خود FO-3 پیدا شود.
 
@@ -283,7 +308,7 @@ $env:FOLLOWUP_UNIFIED_WORKLIST_READONLY = "1"
 - action/wait/block copy روشن باشد؛
 - role proposal با assignment اشتباه نشود؛
 - action due و target جدا باشند؛
-- stale/overdue قابل‌فهم باشند؛
+- stale/overdue قابل‌فهم باشند و jargon فنی نداشته باشند؛
 - deep-linkها مسیرهای حاکم را باز کنند؛
 - عرض کم، RTL و keyboard قابل‌قبول باشند؛
 - flag OFF tab را مخفی و route را unavailable کند.
@@ -293,7 +318,7 @@ $env:FOLLOWUP_UNIFIED_WORKLIST_READONLY = "1"
 ```text
 FO3_UX_ACCEPTED = true|false
 reviewer = Emad211
-reviewed_commit = 8f851c90da5a81f4b7ffce43eaa5bf6010d58fa2
+reviewed_commit = <final merged commit after Issue #87>
 reviewed_on_test_data = true
 critical_ux_defects = <number>
 notes = <observations or defects>
@@ -308,6 +333,7 @@ FO-4 فقط پس از همهٔ موارد زیر قابل بررسی است:
 ```text
 PR #85 merged                       = PASS
 Final CI green                      = PASS
+Issue #87 focused UX repair         = IN_PROGRESS
 FO3_UX_ACCEPTED=true                = PENDING
 critical_ux_defects=0               = PENDING
 governance authorization PR merged  = PENDING
@@ -347,13 +373,14 @@ $env:FOLLOWUP_UNIFIED_WORKLIST_READONLY = "0"
 
 ## 12. قواعد ایجنت
 
-1. `main`، Issue #83، PR #85 و این سند را بخواند؛
+1. `main`، Issue #83، Issue #87، PR #85 و این سند را بخواند؛
 2. فقط post-fix UX review یا focused FO-3 defect fix انجام دهد؛
 3. علت Incident را Jinja dict-method collision گزارش کند؛
 4. schema hardening را علت screenshot معرفی نکند؛
 5. هیچ Source Truth را تغییر ندهد؛
-6. هر fix جدید full CI و owner re-review می‌خواهد؛
-7. بدون owner attestation وارد FO-4 نشود.
+6. repair #87 فقط copy و regression test است؛
+7. هر fix جدید full CI و owner re-review می‌خواهد؛
+8. بدون owner attestation وارد FO-4 نشود.
 
 ---
 
@@ -368,6 +395,7 @@ $env:FOLLOWUP_UNIFIED_WORKLIST_READONLY = "0"
 | 2026-08-03 | مالک generic 500 گزارش کرد | UX blocked |
 | 2026-08-03 | PR #85 علت Jinja را رفع و cache را harden کرد | technically validated |
 | 2026-08-03 | Plan v1.4.3 | post-fix UX review pending |
+| 2026-08-03 | Issue #87 برای حذف jargon فنی از کپی عملیاتی | focused repair in progress |
 
 ---
 
@@ -378,6 +406,7 @@ FO-0 = VALIDATED
 FO-1 = VALIDATED
 FO-2 = VALIDATED
 FO-3 RUNTIME REPAIR = TECHNICALLY VALIDATED
+FO-3 FOCUSED UX COPY REPAIR = IN PROGRESS
 FO-3 POST-FIX LOCAL UX ACCEPTANCE = PENDING
 FO-4 AND LATER = BLOCKED
 ```
