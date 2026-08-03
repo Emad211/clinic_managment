@@ -1,0 +1,45 @@
+name: Temporary SMS consent template patch
+
+on:
+  push:
+    branches:
+      - fix/sms-consent-ux-clarity
+
+permissions:
+  contents: write
+
+jobs:
+  patch-template:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/sms-consent-ux-clarity
+          fetch-depth: 0
+      - name: Replace inline SMS consent section with partial
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path("specialist_clinic/src/templates/patients/detail.html")
+          text = path.read_text(encoding="utf-8")
+          start_marker = '<section class="card card-soft" id="sms-consent" aria-labelledby="sms-consent-title">'
+          end_marker = '<!-- ============ TAB BAR ============ -->'
+          start = text.index(start_marker)
+          end = text.index(end_marker, start)
+          replacement = '{% include "patients/_sms_consent.html" %}\n\n'
+          updated = text[:start] + replacement + text[end:]
+          if updated == text:
+              raise SystemExit("template was not changed")
+          path.write_text(updated, encoding="utf-8")
+
+          workflow = Path(".github/workflows/temp_patch_sms_consent.yml")
+          workflow.unlink()
+      - name: Commit focused patch and remove temporary workflow
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add specialist_clinic/src/templates/patients/detail.html .github/workflows/temp_patch_sms_consent.yml
+          git commit -m "refactor(sms): render consent panel from explicit partial"
+          git push origin HEAD:fix/sms-consent-ux-clarity
