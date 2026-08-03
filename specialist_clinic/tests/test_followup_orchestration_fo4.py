@@ -267,7 +267,13 @@ def test_terminal_item_rejects_ownership_mutation(fo4_app):
     db = get_db()
     episode_id = _episode(db, "ACTION_REQUIRED")
     db.execute(
-        "UPDATE followup_work_item_projection SET state_class='TERMINAL' WHERE episode_id=?",
+        """UPDATE followup_work_item_projection
+           SET state_class='TERMINAL',
+               next_action_code=NULL, next_action_label=NULL,
+               waiting_reason_code=NULL, waiting_reason_label=NULL,
+               blocked_reason_code=NULL, blocked_reason_label=NULL,
+               owner_role_proposal=NULL
+           WHERE episode_id=?""",
         (episode_id,),
     )
     db.commit()
