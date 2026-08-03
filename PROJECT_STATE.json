@@ -1,12 +1,12 @@
 {
-  "schema_version": "1.4",
-  "audited_at": "2026-08-03T03:32:00+03:30",
+  "schema_version": "1.5",
+  "audited_at": "2026-08-03T04:30:00+03:30",
   "repository": "Emad211/clinic_managment",
   "product_authority": {
     "branch": "main",
-    "head": "6c6e33203376a32165418e0d3c6f2a4a48253e7b",
+    "head": "afed3545c0a90a1ed7ff7e0a892df89fffac00c2",
     "status": "ACTIVE_PRODUCT",
-    "head_note": "FOUX-V1 FO-2 merged; FO-3 governance attestation pending merge"
+    "head_note": "FOUX-V1 FO-3 read-only Unified Worklist merged; local UX acceptance pending"
   },
   "overall_status": "PRODUCT_OPERATIONAL_PRE_PRODUCTION_TEST_DATA_CLINICAL_CONTENT_NOT_APPROVED_GOVERNANCE_RECONCILIATION_REQUIRED",
   "streams": {
@@ -29,11 +29,11 @@
       "program_code": "FOUX-V1",
       "path": "specialist_clinic/",
       "canonical_plan": "specialist_clinic/docs/FOLLOWUP_ORCHESTRATION_UX_V1_IMPLEMENTATION_PLAN.md",
-      "plan_version": "1.3.0",
+      "plan_version": "1.4.0",
       "baseline_report": "specialist_clinic/docs/FOLLOWUP_ORCHESTRATION_UX_V1_BASELINE.md",
       "owner": "Emad211",
-      "current_tranche": "FO_3_READ_ONLY_UNIFIED_WORKLIST_TIMELINE",
-      "status": "FO_0_VALIDATED_FO_1_VALIDATED_FO_2_VALIDATED_FO_3_AUTHORIZED",
+      "current_tranche": "FO_3_LOCAL_UX_ACCEPTANCE",
+      "status": "FO_0_VALIDATED_FO_1_VALIDATED_FO_2_VALIDATED_FO_3_TECHNICALLY_VALIDATED_UX_ACCEPTANCE_PENDING",
       "data_environment": "TEST_ONLY_RESETTABLE",
       "fo0_evidence": {
         "tracking_issue": 71,
@@ -74,6 +74,27 @@
         "source_truth_digest_unchanged": true,
         "missing_and_patient_drift_fail_closed": true
       },
+      "fo3_evidence": {
+        "tracking_issue": 80,
+        "implementation_pr": 81,
+        "final_head": "14e8bf56782ead4ccef46db05eb8c4b6b034d263",
+        "merge_commit": "afed3545c0a90a1ed7ff7e0a892df89fffac00c2",
+        "final_ci_run": 30775348057,
+        "specialist_tests_passed": 754,
+        "accounting_tests_passed": 54,
+        "get_only_routes": true,
+        "post_returns_405": true,
+        "feature_off_returns_404": true,
+        "navigation_hidden_when_off": true,
+        "bounded_list_queries": true,
+        "batch_source_links": true,
+        "deterministic_timeline": true,
+        "timeline_phi_minimized": true,
+        "source_truth_digest_unchanged": true,
+        "projection_digest_unchanged": true,
+        "legacy_worklist_remains_authority": true,
+        "local_ux_acceptance": "PENDING"
+      },
       "implemented_contracts": {
         "episode_tables": [
           "followup_episodes",
@@ -86,12 +107,17 @@
         "next_action_policy_version": "FOUX-NEXT-ACTION-V1",
         "automatic_backfill_on_startup": false,
         "automatic_projection_rebuild_on_startup": false,
-        "ui_connected_to_projection": false,
+        "ui_connected_to_projection": true,
+        "ui_mode": "FEATURE_GATED_READ_ONLY",
+        "ui_routes": [
+          "GET /followups/unified/",
+          "GET /followups/unified/<episode_id>"
+        ],
         "source_truth_mutated": false
       },
       "fo3_allowed": true,
       "fo4_allowed": false,
-      "next_gate": "FO_3_FEATURE_FLAGGED_READ_ONLY_UI_WITH_PERMISSION_SAFE_TIMELINE_AND_GREEN_CI",
+      "next_gate": "FO_3_LOCAL_MANUAL_UX_ACCEPTANCE_ATTESTATION",
       "feature_flags": {
         "FOLLOWUP_EPISODES_ENABLED": false,
         "FOLLOWUP_PROJECTION_SHADOW": false,
@@ -107,7 +133,7 @@
       "invariants": [
         "EXISTING_SOURCE_TRUTHS_REMAIN_AUTHORITATIVE",
         "EPISODE_AND_PROJECTION_ARE_NOT_CLINICAL_TRUTH",
-        "FO_3_UI_IS_READ_ONLY",
+        "FO_3_UI_IS_FEATURE_GATED_READ_ONLY",
         "FO_3_HAS_NO_NEW_POST_OR_MUTATION_ENDPOINT",
         "LEGACY_WORKLIST_REMAINS_OPERATIONAL_AUTHORITY",
         "NO_FABRICATED_RELATION_EVENT_DUE_DATE_OR_OUTCOME",
@@ -117,7 +143,8 @@
         "APPOINTMENT_DOES_NOT_COMPLETE_CLINICAL_TASK",
         "NO_CLINICAL_RULE_OR_SHADOW_SCOPE_CHANGE",
         "NO_WRITE_TO_ACCOUNTING_DATABASE",
-        "TEST_ONLY_ASSUMPTION_MUST_BE_REVOKED_BEFORE_REAL_PATIENT_DATA"
+        "TEST_ONLY_ASSUMPTION_MUST_BE_REVOKED_BEFORE_REAL_PATIENT_DATA",
+        "FO_4_REQUIRES_EXPLICIT_LOCAL_UX_ACCEPTANCE_ATTESTATION"
       ]
     },
     "clinical_engine_v2": {
@@ -179,10 +206,11 @@
     "disposition_branch": "DO_NOT_MERGE",
     "release_cleanup": "ALLOWED_AFTER_GOVERNANCE_MERGE",
     "focused_bug_and_security_fixes": "ALLOWED",
-    "followup_orchestration_fo3": "ALLOWED_READ_ONLY_WITHIN_CANONICAL_SCOPE",
-    "followup_orchestration_fo4_and_later": "BLOCKED_PENDING_FO_3_EXIT_GATE"
+    "followup_orchestration_fo3": "ALLOWED_LOCAL_READ_ONLY_UX_REVIEW_AND_FOCUSED_FIXES",
+    "followup_orchestration_fo4_and_later": "BLOCKED_PENDING_FO_3_LOCAL_UX_ACCEPTANCE_ATTESTATION"
   },
   "next_phases": [
+    "FO_3_LOCAL_UX_ACCEPTANCE",
     "R0_GOVERNANCE_RECONCILIATION",
     "R1_RELEASE_BASELINE_FROM_CURRENT_MAIN",
     "R2_BOUNDED_CLINICAL_CONTENT_FORMALIZATION"
@@ -191,7 +219,8 @@
     "FOUX_V1_FO_0_VALIDATED",
     "FOUX_V1_FO_1_VALIDATED",
     "FOUX_V1_FO_2_VALIDATED",
-    "FOUX_V1_FO_3_AUTHORIZED"
+    "FOUX_V1_FO_3_TECHNICALLY_VALIDATED",
+    "FOUX_V1_FO_3_LOCAL_UX_ACCEPTANCE_PENDING"
   ],
   "trust_order": [
     "GITHUB_MAIN_AND_PULL_REQUEST_STATE",
