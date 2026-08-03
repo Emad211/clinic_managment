@@ -298,7 +298,14 @@ class FollowupUnifiedReadModelService:
             clauses.append("projection.state_class=?")
             params.append(filters["state"])
         if filters["role"]:
-            clauses.append("projection.owner_role_proposal=?")
+            clauses.append(
+                "COALESCE((SELECT json_extract(owner_event.payload_json, '$.owner_role') "
+                "FROM followup_episode_events owner_event "
+                "WHERE owner_event.episode_id=projection.episode_id "
+                "AND owner_event.event_type IN ('ROUTED','CLAIMED','ASSIGNED') "
+                "ORDER BY owner_event.id DESC LIMIT 1), "
+                "projection.owner_role_proposal)=?"
+            )
             params.append(filters["role"])
         if filters["sla"]:
             clauses.append("projection.sla_state=?")
