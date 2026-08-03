@@ -1,0 +1,67 @@
+name: Temporary non-invasive seed fixture mapping
+
+on:
+  push:
+    branches:
+      - fix/foux-seed-unified-worklist
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/foux-seed-unified-worklist
+          fetch-depth: 0
+      - name: Move fixture ownership outside operational source rows
+        shell: python
+        run: |
+          from pathlib import Path
+          import re
+
+          repo = Path("specialist_clinic/src/adapters/sqlite/demo_cohort_repo.py")
+          text = repo.read_text(encoding="utf-8")
+          pattern = re.compile(
+              r'''    @staticmethod\n    def _sync_followups\(.*?\n(?=    def summary\()''',
+              re.DOTALL,
+          )
+          replacement = '''    @staticmethod\n    def _sync_followups(\n        db, patient_id: int, patient: dict, *,\n        fixture_national_id: str, actor: str, now: str\n    ) -> None:\n        """Upsert only canonical fixture-owned follow-ups with stable IDs.\n\n        Ownership is recorded in the synthetic seed's settings namespace instead\n        of modifying source provenance fields. This preserves an existing immutable\n        Episode link revision and leaves user-created TEST-patient tasks untouched.\n        """\n        for index, row in enumerate(patient["followups"], start=1):\n            fixture_key = (\n                f"demo_followup_task_id:{fixture_national_id}:{index}"\n            )\n            fulfillment = "remote" if row["reason"] == "refill" else "in_person"\n            mapped = db.execute(\n                "SELECT value FROM settings WHERE key=?",\n                (fixture_key,),\n            ).fetchone()\n            existing = None\n            if mapped and str(mapped["value"] or "").isdigit():\n                existing = db.execute(\n                    """SELECT id FROM followup_tasks\n                       WHERE id=? AND patient_link_id=?""",\n                    (int(mapped["value"]), patient_id),\n                ).fetchone()\n\n            if not existing:\n                # Adopt exact rows produced by releases before the mapping existed.\n                existing = db.execute(\n                    """SELECT id FROM followup_tasks\n                       WHERE patient_link_id=?\n                         AND COALESCE(source_engine,'')=''\n                         AND COALESCE(source_rule,'')=''\n                         AND COALESCE(source_event,'')=''\n                         AND due_date IS ?\n                         AND reason IS ?\n                         AND detail IS ?\n                         AND status=?\n                         AND COALESCE(assigned_to,'')='تیم درمان'\n                         AND COALESCE(fulfillment,'in_person')=?\n                         AND resolved_at IS ?\n                       ORDER BY id LIMIT 1""",\n                    (\n                        patient_id, row["due_date"], row["reason"], row["detail"],\n                        row["status"], fulfillment, row.get("resolved_at"),\n                    ),\n                ).fetchone()\n\n            values = (\n                row["due_date"], row["reason"], row["detail"], row["status"],\n                "تیم درمان", fulfillment, row.get("resolved_at"),\n            )\n            if existing:\n                task_id = int(existing["id"])\n                db.execute(\n                    """UPDATE followup_tasks\n                       SET due_date=?, reason=?, detail=?, status=?, assigned_to=?,\n                           fulfillment=?, resolved_at=?\n                       WHERE id=? AND patient_link_id=?""",\n                    (*values, task_id, patient_id),\n                )\n            else:\n                cursor = db.execute(\n                    """INSERT INTO followup_tasks\n                       (patient_link_id, due_date, reason, detail, status,\n                        assigned_to, fulfillment, resolved_at, created_at)\n                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",\n                    (patient_id, *values, now),\n                )\n                task_id = int(cursor.lastrowid)\n\n            db.execute(\n                """INSERT INTO settings (key, value) VALUES (?, ?)\n                   ON CONFLICT(key) DO UPDATE SET value=excluded.value""",\n                (fixture_key, str(task_id)),\n            )\n\n'''
+          text, count = pattern.subn(replacement, text, count=1)
+          if count != 1:
+              raise SystemExit(f"sync method replacements={count}")
+          repo.write_text(text, encoding="utf-8")
+
+          tests = Path("specialist_clinic/tests/test_followup_seed_unified_integration.py")
+          source = tests.read_text(encoding="utf-8")
+          old_helper = '''    return [\n        int(row[0])\n        for row in db.execute(\n            """SELECT task.id\n               FROM followup_tasks task\n               JOIN patient_links patient ON patient.id=task.patient_link_id\n               WHERE patient.national_id GLOB 'TEST[0-9][0-9][0-9][0-9]'\n                 AND task.source_engine='demo_cohort'\n                 AND task.source_rule LIKE 'demo-followup:%'\n               ORDER BY patient.national_id, task.id"""\n        ).fetchall()\n    ]\n'''
+          new_helper = '''    return [\n        int(row[0])\n        for row in db.execute(\n            """SELECT CAST(value AS INTEGER)\n               FROM settings\n               WHERE key LIKE 'demo_followup_task_id:TEST%:%'\n               ORDER BY key"""\n        ).fetchall()\n    ]\n'''
+          if old_helper not in source:
+              raise SystemExit("demo task helper not found")
+          tests.write_text(source.replace(old_helper, new_helper, 1), encoding="utf-8")
+
+          contract = Path("specialist_clinic/tests/test_followup_seed_review_contract.py")
+          source = contract.read_text(encoding="utf-8")
+          source = source.replace(
+              '''    assert "source_engine='demo_cohort'" in repository\n    assert 'f"demo-followup:{fixture_national_id}:{index}"' in repository\n''',
+              '''    assert "demo_followup_task_id:" in repository\n    assert "SELECT value FROM settings WHERE key=?" in repository\n    assert "source_engine='demo_cohort'" not in repository\n''',
+              1,
+          )
+          if "demo_followup_task_id:" not in source:
+              raise SystemExit("contract mapping replacement failed")
+          contract.write_text(source, encoding="utf-8")
+
+          Path(".github/workflows/temp_patch_seed_fixture_mapping.yml").unlink()
+      - name: Commit and remove temporary workflow
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add specialist_clinic/src/adapters/sqlite/demo_cohort_repo.py \
+                  specialist_clinic/tests/test_followup_seed_unified_integration.py \
+                  specialist_clinic/tests/test_followup_seed_review_contract.py \
+                  .github/workflows/temp_patch_seed_fixture_mapping.yml
+          git commit -m "fix(seed): map fixture ownership without mutating source provenance"
+          git push origin HEAD:fix/foux-seed-unified-worklist
