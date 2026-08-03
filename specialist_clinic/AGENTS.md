@@ -31,59 +31,50 @@ specialist.db = TEST_ONLY / SYNTHETIC_OR_RESETTABLE
 FO-0 = VALIDATED
 FO-1 = VALIDATED
 FO-2 = VALIDATED
-FO-3 = TECHNICALLY_VALIDATED
-FO-3 LOCAL UX ACCEPTANCE = BLOCKED BY CONFIRMED JINJA RUNTIME DEFECT
-FOCUSED FIX ISSUE = #84
-FOCUSED FIX PR = #85
+FO-3 RUNTIME REPAIR = TECHNICALLY VALIDATED
+FO-3 POST-FIX LOCAL UX ACCEPTANCE = PENDING
+CURRENT REVIEW ISSUE = #83
 FO-4 and later = BLOCKED
 ```
 
-سند canonical: نسخهٔ `1.4.2`.
+سند canonical: نسخهٔ `1.4.3`.
 
-### Evidence پایهٔ FO-3
-
-```text
-Issue #80 / PR #81
-merge afed3545c0a90a1ed7ff7e0a892df89fffac00c2
-CI 30775348057
-754 Specialist + 54 Accounting
-```
-
-### علت قطعی Incident
-
-CI run `30808217800` با Flask/Jinja واقعی ثبت کرد:
+### Evidence repair
 
 ```text
-TypeError: 'builtin_function_or_method' object is not iterable
-{% for item in model.items %}
+Issue #84 / PR #85
+Final head 8809252b2ca25fb55f200d783016d30ec10134d7
+Merge 8f851c90da5a81f4b7ffce43eaa5bf6010d58fa2
+Root-cause CI 30808217800
+Final CI 30809363219
+761 Specialist + 54 Accounting
 ```
 
-علت قطعی:
+### علت Incident
 
 ```text
 JINJA_DICT_METHOD_COLLISION_ON_ITEMS_KEY
 ```
 
-در Jinja، `model.items` به متد `dict.items` اشاره کرد، نه key دیکشنری. دسترسی صحیح:
+در Jinja، `model.items` به متد `dict.items` اشاره کرد، نه key دیکشنری. دسترسی حاکم:
 
 ```jinja2
 model['items']
 timeline['items']
 ```
 
-Schema/cache hardening بخشی از repair است، اما علت قطعی screenshot نیست.
+تست واقعی Flask/Jinja و guard ثابت بازگشت این defect را رد می‌کنند.
+
+Schema/cache hardening بخشی از repair است، اما علت screenshot نبود.
 
 ## دامنهٔ مجاز فعلی
 
-- اصلاح Jinja collision در list و Timeline؛
-- real Flask/Jinja integration tests؛
-- static guard علیه `model.items` و `timeline.items`؛
-- repair فقط برای cache disposable `followup_work_item_projection`؛
-- required-column preflight؛
-- controlled Persian state برای خطاهای SQLite/schema شناخته‌شده؛
-- اثبات ثابت‌ماندن Source Truth و Episode digest؛
-- focused/full CI؛
-- تکرار مرور UX پس از merge.
+فقط:
+
+- اجرای Issue #83 روی commit repair؛
+- ثبت feedback و owner attestation؛
+- در صورت کشف defect، focused FO-3 fix با Issue/PR/CI مستقل؛
+- به‌روزرسانی governance پس از نتیجهٔ مرور.
 
 ## دامنهٔ ممنوع
 
@@ -98,17 +89,18 @@ Schema/cache hardening بخشی از repair است، اما علت قطعی scre
 - write به `clinic_new.db`؛
 - شروع FO-4.
 
-## قرارداد Repair
+## قرارداد FO-3 فعلی
 
-1. mapping key متعارض با متدهای dict در template با bracket notation خوانده شود.
-2. real render test الزامی است؛ mock کردن `render_template` کافی نیست.
-3. فقط Projection cache disposable می‌تواند در schema drift recreate شود.
-4. Episode/Link/Event، Task، SMS، Appointment، Contact و Clinical tables هرگز drop/rewrite نمی‌شوند.
-5. cache ناسازگار canonical و خالی می‌شود؛ rebuild فقط صریح است.
-6. known SQLite/schema error باید controlled UI state بدهد، نه generic 500.
-7. unknown programming exception با `except Exception` پنهان نمی‌شود.
-8. Worklist قدیمی authority اقدام باقی می‌ماند.
-9. flag OFF همچنان route=404 و navigation hidden است.
+1. list و detail فقط GET هستند.
+2. Worklist قدیمی authority اقدام است.
+3. role فقط proposal است.
+4. mapping keyهای متعارض Jinja با bracket notation خوانده می‌شوند.
+5. real render test الزامی است؛ mock کردن `render_template` کافی نیست.
+6. فقط Projection cache disposable می‌تواند در schema drift recreate شود.
+7. cache ناسازگار canonical و خالی می‌شود؛ rebuild فقط صریح است.
+8. known SQLite/schema error باید controlled UI state بدهد، نه generic 500.
+9. Source Truth و Episodeها تغییر نمی‌کنند.
+10. flag OFF همچنان route=404 و navigation hidden است.
 
 ## Feature Flagها
 
@@ -125,22 +117,32 @@ FOLLOWUP_EVIDENCE_ASSIST
 FOLLOWUP_AUTOMATION_HEALTH
 ```
 
-همه default OFF. در repair فقط Read-only flag مصرف می‌شود و rebuild تستی با Shadow flag صریح است. Action flags ممنوع‌اند.
+همه default OFF. در review فقط Read-only flag و برای rebuild، Shadow flag صریح مصرف می‌شوند. Action flags ممنوع‌اند.
 
-## تست‌های اجباری PR #85
+## مرور الزامی Issue #83
 
-- real Flask/Jinja list render؛
-- real Flask/Jinja Timeline render؛
-- no `model.items` / no `timeline.items`؛
-- incompatible cache recreated empty؛
-- migration rerun idempotent؛
-- Source Truth و Episode digest ثابت؛
-- incompatible schema → controlled page، نه 500؛
-- canonical list/detail render؛
-- flag OFF 404/hidden؛
-- POST 405؛
-- GET بدون mutation؛
-- full Specialist and Accounting CI.
+```powershell
+git checkout main
+git pull origin main
+cd specialist_clinic
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe start.py
+```
+
+پس از اجرای یک‌باره و توقف:
+
+```powershell
+$env:FOLLOWUP_PROJECTION_SHADOW = "1"
+.\.venv\Scripts\python.exe scripts\rebuild_followup_projection.py `
+  --database specialist.db `
+  --as-of "2026-08-03 12:00:00" `
+  --apply
+
+$env:FOLLOWUP_UNIFIED_WORKLIST_READONLY = "1"
+.\.venv\Scripts\python.exe start.py
+```
+
+Attestation باید commit `8f851c90da5a81f4b7ffce43eaa5bf6010d58fa2` را ثبت کند.
 
 ## مرزهای دائمی
 
@@ -154,4 +156,4 @@ FOLLOWUP_AUTOMATION_HEALTH
 
 ## PR Contract
 
-هر PR باید Issue، scope، schema/cache impact، feature flag، focused/full tests، rollback و proof عدم تغییر Clinical/Accounting/Source Truth را ثبت کند. پس از merge PR #85 نیز FO-4 تا پذیرش UX جدید مالک مسدود است.
+هر PR باید Issue، scope، schema/cache impact، feature flag، focused/full tests، rollback و proof عدم تغییر Clinical/Accounting/Source Truth را ثبت کند. FO-4 فقط پس از `FO3_UX_ACCEPTED=true`، `critical_ux_defects=0` و governance PR مستقل قابل بررسی است.
