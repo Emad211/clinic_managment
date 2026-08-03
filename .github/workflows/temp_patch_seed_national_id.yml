@@ -1,0 +1,77 @@
+name: Temporary stable seed identity argument
+
+on:
+  push:
+    branches:
+      - fix/foux-seed-unified-worklist
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/foux-seed-unified-worklist
+          fetch-depth: 0
+      - name: Pass fixture identity from cohort envelope
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path("specialist_clinic/src/adapters/sqlite/demo_cohort_repo.py")
+          text = path.read_text(encoding="utf-8")
+
+          call_old = '''                    patient,\n                    condition_ids=condition_ids,\n'''
+          call_new = '''                    patient,\n                    fixture_national_id=national_id,\n                    condition_ids=condition_ids,\n'''
+          if call_old not in text:
+              raise SystemExit("insert patient call marker not found")
+          text = text.replace(call_old, call_new, 1)
+
+          signature_old = '''        patient: dict,\n        *,\n        condition_ids: dict[str, int],\n'''
+          signature_new = '''        patient: dict,\n        *,\n        fixture_national_id: str,\n        condition_ids: dict[str, int],\n'''
+          if signature_old not in text:
+              raise SystemExit("insert patient signature marker not found")
+          text = text.replace(signature_old, signature_new, 1)
+
+          sync_call_old = '''            db, patient_id, patient, actor=actor, now=now\n'''
+          sync_call_new = '''            db, patient_id, patient,\n            fixture_national_id=fixture_national_id, actor=actor, now=now\n'''
+          if sync_call_old not in text:
+              raise SystemExit("sync call marker not found")
+          text = text.replace(sync_call_old, sync_call_new, 1)
+
+          sync_signature_old = '''        db, patient_id: int, patient: dict, *, actor: str, now: str\n'''
+          sync_signature_new = '''        db, patient_id: int, patient: dict, *,\n        fixture_national_id: str, actor: str, now: str\n'''
+          if sync_signature_old not in text:
+              raise SystemExit("sync signature marker not found")
+          text = text.replace(sync_signature_old, sync_signature_new, 1)
+
+          key_old = '''            fixture_key = f"demo-followup:{patient['national_id']}:{index}"\n'''
+          key_new = '''            fixture_key = f"demo-followup:{fixture_national_id}:{index}"\n'''
+          if key_old not in text:
+              raise SystemExit("fixture key marker not found")
+          text = text.replace(key_old, key_new, 1)
+
+          path.write_text(text, encoding="utf-8")
+
+          contract = Path("specialist_clinic/tests/test_followup_seed_review_contract.py")
+          source = contract.read_text(encoding="utf-8")
+          needle = '''    assert "demo-followup:" in repository\n'''
+          replacement = needle + '''    assert "fixture_national_id=national_id" in repository\n    assert "patient['national_id']" not in repository\n'''
+          if needle not in source:
+              raise SystemExit("contract marker not found")
+          contract.write_text(source.replace(needle, replacement, 1), encoding="utf-8")
+
+          Path(".github/workflows/temp_patch_seed_national_id.yml").unlink()
+      - name: Commit and remove temporary workflow
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add specialist_clinic/src/adapters/sqlite/demo_cohort_repo.py \
+                  specialist_clinic/tests/test_followup_seed_review_contract.py \
+                  .github/workflows/temp_patch_seed_national_id.yml
+          git commit -m "fix(seed): pass stable fixture identity into follow-up sync"
+          git push origin HEAD:fix/foux-seed-unified-worklist
