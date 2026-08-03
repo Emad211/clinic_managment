@@ -116,6 +116,7 @@ def create_app(test_config=None):
     from src.api.doctor_queue import bp as doctor_queue_bp
     from src.api.ext import bp as ext_bp
     from src.api.followups import bp as followups_bp
+    from src.api.unified_followups import bp as unified_followups_bp
     from src.api.finance_review import bp as finance_review_bp
     from src.api.health import bp as health_bp
     from src.api.hypoglycemia_shadow_monitor import (
@@ -136,6 +137,7 @@ def create_app(test_config=None):
         vitals_bp,
         appointments_bp,
         followups_bp,
+        unified_followups_bp,
         finance_review_bp,
         sms_bp,
         manager_bp,
