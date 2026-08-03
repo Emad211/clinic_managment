@@ -163,3 +163,22 @@ def test_explicit_recovery_command_prepares_existing_seeded_database(
     assert result["contains_phi"] is False
     assert result["demo_projection_count"] > 0
     assert result["backfill"]["episodes_created"] > 0
+
+
+def test_manager_prepare_demo_cohort_also_prepares_unified(seeded_app):
+    app, _database, db = seeded_app
+    admin = db.execute(
+        "SELECT id FROM users WHERE username='admin'"
+    ).fetchone()
+    assert admin
+
+    client = app.test_client()
+    with client.session_transaction() as session:
+        session["user_id"] = int(admin["id"])
+
+    response = client.post("/manager/clinical-engine/prepare-demo-cohort")
+    assert response.status_code in {302, 303}
+    assert db.execute(
+        "SELECT COUNT(*) FROM followup_work_item_projection"
+    ).fetchone()[0] > 0
+    assert FollowupUnifiedReadModelService(db).readiness()["ready"] is True
