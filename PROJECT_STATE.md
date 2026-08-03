@@ -2,7 +2,7 @@
 
 > **Source of Truth مدیریتی مخزن.** پیش از توسعه، وضعیت واقعی GitHub، این فایل و `PROJECT_STATE.json` خوانده شوند.
 
-- آخرین ممیزی: `2026-08-04 00:45 +03:30`
+- آخرین ممیزی: `2026-08-04 01:20 +03:30`
 - شاخهٔ مرجع: `main`
 - head مرجع runtime/UI برای مرور: `cd243424ecbae98892e0dfde1780bb846554942f`
 - محیط Specialist: `TEST_ONLY / SYNTHETIC_OR_RESETTABLE`
@@ -47,6 +47,18 @@ Canonical plan:
 specialist_clinic/docs/FOLLOWUP_ORCHESTRATION_UX_V1_IMPLEMENTATION_PLAN.md
 Version 1.5.2
 ```
+
+Complete roadmap:
+
+```text
+specialist_clinic/docs/FOLLOWUP_ORCHESTRATION_UX_V1_ROADMAP.md
+FO-0 through FO-10
+Gate progress = 4.8 / 11 = 43.6% (~44%)
+Technical implementation through FO-4 = 5 / 11 = 45.5%
+Remaining = 56.4%
+```
+
+مدل درصد رسمی فقط trancheهای FOUX-V1 را می‌سنجد: FO-0 تا FO-3 امتیاز کامل و FO-4 به‌دلیل pending بودن owner acceptance امتیاز 0.8 دارد. این درصد production-readiness کل Specialist Clinic نیست.
 
 ### FO-0 / FO-1 / FO-2
 
@@ -112,6 +124,19 @@ FUTURE / DUE_TODAY / OVERDUE / DUE_UNKNOWN / WAITING / BLOCKED / TERMINAL
 ```
 
 فیلتر و badge بر اساس SLA مؤثر در زمان مشاهده کار می‌کنند؛ گذشت موعد بدون Projection rebuild نیز فوراً در `OVERDUE` دیده می‌شود و هیچ read-time write انجام نمی‌شود.
+
+### مراحل باقی‌ماندهٔ ثبت‌شده در رودمپ
+
+```text
+FO-5  Structured Contact, Retry & Escalation       = BLOCKED
+FO-6  Governed SMS Automation & Freshness          = BLOCKED
+FO-7  Cross-channel Transitions & Outbox            = BLOCKED
+FO-8  Clinical Evidence Assist                      = BLOCKED
+FO-9  Automation Health & Operational Control       = BLOCKED
+FO-10 Controlled Pilot, KPI Proof & Cutover         = BLOCKED
+```
+
+تعریف کامل scope، safety boundary، exit gate و KPI این مراحل در رودمپ کامل موجود است. حضور آن‌ها در سند به‌معنی authorization نیست.
 
 ---
 
