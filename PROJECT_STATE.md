@@ -2,9 +2,9 @@
 
 > **Source of Truth مدیریتی مخزن.** پیش از هر توسعه، وضعیت واقعی GitHub، این فایل و `PROJECT_STATE.json` باید خوانده شوند. حافظهٔ گفتگو یا branch قدیمی به‌تنهایی معتبر نیست.
 
-- آخرین ممیزی: `2026-08-03 03:32 +03:30`
+- آخرین ممیزی: `2026-08-03 04:30 +03:30`
 - شاخهٔ مرجع: `main`
-- head مرجع پیش از این attestation: `6c6e33203376a32165418e0d3c6f2a4a48253e7b`
+- head مرجع: `afed3545c0a90a1ed7ff7e0a892df89fffac00c2`
 - وضعیت کلی: `PRODUCT_OPERATIONAL / PRE_PRODUCTION_TEST_DATA / CLINICAL_CONTENT_NOT_APPROVED / GOVERNANCE_RECONCILIATION_REQUIRED`
 
 ---
@@ -32,7 +32,7 @@ real patient PHI         = NOT EXPECTED
 reset/reseed             = ALLOWED
 ```
 
-این attestation فقط برای محیط فعلی است. قبل از دادهٔ واقعی، production-readiness، privacy، backup/restore، consent/role review و baseline بدون PHI اجباری است. هیچ shortcut مبتنی بر `TEST_ONLY` وارد runtime نمی‌شود.
+این attestation فقط برای محیط فعلی است. پیش از ورود دادهٔ واقعی، production-readiness، privacy، backup/restore، consent/role review و baseline بدون PHI اجباری است. هیچ shortcut مبتنی بر `TEST_ONLY` وارد runtime نمی‌شود.
 
 ---
 
@@ -41,7 +41,7 @@ reset/reseed             = ALLOWED
 | جریان | وضعیت | اختیار فعلی | ممنوعیت |
 |---|---|---|---|
 | محصول عملیاتی | `ACTIVE_PRODUCT_PRE_PRODUCTION` | رفتار واقعی main | تغییر بالینی بدون گیت |
-| FOUX-V1 | `FO_0/1/2_VALIDATED / FO_3_AUTHORIZED` | UI خواندنی FO-3 | هر mutation، claim، SMS یا routing |
+| FOUX-V1 | `FO_0/1/2_VALIDATED / FO_3_TECHNICALLY_VALIDATED / UX_ACCEPTANCE_PENDING` | مرور لوکال UI خواندنی و patch محدود | FO-4، mutation، claim، SMS یا routing |
 | Clinical Engine v2 | `INFRASTRUCTURE_IMPLEMENTED / ACTIVATION_GATED` | runtime/audit | activation بدون approval |
 | Rule package | `LEGACY_DRAFT_QUARANTINED` | provenance/test | clinical use |
 | ADA research | `FROZEN_V0_9_4` | evidence draft | runtime authority |
@@ -54,7 +54,7 @@ reset/reseed             = ALLOWED
 
 ## 4. FOUX-V1
 
-### منابع
+### منابع حاکم
 
 ```text
 Plan:
@@ -63,6 +63,8 @@ specialist_clinic/docs/FOLLOWUP_ORCHESTRATION_UX_V1_IMPLEMENTATION_PLAN.md
 Baseline:
 specialist_clinic/docs/FOLLOWUP_ORCHESTRATION_UX_V1_BASELINE.md
 ```
+
+Plan version: `1.4.0`
 
 ### FO-0 — VALIDATED
 
@@ -84,15 +86,13 @@ merge 15ef1585c069a74c26fbc0ce859e03906e5f475a
 source truth unchanged
 ```
 
-FO-1 روی main:
+زیرساخت:
 
 ```text
 followup_episodes              immutable identity
 followup_episode_links         immutable patient-safe links
 followup_episode_events        append-only linear lineage
 ```
-
-Backfill explicit است و startup backfill خودکار ندارد.
 
 ### FO-2 — VALIDATED
 
@@ -109,7 +109,7 @@ rebuild deterministic
 source truth unchanged
 ```
 
-FO-2 روی main:
+زیرساخت:
 
 ```text
 followup_work_item_projection   rebuildable cache
@@ -120,27 +120,56 @@ role                            proposal only
 CLI                             explicit shadow rebuild
 ```
 
-هیچ Worklist، Scheduler، SMS، Appointment یا Clinical behavior به Projection متصل نشده است.
-
-### قدم مجاز فعلی: FO-3
+### FO-3 — TECHNICALLY VALIDATED
 
 ```text
-FO-3 — Read-only Unified Worklist & Timeline
+Issue #80
+PR #81
+final head 14e8bf56782ead4ccef46db05eb8c4b6b034d263
+merge afed3545c0a90a1ed7ff7e0a892df89fffac00c2
+Final CI run 30775348057
+754 Specialist + 54 Accounting
 ```
 
-دامنهٔ مجاز:
+قابلیت‌های merge‌شده:
 
-- route و template خواندنی و feature-flagged؛
-- pagination، search و filter؛
-- کارت با زبان عملیاتی؛
-- action/wait/block copy؛
-- role proposal؛
-- projection age/stale state؛
-- Timeline read-only؛
-- permission-safe deep-links؛
-- accessibility/RTL/Jalali؛
-- no POST/mutation endpoint؛
-- Worklist قدیمی همچنان operational authority.
+```text
+GET /followups/unified/
+GET /followups/unified/<episode_id>
+feature flag: FOLLOWUP_UNIFIED_WORKLIST_READONLY
+```
+
+مرزهای اثبات‌شده:
+
+- list/detail فقط GET؛
+- POST برابر 405؛
+- flag OFF برابر 404 و navigation مخفی؛
+- pagination/search/filter whitelist؛
+- query count محدود و source-link batch؛
+- Timeline deterministic و provenance-aware؛
+- عدم نمایش message body، note آزاد، raw clinical value و payload JSON؛
+- digest Source Truth و Projection بعد از GET بدون تغییر؛
+- Worklist قدیمی authority اقدام باقی مانده است؛
+- role فقط proposal است؛
+- هیچ SMS، Appointment، Scheduler، Rule، Shadow یا Accounting behavior تغییر نکرد.
+
+اولین CI پنج failure ناشی از fixture فشردهٔ FO-1 بدون ستون‌های هویت بیمار پیدا کرد. fixture به schema واقعی ارتقا یافت؛ query محصول تضعیف نشد. دور دوم کامل سبز شد.
+
+### گام مجاز فعلی: FO-3 Local UX Acceptance
+
+```text
+FO-3 code/CI = VALIDATED
+Rendered local UX = PENDING OWNER ACCEPTANCE
+FO-4 = BLOCKED
+```
+
+کار مجاز:
+
+- فعال‌سازی محلی روی دادهٔ تست؛
+- مرور لیست، فیلترها، stale/overdue و Timeline؛
+- بررسی RTL، keyboard، موبایل و deep-linkها؛
+- ثبت attestation مالک؛
+- patch محدود برای نقص FO-3.
 
 ممنوع:
 
@@ -154,11 +183,43 @@ FO-3 — Read-only Unified Worklist & Timeline
 - Rule/Shadow change؛
 - accounting write.
 
-FO-4 و بالاتر تا Exit Gate FO-3 مسدودند.
+---
+
+## 5. اجرای مرور لوکال FO-3
+
+```powershell
+cd specialist_clinic
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe seed_demo_data.py
+
+$env:FOLLOWUP_PROJECTION_SHADOW = "1"
+.\.venv\Scripts\python.exe scripts\rebuild_followup_projection.py `
+  --database specialist.db `
+  --as-of "2026-08-03 12:00:00" `
+  --apply
+
+$env:FOLLOWUP_UNIFIED_WORKLIST_READONLY = "1"
+.\.venv\Scripts\python.exe start.py
+```
+
+آدرس: `http://127.0.0.1:8090`  
+ورود توسعه: `admin / admin`
+
+attestation لازم:
+
+```text
+FO3_UX_ACCEPTED = true|false
+reviewer = Emad211
+reviewed_commit = afed3545c0a90a1ed7ff7e0a892df89fffac00c2
+reviewed_on_test_data = true
+critical_ux_defects = 0
+notes = ...
+```
 
 ---
 
-## 5. Feature Flagها
+## 6. Feature Flagها
 
 همه default OFF:
 
@@ -175,11 +236,11 @@ FOLLOWUP_EVIDENCE_ASSIST
 FOLLOWUP_AUTOMATION_HEALTH
 ```
 
-در FO-3 فقط `FOLLOWUP_UNIFIED_WORKLIST_READONLY` ممکن است مصرف شود. وقتی OFF است، route/navigation جدید نباید قابل مشاهده باشد و رفتار قدیمی دقیقاً حفظ شود.
+در وضعیت فعلی فقط `FOLLOWUP_UNIFIED_WORKLIST_READONLY` برای مرور لوکال ممکن است ON شود. `FOLLOWUP_UNIFIED_WORKLIST_ACTIONS` و تمام flags بعدی ممنوع‌اند.
 
 ---
 
-## 6. وضعیت Specialist Clinic
+## 7. وضعیت Specialist Clinic
 
 قابلیت‌های موجود:
 
@@ -193,13 +254,13 @@ FOLLOWUP_AUTOMATION_HEALTH
 - financial bridge read-only؛
 - Scheduler lease/fencing/idempotency؛
 - Clinical Engine v2 suggestion-only؛
-- FOUX Episode lineage و Shadow Projection.
+- FOUX Episode، Projection و Unified Read-only UI.
 
 Specialist Clinic فقط `clinic_new.db` را read-only می‌خواند.
 
 ---
 
-## 7. Clinical Engine و Ruleها
+## 8. Clinical Engine و Ruleها
 
 ```text
 Engine infrastructure       = IMPLEMENTED
@@ -211,81 +272,41 @@ Ruleهای `2026.1-draft.3` quarantined هستند و باید `REVALIDATE / REP
 
 ---
 
-## 8. ADA Research و Hypoglycemia Shadow
-
-PR #60:
+## 9. Freeze فعلی
 
 ```text
-Rule Candidate = 0
-Accepted Rule  = 0
-Licensing      = HOLD
-Activation     = BLOCKED
-```
-
-Hypoglycemia Shadow:
-
-```text
-EXPERIMENTAL_INTERNAL_SHADOW
-PAUSED_FOR_RECONCILIATION
-```
-
-Task/SLA/Alert/medication expansion یا معرفی به‌عنوان Rule معتبر ممنوع است.
-
----
-
-## 9. Release و Halqe
-
-A15 باید از main فعلی بازسازی شود و Windows build، self-test و backup/restore rehearsal داشته باشد. PR #59 مستقیم merge نمی‌شود.
-
-Halqe جریان مستقل است. Flask/SQLite فعلی تا cutover رسمی Product Authority است.
-
----
-
-## 10. قوانین ثابت توسعه
-
-- Source Truthها authoritative می‌مانند.
-- Episode و Projection حقیقت بالینی نیستند.
-- relation مبهم با reason code ثبت می‌شود.
-- same snapshot + same as-of → same projection hash.
-- FO-3 فقط read-only است.
-- Worklist قدیمی در FO-3 حذف یا تغییر نمی‌کند.
-- deep-link permission را دور نمی‌زند.
-- no N+1 و pagination اجباری است.
-- state فنی در copy اصلی نمایش داده نمی‌شود.
-- Clinical completion بدون Evidence ممنوع است.
-- branch نیمه‌کاره مسیر پروژه را تعیین نمی‌کند.
-
----
-
-## 11. ترتیب FOUX
-
-```text
-FO-0 Governance                 VALIDATED
-FO-1 Episode/Link/Event         VALIDATED
-FO-2 Projection Shadow          VALIDATED
-FO-3 Read-only Worklist         AUTHORIZED
-FO-4 Ownership/Routing/SLA      BLOCKED
-FO-5 Structured Contact         NOT_STARTED
-FO-6 Governed SMS               NOT_STARTED
-FO-7 Cross-channel/Outbox       NOT_STARTED
-FO-8 Evidence Assist            NOT_STARTED
-FO-9 Automation Health          NOT_STARTED
-FO-10 Pilot/Cutover             NOT_STARTED
+FOUX FO-3 local UX review          = ALLOWED
+FOUX FO-3 focused fixes            = ALLOWED
+FOUX FO-4 and later                = BLOCKED
+New clinical rules                 = PAUSED
+Hypoglycemia Shadow expansion      = PAUSED
+Disposition branch                 = DO NOT MERGE
+Focused bug/security fixes         = ALLOWED
 ```
 
 ---
 
-## 12. تصمیم فعلی
+## 10. قواعد ادامه
+
+هر ایجنت باید:
+
+1. وضعیت واقعی GitHub را بخواند؛
+2. plan v1.4.0، JSON state و این فایل را تطبیق دهد؛
+3. از branch تازهٔ main کار کند؛
+4. فقط Local UX review یا patch محدود FO-3 انجام دهد؛
+5. بدون attestation مالک وارد FO-4 نشود؛
+6. قبل از merge کل CI را اجرا کند؛
+7. هیچ ادعای push/merge/test بدون SHA و run ID مطرح نکند.
+
+---
+
+## 11. تصمیم فعلی
 
 ```text
-FOUX FO-0                     = VALIDATED
-FOUX FO-1                     = VALIDATED
-FOUX FO-2                     = VALIDATED
-FOUX FO-3                     = ALLOWED_READ_ONLY
-FOUX FO-4+                    = BLOCKED_PENDING_FO_3_EXIT
-New clinical rules           = PAUSED
-Hypoglycemia Shadow expansion= PAUSED
-Disposition branch           = DO_NOT_MERGE
-Focused bug/security fixes   = ALLOWED
-Release cleanup              = ALLOWED on fresh main branch
+FO-0 = VALIDATED
+FO-1 = VALIDATED
+FO-2 = VALIDATED
+FO-3 = TECHNICALLY_VALIDATED
+FO-3 LOCAL UX ACCEPTANCE = PENDING
+FO-4 AND LATER = BLOCKED
 ```
