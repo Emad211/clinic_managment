@@ -32,14 +32,15 @@ FO-0 = VALIDATED
 FO-1 = VALIDATED
 FO-2 = VALIDATED
 FO-3 RUNTIME REPAIR = TECHNICALLY VALIDATED
+FO-3 OPERATOR COPY REPAIR = TECHNICALLY VALIDATED
 FO-3 POST-FIX LOCAL UX ACCEPTANCE = PENDING
 CURRENT REVIEW ISSUE = #83
 FO-4 and later = BLOCKED
 ```
 
-سند canonical: نسخهٔ `1.4.3`.
+سند canonical: نسخهٔ `1.4.4`.
 
-### Evidence repair
+### Evidence runtime repair
 
 ```text
 Issue #84 / PR #85
@@ -67,11 +68,28 @@ timeline['items']
 
 Schema/cache hardening بخشی از repair است، اما علت screenshot نبود.
 
+### Evidence operator copy repair
+
+```text
+Issue #87 / PR #88
+Final head 39ebef3b70470f39292faaa7d986e2f1a90a0e80
+Merge 020803868e1c2755f7669d52da92cb8050a46018
+Final CI 30827033618
+762 Specialist + 54 Accounting
+```
+
+این repair فقط کپی قابل‌مشاهده و regression test را تغییر داد:
+
+- `Projection قدیمی` به متن عملیاتی فارسی تبدیل شد؛
+- `سن Projection` به `آخرین بازسازی نما` تبدیل شد؛
+- readiness copy فنی حذف شد؛
+- machine codeها، audit فنی، route، query، schema، cache behavior و Source Truth ثابت ماندند.
+
 ## دامنهٔ مجاز فعلی
 
 فقط:
 
-- اجرای Issue #83 روی commit repair؛
+- اجرای Issue #83 روی merge commit `020803868e1c2755f7669d52da92cb8050a46018`؛
 - ثبت feedback و owner attestation؛
 - در صورت کشف defect، focused FO-3 fix با Issue/PR/CI مستقل؛
 - به‌روزرسانی governance پس از نتیجهٔ مرور.
@@ -101,6 +119,7 @@ Schema/cache hardening بخشی از repair است، اما علت screenshot ن
 8. known SQLite/schema error باید controlled UI state بدهد، نه generic 500.
 9. Source Truth و Episodeها تغییر نمی‌کنند.
 10. flag OFF همچنان route=404 و navigation hidden است.
+11. کپی اصلی اپراتوری نباید jargon فنی Projection/cache داشته باشد؛ audit جمع‌شونده استثنا است.
 
 ## Feature Flagها
 
@@ -142,7 +161,7 @@ $env:FOLLOWUP_UNIFIED_WORKLIST_READONLY = "1"
 .\.venv\Scripts\python.exe start.py
 ```
 
-Attestation باید commit `8f851c90da5a81f4b7ffce43eaa5bf6010d58fa2` را ثبت کند.
+Attestation باید commit `020803868e1c2755f7669d52da92cb8050a46018` را ثبت کند.
 
 ## مرزهای دائمی
 
