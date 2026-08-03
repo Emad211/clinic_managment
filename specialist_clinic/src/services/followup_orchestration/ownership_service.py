@@ -119,6 +119,15 @@ class FollowupOwnershipService:
             )
         return row
 
+    def _require_nonterminal(self, episode_id: str) -> sqlite3.Row:
+        projection = self._projection(episode_id)
+        if str(projection["state_class"]) == "TERMINAL":
+            raise FollowupOwnershipError(
+                "TERMINAL_OWNERSHIP_MUTATION",
+                "مسیر پایان‌یافته قابل دریافت، آزادکردن یا واگذاری نیست.",
+            )
+        return projection
+
     def _user(self, user_id: int) -> sqlite3.Row:
         row = self.db.execute(
             """SELECT id, username, full_name, role, is_active
@@ -415,6 +424,7 @@ class FollowupOwnershipService:
         expected_event_id: object,
         idempotency_key: str,
     ) -> OwnershipState:
+        self._require_nonterminal(episode_id)
         current = self.state(episode_id)
         key = str(idempotency_key or "").strip()
         replay = self._existing_replay(
@@ -458,6 +468,7 @@ class FollowupOwnershipService:
         idempotency_key: str,
         reason_code: str = "OWNER_RELEASE",
     ) -> OwnershipState:
+        self._require_nonterminal(episode_id)
         current = self.state(episode_id)
         key = str(idempotency_key or "").strip()
         replay = self._existing_replay(
@@ -506,6 +517,7 @@ class FollowupOwnershipService:
         idempotency_key: str,
         reason_code: str,
     ) -> OwnershipState:
+        self._require_nonterminal(episode_id)
         self._require_admin(actor)
         role = _normalize_role(owner_role)
         key = str(idempotency_key or "").strip()
@@ -545,6 +557,7 @@ class FollowupOwnershipService:
         idempotency_key: str,
         reason_code: str,
     ) -> OwnershipState:
+        self._require_nonterminal(episode_id)
         self._require_admin(actor)
         target_id = int(owner_user_id)
         key = str(idempotency_key or "").strip()
