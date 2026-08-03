@@ -158,6 +158,7 @@ class DemoCohortRepository:
                     db,
                     patient_id,
                     patient,
+                    fixture_national_id=national_id,
                     condition_ids=condition_ids,
                     drug_catalog=drug_catalog,
                     allergy_catalog=allergy_catalog,
@@ -215,6 +216,7 @@ class DemoCohortRepository:
         patient_id: int,
         patient: dict,
         *,
+        fixture_national_id: str,
         condition_ids: dict[str, int],
         drug_catalog: dict[tuple[str, str], dict],
         allergy_catalog: dict[str, dict],
@@ -520,7 +522,8 @@ class DemoCohortRepository:
             ],
         )
         DemoCohortRepository._sync_followups(
-            db, patient_id, patient, actor=actor, now=now
+            db, patient_id, patient,
+            fixture_national_id=fixture_national_id, actor=actor, now=now
         )
         db.executemany(
             """INSERT INTO prescriptions
@@ -540,7 +543,8 @@ class DemoCohortRepository:
 
     @staticmethod
     def _sync_followups(
-        db, patient_id: int, patient: dict, *, actor: str, now: str
+        db, patient_id: int, patient: dict, *,
+        fixture_national_id: str, actor: str, now: str
     ) -> None:
         """Upsert only canonical fixture-owned follow-ups with stable IDs.
 
@@ -549,7 +553,7 @@ class DemoCohortRepository:
         content matches and they have no provenance marker.
         """
         for index, row in enumerate(patient["followups"], start=1):
-            fixture_key = f"demo-followup:{patient['national_id']}:{index}"
+            fixture_key = f"demo-followup:{fixture_national_id}:{index}"
             fulfillment = "remote" if row["reason"] == "refill" else "in_person"
             existing = db.execute(
                 """SELECT id FROM followup_tasks

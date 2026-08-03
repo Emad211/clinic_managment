@@ -12,6 +12,8 @@ def test_seed_repair_marks_fixture_rows_and_preserves_other_tasks():
     ).read_text(encoding="utf-8")
     assert "source_engine='demo_cohort'" in repository
     assert "demo-followup:" in repository
+    assert "fixture_national_id=national_id" in repository
+    assert "patient['national_id']" not in repository
     assert "User-created administrative tasks" in repository
     assert "synthetic follow-up fixture shape changed" not in repository
 
