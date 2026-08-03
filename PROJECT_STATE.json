@@ -1,6 +1,6 @@
 {
-  "schema_version": "2.2",
-  "audited_at": "2026-08-04T00:45:00+03:30",
+  "schema_version": "2.3",
+  "audited_at": "2026-08-04T01:20:00+03:30",
   "repository": "Emad211/clinic_managment",
   "product_authority": {
     "branch": "main",
@@ -44,12 +44,36 @@
       "program_code": "FOUX-V1",
       "path": "specialist_clinic/",
       "canonical_plan": "specialist_clinic/docs/FOLLOWUP_ORCHESTRATION_UX_V1_IMPLEMENTATION_PLAN.md",
+      "canonical_roadmap": "specialist_clinic/docs/FOLLOWUP_ORCHESTRATION_UX_V1_ROADMAP.md",
       "plan_version": "1.5.2",
+      "roadmap_version": "1.0.0",
       "baseline_report": "specialist_clinic/docs/FOLLOWUP_ORCHESTRATION_UX_V1_BASELINE.md",
       "owner": "Emad211",
       "current_tranche": "FO_4_LOCAL_OWNER_UX_ACCEPTANCE",
       "status": "FO_0_VALIDATED_FO_1_VALIDATED_FO_2_VALIDATED_FO_3_OWNER_ACCEPTED_FO_4_TECHNICALLY_VALIDATED_LOCAL_UX_PENDING_FO_5_AND_LATER_BLOCKED",
       "data_environment": "TEST_ONLY_RESETTABLE",
+      "roadmap_progress": {
+        "model": "TRANCHE_EQUIVALENT",
+        "tranche_count": 11,
+        "validated_equivalent": 4.8,
+        "progress_percent": 43.6,
+        "remaining_percent": 56.4,
+        "technical_tranches_implemented": 5,
+        "technical_implementation_percent": 45.5,
+        "fully_accepted_tranches": 4,
+        "current_partial_tranche": "FO-4",
+        "current_partial_credit": 0.8,
+        "next_required_gate": "FO4_OWNER_UX_ACCEPTANCE",
+        "not_a_product_wide_readiness_metric": true
+      },
+      "future_tranches": {
+        "FO-5": "STRUCTURED_CONTACT_RETRY_ESCALATION_BLOCKED",
+        "FO-6": "GOVERNED_SMS_AUTOMATION_BLOCKED",
+        "FO-7": "CROSS_CHANNEL_TRANSITIONS_OUTBOX_BLOCKED",
+        "FO-8": "CLINICAL_EVIDENCE_ASSIST_BLOCKED",
+        "FO-9": "AUTOMATION_HEALTH_BLOCKED",
+        "FO-10": "CONTROLLED_PILOT_CUTOVER_BLOCKED"
+      },
       "fo0_evidence": {
         "tracking_issue": 71,
         "implementation_pr": 72,
@@ -318,7 +342,8 @@
     "FOUX_V1_FO_5_AND_LATER_BLOCKED",
     "SMS_CONSENT_UX_COMPLETED",
     "FOUX_V1_FO_4_SEEDED_WORKLIST_REPAIR_COMPLETED",
-    "FOUX_V1_FO_4_EFFECTIVE_SLA_REPAIR_COMPLETED"
+    "FOUX_V1_FO_4_EFFECTIVE_SLA_REPAIR_COMPLETED",
+    "FOUX_V1_COMPLETE_ROADMAP_REGISTERED"
   ],
   "trust_order": [
     "GITHUB_MAIN_AND_PULL_REQUEST_STATE",
