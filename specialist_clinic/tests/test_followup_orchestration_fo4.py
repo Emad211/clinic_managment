@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+# This file binds the exact PR head to the complete FO-4 ownership contract.
 import hashlib
 import json
 
