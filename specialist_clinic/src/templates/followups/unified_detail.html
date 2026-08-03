@@ -16,7 +16,7 @@
     <div class="section-title">
         <svg class="icon"><use href="#i-alert"></use></svg>
         <div>
-            <div>Projection قدیمی یا فاقد زمان معتبر است</div>
+            <div>اطلاعات این نما قدیمی است یا زمان بازسازی معتبری ندارد</div>
             <div class="section-sub">قبل از تصمیم عملیاتی، وضعیت را در مسیر فعلی بررسی کنید. این صفحه بازسازی خودکار انجام نمی‌دهد.</div>
         </div>
     </div>
@@ -54,7 +54,16 @@
     <div class="grid grid-3">
         <div><span class="muted text-sm">زمان اقدام</span><div class="nums"><b>{{ item.action_due_at|jalali if item.action_due_at else '—' }}</b></div></div>
         <div><span class="muted text-sm">زمان هدف</span><div class="nums"><b>{{ item.target_at|jalali if item.target_at else '—' }}</b></div></div>
-        <div><span class="muted text-sm">سن Projection</span><div><b>{{ item.projection_age_minutes|fa_num if item.projection_age_minutes is not none else 'نامشخص' }} دقیقه</b></div></div>
+        <div>
+            <span class="muted text-sm">آخرین بازسازی نما</span>
+            <div>
+                {% if item.projection_age_minutes is not none %}
+                <b>{{ item.projection_age_minutes|fa_num }} دقیقه پیش</b>
+                {% else %}
+                <b>نامشخص</b>
+                {% endif %}
+            </div>
+        </div>
     </div>
 </section>
 
