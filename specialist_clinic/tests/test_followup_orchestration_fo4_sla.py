@@ -67,10 +67,15 @@ def test_unified_ui_uses_canonical_labels_and_visible_due_state():
     api = (root / "src" / "api" / "unified_followups.py").read_text(
         encoding="utf-8"
     )
+    read_model = (
+        root / "src" / "services" / "followup_orchestration"
+        / "read_model_service.py"
+    ).read_text(encoding="utf-8")
     template = (
         root / "src" / "templates" / "followups" / "unified_worklist.html"
     ).read_text(encoding="utf-8")
 
+    assert "PROJECTION_EMPTY_WITH_SOURCE_DATA" in read_model
     assert "sla_labels=SLA_LABELS" in api
     assert "item.sla_label" in template
     assert "item.sla_tone" in template
