@@ -1,12 +1,12 @@
 {
-  "schema_version": "1.9",
-  "audited_at": "2026-08-03T18:59:00+03:30",
+  "schema_version": "2.0",
+  "audited_at": "2026-08-03T21:50:00+03:30",
   "repository": "Emad211/clinic_managment",
   "product_authority": {
     "branch": "main",
-    "head": "020803868e1c2755f7669d52da92cb8050a46018",
+    "head": "f6fb9f87c7fe302c6e18d7f5909aed4128a7f5ca",
     "status": "ACTIVE_PRODUCT",
-    "head_note": "FOUX-V1 FO-3 runtime and operator-copy repairs merged; post-fix local UX acceptance pending"
+    "head_note": "FOUX-V1 FO-3 owner acceptance recorded; bounded FO-4 governance authorization in progress"
   },
   "overall_status": "PRODUCT_OPERATIONAL_PRE_PRODUCTION_TEST_DATA_CLINICAL_CONTENT_NOT_APPROVED_GOVERNANCE_RECONCILIATION_REQUIRED",
   "streams": {
@@ -29,22 +29,19 @@
       "program_code": "FOUX-V1",
       "path": "specialist_clinic/",
       "canonical_plan": "specialist_clinic/docs/FOLLOWUP_ORCHESTRATION_UX_V1_IMPLEMENTATION_PLAN.md",
-      "plan_version": "1.4.4",
+      "plan_version": "1.5.0",
       "baseline_report": "specialist_clinic/docs/FOLLOWUP_ORCHESTRATION_UX_V1_BASELINE.md",
       "owner": "Emad211",
-      "current_tranche": "FO_3_POST_FIX_LOCAL_UX_ACCEPTANCE",
-      "status": "FO_0_VALIDATED_FO_1_VALIDATED_FO_2_VALIDATED_FO_3_RUNTIME_AND_OPERATOR_COPY_REPAIRS_TECHNICALLY_VALIDATED_POST_FIX_LOCAL_UX_ACCEPTANCE_PENDING",
+      "current_tranche": "FO_4_CLAIM_ASSIGNMENT_ROUTING_SLA",
+      "status": "FO_0_VALIDATED_FO_1_VALIDATED_FO_2_VALIDATED_FO_3_OWNER_ACCEPTED_FO_4_AUTHORIZED_FO_5_AND_LATER_BLOCKED",
       "data_environment": "TEST_ONLY_RESETTABLE",
       "fo0_evidence": {
         "tracking_issue": 71,
-        "canonical_plan_pr": 70,
         "implementation_pr": 72,
         "attestation_pr": 73,
         "merge_commit": "901dbfdf9c358ecc09d2a60a0680f6a4a8370d17",
         "specialist_tests_passed": 731,
-        "accounting_tests_passed": 54,
-        "deterministic_aggregate_fixture": true,
-        "owner_test_only_attestation": true
+        "accounting_tests_passed": 54
       },
       "fo1_evidence": {
         "tracking_issue": 74,
@@ -54,8 +51,6 @@
         "accounting_tests_passed": 54,
         "synthetic_episodes": 4,
         "synthetic_links": 12,
-        "second_apply_new_episodes": 0,
-        "second_apply_new_links": 0,
         "source_truth_digest_unchanged": true
       },
       "fo2_evidence": {
@@ -65,85 +60,51 @@
         "final_ci_run": 30773195914,
         "specialist_tests_passed": 747,
         "accounting_tests_passed": 54,
-        "canonical_projection_count": 4,
         "legacy_coverage_percent": 100.0,
         "hidden_legacy_sources": 0,
-        "explainable_mismatch_percent": 100.0,
         "deterministic_hash": true,
         "delete_rebuild_equivalent": true,
-        "source_truth_digest_unchanged": true,
-        "missing_and_patient_drift_fail_closed": true
+        "source_truth_digest_unchanged": true
       },
       "fo3_evidence": {
         "tracking_issue": 80,
         "implementation_pr": 81,
-        "attestation_pr": 82,
-        "final_head": "14e8bf56782ead4ccef46db05eb8c4b6b034d263",
-        "merge_commit": "afed3545c0a90a1ed7ff7e0a892df89fffac00c2",
-        "governance_merge_commit": "527b9c981e742d0cbd796766535044414580ab14",
-        "final_ci_run": 30775348057,
-        "specialist_tests_passed": 754,
-        "accounting_tests_passed": 54,
-        "get_only_routes": true,
-        "post_returns_405": true,
-        "feature_off_returns_404": true,
-        "navigation_hidden_when_off": true,
-        "bounded_list_queries": true,
-        "batch_source_links": true,
-        "deterministic_timeline": true,
-        "timeline_phi_minimized": true,
-        "source_truth_digest_unchanged": true,
-        "projection_digest_unchanged": true,
-        "legacy_worklist_remains_authority": true,
-        "local_ux_acceptance": "PENDING_POST_FIX_REVIEW"
-      },
-      "fo3_runtime_incident": {
-        "incident_code": "FO3_UI_500",
-        "tracking_issue": 84,
-        "implementation_pr": 85,
-        "reported_by": "Emad211",
-        "reported_at": "2026-08-03T14:12:00+03:30",
-        "owner_evidence": "SCREENSHOT_GENERIC_HTTP_500",
-        "exact_local_traceback_available_at_registration": false,
-        "root_cause_confirmed": true,
-        "root_cause_ci_run": 30808217800,
-        "root_cause_test": "test_real_flask_app_renders_unified_list_and_timeline",
-        "root_cause_exception": "TypeError_builtin_function_or_method_is_not_iterable",
-        "root_cause_code": "JINJA_DICT_METHOD_COLLISION_ON_ITEMS_KEY",
-        "root_cause_template_expression": "model.items",
-        "preventive_expression_fixed": "timeline.items",
-        "secondary_hardening": "DISPOSABLE_PROJECTION_CACHE_SCHEMA_PREFLIGHT_AND_REPAIR",
-        "focused_fix_branch": "fix/foux-v1-fo3-unified-500-v1",
-        "focused_fix_final_head": "8809252b2ca25fb55f200d783016d30ec10134d7",
-        "focused_fix_merge_commit": "8f851c90da5a81f4b7ffce43eaa5bf6010d58fa2",
-        "focused_fix_final_ci_run": 30809363219,
-        "focused_fix_specialist_tests_passed": 761,
-        "focused_fix_accounting_tests_passed": 54,
-        "real_list_render_passed": true,
-        "real_timeline_render_passed": true,
-        "legacy_cache_repair_passed": true,
-        "source_truth_digest_unchanged": true,
-        "episode_digest_unchanged": true,
-        "status": "RESOLVED_TECHNICALLY"
-      },
-      "fo3_operator_copy_repair": {
-        "incident_code": "FO3_OPERATOR_PROJECTION_JARGON",
-        "tracking_issue": 87,
-        "implementation_pr": 88,
-        "finding_commit": "b977fe5be5683f9d46fccf0e102d0a6dc97d79c7",
-        "final_head": "39ebef3b70470f39292faaa7d986e2f1a90a0e80",
-        "merge_commit": "020803868e1c2755f7669d52da92cb8050a46018",
-        "final_ci_run": 30827033618,
+        "runtime_repair_issue": 84,
+        "runtime_repair_pr": 85,
+        "operator_copy_issue": 87,
+        "operator_copy_pr": 88,
+        "runtime_ui_commit": "020803868e1c2755f7669d52da92cb8050a46018",
+        "governance_merge_commit": "f6fb9f87c7fe302c6e18d7f5909aed4128a7f5ca",
+        "latest_full_ci_run": 30828272752,
         "specialist_tests_passed": 762,
         "accounting_tests_passed": 54,
-        "changed_files": 5,
-        "runtime_logic_changed": false,
-        "schema_or_cache_behavior_changed": false,
-        "source_truth_mutated": false,
-        "machine_readiness_codes_preserved": true,
-        "technical_audit_labels_preserved": true,
-        "operator_copy_regression_test": true,
-        "status": "RESOLVED_TECHNICALLY"
+        "get_only_routes": true,
+        "feature_off_returns_404": true,
+        "bounded_list_queries": true,
+        "deterministic_timeline": true,
+        "timeline_phi_minimized": true,
+        "legacy_worklist_remains_authority": true,
+        "owner_acceptance_issue": 83,
+        "owner_acceptance": true,
+        "reviewer": "Emad211",
+        "reviewed_commit": "020803868e1c2755f7669d52da92cb8050a46018",
+        "reviewed_on_test_data": true,
+        "critical_ux_defects": 0,
+        "status": "VALIDATED_WITH_OWNER_ACCEPTANCE"
+      },
+      "fo4_authorization": {
+        "tracking_issue": 90,
+        "governance_branch": "docs/foux-v1-fo4-authorization",
+        "scope": "CLAIM_ASSIGNMENT_ROUTING_SLA_ONLY",
+        "append_only_ownership_events": true,
+        "atomic_claim_required": true,
+        "stale_form_guard_required": true,
+        "role_compatibility_required": true,
+        "idempotency_required": true,
+        "source_truth_mutation_forbidden": true,
+        "clinical_completion_forbidden": true,
+        "fo5_and_later_forbidden": true,
+        "status": "AUTHORIZED_AFTER_GOVERNANCE_MERGE"
       },
       "implemented_contracts": {
         "episode_tables": [
@@ -158,8 +119,7 @@
         "next_action_policy_version": "FOUX-NEXT-ACTION-V1",
         "automatic_backfill_on_startup": false,
         "automatic_projection_rebuild_on_startup": false,
-        "ui_connected_to_projection": true,
-        "ui_mode": "FEATURE_GATED_READ_ONLY",
+        "ui_mode": "FEATURE_GATED_READ_ONLY_WITH_FO4_ACTIONS_AUTHORIZED",
         "ui_routes": [
           "GET /followups/unified/",
           "GET /followups/unified/<episode_id>"
@@ -167,8 +127,9 @@
         "source_truth_mutated": false
       },
       "fo3_allowed": true,
-      "fo4_allowed": false,
-      "next_gate": "ISSUE_83_POST_FIX_LOCAL_UX_ACCEPTANCE_ON_02080386",
+      "fo4_allowed": true,
+      "fo5_allowed": false,
+      "next_gate": "FO_4_IMPLEMENTATION_FULL_CI_AND_LOCAL_OWNER_UX_ACCEPTANCE",
       "feature_flags": {
         "FOLLOWUP_EPISODES_ENABLED": false,
         "FOLLOWUP_PROJECTION_SHADOW": false,
@@ -184,22 +145,21 @@
       "invariants": [
         "EXISTING_SOURCE_TRUTHS_REMAIN_AUTHORITATIVE",
         "EPISODE_AND_PROJECTION_ARE_NOT_CLINICAL_TRUTH",
-        "FO_3_UI_IS_FEATURE_GATED_READ_ONLY",
-        "FO_3_HAS_NO_NEW_POST_OR_MUTATION_ENDPOINT",
-        "LEGACY_WORKLIST_REMAINS_OPERATIONAL_AUTHORITY",
+        "LEGACY_WORKLIST_REMAINS_OPERATIONAL_AUTHORITY_UNTIL_CUTOVER",
         "NO_FABRICATED_RELATION_EVENT_DUE_DATE_OR_OUTCOME",
         "EVERY_NONTERMINAL_PROJECTION_HAS_ACTION_WAIT_OR_BLOCK",
-        "OWNER_ROLE_IS_PROPOSAL_ONLY_UNTIL_FO_4",
+        "OWNER_ROLE_AND_OWNER_USER_ARE_DISTINCT",
+        "FO2_ROLE_PROPOSAL_IS_NOT_ASSIGNMENT",
+        "OWNERSHIP_MUTATIONS_ARE_APPEND_ONLY_IDEMPOTENT_AND_AUDITED",
+        "CONCURRENT_CLAIM_HAS_ONE_WINNER",
+        "STALE_FORM_MUTATION_FAILS_CLOSED",
+        "NO_SILENT_REASSIGNMENT",
         "CLINICAL_TASK_COMPLETION_REQUIRES_EVIDENCE",
         "APPOINTMENT_DOES_NOT_COMPLETE_CLINICAL_TASK",
         "NO_CLINICAL_RULE_OR_SHADOW_SCOPE_CHANGE",
         "NO_WRITE_TO_ACCOUNTING_DATABASE",
         "TEST_ONLY_ASSUMPTION_MUST_BE_REVOKED_BEFORE_REAL_PATIENT_DATA",
-        "JINJA_MAPPING_KEYS_COLLIDING_WITH_DICT_METHODS_USE_BRACKET_NOTATION",
-        "ONLY_DISPOSABLE_PROJECTION_CACHE_MAY_BE_RECREATED_FOR_SCHEMA_DRIFT",
-        "KNOWN_SCHEMA_DRIFT_MUST_NOT_ESCAPE_AS_GENERIC_HTTP_500",
-        "OPERATOR_FACING_COPY_AVOIDS_PROJECTION_CACHE_JARGON",
-        "FO_4_REQUIRES_EXPLICIT_POST_FIX_LOCAL_UX_ACCEPTANCE_ATTESTATION"
+        "FO5_AND_LATER_REQUIRE_SEPARATE_AUTHORIZATION"
       ]
     },
     "clinical_engine_v2": {
@@ -210,14 +170,6 @@
       "version": "2026.1-draft.3",
       "status": "LEGACY_DRAFT_QUARANTINED",
       "clinical_use": "NOT_APPROVED",
-      "rules": [
-        "T2-REDFLAG-BP",
-        "T2-SAFE-MET-STOP",
-        "T2-SAFE-MET-REVIEW",
-        "T2-MON-A1C-DUE",
-        "T2-MON-EGFR-DUE",
-        "T2-MON-UACR-DUE"
-      ],
       "required_decision": "REVALIDATE_OR_REPLACE_OR_RETIRE"
     },
     "clinical_rule_research": {
@@ -235,8 +187,7 @@
       "status": "EXPERIMENTAL_INTERNAL_SHADOW_PAUSED_FOR_RECONCILIATION",
       "is_clinical_rule": false,
       "is_approved_rollout": false,
-      "automatic_medication_action": false,
-      "next_decision": "KEEP_AS_DATA_QUALITY_WORKFLOW_OR_REWORK_TO_APPROVED_CONTRACT_OR_REVERT_FROM_PRODUCT"
+      "automatic_medication_action": false
     },
     "hypoglycemia_shadow_disposition": {
       "branch": "feature/hypoglycemia-shadow-disposition-v1",
@@ -261,11 +212,12 @@
     "disposition_branch": "DO_NOT_MERGE",
     "release_cleanup": "ALLOWED_AFTER_GOVERNANCE_MERGE",
     "focused_bug_and_security_fixes": "ALLOWED",
-    "followup_orchestration_fo3": "ALLOWED_POST_FIX_LOCAL_UX_REVIEW_OR_FOCUSED_DEFECT_FIX_ONLY",
-    "followup_orchestration_fo4_and_later": "BLOCKED_PENDING_ISSUE_83_POST_FIX_OWNER_UX_ACCEPTANCE_AND_SEPARATE_GOVERNANCE_AUTHORIZATION"
+    "followup_orchestration_fo4": "AUTHORIZED_CLAIM_ASSIGNMENT_ROUTING_SLA_ONLY_AFTER_GOVERNANCE_MERGE",
+    "followup_orchestration_fo5_and_later": "BLOCKED_PENDING_FO4_VALIDATION_OWNER_ACCEPTANCE_AND_SEPARATE_GOVERNANCE"
   },
   "next_phases": [
-    "FO_3_ISSUE_83_POST_FIX_LOCAL_UX_ACCEPTANCE",
+    "FO_4_CLAIM_ASSIGNMENT_ROUTING_SLA",
+    "FO_4_LOCAL_OWNER_UX_ACCEPTANCE",
     "R0_GOVERNANCE_RECONCILIATION",
     "R1_RELEASE_BASELINE_FROM_CURRENT_MAIN",
     "R2_BOUNDED_CLINICAL_CONTENT_FORMALIZATION"
@@ -274,10 +226,9 @@
     "FOUX_V1_FO_0_VALIDATED",
     "FOUX_V1_FO_1_VALIDATED",
     "FOUX_V1_FO_2_VALIDATED",
-    "FOUX_V1_FO_3_TECHNICALLY_VALIDATED",
-    "FOUX_V1_FO3_UI_500_RESOLVED_TECHNICALLY",
-    "FOUX_V1_FO3_OPERATOR_COPY_REPAIR_RESOLVED_TECHNICALLY",
-    "FOUX_V1_POST_FIX_LOCAL_UX_ACCEPTANCE_PENDING"
+    "FOUX_V1_FO_3_VALIDATED_WITH_OWNER_ACCEPTANCE",
+    "FOUX_V1_FO_4_AUTHORIZED",
+    "FOUX_V1_FO_5_AND_LATER_BLOCKED"
   ],
   "trust_order": [
     "GITHUB_MAIN_AND_PULL_REQUEST_STATE",
