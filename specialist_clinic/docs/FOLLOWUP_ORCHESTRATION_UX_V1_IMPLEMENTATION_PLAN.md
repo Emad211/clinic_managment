@@ -4,11 +4,11 @@
 >
 > **کد برنامه:** `FOUX-V1`
 >
-> **نسخه:** `1.4.2`
+> **نسخه:** `1.4.3`
 >
 > **آخرین بازبینی:** `2026-08-03`
 >
-> **وضعیت:** `FO_0_VALIDATED / FO_1_VALIDATED / FO_2_VALIDATED / FO_3_TECHNICALLY_VALIDATED / FO_3_LOCAL_UX_BLOCKED_BY_CONFIRMED_RUNTIME_DEFECT / FOCUSED_FIX_IN_PROGRESS`
+> **وضعیت:** `FO_0_VALIDATED / FO_1_VALIDATED / FO_2_VALIDATED / FO_3_RUNTIME_REPAIR_TECHNICALLY_VALIDATED / FO_3_POST_FIX_LOCAL_UX_ACCEPTANCE_PENDING`
 >
 > **مالک:** `Emad211`
 >
@@ -56,84 +56,13 @@
 | FO-1 | `VALIDATED` | Episode/Link/Event، PR #75 |
 | FO-2 | `VALIDATED` | Projection/Policy/Parity، PR #78 |
 | FO-3 | `TECHNICALLY_VALIDATED` | Unified Worklist خواندنی، PR #81 |
-| FO-3 Local UX | `BLOCKED_BY_CONFIRMED_RUNTIME_DEFECT` | owner screenshot + CI traceback، Issue #84 |
-| FO-4 و بعد | `BLOCKED` | repair، full CI، merge و پذیرش UX جدید لازم است |
-
-### Evidence پایهٔ FO-3
-
-```text
-Tracking Issue       = #80
-Implementation PR    = #81
-Final head           = 14e8bf56782ead4ccef46db05eb8c4b6b034d263
-Merge commit         = afed3545c0a90a1ed7ff7e0a892df89fffac00c2
-Final CI run         = 30775348057
-Specialist tests     = 754 passed
-Accounting tests     = 54 passed
-```
+| FO-3 Runtime Repair | `TECHNICALLY_VALIDATED` | Issue #84 / PR #85 |
+| FO-3 Post-fix UX | `PENDING_OWNER_ACCEPTANCE` | Issue #83 |
+| FO-4 و بعد | `BLOCKED` | پذیرش UX صریح و governance PR مستقل لازم است |
 
 ---
 
-## 4. Incident FO3_UI_500
-
-### 4.1 مشاهدهٔ مالک
-
-در مرور لوکال دادهٔ تست، کلیک روی «نمای یکپارچه» generic HTTP 500 نشان داد. پذیرش UX فوراً متوقف و Issue #84 ساخته شد.
-
-### 4.2 علت قطعی
-
-تست integration با Flask و Jinja واقعی در CI run `30808217800` traceback دقیق را ثبت کرد:
-
-```text
-TypeError: 'builtin_function_or_method' object is not iterable
-src/templates/followups/unified_worklist.html
-{% for item in model.items %}
-```
-
-علت:
-
-- `model` یک `dict` است؛
-- Jinja در dot notation، attribute را قبل از mapping key resolve می‌کند؛
-- بنابراین `model.items` به متد داخلی `dict.items` اشاره کرد، نه آرایهٔ Work Itemها؛
-- همین collision علت مستقیم 500 گزارش‌شده بود؛
-- `timeline.items` نیز همان ریسک را داشت و پیشگیرانه اصلاح شد.
-
-اصلاح حاکم:
-
-```jinja2
-model['items']
-timeline['items']
-```
-
-Guard دائمی باید بازگشت `model.items` و `timeline.items` را رد کند.
-
-### 4.3 Hardening ثانویه
-
-در بررسی incident، gap مستقلی نیز تأیید شد:
-
-- Read Model فقط وجود table را بررسی می‌کرد؛
-- required columns/schema compatibility را پیش از query نمی‌سنجید؛
-- SQLite با `CREATE TABLE IF NOT EXISTS` جدول قدیمی را upgrade نمی‌کند؛
-- persisted pre-final Projection cache می‌توانست generic 500 دیگری تولید کند.
-
-بنابراین repair شامل دو لایه است:
-
-1. رفع علت قطعی Jinja collision؛
-2. fail-safe کردن disposable cache/schema drift.
-
-این hardening نباید به‌عنوان علت قطعی screenshot معرفی شود؛ علت screenshot با traceback Jinja اثبات شده است.
-
-### 4.4 مجوز فعلی
-
-```text
-Focused repair issue = #84
-Implementation PR    = #85
-Allowed work         = FO-3 defect repair only
-FO-4 allowed         = false
-```
-
----
-
-## 5. معماری حاکم
+## 4. معماری حاکم
 
 ```text
 Authoritative Source Truths
@@ -169,7 +98,103 @@ FO-3 هیچ POST، mutation، request-time rebuild یا action داخلی ندا
 
 ---
 
-## 6. Invariantهای غیرقابل‌مذاکره
+## 5. Evidence trancheهای معتبر
+
+### FO-0
+
+```text
+Issue #71
+PR #72/#73
+Merge 901dbfdf9c358ecc09d2a60a0680f6a4a8370d17
+731 Specialist + 54 Accounting
+```
+
+### FO-1
+
+```text
+Issue #74 / PR #75
+Merge 15ef1585c069a74c26fbc0ce859e03906e5f475a
+736 Specialist + 54 Accounting
+4 Episodes / 12 Links / second apply zero duplicates
+```
+
+### FO-2
+
+```text
+Issue #77 / PR #78
+Merge 6c6e33203376a32165418e0d3c6f2a4a48253e7b
+CI 30773195914
+747 Specialist + 54 Accounting
+100% legacy coverage / deterministic rebuild
+```
+
+### FO-3 initial implementation
+
+```text
+Issue #80 / PR #81
+Final head 14e8bf56782ead4ccef46db05eb8c4b6b034d263
+Merge afed3545c0a90a1ed7ff7e0a892df89fffac00c2
+CI 30775348057
+754 Specialist + 54 Accounting
+```
+
+### FO-3 runtime repair
+
+```text
+Issue #84
+PR #85
+Final head 8809252b2ca25fb55f200d783016d30ec10134d7
+Merge 8f851c90da5a81f4b7ffce43eaa5bf6010d58fa2
+Root-cause CI 30808217800
+Final CI 30809363219
+761 Specialist + 54 Accounting
+```
+
+---
+
+## 6. Incident FO3_UI_500 — RESOLVED TECHNICALLY
+
+### مشاهده
+
+مالک هنگام مرور لوکال روی دادهٔ تست، generic HTTP 500 را پس از کلیک «نمای یکپارچه» گزارش کرد. Issue #84 ایجاد و FO-4 متوقف شد.
+
+### علت قطعی
+
+تست integration با Flask و Jinja واقعی در CI run `30808217800` ثبت کرد:
+
+```text
+TypeError: 'builtin_function_or_method' object is not iterable
+{% for item in model.items %}
+```
+
+Jinja، `model.items` را به متد داخلی `dict.items` resolve کرده بود، نه mapping key `items`.
+
+اصلاح:
+
+```jinja2
+model['items']
+timeline['items']
+```
+
+`timeline.items` نیز همان ریسک را داشت و پیشگیرانه اصلاح شد. guard static بازگشت این dot notationها را رد می‌کند.
+
+### Hardening ثانویه
+
+- required-column contract برای cache Projection؛
+- recreate فقط برای `followup_work_item_projection` ناسازگار؛
+- cache جدید خالی و نیازمند rebuild صریح؛
+- عدم انتقال رکورد حدسی؛
+- ثابت‌ماندن Source Truth و Episode digests؛
+- Read Model preflight؛
+- readiness codeهای PHI-free؛
+- صفحهٔ فارسی کنترل‌شده برای خطاهای SQLite/schema شناخته‌شده؛
+- عدم پنهان‌کردن خطاهای برنامه‌نویسی ناشناخته با `except Exception`.
+
+این hardening علت screenshot نبود؛ علت قطعی همان Jinja collision بود.
+
+---
+
+## 7. Invariantهای غیرقابل‌مذاکره
 
 1. Source Truthهای قبلی authoritative می‌مانند.
 2. Episode و Projection حقیقت بالینی نیستند.
@@ -187,74 +212,7 @@ FO-3 هیچ POST، mutation، request-time rebuild یا action داخلی ندا
 14. mapping keyهای متعارض با متدهای dict در Jinja باید bracket notation داشته باشند.
 15. known schema drift نباید generic 500 تولید کند.
 16. فقط cache disposable می‌تواند recreate شود؛ Source Truth هرگز drop/rewrite نمی‌شود.
-17. FO-4 و بعد بدون attestation جدید ممنوع است.
-
----
-
-## 7. قرارداد Focused Repair
-
-### 7.1 Template correctness
-
-- list و detail باید با Flask/Jinja واقعی render شوند؛
-- `model.items` و `timeline.items` ممنوع‌اند؛
-- integration test باید list و Timeline واقعی را render کند؛
-- error template نیز باید با Jinja واقعی render شود؛
-- mock کردن `render_template` به‌تنهایی برای Exit Gate کافی نیست.
-
-### 7.2 Projection cache compatibility
-
-اگر `followup_work_item_projection` موجود، required columns canonical را ندارد:
-
-1. فقط همین cache حذف شود؛
-2. schema canonical دوباره ساخته شود؛
-3. cache خالی بماند؛
-4. rebuild فقط صریح اجرا شود؛
-5. Episode/Link/Event و Source Truthها تغییر نکنند؛
-6. rerun idempotent باشد.
-
-### 7.3 Read-model preflight
-
-پیش از product query، حداقل read contract بررسی می‌شود:
-
-```text
-followup_work_item_projection
-patient_links
-followup_episode_links
-```
-
-Readiness codeهای PHI-free:
-
-```text
-READY
-PROJECTION_NOT_BUILT
-PROJECTION_SCHEMA_INCOMPATIBLE
-PATIENT_IDENTITY_SCHEMA_INCOMPATIBLE
-EPISODE_LINK_SCHEMA_INCOMPATIBLE
-PROJECTION_READ_FAILED
-```
-
-### 7.4 Controlled UX state
-
-در خطاهای SQLite/schema شناخته‌شده:
-
-- صفحهٔ فارسی کنترل‌شده نمایش داده شود، نه generic 500؛
-- Worklist قدیمی مسیر اصلی باقی بماند؛
-- هیچ داده یا رابطه‌ای حدس زده نشود؛
-- raw exception یا PHI نمایش داده نشود؛
-- خطاهای ناشناخته با `except Exception` پنهان نشوند.
-
-### 7.5 Test requirements
-
-- real Flask/Jinja list render؛
-- real Flask/Jinja Timeline render؛
-- static guard علیه Jinja dict-method collision؛
-- legacy cache safely recreated empty؛
-- migration rerun idempotent؛
-- Source Truth و Episode digest ثابت؛
-- incompatible read schema → controlled page؛
-- feature OFF → 404/navigation hidden؛
-- POST → 405؛
-- full Specialist و Accounting CI سبز.
+17. FO-4 و بعد بدون owner acceptance و governance PR جدید ممنوع است.
 
 ---
 
@@ -275,39 +233,17 @@ FOLLOWUP_EVIDENCE_ASSIST
 FOLLOWUP_AUTOMATION_HEALTH
 ```
 
-در repair فقط Read-only flag مصرف می‌شود. Action flags ممنوع‌اند.
+در مرور فعلی فقط Read-only flag مصرف می‌شود. Action flags ممنوع‌اند.
 
 ---
 
-## 9. Evidence trancheهای قبلی
+## 9. قدم مجاز فعلی — Post-fix Local UX Acceptance
 
-```text
-FO-0: Issue #71 / PR #72/#73 / 731 Specialist + 54 Accounting
-FO-1: Issue #74 / PR #75 / 736 Specialist + 54 Accounting
-FO-2: Issue #77 / PR #78 / 747 Specialist + 54 Accounting
-FO-3: Issue #80 / PR #81 / 754 Specialist + 54 Accounting
-```
+Issue حاکم: `#83`
 
-### Repair evidence
+هیچ توسعهٔ جدیدی پیش از نتیجهٔ این مرور مجاز نیست، مگر defect متمرکز جدیدی در خود FO-3 پیدا شود.
 
-```text
-Issue                     = #84
-PR                        = #85
-Owner screenshot          = generic HTTP 500
-Root-cause CI run         = 30808217800
-Root-cause failed test    = real Flask/Jinja rendering test
-Root cause                = JINJA_DICT_METHOD_COLLISION_ON_ITEMS_KEY
-Repair final head         = pending
-Repair final CI           = pending
-Repair merge              = pending
-Post-fix local UX review  = pending
-```
-
----
-
-## 10. Local UX re-review after repair
-
-پس از merge:
+### اجرای لوکال
 
 ```powershell
 git checkout main
@@ -316,7 +252,13 @@ cd specialist_clinic
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
 ```
 
-برنامه یک بار اجرا و بسته شود تا cache migration اعمال شود. سپس:
+برنامه را یک‌بار اجرا و ببندید تا cache migration اعمال شود:
+
+```powershell
+.\.venv\Scripts\python.exe start.py
+```
+
+سپس Projection را صریح بازسازی کنید:
 
 ```powershell
 $env:FOLLOWUP_PROJECTION_SHADOW = "1"
@@ -324,40 +266,70 @@ $env:FOLLOWUP_PROJECTION_SHADOW = "1"
   --database specialist.db `
   --as-of "2026-08-03 12:00:00" `
   --apply
+```
 
+و UI خواندنی را فعال کنید:
+
+```powershell
 $env:FOLLOWUP_UNIFIED_WORKLIST_READONLY = "1"
 .\.venv\Scripts\python.exe start.py
 ```
 
-مرور باید شامل list، search/filter، Timeline، stale/overdue، deep-link، RTL/keyboard و flag-off باشد. Attestation باید commit نهایی repair را ثبت کند.
+### Checklist پذیرش
 
----
+- نمای یکپارچه بدون 500 باز شود؛
+- list و Timeline هر دو render شوند؛
+- search/filter/pagination قابل‌فهم باشند؛
+- action/wait/block copy روشن باشد؛
+- role proposal با assignment اشتباه نشود؛
+- action due و target جدا باشند؛
+- stale/overdue قابل‌فهم باشند؛
+- deep-linkها مسیرهای حاکم را باز کنند؛
+- عرض کم، RTL و keyboard قابل‌قبول باشند؛
+- flag OFF tab را مخفی و route را unavailable کند.
 
-## 11. Trancheهای آینده
-
-### FO-4 — Claim, Assignment & Controlled Actions
-
-**وضعیت: BLOCKED**
-
-فقط پس از:
+### Attestation لازم
 
 ```text
-PR #85 merged
-full CI green
-post-fix FO3_UX_ACCEPTED=true
-critical_ux_defects=0
-governance PR مستقل
+FO3_UX_ACCEPTED = true|false
+reviewer = Emad211
+reviewed_commit = 8f851c90da5a81f4b7ffce43eaa5bf6010d58fa2
+reviewed_on_test_data = true
+critical_ux_defects = <number>
+notes = <observations or defects>
 ```
-
-### FO-5 تا FO-10
-
-**وضعیت: BLOCKED**
-
-Routing/SLA، Structured Contact، SMS automation، Appointment reaction، Outbox، Evidence Assist و Automation Health هرکدام contract، Issue، flag، CI و rollback مستقل می‌خواهند.
 
 ---
 
-## 12. Rollback
+## 10. Exit Gate برای FO-4
+
+FO-4 فقط پس از همهٔ موارد زیر قابل بررسی است:
+
+```text
+PR #85 merged                       = PASS
+Final CI green                      = PASS
+FO3_UX_ACCEPTED=true                = PENDING
+critical_ux_defects=0               = PENDING
+governance authorization PR merged  = PENDING
+```
+
+تا آن زمان:
+
+```text
+Claim / Assignment
+Routing / SLA mutation
+Structured Contact automation
+SMS automation
+Appointment reaction
+Outbox / Retry / Auto-close
+Evidence Assist
+```
+
+همگی مسدودند.
+
+---
+
+## 11. Rollback
 
 ```powershell
 $env:FOLLOWUP_UNIFIED_WORKLIST_READONLY = "0"
@@ -373,21 +345,19 @@ $env:FOLLOWUP_UNIFIED_WORKLIST_READONLY = "0"
 
 ---
 
-## 13. قواعد ایجنت
+## 12. قواعد ایجنت
 
-1. `main`، Issue #84 و PR #85 را بخواند؛
-2. plan، Project State و AGENTS را تطبیق دهد؛
-3. فقط focused repair را تغییر دهد؛
-4. علت قطعی را مطابق traceback Jinja گزارش کند؛
-5. schema hardening را علت قطعی screenshot معرفی نکند؛
-6. فقط cache disposable را repair کند؛
-7. Source Truthها را تغییر ندهد؛
-8. full CI را پس از آخرین commit اجرا کند؛
-9. FO-4 را مجاز نکند.
+1. `main`، Issue #83، PR #85 و این سند را بخواند؛
+2. فقط post-fix UX review یا focused FO-3 defect fix انجام دهد؛
+3. علت Incident را Jinja dict-method collision گزارش کند؛
+4. schema hardening را علت screenshot معرفی نکند؛
+5. هیچ Source Truth را تغییر ندهد؛
+6. هر fix جدید full CI و owner re-review می‌خواهد؛
+7. بدون owner attestation وارد FO-4 نشود.
 
 ---
 
-## 14. Progress Ledger
+## 13. Progress Ledger
 
 | تاریخ | رویداد | وضعیت |
 |---|---|---|
@@ -395,22 +365,19 @@ $env:FOLLOWUP_UNIFIED_WORKLIST_READONLY = "0"
 | 2026-08-03 | FO-1 PR #75 | validated |
 | 2026-08-03 | FO-2 PR #78 | validated |
 | 2026-08-03 | FO-3 PR #81 | technically validated |
-| 2026-08-03 | Plan v1.4.0 / PR #82 | UX gate defined |
 | 2026-08-03 | مالک generic 500 گزارش کرد | UX blocked |
-| 2026-08-03 | Issue #84 / PR #85 | focused repair in progress |
-| 2026-08-03 | real render test علت Jinja collision را ثبت کرد | root cause confirmed |
-| 2026-08-03 | bracket notation و cache hardening اعمال شد | CI pending |
+| 2026-08-03 | PR #85 علت Jinja را رفع و cache را harden کرد | technically validated |
+| 2026-08-03 | Plan v1.4.3 | post-fix UX review pending |
 
 ---
 
-## 15. تصمیم فعلی
+## 14. تصمیم فعلی
 
 ```text
 FO-0 = VALIDATED
 FO-1 = VALIDATED
 FO-2 = VALIDATED
-FO-3 = TECHNICALLY_VALIDATED
-FO-3 LOCAL UX ACCEPTANCE = BLOCKED BY CONFIRMED JINJA RUNTIME DEFECT
-FOCUSED FO-3 FIX = IN PROGRESS
+FO-3 RUNTIME REPAIR = TECHNICALLY VALIDATED
+FO-3 POST-FIX LOCAL UX ACCEPTANCE = PENDING
 FO-4 AND LATER = BLOCKED
 ```
