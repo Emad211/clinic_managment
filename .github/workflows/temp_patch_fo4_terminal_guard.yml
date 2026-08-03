@@ -1,0 +1,75 @@
+name: Temporary FO-4 terminal guard patch
+
+on:
+  push:
+    branches:
+      - feature/foux-v1-fo4-ownership
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/foux-v1-fo4-ownership
+          fetch-depth: 0
+      - name: Reject terminal ownership actions before role or owner checks
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path("specialist_clinic/src/services/followup_orchestration/ownership_service.py")
+          text = path.read_text(encoding="utf-8")
+
+          marker = '''    def _user(self, user_id: int) -> sqlite3.Row:\n'''
+          helper = '''    def _require_nonterminal(self, episode_id: str) -> sqlite3.Row:\n        projection = self._projection(episode_id)\n        if str(projection["state_class"]) == "TERMINAL":\n            raise FollowupOwnershipError(\n                "TERMINAL_OWNERSHIP_MUTATION",\n                "مسیر پایان‌یافته قابل دریافت، آزادکردن یا واگذاری نیست.",\n            )\n        return projection\n\n'''
+          if marker not in text:
+              raise SystemExit("user method marker not found")
+          text = text.replace(marker, helper + marker, 1)
+
+          signatures = [
+              '''    ) -> OwnershipState:\n        current = self.state(episode_id)\n        key = str(idempotency_key or "").strip()\n        replay = self._existing_replay(\n            episode_id=episode_id,\n            event_type="CLAIMED",''',
+              '''    ) -> OwnershipState:\n        current = self.state(episode_id)\n        key = str(idempotency_key or "").strip()\n        replay = self._existing_replay(\n            episode_id=episode_id,\n            event_type="ASSIGNED",\n            idempotency_key=key,\n            request_fields={"action": "RELEASE"},''',
+              '''    ) -> OwnershipState:\n        self._require_admin(actor)\n        role = _normalize_role(owner_role)\n        key = str(idempotency_key or "").strip()\n        replay = self._existing_replay(\n            episode_id=episode_id,\n            event_type="ROUTED",''',
+              '''    ) -> OwnershipState:\n        self._require_admin(actor)\n        target_id = int(owner_user_id)\n        key = str(idempotency_key or "").strip()\n        replay = self._existing_replay(\n            episode_id=episode_id,\n            event_type="ASSIGNED",''',
+          ]
+          replacements = [
+              signatures[0].replace(
+                  '        current = self.state(episode_id)\n',
+                  '        self._require_nonterminal(episode_id)\n        current = self.state(episode_id)\n',
+                  1,
+              ),
+              signatures[1].replace(
+                  '        current = self.state(episode_id)\n',
+                  '        self._require_nonterminal(episode_id)\n        current = self.state(episode_id)\n',
+                  1,
+              ),
+              signatures[2].replace(
+                  '        self._require_admin(actor)\n',
+                  '        self._require_nonterminal(episode_id)\n        self._require_admin(actor)\n',
+                  1,
+              ),
+              signatures[3].replace(
+                  '        self._require_admin(actor)\n',
+                  '        self._require_nonterminal(episode_id)\n        self._require_admin(actor)\n',
+                  1,
+              ),
+          ]
+          for old, new in zip(signatures, replacements):
+              if old not in text:
+                  raise SystemExit("mutation block not found")
+              text = text.replace(old, new, 1)
+
+          path.write_text(text, encoding="utf-8")
+          Path(".github/workflows/temp_patch_fo4_terminal_guard.yml").unlink()
+      - name: Commit patch and remove workflow
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add specialist_clinic/src/services/followup_orchestration/ownership_service.py .github/workflows/temp_patch_fo4_terminal_guard.yml
+          git commit -m "fix(fo4): reject terminal ownership actions before role checks"
+          git push origin HEAD:feature/foux-v1-fo4-ownership
