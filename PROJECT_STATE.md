@@ -2,9 +2,9 @@
 
 > **Source of Truth مدیریتی مخزن.** پیش از هر توسعه، وضعیت واقعی GitHub، این فایل و `PROJECT_STATE.json` باید خوانده شوند. حافظهٔ گفتگو یا branch قدیمی به‌تنهایی معتبر نیست.
 
-- آخرین ممیزی: `2026-08-03 04:30 +03:30`
+- آخرین ممیزی: `2026-08-03 14:12 +03:30`
 - شاخهٔ مرجع: `main`
-- head مرجع: `afed3545c0a90a1ed7ff7e0a892df89fffac00c2`
+- head مرجع هنگام شروع repair: `527b9c981e742d0cbd796766535044414580ab14`
 - وضعیت کلی: `PRODUCT_OPERATIONAL / PRE_PRODUCTION_TEST_DATA / CLINICAL_CONTENT_NOT_APPROVED / GOVERNANCE_RECONCILIATION_REQUIRED`
 
 ---
@@ -41,7 +41,7 @@ reset/reseed             = ALLOWED
 | جریان | وضعیت | اختیار فعلی | ممنوعیت |
 |---|---|---|---|
 | محصول عملیاتی | `ACTIVE_PRODUCT_PRE_PRODUCTION` | رفتار واقعی main | تغییر بالینی بدون گیت |
-| FOUX-V1 | `FO_0/1/2_VALIDATED / FO_3_TECHNICALLY_VALIDATED / UX_ACCEPTANCE_PENDING` | مرور لوکال UI خواندنی و patch محدود | FO-4، mutation، claim، SMS یا routing |
+| FOUX-V1 | `FO_0/1/2_VALIDATED / FO_3_TECHNICALLY_VALIDATED / LOCAL_UX_BLOCKED_BY_RUNTIME_DEFECT` | فقط repair متمرکز Issue #84 | FO-4، mutation، claim، SMS یا routing |
 | Clinical Engine v2 | `INFRASTRUCTURE_IMPLEMENTED / ACTIVATION_GATED` | runtime/audit | activation بدون approval |
 | Rule package | `LEGACY_DRAFT_QUARANTINED` | provenance/test | clinical use |
 | ADA research | `FROZEN_V0_9_4` | evidence draft | runtime authority |
@@ -64,7 +64,7 @@ Baseline:
 specialist_clinic/docs/FOLLOWUP_ORCHESTRATION_UX_V1_BASELINE.md
 ```
 
-Plan version: `1.4.0`
+Plan version: `1.4.1`
 
 ### FO-0 — VALIDATED
 
@@ -112,7 +112,7 @@ source truth unchanged
 زیرساخت:
 
 ```text
-followup_work_item_projection   rebuildable cache
+followup_work_item_projection   rebuildable disposable cache
 source-state readers            read-only
 FOUX-NEXT-ACTION-V1             fail-closed policy
 state classes                   ACTION_REQUIRED / WAITING / BLOCKED / TERMINAL
@@ -127,6 +127,7 @@ Issue #80
 PR #81
 final head 14e8bf56782ead4ccef46db05eb8c4b6b034d263
 merge afed3545c0a90a1ed7ff7e0a892df89fffac00c2
+Governance merge 527b9c981e742d0cbd796766535044414580ab14
 Final CI run 30775348057
 754 Specialist + 54 Accounting
 ```
@@ -139,7 +140,7 @@ GET /followups/unified/<episode_id>
 feature flag: FOLLOWUP_UNIFIED_WORKLIST_READONLY
 ```
 
-مرزهای اثبات‌شده:
+مرزهای فنی اثبات‌شده:
 
 - list/detail فقط GET؛
 - POST برابر 405؛
@@ -153,73 +154,39 @@ feature flag: FOLLOWUP_UNIFIED_WORKLIST_READONLY
 - role فقط proposal است؛
 - هیچ SMS، Appointment، Scheduler، Rule، Shadow یا Accounting behavior تغییر نکرد.
 
-اولین CI پنج failure ناشی از fixture فشردهٔ FO-1 بدون ستون‌های هویت بیمار پیدا کرد. fixture به schema واقعی ارتقا یافت؛ query محصول تضعیف نشد. دور دوم کامل سبز شد.
+### Incident جاری — FO3_UI_500
 
-### گام مجاز فعلی: FO-3 Local UX Acceptance
+در مرور لوکال واقعی مالک، کلیک روی «نمای یکپارچه» generic HTTP 500 نشان داد.
 
 ```text
-FO-3 code/CI = VALIDATED
-Rendered local UX = PENDING OWNER ACCEPTANCE
-FO-4 = BLOCKED
+Incident issue       = #84
+Reported by          = Emad211
+Exact traceback      = not available at registration
+UX acceptance        = BLOCKED
+Allowed scope        = focused FO-3 runtime repair only
+FO-4                 = BLOCKED
 ```
 
-کار مجاز:
+Gap طراحی تأییدشده:
 
-- فعال‌سازی محلی روی دادهٔ تست؛
-- مرور لیست، فیلترها، stale/overdue و Timeline؛
-- بررسی RTL، keyboard، موبایل و deep-linkها؛
-- ثبت attestation مالک؛
-- patch محدود برای نقص FO-3.
+- Read Model فقط وجود table را بررسی می‌کرد؛
+- required columns و schema compatibility پیش از query کنترل نمی‌شد؛
+- SQLite با `CREATE TABLE IF NOT EXISTS` جدول قدیمی را upgrade نمی‌کند؛
+- Projection cache ممکن است از نسخهٔ آزمایشی قبلی باقی مانده باشد؛
+- schema drift شناخته‌شده نباید generic 500 تولید کند.
 
-ممنوع:
+Repair مجاز:
 
-- claim/assignment؛
-- routing mutation و SLA escalation؛
-- SMS auto-send یا approval change؛
-- appointment reaction؛
-- outbox/retry/auto-close؛
-- Evidence Assist؛
-- Clinical decision؛
-- Rule/Shadow change؛
-- accounting write.
+- فقط cache disposable `followup_work_item_projection` در صورت incompatibility recreate شود؛
+- Episode/Link/Event و تمام Source Truthها بدون تغییر بمانند؛
+- Read Model preflight و controlled Persian unavailable state اضافه شود؛
+- خطاهای SQLite/schema شناخته‌شده کنترل شوند؛
+- خطاهای برنامه‌نویسی ناشناخته پنهان نشوند؛
+- full CI و مرور UX مجدد الزامی است.
 
 ---
 
-## 5. اجرای مرور لوکال FO-3
-
-```powershell
-cd specialist_clinic
-python -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -r requirements.txt
-.\.venv\Scripts\python.exe seed_demo_data.py
-
-$env:FOLLOWUP_PROJECTION_SHADOW = "1"
-.\.venv\Scripts\python.exe scripts\rebuild_followup_projection.py `
-  --database specialist.db `
-  --as-of "2026-08-03 12:00:00" `
-  --apply
-
-$env:FOLLOWUP_UNIFIED_WORKLIST_READONLY = "1"
-.\.venv\Scripts\python.exe start.py
-```
-
-آدرس: `http://127.0.0.1:8090`  
-ورود توسعه: `admin / admin`
-
-attestation لازم:
-
-```text
-FO3_UX_ACCEPTED = true|false
-reviewer = Emad211
-reviewed_commit = afed3545c0a90a1ed7ff7e0a892df89fffac00c2
-reviewed_on_test_data = true
-critical_ux_defects = 0
-notes = ...
-```
-
----
-
-## 6. Feature Flagها
+## 5. Feature Flagها
 
 همه default OFF:
 
@@ -236,11 +203,55 @@ FOLLOWUP_EVIDENCE_ASSIST
 FOLLOWUP_AUTOMATION_HEALTH
 ```
 
-در وضعیت فعلی فقط `FOLLOWUP_UNIFIED_WORKLIST_READONLY` برای مرور لوکال ممکن است ON شود. `FOLLOWUP_UNIFIED_WORKLIST_ACTIONS` و تمام flags بعدی ممنوع‌اند.
+در repair فعلی فقط `FOLLOWUP_UNIFIED_WORKLIST_READONLY` مصرف می‌شود. تمام action flags ممنوع‌اند.
 
 ---
 
-## 7. وضعیت Specialist Clinic
+## 6. Exit Gate Issue #84
+
+Repair فقط وقتی معتبر است که:
+
+1. cache ناقص safely recreate و خالی شود؛
+2. migration rerun idempotent باشد؛
+3. Source Truth و Episode digest تغییر نکند؛
+4. schema drift شناخته‌شده صفحهٔ کنترل‌شده بدهد، نه 500؛
+5. schema canonical list/detail را همچنان render کند؛
+6. flag OFF و GET-only boundary حفظ شود؛
+7. Specialist و Accounting CI کامل سبز باشد؛
+8. PR merge شود؛
+9. مالک مرور UX را روی commit repair تکرار کند.
+
+---
+
+## 7. اجرای مرور لوکال پس از repair
+
+پس از merge fix:
+
+```powershell
+git checkout main
+git pull origin main
+cd specialist_clinic
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+```
+
+برنامه یک بار اجرا و بسته شود تا migration cache-compatible اعمال شود. سپس:
+
+```powershell
+$env:FOLLOWUP_PROJECTION_SHADOW = "1"
+.\.venv\Scripts\python.exe scripts\rebuild_followup_projection.py `
+  --database specialist.db `
+  --as-of "2026-08-03 12:00:00" `
+  --apply
+
+$env:FOLLOWUP_UNIFIED_WORKLIST_READONLY = "1"
+.\.venv\Scripts\python.exe start.py
+```
+
+Attestation باید commit repair را ثبت کند و `critical_ux_defects=0` باشد.
+
+---
+
+## 8. وضعیت Specialist Clinic
 
 قابلیت‌های موجود:
 
@@ -260,7 +271,7 @@ Specialist Clinic فقط `clinic_new.db` را read-only می‌خواند.
 
 ---
 
-## 8. Clinical Engine و Ruleها
+## 9. Clinical Engine و Ruleها
 
 ```text
 Engine infrastructure       = IMPLEMENTED
@@ -272,11 +283,11 @@ Ruleهای `2026.1-draft.3` quarantined هستند و باید `REVALIDATE / REP
 
 ---
 
-## 9. Freeze فعلی
+## 10. Freeze فعلی
 
 ```text
-FOUX FO-3 local UX review          = ALLOWED
-FOUX FO-3 focused fixes            = ALLOWED
+FOUX Issue #84 focused repair      = ALLOWED
+FOUX FO-3 local UX review          = BLOCKED UNTIL FIX MERGE
 FOUX FO-4 and later                = BLOCKED
 New clinical rules                 = PAUSED
 Hypoglycemia Shadow expansion      = PAUSED
@@ -286,27 +297,30 @@ Focused bug/security fixes         = ALLOWED
 
 ---
 
-## 10. قواعد ادامه
+## 11. قواعد ادامه
 
 هر ایجنت باید:
 
-1. وضعیت واقعی GitHub را بخواند؛
-2. plan v1.4.0، JSON state و این فایل را تطبیق دهد؛
-3. از branch تازهٔ main کار کند؛
-4. فقط Local UX review یا patch محدود FO-3 انجام دهد؛
-5. بدون attestation مالک وارد FO-4 نشود؛
-6. قبل از merge کل CI را اجرا کند؛
-7. هیچ ادعای push/merge/test بدون SHA و run ID مطرح نکند.
+1. وضعیت واقعی GitHub و Issue #84 را بخواند؛
+2. plan v1.4.1، JSON state و این فایل را تطبیق دهد؛
+3. فقط branch focused repair را تغییر دهد؛
+4. علت دقیق بدون traceback را جعل نکند؛
+5. فقط cache disposable را repair کند؛
+6. Source Truthها را تغییر ندهد؛
+7. قبل از merge کل CI را اجرا کند؛
+8. بدون post-fix owner attestation وارد FO-4 نشود؛
+9. هیچ ادعای push/merge/test بدون SHA و run ID مطرح نکند.
 
 ---
 
-## 11. تصمیم فعلی
+## 12. تصمیم فعلی
 
 ```text
 FO-0 = VALIDATED
 FO-1 = VALIDATED
 FO-2 = VALIDATED
 FO-3 = TECHNICALLY_VALIDATED
-FO-3 LOCAL UX ACCEPTANCE = PENDING
+FO-3 LOCAL UX ACCEPTANCE = BLOCKED BY RUNTIME DEFECT
+FOCUSED FO-3 FIX = IN PROGRESS
 FO-4 AND LATER = BLOCKED
 ```
