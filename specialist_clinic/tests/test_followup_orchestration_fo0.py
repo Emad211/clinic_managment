@@ -31,7 +31,7 @@ EXPECTED_FLAGS = (
     "FOLLOWUP_EVIDENCE_ASSIST",
     "FOLLOWUP_AUTOMATION_HEALTH",
 )
-POST_FO3_SCHEMA_NAMES = (
+POST_FO4_SCHEMA_NAMES = (
     "automation_decision_events",
     "operational_outbox",
 )
@@ -152,7 +152,7 @@ print(json.dumps({
     assert payload["values"] == {name: False for name in EXPECTED_FLAGS}
 
 
-def test_fo4_and_later_schema_is_not_installed_before_post_fix_ux_acceptance():
+def test_fo5_and_later_schema_is_not_installed_during_fo4_authorization():
     schema_sources = [SRC_ROOT / "adapters" / "sqlite" / "schema.sql"]
     schema_sources.extend(
         path for path in (SRC_ROOT / "adapters" / "sqlite").glob("*.py") if path.is_file()
@@ -162,7 +162,7 @@ def test_fo4_and_later_schema_is_not_installed_before_post_fix_ux_acceptance():
         if not path.is_file():
             continue
         text = path.read_text(encoding="utf-8")
-        for table in POST_FO3_SCHEMA_NAMES:
+        for table in POST_FO4_SCHEMA_NAMES:
             declaration = re.compile(
                 rf"CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?[\[\]`\"']*{re.escape(table)}\b",
                 re.IGNORECASE,
@@ -172,7 +172,7 @@ def test_fo4_and_later_schema_is_not_installed_before_post_fix_ux_acceptance():
     assert violations == []
 
 
-def test_project_state_attests_repairs_and_blocks_fo4_pending_owner_review():
+def test_project_state_attests_fo3_acceptance_and_authorizes_only_fo4():
     state = json.loads((REPO_ROOT / "PROJECT_STATE.json").read_text(encoding="utf-8"))
     specialist = state["streams"]["specialist_clinic"]
     assert specialist["data_classification"] == "TEST_ONLY_SYNTHETIC_OR_RESETTABLE"
@@ -180,99 +180,74 @@ def test_project_state_attests_repairs_and_blocks_fo4_pending_owner_review():
 
     stream = state["streams"]["followup_orchestration_ux_v1"]
     assert stream["program_code"] == "FOUX-V1"
-    assert stream["plan_version"] == "1.4.4"
-    assert stream["current_tranche"] == "FO_3_POST_FIX_LOCAL_UX_ACCEPTANCE"
+    assert stream["plan_version"] == "1.5.0"
+    assert stream["current_tranche"] == "FO_4_CLAIM_ASSIGNMENT_ROUTING_SLA"
     assert stream["status"] == (
         "FO_0_VALIDATED_FO_1_VALIDATED_FO_2_VALIDATED_"
-        "FO_3_RUNTIME_AND_OPERATOR_COPY_REPAIRS_TECHNICALLY_VALIDATED_"
-        "POST_FIX_LOCAL_UX_ACCEPTANCE_PENDING"
+        "FO_3_OWNER_ACCEPTED_FO_4_AUTHORIZED_FO_5_AND_LATER_BLOCKED"
     )
-    assert stream["fo3_evidence"]["implementation_pr"] == 81
-    assert stream["fo3_evidence"]["local_ux_acceptance"] == "PENDING_POST_FIX_REVIEW"
 
-    incident = stream["fo3_runtime_incident"]
-    assert incident["incident_code"] == "FO3_UI_500"
-    assert incident["tracking_issue"] == 84
-    assert incident["implementation_pr"] == 85
-    assert incident["root_cause_confirmed"] is True
-    assert incident["root_cause_ci_run"] == 30808217800
-    assert incident["root_cause_code"] == "JINJA_DICT_METHOD_COLLISION_ON_ITEMS_KEY"
-    assert incident["focused_fix_final_head"] == (
-        "8809252b2ca25fb55f200d783016d30ec10134d7"
-    )
-    assert incident["focused_fix_merge_commit"] == (
-        "8f851c90da5a81f4b7ffce43eaa5bf6010d58fa2"
-    )
-    assert incident["focused_fix_final_ci_run"] == 30809363219
-    assert incident["focused_fix_specialist_tests_passed"] == 761
-    assert incident["focused_fix_accounting_tests_passed"] == 54
-    assert incident["real_list_render_passed"] is True
-    assert incident["real_timeline_render_passed"] is True
-    assert incident["legacy_cache_repair_passed"] is True
-    assert incident["source_truth_digest_unchanged"] is True
-    assert incident["episode_digest_unchanged"] is True
-    assert incident["status"] == "RESOLVED_TECHNICALLY"
-
-    copy_repair = stream["fo3_operator_copy_repair"]
-    assert copy_repair["incident_code"] == "FO3_OPERATOR_PROJECTION_JARGON"
-    assert copy_repair["tracking_issue"] == 87
-    assert copy_repair["implementation_pr"] == 88
-    assert copy_repair["final_head"] == (
-        "39ebef3b70470f39292faaa7d986e2f1a90a0e80"
-    )
-    assert copy_repair["merge_commit"] == (
+    fo3 = stream["fo3_evidence"]
+    assert fo3["owner_acceptance_issue"] == 83
+    assert fo3["owner_acceptance"] is True
+    assert fo3["reviewer"] == "Emad211"
+    assert fo3["reviewed_commit"] == (
         "020803868e1c2755f7669d52da92cb8050a46018"
     )
-    assert copy_repair["final_ci_run"] == 30827033618
-    assert copy_repair["specialist_tests_passed"] == 762
-    assert copy_repair["accounting_tests_passed"] == 54
-    assert copy_repair["changed_files"] == 5
-    assert copy_repair["runtime_logic_changed"] is False
-    assert copy_repair["schema_or_cache_behavior_changed"] is False
-    assert copy_repair["source_truth_mutated"] is False
-    assert copy_repair["machine_readiness_codes_preserved"] is True
-    assert copy_repair["technical_audit_labels_preserved"] is True
-    assert copy_repair["operator_copy_regression_test"] is True
-    assert copy_repair["status"] == "RESOLVED_TECHNICALLY"
+    assert fo3["reviewed_on_test_data"] is True
+    assert fo3["critical_ux_defects"] == 0
+    assert fo3["status"] == "VALIDATED_WITH_OWNER_ACCEPTANCE"
 
-    assert stream["implemented_contracts"]["projection_storage_schema_version"] == "1.1"
-    assert "OPERATOR_FACING_COPY_AVOIDS_PROJECTION_CACHE_JARGON" in stream["invariants"]
+    fo4 = stream["fo4_authorization"]
+    assert fo4["tracking_issue"] == 90
+    assert fo4["scope"] == "CLAIM_ASSIGNMENT_ROUTING_SLA_ONLY"
+    assert fo4["append_only_ownership_events"] is True
+    assert fo4["atomic_claim_required"] is True
+    assert fo4["stale_form_guard_required"] is True
+    assert fo4["role_compatibility_required"] is True
+    assert fo4["idempotency_required"] is True
+    assert fo4["source_truth_mutation_forbidden"] is True
+    assert fo4["clinical_completion_forbidden"] is True
+    assert fo4["fo5_and_later_forbidden"] is True
+
     assert stream["fo3_allowed"] is True
-    assert stream["fo4_allowed"] is False
-    assert stream["next_gate"] == "ISSUE_83_POST_FIX_LOCAL_UX_ACCEPTANCE_ON_02080386"
-    assert stream["feature_flags"] == {name: False for name in EXPECTED_FLAGS}
-    assert state["global_freeze"]["followup_orchestration_fo3"].startswith(
-        "ALLOWED_POST_FIX_LOCAL_UX_REVIEW"
+    assert stream["fo4_allowed"] is True
+    assert stream["fo5_allowed"] is False
+    assert stream["next_gate"] == (
+        "FO_4_IMPLEMENTATION_FULL_CI_AND_LOCAL_OWNER_UX_ACCEPTANCE"
     )
-    assert state["global_freeze"]["followup_orchestration_fo4_and_later"].startswith(
+    assert stream["feature_flags"] == {name: False for name in EXPECTED_FLAGS}
+    assert state["global_freeze"]["followup_orchestration_fo4"].startswith(
+        "AUTHORIZED"
+    )
+    assert state["global_freeze"]["followup_orchestration_fo5_and_later"].startswith(
         "BLOCKED"
     )
 
 
-def test_canonical_docs_and_agent_guard_are_current():
+def test_canonical_docs_and_agent_guard_authorize_bounded_fo4():
     plan = PLAN_PATH.read_text(encoding="utf-8")
     baseline = BASELINE_PATH.read_text(encoding="utf-8")
     agent = (SPECIALIST_ROOT / "AGENTS.md").read_text(encoding="utf-8")
 
-    assert "نسخه:** `1.4.4`" in plan
-    assert "FO_3_RUNTIME_REPAIR_TECHNICALLY_VALIDATED" in plan
-    assert "FO_3_OPERATOR_COPY_REPAIR_TECHNICALLY_VALIDATED" in plan
-    assert "FO_3_POST_FIX_LOCAL_UX_ACCEPTANCE_PENDING" in plan
-    assert "Final CI 30827033618" in plan
-    assert "762 Specialist + 54 Accounting" in plan
-    assert "reviewed_commit = 020803868e1c2755f7669d52da92cb8050a46018" in plan
-    assert "FO-4 AND LATER = BLOCKED" in plan
+    assert "نسخه:** `1.5.0`" in plan
+    assert "FO_3_VALIDATED_WITH_OWNER_ACCEPTANCE" in plan
+    assert "FO_4_AUTHORIZED" in plan
+    assert "FO_5_AND_LATER_BLOCKED" in plan
+    assert "FO3_UX_ACCEPTED = true" in plan
+    assert "critical_ux_defects = 0" in plan
+    assert "Issue حاکم: `#90`" in plan
+    assert "concurrent claim فقط یک winner" in plan
+    assert "FO-5 AND LATER = BLOCKED" in plan
     assert "Status:** `VALIDATED`" in baseline
 
-    assert "FO-3 RUNTIME REPAIR = TECHNICALLY VALIDATED" in agent
-    assert "FO-3 OPERATOR COPY REPAIR = TECHNICALLY VALIDATED" in agent
-    assert "FO-3 POST-FIX LOCAL UX ACCEPTANCE = PENDING" in agent
-    assert "CURRENT REVIEW ISSUE = #83" in agent
-    assert "Issue #87 / PR #88" in agent
-    assert "model['items']" in agent
-    assert "timeline['items']" in agent
-    assert "020803868e1c2755f7669d52da92cb8050a46018" in agent
-    assert "FO-4 and later = BLOCKED" in agent
+    assert "FO-3 = VALIDATED WITH OWNER ACCEPTANCE" in agent
+    assert "FO-4 = AUTHORIZED" in agent
+    assert "FO-5 and later = BLOCKED" in agent
+    assert "CURRENT ISSUE = #90" in agent
+    assert "append-only ROUTED / CLAIMED / ASSIGNED events" in agent
+    assert "FOLLOWUP_UNIFIED_WORKLIST_ACTIONS" in agent
+    assert "FOLLOWUP_AUTO_ROUTING" in agent
 
 
 def test_read_only_baseline_capture_remains_non_mutating_and_phi_free(tmp_path):
