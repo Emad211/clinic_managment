@@ -35,8 +35,34 @@ def _fo2_module():
     return module
 
 
+def _upgrade_patient_identity_fixture(db: sqlite3.Connection) -> None:
+    """Give the compact FO-1 fixture the patient identity columns FO-3 displays."""
+    db.executescript(
+        """
+        ALTER TABLE patient_links ADD COLUMN full_name TEXT;
+        ALTER TABLE patient_links ADD COLUMN national_id TEXT;
+        ALTER TABLE patient_links ADD COLUMN phone_number TEXT;
+        UPDATE patient_links
+        SET full_name=CASE id
+              WHEN 1 THEN 'بیمار آزمایشی یک'
+              ELSE 'بیمار آزمایشی دو'
+            END,
+            national_id=CASE id
+              WHEN 1 THEN '0012345678'
+              ELSE '0098765432'
+            END,
+            phone_number=CASE id
+              WHEN 1 THEN '09120000001'
+              ELSE '09120000002'
+            END;
+        """
+    )
+    db.commit()
+
+
 def _db() -> sqlite3.Connection:
     db = _fo2_module()._db()
+    _upgrade_patient_identity_fixture(db)
     FollowupProjectionService(db).run(
         as_of_at="2026-08-03 12:00:00",
         apply=True,
