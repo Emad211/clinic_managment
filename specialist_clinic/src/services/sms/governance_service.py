@@ -46,8 +46,53 @@ def canonicalize_iran_mobile(value: str | None) -> str:
 
 class SmsGovernanceService:
     PURPOSE_LABELS = {
-        "CARE": "پیام مراقبتی و عملیاتی",
-        "MARKETING": "پیام اطلاع‌رسانی جمعی و بازاریابی",
+        "CARE": "پیام‌های مراقبتی و خدماتی",
+        "MARKETING": "پیام‌های عمومی و تبلیغاتی",
+    }
+    PURPOSE_PRESENTATION = {
+        "CARE": {
+            "description": (
+                "پیام‌های مرتبط با ادامهٔ مراقبت و خدمات درمانگاه؛ مانند یادآوری نوبت، "
+                "پیگیری درمان، آزمایش، دارو یا اطلاع‌رسانی ضروری پرونده."
+            ),
+            "examples": "نوبت، آزمایش، دارو، پیگیری درمان و تغییر ضروری برنامهٔ مراجعه",
+            "enabled_status": "دریافت می‌کند",
+            "disabled_status": "دریافت نمی‌کند",
+            "enabled_help": "درمانگاه می‌تواند پیام‌های مراقبتی و خدماتی لازم را برای بیمار ارسال کند.",
+            "disabled_help": (
+                "ارسال این پیام‌ها متوقف است؛ ممکن است بیمار یادآوری‌های نوبت یا پیگیری درمان را دریافت نکند."
+            ),
+            "grant_action": "فعال‌کردن پیام‌های مراقبتی",
+            "revoke_action": "توقف پیام‌های مراقبتی",
+        },
+        "MARKETING": {
+            "description": (
+                "پیام‌های غیرضروری و عمومی؛ مانند معرفی خدمات، کمپین‌ها، برنامه‌های آموزشی عمومی یا تخفیف‌ها."
+            ),
+            "examples": "معرفی خدمات، کمپین، تخفیف و اطلاع‌رسانی عمومی",
+            "enabled_status": "دریافت می‌کند",
+            "disabled_status": "دریافت نمی‌کند",
+            "enabled_help": "بیمار اجازه داده است پیام‌های عمومی و تبلیغاتی درمانگاه را دریافت کند.",
+            "disabled_help": (
+                "پیام‌های عمومی و تبلیغاتی ارسال نمی‌شوند؛ این انتخاب روی پیام‌های مراقبتی و نوبت اثری ندارد."
+            ),
+            "grant_action": "فعال‌کردن پیام‌های عمومی و تبلیغاتی",
+            "revoke_action": "توقف پیام‌های عمومی و تبلیغاتی",
+        },
+    }
+    SOURCE_LABELS = {
+        "NOT_RECORDED_CONSERVATIVE_DEFAULT": "وضعیت اولیه و محافظه‌کارانهٔ سامانه",
+        "LEGACY_CARE_RELATIONSHIP": "رابطهٔ مراقبتی موجود با درمانگاه",
+        "LEGACY_NO_MARKETING_OPT_IN": "رضایت تبلیغاتی صریح ثبت نشده است",
+        "CLINIC_STAFF_RECORDED": "ثبت‌شده توسط کارکنان درمانگاه",
+        "PATIENT_EXPLICIT_OPT_IN": "رضایت صریح بیمار",
+        "PATIENT_REQUEST": "درخواست مستقیم بیمار",
+    }
+    REASON_LABELS = {
+        "PATIENT_REQUEST": "درخواست بیمار",
+        "PATIENT_EXPLICIT_OPT_IN": "رضایت صریح بیمار",
+        "LEGACY_CARE_RELATIONSHIP": "رابطهٔ مراقبتی موجود",
+        "LEGACY_NO_MARKETING_OPT_IN": "نبود رضایت صریح تبلیغاتی",
     }
 
     def __init__(self, repository: SmsGovernanceRepository | None = None):
@@ -68,10 +113,39 @@ class SmsGovernanceService:
                     "recorded_at": None,
                     "reason_code": None,
                 }
+            allowed = row["decision"] == "GRANTED"
+            presentation = self.PURPOSE_PRESENTATION[purpose]
+            source_code = str(row.get("source_code") or "")
+            reason_code = str(row.get("reason_code") or "")
             output[purpose] = {
                 **row,
-                "allowed": row["decision"] == "GRANTED",
+                "allowed": allowed,
                 "label": self.PURPOSE_LABELS[purpose],
+                "description": presentation["description"],
+                "examples": presentation["examples"],
+                "status_label": (
+                    presentation["enabled_status"]
+                    if allowed
+                    else presentation["disabled_status"]
+                ),
+                "status_help": (
+                    presentation["enabled_help"]
+                    if allowed
+                    else presentation["disabled_help"]
+                ),
+                "action_label": (
+                    presentation["revoke_action"]
+                    if allowed
+                    else presentation["grant_action"]
+                ),
+                "source_label": self.SOURCE_LABELS.get(
+                    source_code, "ثبت‌شده در سامانه"
+                ),
+                "reason_label": (
+                    self.REASON_LABELS.get(reason_code, "دلیل ثبت‌شده")
+                    if reason_code
+                    else "دلیل جداگانه‌ای ثبت نشده است"
+                ),
             }
         return output
 
