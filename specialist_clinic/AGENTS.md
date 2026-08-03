@@ -14,6 +14,7 @@
 
 ```text
 docs/FOLLOWUP_ORCHESTRATION_UX_V1_IMPLEMENTATION_PLAN.md
+docs/FOLLOWUP_ORCHESTRATION_UX_V1_ROADMAP.md
 ```
 
 ## محیط
@@ -36,9 +37,13 @@ FO-4 = TECHNICALLY VALIDATED
 FO-4 LOCAL UX ACCEPTANCE = PENDING
 FO-5 and later = BLOCKED
 CURRENT ISSUE = #94
+ROADMAP PROGRESS = 4.8 / 11 = 43.6% (~44%)
 ```
 
 Canonical plan: `v1.5.2`.
+Complete roadmap: `docs/FOLLOWUP_ORCHESTRATION_UX_V1_ROADMAP.md`.
+
+درصد بالا فقط پیشرفت FOUX-V1 است؛ production-readiness کل Specialist Clinic نیست.
 
 ## FO-4 Evidence
 
