@@ -4,8 +4,6 @@
 
 ## ترتیب مطالعهٔ اجباری
 
-پیش از هر تغییر:
-
 1. وضعیت واقعی `main`، PRها و Issueها؛
 2. `PROJECT_STATE.md` و `PROJECT_STATE.json`؛
 3. `AGENTS.md` ریشه؛
@@ -19,16 +17,13 @@ docs/FOLLOWUP_ORCHESTRATION_UX_V1_IMPLEMENTATION_PLAN.md
 docs/FOLLOWUP_ORCHESTRATION_UX_V1_BASELINE.md
 ```
 
-حافظهٔ گفتگو، branch قدیمی و PR تاریخی بر منابع بالا مقدم نیستند.
-
-## طبقه‌بندی محیط فعلی
+## طبقه‌بندی محیط
 
 ```text
 specialist.db = TEST_ONLY / SYNTHETIC_OR_RESETTABLE
-source        = owner attestation, 2026-08-03
 ```
 
-این طبقه‌بندی اجازهٔ حذف guardrail یا ورود shortcut runtime نمی‌دهد.
+این طبقه‌بندی هیچ guardrail امنیتی یا بالینی را حذف نمی‌کند.
 
 ## وضعیت FOUX-V1
 
@@ -37,14 +32,15 @@ FO-0 = VALIDATED
 FO-1 = VALIDATED
 FO-2 = VALIDATED
 FO-3 = TECHNICALLY_VALIDATED
-FO-3 LOCAL UX ACCEPTANCE = BLOCKED BY RUNTIME DEFECT
+FO-3 LOCAL UX ACCEPTANCE = BLOCKED BY CONFIRMED JINJA RUNTIME DEFECT
 FOCUSED FIX ISSUE = #84
+FOCUSED FIX PR = #85
 FO-4 and later = BLOCKED
 ```
 
-سند canonical: نسخهٔ `1.4.1`.
+سند canonical: نسخهٔ `1.4.2`.
 
-Evidence پایهٔ FO-3:
+### Evidence پایهٔ FO-3
 
 ```text
 Issue #80 / PR #81
@@ -53,27 +49,41 @@ CI 30775348057
 754 Specialist + 54 Accounting
 ```
 
-Incident:
+### علت قطعی Incident
+
+CI run `30808217800` با Flask/Jinja واقعی ثبت کرد:
 
 ```text
-Code          = FO3_UI_500
-Issue         = #84
-Evidence      = owner screenshot of generic HTTP 500
-Exact trace   = unavailable at registration
-Allowed work  = focused FO-3 runtime repair only
+TypeError: 'builtin_function_or_method' object is not iterable
+{% for item in model.items %}
 ```
+
+علت قطعی:
+
+```text
+JINJA_DICT_METHOD_COLLISION_ON_ITEMS_KEY
+```
+
+در Jinja، `model.items` به متد `dict.items` اشاره کرد، نه key دیکشنری. دسترسی صحیح:
+
+```jinja2
+model['items']
+timeline['items']
+```
+
+Schema/cache hardening بخشی از repair است، اما علت قطعی screenshot نیست.
 
 ## دامنهٔ مجاز فعلی
 
-فقط این موارد مجازند:
-
-- بررسی و رفع schema drift در cache disposable `followup_work_item_projection`؛
-- required-column preflight برای Read Model؛
-- controlled Persian unavailable state برای خطاهای SQLite/schema شناخته‌شده؛
-- تست legacy/incomplete cache؛
+- اصلاح Jinja collision در list و Timeline؛
+- real Flask/Jinja integration tests؛
+- static guard علیه `model.items` و `timeline.items`؛
+- repair فقط برای cache disposable `followup_work_item_projection`؛
+- required-column preflight؛
+- controlled Persian state برای خطاهای SQLite/schema شناخته‌شده؛
 - اثبات ثابت‌ماندن Source Truth و Episode digest؛
 - focused/full CI؛
-- مستندسازی repair و تکرار مرور UX.
+- تکرار مرور UX پس از merge.
 
 ## دامنهٔ ممنوع
 
@@ -90,14 +100,15 @@ Allowed work  = focused FO-3 runtime repair only
 
 ## قرارداد Repair
 
-1. فقط Projection cache disposable می‌تواند در schema drift حذف و recreate شود.
-2. Episode/Link/Event، Task، SMS، Appointment، Contact و Clinical tables هرگز drop/rewrite نمی‌شوند.
-3. cache ناسازگار به schema canonical بازمی‌گردد و خالی می‌ماند؛ rebuild فقط صریح است.
-4. known SQLite/schema error باید controlled UI state بدهد، نه generic 500.
-5. raw exception، نام بیمار، شماره، متن پیام، note یا clinical value در UI/log عمومی نمایش داده نمی‌شود.
-6. unknown programming exception با `except Exception` پنهان نمی‌شود.
-7. Worklist قدیمی authority اقدام باقی می‌ماند.
-8. flag OFF همچنان route=404 و navigation hidden است.
+1. mapping key متعارض با متدهای dict در template با bracket notation خوانده شود.
+2. real render test الزامی است؛ mock کردن `render_template` کافی نیست.
+3. فقط Projection cache disposable می‌تواند در schema drift recreate شود.
+4. Episode/Link/Event، Task، SMS، Appointment، Contact و Clinical tables هرگز drop/rewrite نمی‌شوند.
+5. cache ناسازگار canonical و خالی می‌شود؛ rebuild فقط صریح است.
+6. known SQLite/schema error باید controlled UI state بدهد، نه generic 500.
+7. unknown programming exception با `except Exception` پنهان نمی‌شود.
+8. Worklist قدیمی authority اقدام باقی می‌ماند.
+9. flag OFF همچنان route=404 و navigation hidden است.
 
 ## Feature Flagها
 
@@ -114,23 +125,24 @@ FOLLOWUP_EVIDENCE_ASSIST
 FOLLOWUP_AUTOMATION_HEALTH
 ```
 
-همه default OFF. در repair فقط `FOLLOWUP_UNIFIED_WORKLIST_READONLY` مصرف می‌شود. Rebuild تستی می‌تواند با `FOLLOWUP_PROJECTION_SHADOW=1` صریح اجرا شود. Action flags ممنوع‌اند.
+همه default OFF. در repair فقط Read-only flag مصرف می‌شود و rebuild تستی با Shadow flag صریح است. Action flags ممنوع‌اند.
 
-## تست‌های اجباری Issue #84
+## تست‌های اجباری PR #85
 
+- real Flask/Jinja list render؛
+- real Flask/Jinja Timeline render؛
+- no `model.items` / no `timeline.items`؛
 - incompatible cache recreated empty؛
 - migration rerun idempotent؛
-- required columns کامل؛
 - Source Truth و Episode digest ثابت؛
-- incompatible projection schema → controlled page، نه 500؛
-- incomplete patient/link read schema → controlled state؛
-- canonical list/detail همچنان render؛
+- incompatible schema → controlled page، نه 500؛
+- canonical list/detail render؛
 - flag OFF 404/hidden؛
 - POST 405؛
-- GET هیچ mutation ندارد؛
-- full Specialist و Accounting CI.
+- GET بدون mutation؛
+- full Specialist and Accounting CI.
 
-## مرزهای دائمی ایمنی
+## مرزهای دائمی
 
 - `clinic_new.db` read-only است.
 - Source Truthها authoritative هستند.
@@ -142,4 +154,4 @@ FOLLOWUP_AUTOMATION_HEALTH
 
 ## PR Contract
 
-هر PR باید Issue #84، scope، cache/schema impact، feature flag، focused/full tests، rollback، UX effect و proof عدم تغییر Source Truth/Clinical/Accounting را ثبت کند. پس از merge repair نیز FO-4 تا پذیرش UX جدید مالک مسدود است.
+هر PR باید Issue، scope، schema/cache impact، feature flag، focused/full tests، rollback و proof عدم تغییر Clinical/Accounting/Source Truth را ثبت کند. پس از merge PR #85 نیز FO-4 تا پذیرش UX جدید مالک مسدود است.
