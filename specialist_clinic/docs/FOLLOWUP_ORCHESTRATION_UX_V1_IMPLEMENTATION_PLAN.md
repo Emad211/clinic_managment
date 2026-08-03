@@ -204,7 +204,7 @@ FO-5 فقط با `FOLLOWUP_STRUCTURED_CONTACT=1` و prerequisites قبلی فع�
 
 ## 6. قدم مجاز فعلی — FO-5 Structured Contact, Retry & Escalation
 
-Issue حاکم: `#103`
+Issue #103 — Issue حاکم پیاده‌سازی FO-5
 
 Governance authorization: `PR #104`
 
@@ -342,7 +342,7 @@ $env:FOLLOWUP_STRUCTURED_CONTACT = "0"
 
 FO-5 مجاز نیست:
 
-- SMS خودکار ارسال کند یا approval policy را تغییر دهد؛
+- SMS automation: پیامک خودکار ارسال کند یا approval policy را تغییر دهد؛
 - Appointment بسازد، لغو یا تغییر دهد؛
 - Clinical Task یا Commitment را complete کند؛
 - clinical outcome، diagnosis یا treatment decision استنباط کند؛
