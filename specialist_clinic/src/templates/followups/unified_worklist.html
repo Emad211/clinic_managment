@@ -102,7 +102,7 @@
                     </td>
                     <td>
                         <span class="badge {% if item.state_class == 'BLOCKED' %}badge-danger{% elif item.state_class == 'ACTION_REQUIRED' %}badge-warn{% elif item.state_class == 'WAITING' %}badge-info{% else %}badge-muted{% endif %}">{{ item.state_label }}</span>
-                        {% if item.is_overdue %}<span class="badge badge-danger">موعدگذشته</span>{% endif %}
+                        <span class="badge badge-{{ item.sla_tone }}">{{ item.sla_label }}</span>
                         {% if item.is_stale %}<span class="badge badge-warn">اطلاعات نما قدیمی است</span>{% endif %}
                         <div class="text-sm">{{ item.primary_explanation }}</div>
                         <div class="muted text-xs">آخرین وضعیت منبع: {{ item.last_source_event_at|jalali if item.last_source_event_at else 'نامشخص' }}</div>

@@ -28,6 +28,15 @@ ROLE_LABELS = {
     "PHYSICIAN": "نیازمند بررسی پزشک",
     "MANAGER": "نیازمند بررسی مدیر عملیات",
 }
+SLA_LABELS = {
+    "FUTURE": "در مهلت آینده",
+    "DUE_TODAY": "موعد امروز",
+    "OVERDUE": "موعدگذشته",
+    "DUE_UNKNOWN": "موعد نامشخص",
+    "WAITING": "در انتظار رویداد بعدی",
+    "BLOCKED": "مسدود",
+    "TERMINAL": "پایان‌یافته",
+}
 READINESS_COPY = {
     "READY": {
         "label": "نمای یکپارچه آماده است",
@@ -60,7 +69,7 @@ READINESS_COPY = {
 }
 _ALLOWED_STATES = frozenset(STATE_LABELS)
 _ALLOWED_ROLES = frozenset(ROLE_LABELS)
-_ALLOWED_SLA = frozenset({"ON_TIME", "DUE_SOON", "OVERDUE", "BLOCKED", "NONE"})
+_ALLOWED_SLA = frozenset(SLA_LABELS)
 _PATIENT_REQUIRED_COLUMNS = frozenset({"id", "full_name", "national_id", "phone_number"})
 _LINK_REQUIRED_COLUMNS = frozenset(
     {"id", "episode_id", "source_type", "source_id", "relation_type", "linked_at"}
@@ -257,6 +266,18 @@ class FollowupUnifiedReadModelService:
                 ),
                 "state_label": STATE_LABELS.get(
                     str(item.get("state_class") or ""), "وضعیت نامشخص"
+                ),
+                "sla_label": SLA_LABELS.get(
+                    str(item.get("sla_state") or ""), "وضعیت موعد نامشخص"
+                ),
+                "sla_tone": (
+                    "danger"
+                    if item.get("sla_state") in {"OVERDUE", "BLOCKED"}
+                    else "warn"
+                    if item.get("sla_state") in {"DUE_TODAY", "DUE_UNKNOWN"}
+                    else "info"
+                    if item.get("sla_state") in {"FUTURE", "WAITING"}
+                    else "muted"
                 ),
                 "role_label": ROLE_LABELS.get(
                     str(item.get("owner_role_proposal") or ""), "بدون صف پیشنهادی"
@@ -472,5 +493,6 @@ __all__ = [
     "FollowupUnifiedReadModelService",
     "READINESS_COPY",
     "ROLE_LABELS",
+    "SLA_LABELS",
     "STATE_LABELS",
 ]
