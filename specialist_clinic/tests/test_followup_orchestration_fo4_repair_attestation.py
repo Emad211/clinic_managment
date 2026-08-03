@@ -8,21 +8,26 @@ SPECIALIST_ROOT = Path(__file__).resolve().parents[1]
 REPO_ROOT = SPECIALIST_ROOT.parent
 
 
-def test_fo4_repair_attestation_is_current_and_fo5_remains_blocked():
-    state = json.loads((REPO_ROOT / "PROJECT_STATE.json").read_text(encoding="utf-8"))
+def test_fo4_repairs_remain_attested_after_owner_acceptance():
+    state = json.loads(
+        (REPO_ROOT / "PROJECT_STATE.json").read_text(encoding="utf-8")
+    )
     stream = state["streams"]["followup_orchestration_ux_v1"]
     fo4 = stream["fo4_evidence"]
 
-    assert stream["plan_version"] == "1.5.2"
-    assert stream["current_tranche"] == "FO_4_LOCAL_OWNER_UX_ACCEPTANCE"
-    assert stream["fo4_allowed"] is True
-    assert stream["fo5_allowed"] is False
-    assert stream["next_gate"] == (
-        "ISSUE_94_FO4_LOCAL_OWNER_UX_ACCEPTANCE_ON_CD243424"
+    assert stream["plan_version"] == "1.6.0"
+    assert stream["current_tranche"] == (
+        "FO_5_AUTHORIZED_IMPLEMENTATION_PENDING"
     )
+    assert stream["fo4_allowed"] is True
+    assert stream["fo5_allowed"] is True
+    assert stream["fo6_allowed"] is False
     assert fo4["runtime_ui_review_commit"] == (
         "cd243424ecbae98892e0dfde1780bb846554942f"
     )
+    assert fo4["local_ux_acceptance"] is True
+    assert fo4["critical_ux_defects"] == 0
+    assert fo4["status"] == "VALIDATED_WITH_OWNER_ACCEPTANCE"
 
     seeded = fo4["seeded_worklist_repair"]
     assert seeded["merge_commit"] == (
@@ -55,7 +60,7 @@ def test_fo4_repair_attestation_is_current_and_fo5_remains_blocked():
     assert sla["read_time_write"] is False
 
 
-def test_plan_and_agent_point_owner_to_repaired_runtime_commit():
+def test_plan_and_agent_preserve_fo4_evidence_while_authorizing_fo5():
     plan = (
         SPECIALIST_ROOT
         / "docs"
@@ -63,11 +68,14 @@ def test_plan_and_agent_point_owner_to_repaired_runtime_commit():
     ).read_text(encoding="utf-8")
     agent = (SPECIALIST_ROOT / "AGENTS.md").read_text(encoding="utf-8")
 
-    for text in (plan, agent):
-        assert "cd243424ecbae98892e0dfde1780bb846554942f" in text
-        assert "prepare_seeded_followup_view.py" in text
-        assert "FO-5" in text
-        assert "BLOCKED" in text
+    for value in (
+        "cd243424ecbae98892e0dfde1780bb846554942f",
+        "prepare_seeded_followup_view.py",
+    ):
+        assert value in plan
+        assert value in agent
     assert "Final CI 30844075841" in plan
     assert "CI 30851594179" in plan
     assert "CI 30852909213" in plan
+    assert "FO-5 = AUTHORIZED / IMPLEMENTATION PENDING" in agent
+    assert "FO-6 and later = BLOCKED" in agent
