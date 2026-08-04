@@ -51,8 +51,8 @@ jobs:
               'for value in state.get("status_tags", [])',
           )
           source = source.replace(
-              "              ('assert authorization[\"status\"] == \"AUTHORIZED\"', 'assert authorization[\"status\"] == \"VALIDATED\"'),\n",
-              "",
+              "('assert authorization[\"status\"] == \"AUTHORIZED\"', 'assert authorization[\"status\"] == \"VALIDATED\"'),",
+              "('assert authorization[\"default_enabled\"] is False', 'assert authorization[\"default_enabled\"] is False'),",
           )
           source = source.replace(
               "marker = '    assert authorization[\"status\"] == \"VALIDATED\"\\n'",
