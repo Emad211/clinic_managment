@@ -57,12 +57,22 @@
         </div>
 
         <div class="fld">
-            <label for="contact-callback-at">زمان تماس مجدد — در صورت نیاز</label>
-            <input id="contact-callback-at"
-                   name="callback_at"
-                   type="datetime-local"
-                   dir="ltr">
-            <p class="muted text-xs">برای «درخواست تماس مجدد» الزامی است و باید در آینده باشد.</p>
+            <label>زمان تماس مجدد — در صورت نیاز</label>
+            <div class="row">
+                <input id="contact-callback-date"
+                       name="callback_date"
+                       type="text"
+                       class="jdate"
+                       placeholder="انتخاب تاریخ شمسی"
+                       autocomplete="off">
+                <input id="contact-callback-time"
+                       name="callback_time"
+                       type="time"
+                       class="time-input"
+                       step="300"
+                       lang="fa-IR">
+            </div>
+            <p class="muted text-xs">برای «درخواست تماس مجدد» تاریخ شمسی و ساعت آینده الزامی است.</p>
         </div>
 
         <div class="fld" style="grid-column:1 / -1;">
