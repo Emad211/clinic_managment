@@ -19,7 +19,10 @@ def test_fo4_runtime_is_flagged_and_does_not_write_operational_sources():
     assert "FOLLOWUP_AUTO_ROUTING" in api
     assert "_require_actions_flag()" in api
     assert "_require_routing_flag()" in api
-    assert api.count("@bp.post") == 4
+    assert api.count("@bp.post") == 5
+    assert "def record_contact" in api
+    assert "_require_structured_contact_flag()" in api
+    assert "FOLLOWUP_STRUCTURED_CONTACT" in api
 
     normalized = ownership.upper()
     for forbidden in (

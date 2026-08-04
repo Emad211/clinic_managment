@@ -570,6 +570,7 @@ class FollowupStructuredContactService:
                 actor_username=actor_username,
                 actor_user_id=actor_user_id,
                 occurred_at=current_time,
+                recorded_at=current_time,
                 note=normalized_note,
                 next_contact_at=requested_callback,
                 idempotency_key=contact_source_key,
