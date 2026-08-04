@@ -34,15 +34,17 @@ FO-1 = VALIDATED
 FO-2 = VALIDATED
 FO-3 = VALIDATED WITH OWNER ACCEPTANCE
 FO-4 = VALIDATED WITH OWNER ACCEPTANCE
-FO-5 = AUTHORIZED / IMPLEMENTATION PENDING
+FO-5 = TECHNICALLY VALIDATED / OWNER UX PENDING
 FO-6 and later = BLOCKED
-CURRENT ISSUE = #103
-ROADMAP PROGRESS = 5.0 / 11 = 45.5%
-REMAINING = 54.5%
+CURRENT ISSUE = #107
+REVIEWED MERGE = 94aa2c3eaf335a46e8911a5ac9984e1ff6f4b852
+ROADMAP PROGRESS = 5.8 / 11 = 52.7%
+TECHNICAL IMPLEMENTATION = 6 / 11 = 54.5%
+REMAINING = 47.3%
 ```
 
-Canonical plan: `v1.6.0`.
-Complete roadmap: `docs/FOLLOWUP_ORCHESTRATION_UX_V1_ROADMAP.md` v1.1.0.
+Canonical plan: `v1.7.0`.
+Complete roadmap: `docs/FOLLOWUP_ORCHESTRATION_UX_V1_ROADMAP.md` v1.2.0.
 
 ## FO-4 Evidence و پذیرش مالک
 
@@ -80,24 +82,31 @@ $env:FOLLOWUP_PROJECTION_SHADOW = "1"
   --database specialist.db
 ```
 
-## مجوز فعلی FO-5
+## FO-5 Technical Validation و Gate فعلی
 
-Issue حاکم: `#103`.
+```text
+Authorization Issue #103 / PR #104
+Governance merge 9c296e70511d73dd79a447cc34ef2aeb79f4edd9
+Implementation Issue #105 / PR #106
+Final head 2ab1cb1ec956bb9534dea7dd383b76bbf5fb3f5c
+Runtime merge 94aa2c3eaf335a46e8911a5ac9984e1ff6f4b852
+CI 30865955479
+801 Specialist + 54 Accounting
+Owner UX Issue #107
+```
 
-فقط موارد زیر مجازند:
+FO-5 از نظر فنی PASS شده است. تنها کار مجاز فعلی:
 
-- outcomeهای ساختاریافتهٔ تماس؛
-- Contact Attempt append-only و اتصال آن به Episode؛
-- callback scheduling با زمان آینده؛
-- bounded retry برای `NO_ANSWER` و `BUSY`؛
-- unreachable escalation دقیقاً یک‌بار پس از threshold؛
-- phone-invalid workflow و route به پذیرش؛
-- operational escalation به پزشک یا مدیر بدون تصمیم بالینی؛
-- فرم کم‌کلیک و summary تماس در Unified Worklist؛
-- Timeline بدون نمایش note آزاد؛
-- idempotency، stale-form، permission و terminal fail-closed؛
-- Feature Flag `FOLLOWUP_STRUCTURED_CONTACT` با پیش‌فرض OFF؛
-- Issue و PR مستقل runtime، full CI و owner UX review.
+- اجرای Local Owner UX Review طبق سند زیر؛
+- ثبت defect متمرکز FO-5 در Issue #107؛
+- اصلاح محدود defect با full CI؛
+- ثبت attestation مالک روی merge دقیق `94aa2c3e...`.
+
+```text
+docs/FOLLOWUP_ORCHESTRATION_FO5_LOCAL_UX_ACCEPTANCE.md
+```
+
+توسعهٔ بیشتر Runtime FO-5، مجوز FO-6 یا هر تغییر SMS/Appointment/Clinical ممنوع است.
 
 ## قرارداد FO-5
 
@@ -144,7 +153,7 @@ FOLLOWUP_EVIDENCE_ASSIST
 FOLLOWUP_AUTOMATION_HEALTH
 ```
 
-برای FO-5، سه سطح قبلی و Flag تماس باید صریح روشن شوند. با Flag تماس خاموش، کنترل تماس مخفی و POST مربوط 404 است.
+برای FO-5، Flags مربوط به Episode، Projection، Unified Read-only، Actions، Routing و Structured Contact باید صریح روشن شوند. خاموش‌بودن Routing یا Contact، کنترل تماس را مخفی و POST مربوط را 404 می‌کند.
 
 ## دامنهٔ ممنوع
 
@@ -172,4 +181,4 @@ FOLLOWUP_AUTOMATION_HEALTH
 
 هر PR باید Issue، scope، feature flag، permission، idempotency، stale/terminal guard، schema impact، rollback، focused/full tests و proof عدم تغییر SMS/Appointment/Clinical Rule/Accounting را ثبت کند.
 
-FO-5 فقط تحت Issue #103 مجاز است؛ بدون Technical Validation، Local Owner UX Acceptance و governance مستقل وارد FO-6 نشوید.
+FO-5 اکنون فقط برای Local Owner UX Review یا defect متمرکز تحت Issue #107 باز است؛ بدون `FO5_UX_ACCEPTED = true` و governance مستقل وارد FO-6 نشوید.

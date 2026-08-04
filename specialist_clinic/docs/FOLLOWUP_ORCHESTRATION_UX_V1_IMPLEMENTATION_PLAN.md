@@ -4,11 +4,11 @@
 >
 > **کد برنامه:** `FOUX-V1`
 >
-> **نسخه:** `1.6.0`
+> **نسخه:** `1.7.0`
 >
 > **آخرین بازبینی:** `2026-08-04`
 >
-> **وضعیت:** `FO_0_VALIDATED / FO_1_VALIDATED / FO_2_VALIDATED / FO_3_VALIDATED_WITH_OWNER_ACCEPTANCE / FO_4_VALIDATED_WITH_OWNER_ACCEPTANCE / FO_5_AUTHORIZED_IMPLEMENTATION_PENDING / FO_6_AND_LATER_BLOCKED`
+> **وضعیت:** `FO_0_VALIDATED / FO_1_VALIDATED / FO_2_VALIDATED / FO_3_VALIDATED_WITH_OWNER_ACCEPTANCE / FO_4_VALIDATED_WITH_OWNER_ACCEPTANCE / FO_5_TECHNICALLY_VALIDATED_OWNER_UX_PENDING / FO_6_AND_LATER_BLOCKED`
 >
 > **رودمپ کامل:** `specialist_clinic/docs/FOLLOWUP_ORCHESTRATION_UX_V1_ROADMAP.md`
 >
@@ -198,15 +198,30 @@ FOLLOWUP_EVIDENCE_ASSIST
 FOLLOWUP_AUTOMATION_HEALTH
 ```
 
-FO-5 فقط با `FOLLOWUP_STRUCTURED_CONTACT=1` و prerequisites قبلی فعال می‌شود. خاموش‌بودن Flag باید کنترل‌ها را مخفی و mutation route را 404 کند.
+FO-5 فقط با روشن‌بودن صریح `FOLLOWUP_EPISODES_ENABLED`، `FOLLOWUP_PROJECTION_SHADOW`، `FOLLOWUP_UNIFIED_WORKLIST_READONLY`، `FOLLOWUP_UNIFIED_WORKLIST_ACTIONS`، `FOLLOWUP_AUTO_ROUTING` و `FOLLOWUP_STRUCTURED_CONTACT` فعال می‌شود. خاموش‌بودن Routing یا Contact باید کنترل‌ها را مخفی و mutation route را 404 کند.
 
 ---
 
-## 6. قدم مجاز فعلی — FO-5 Structured Contact, Retry & Escalation
+## 6. FO-5 — TECHNICALLY VALIDATED / OWNER UX PENDING
 
-Issue #103 — Issue حاکم پیاده‌سازی FO-5
+```text
+Authorization Issue = #103 / PR #104
+Governance merge = 9c296e70511d73dd79a447cc34ef2aeb79f4edd9
+Implementation Issue = #105 / PR #106
+Final head = 2ab1cb1ec956bb9534dea7dd383b76bbf5fb3f5c
+Runtime merge = 94aa2c3eaf335a46e8911a5ac9984e1ff6f4b852
+Final CI = 30865955479
+801 Specialist + 54 Accounting
+Owner UX Acceptance Issue = #107
+```
 
-Governance authorization: `PR #104`
+تمام قراردادهای فنی FO-5 PASS شده‌اند. تنها gate باز، مرور UX مالک روی دادهٔ TEST_ONLY است. توسعهٔ بیشتر Runtime یا شروع FO-6 مجاز نیست؛ فقط local review یا defect متمرکز FO-5 مجاز است.
+
+راهنمای canonical مرور:
+
+```text
+specialist_clinic/docs/FOLLOWUP_ORCHESTRATION_FO5_LOCAL_UX_ACCEPTANCE.md
+```
 
 ### Outcomeهای ساختاریافته
 
@@ -358,20 +373,24 @@ FO-5 مجاز نیست:
 
 ```text
 FO-4 owner acceptance                         = PASS
-FO-5 governance authorization PR #104         = IN_PROGRESS
-Structured outcome persistence                = PENDING
-Deterministic transition policy               = PENDING
-Callback future validation                    = PENDING
-One-time escalation                           = PENDING
-Stale/permission/terminal/idempotency guards  = PENDING
-Flag-off 404/hidden controls                  = PENDING
-Source Truth/SMS/Appointment/Rule unchanged   = PENDING
-Full CI                                       = PENDING
-Local Owner UX Acceptance                     = PENDING
+FO-5 governance authorization PR #104         = PASS
+FO-5 implementation PR #106                   = PASS
+Structured outcome persistence                = PASS
+Deterministic transition policy               = PASS
+Callback future validation                    = PASS
+Threshold callback cleared in Source Truth    = PASS
+One-time escalation                           = PASS
+Routing kill-switch prerequisite              = PASS
+Jalali callback date + time                    = PASS
+Stale/permission/terminal/idempotency guards  = PASS
+Flag-off 404/hidden controls                  = PASS
+Source Truth/SMS/Appointment/Rule unchanged   = PASS
+Full CI 30865955479                            = PASS (801 + 54)
+Local Owner UX Acceptance Issue #107           = PENDING
 FO-6 governance authorization                 = BLOCKED
 ```
 
-پس از Technical Validation، FO-5 وضعیت `TECHNICALLY_VALIDATED / OWNER_UX_PENDING` می‌گیرد. FO-6 فقط پس از owner acceptance و governance مستقل قابل بررسی است.
+FO-5 اکنون `TECHNICALLY_VALIDATED / OWNER_UX_PENDING` است. پذیرش مالک باید روی merge دقیق `94aa2c3eaf335a46e8911a5ac9984e1ff6f4b852` و فقط با دادهٔ TEST_ONLY ثبت شود.
 
 ---
 
@@ -384,11 +403,12 @@ specialist_clinic/docs/FOLLOWUP_ORCHESTRATION_UX_V1_ROADMAP.md
 ```
 
 ```text
-FO-0..FO-4 validated = 5.0
-FO-5 authorized/not started = 0.0
+FO-0..FO-4 validated with required acceptance = 5.0
+FO-5 technically validated / owner UX pending = 0.8
 FO-6..FO-10 blocked = 0.0
-Progress = 5.0 / 11 = 45.5%
-Remaining = 54.5%
+Progress = 5.8 / 11 = 52.7%
+Technical implementation = 6 / 11 = 54.5%
+Remaining = 47.3%
 ```
 
 این درصد فقط برنامهٔ FOUX-V1 است، نه production-readiness کل Specialist Clinic.
@@ -403,6 +423,8 @@ FO-1 = VALIDATED
 FO-2 = VALIDATED
 FO-3 = VALIDATED WITH OWNER ACCEPTANCE
 FO-4 = VALIDATED WITH OWNER ACCEPTANCE
-FO-5 = AUTHORIZED / IMPLEMENTATION PENDING
+FO-5 = TECHNICALLY VALIDATED / OWNER UX PENDING
+CURRENT ISSUE = #107
+REVIEWED MERGE = 94aa2c3eaf335a46e8911a5ac9984e1ff6f4b852
 FO-6 AND LATER = BLOCKED
 ```
