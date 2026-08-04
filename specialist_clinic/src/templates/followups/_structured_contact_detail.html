@@ -1,0 +1,88 @@
+{% if structured_contact_enabled %}
+<section class="card" id="structured-contact" aria-labelledby="structured-contact-title">
+    <div class="section-title">
+        <svg class="icon"><use href="#i-phone"></use></svg>
+        <div>
+            <div id="structured-contact-title">ثبت نتیجهٔ تماس</div>
+            <div class="section-sub">نتیجه را ساختاریافته ثبت کنید تا تماس مجدد یا ارجاع بعدی گم نشود.</div>
+        </div>
+    </div>
+
+    {% if contact_summary and contact_summary.has_contact %}
+    <div class="grid grid-4">
+        <div>
+            <span class="muted text-sm">آخرین نتیجه</span>
+            <div><b>{{ contact_summary.outcome_label }}</b></div>
+        </div>
+        <div>
+            <span class="muted text-sm">اقدام بعدی</span>
+            <div><b>{{ contact_summary.next_action_label or 'ادامهٔ مسیر فعلی' }}</b></div>
+        </div>
+        <div>
+            <span class="muted text-sm">تماس مجدد</span>
+            <div class="nums"><b>{{ contact_summary.callback_at|jalali if contact_summary.callback_at else '—' }}</b></div>
+        </div>
+        <div>
+            <span class="muted text-sm">تلاش‌های ناموفق پیاپی</span>
+            <div><b>{{ contact_summary.failed_attempt_count|fa_num }}</b></div>
+        </div>
+    </div>
+    {% else %}
+    <div class="card card-soft" style="box-shadow:none;">
+        هنوز نتیجهٔ تماس ساختاریافته‌ای برای این مسیر ثبت نشده است.
+    </div>
+    {% endif %}
+
+    <div class="card card-soft" role="note" style="box-shadow:none;margin-top:var(--s3);">
+        ثبت این فرم <b>پیامک ارسال نمی‌کند</b>، نوبت نمی‌سازد یا تغییر نمی‌دهد و هیچ تصمیم یا تکمیل بالینی ایجاد نمی‌کند.
+    </div>
+
+    {% if contact_capabilities.can_record and item.state_class != 'TERMINAL' %}
+    <form method="post"
+          action="{{ url_for('unified_followups.record_contact', episode_id=item.episode_id) }}"
+          class="grid grid-2"
+          style="margin-top:var(--s4);">
+        <input type="hidden" name="expected_event_id" value="{{ contact_expected_event_id }}">
+        <input type="hidden" name="idempotency_key" value="{{ contact_action_token }}:contact:{{ item.episode_id }}">
+
+        <div class="fld">
+            <label for="structured-outcome">نتیجهٔ تماس</label>
+            <select id="structured-outcome" name="structured_outcome" required>
+                <option value="">انتخاب نتیجه</option>
+                {% for key, label in contact_outcome_labels.items() %}
+                <option value="{{ key }}">{{ label }}</option>
+                {% endfor %}
+            </select>
+            <p class="muted text-xs">برای «پاسخ نداد» و «خط مشغول»، در صورت خالی‌بودن زمان، تماس مجدد امن به‌صورت خودکار زمان‌بندی می‌شود.</p>
+        </div>
+
+        <div class="fld">
+            <label for="contact-callback-at">زمان تماس مجدد — در صورت نیاز</label>
+            <input id="contact-callback-at"
+                   name="callback_at"
+                   type="datetime-local"
+                   dir="ltr">
+            <p class="muted text-xs">برای «درخواست تماس مجدد» الزامی است و باید در آینده باشد.</p>
+        </div>
+
+        <div class="fld" style="grid-column:1 / -1;">
+            <label for="contact-note">توضیح کوتاه — اختیاری</label>
+            <textarea id="contact-note"
+                      name="note"
+                      maxlength="1000"
+                      rows="3"
+                      placeholder="فقط اطلاعات ضروری تماس؛ برای نتیجهٔ «سایر» الزامی است."></textarea>
+            <p class="muted text-xs">این توضیح فقط در سابقهٔ اصلی تماس نگهداری می‌شود و در Timeline یکپارچه نمایش داده نمی‌شود.</p>
+        </div>
+
+        <div>
+            <button class="btn" type="submit">ثبت نتیجه و اقدام بعدی</button>
+        </div>
+    </form>
+    {% else %}
+    <div class="empty-mini" style="margin-top:var(--s3);">
+        {{ contact_capabilities.reason or 'ثبت تماس برای این مسیر در دسترس نیست.' }}
+    </div>
+    {% endif %}
+</section>
+{% endif %}
