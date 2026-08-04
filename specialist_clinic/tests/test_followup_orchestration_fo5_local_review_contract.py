@@ -67,32 +67,32 @@ def test_machine_state_has_one_unambiguous_fo5_owner_gate():
     programs = state["operational_programs"]
 
     assert state["schema_version"] == "2.5"
-    assert stream["current_tranche"] == "FO_5_LOCAL_OWNER_UX_ACCEPTANCE"
+    assert stream["current_tranche"] == "FO_6_AUTHORIZED_IMPLEMENTATION_PENDING"
     assert stream["next_gate"] == (
-        "ISSUE_107_FO5_LOCAL_OWNER_UX_ACCEPTANCE_ON_94AA2C3E"
+        "FO6_IMPLEMENTATION_ISSUE_AND_PR"
     )
     assert stream["roadmap_progress"] == {
         "model": "TRANCHE_EQUIVALENT",
         "tranche_count": 11,
-        "validated_equivalent": 5.8,
-        "progress_percent": 52.7,
-        "remaining_percent": 47.3,
+        "validated_equivalent": 6.0,
+        "progress_percent": 54.5,
+        "remaining_percent": 45.5,
         "technical_tranches_implemented": 6,
         "technical_implementation_percent": 54.5,
-        "fully_accepted_tranches": 5,
-        "current_partial_tranche": "FO-5",
-        "current_partial_credit": 0.8,
-        "next_required_gate": "FO5_OWNER_UX_ACCEPTANCE",
+        "fully_accepted_tranches": 6,
+        "current_partial_tranche": None,
+        "current_partial_credit": 0.0,
+        "next_required_gate": "FO6_TECHNICAL_IMPLEMENTATION",
         "not_a_product_wide_readiness_metric": True,
     }
-    assert "FOUX_V1_FO_5_AUTHORIZED_NOT_STARTED" not in programs
+    assert "FOUX_V1_FO_5_TECHNICALLY_VALIDATED_OWNER_UX_PENDING" not in programs
     assert (
-        "FOUX_V1_FO_5_TECHNICALLY_VALIDATED_OWNER_UX_PENDING"
+        "FOUX_V1_FO_5_VALIDATED_WITH_OWNER_ACCEPTANCE"
         in programs
     )
-    assert stream["fo6_allowed"] is False
+    assert stream["fo6_allowed"] is True
     assert state["global_freeze"][
-        "followup_orchestration_fo6_and_later"
+        "followup_orchestration_fo7_and_later"
     ].startswith("BLOCKED")
 
 

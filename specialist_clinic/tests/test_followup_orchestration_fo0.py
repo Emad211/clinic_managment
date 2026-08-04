@@ -208,9 +208,9 @@ def test_project_state_attests_fo4_acceptance_and_authorizes_bounded_fo5():
 
     stream = state["streams"]["followup_orchestration_ux_v1"]
     assert stream["program_code"] == "FOUX-V1"
-    assert stream["plan_version"] == "1.7.0"
+    assert stream["plan_version"] == "1.8.0"
     assert stream["current_tranche"] == (
-        "FO_5_LOCAL_OWNER_UX_ACCEPTANCE"
+        "FO_6_AUTHORIZED_IMPLEMENTATION_PENDING"
     )
     assert "FO_4_OWNER_ACCEPTED" in stream["status"]
     assert "FO_5_TECHNICALLY_VALIDATED_OWNER_UX_PENDING" in stream["status"]
@@ -290,9 +290,9 @@ def test_canonical_docs_and_agent_guard_authorize_fo5_but_block_fo6():
     assert "FO-5 Local Owner UX Acceptance" in roadmap
     assert "TECHNICALLY_VALIDATED_OWNER_UX_PENDING" in roadmap
     assert "5.8 / 11 = 52.7%" in roadmap
-    assert "FO-5 = TECHNICALLY VALIDATED / OWNER UX PENDING" in agent
-    assert "FO-6 and later = BLOCKED" in agent
-    assert "CURRENT ISSUE = #107" in agent
+    assert "FO-5 = VALIDATED WITH OWNER ACCEPTANCE" in agent
+    assert "FO-6 = AUTHORIZED / IMPLEMENTATION PENDING" in agent
+    assert "CURRENT ISSUE = #109" in agent
     assert "Status:** `VALIDATED`" in baseline
 
 

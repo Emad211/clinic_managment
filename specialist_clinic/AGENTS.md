@@ -34,17 +34,18 @@ FO-1 = VALIDATED
 FO-2 = VALIDATED
 FO-3 = VALIDATED WITH OWNER ACCEPTANCE
 FO-4 = VALIDATED WITH OWNER ACCEPTANCE
-FO-5 = TECHNICALLY VALIDATED / OWNER UX PENDING
-FO-6 and later = BLOCKED
-CURRENT ISSUE = #107
-REVIEWED MERGE = 94aa2c3eaf335a46e8911a5ac9984e1ff6f4b852
-ROADMAP PROGRESS = 5.8 / 11 = 52.7%
+FO-5 = VALIDATED WITH OWNER ACCEPTANCE
+FO-6 = AUTHORIZED / IMPLEMENTATION PENDING
+FO-7 and later = BLOCKED
+CURRENT ISSUE = #109
+REVIEWED FO-5 MERGE = 94aa2c3eaf335a46e8911a5ac9984e1ff6f4b852
+ROADMAP PROGRESS = 6.0 / 11 = 54.5%
 TECHNICAL IMPLEMENTATION = 6 / 11 = 54.5%
-REMAINING = 47.3%
+REMAINING = 45.5%
 ```
 
-Canonical plan: `v1.7.0`.
-Complete roadmap: `docs/FOLLOWUP_ORCHESTRATION_UX_V1_ROADMAP.md` v1.2.0.
+Canonical plan: `v1.8.0`.
+Complete roadmap: `docs/FOLLOWUP_ORCHESTRATION_UX_V1_ROADMAP.md` v1.3.0.
 
 ## FO-4 Evidence و پذیرش مالک
 
@@ -82,103 +83,84 @@ $env:FOLLOWUP_PROJECTION_SHADOW = "1"
   --database specialist.db
 ```
 
-## FO-5 Technical Validation و Gate فعلی
+## FO-5 Evidence و پذیرش مالک
 
 ```text
-Authorization Issue #103 / PR #104
-Governance merge 9c296e70511d73dd79a447cc34ef2aeb79f4edd9
 Implementation Issue #105 / PR #106
-Final head 2ab1cb1ec956bb9534dea7dd383b76bbf5fb3f5c
 Runtime merge 94aa2c3eaf335a46e8911a5ac9984e1ff6f4b852
-CI 30865955479
-801 Specialist + 54 Accounting
-Owner UX Issue #107
+CI 30865955479 — 801 Specialist + 54 Accounting
+Owner UX Issue #107 — completed
 ```
-
-FO-5 از نظر فنی PASS شده است. تنها کار مجاز فعلی:
-
-- اجرای Local Owner UX Review طبق سند زیر؛
-- ثبت defect متمرکز FO-5 در Issue #107؛
-- اصلاح محدود defect با full CI؛
-- ثبت attestation مالک روی merge دقیق `94aa2c3e...`.
 
 ```text
-docs/FOLLOWUP_ORCHESTRATION_FO5_LOCAL_UX_ACCEPTANCE.md
+FO5_UX_ACCEPTED = true
+reviewer = Emad211
+reviewed_commit = 94aa2c3eaf335a46e8911a5ac9984e1ff6f4b852
+reviewed_on_test_data = true
+critical_ux_defects = 0
+notes = بررسی شد و مشکل بحرانی مشاهده نشد
 ```
 
-توسعهٔ بیشتر Runtime FO-5، مجوز FO-6 یا هر تغییر SMS/Appointment/Clinical ممنوع است.
+## مجوز فعلی FO-6
 
-## قرارداد FO-5
+Issue حاکم: `#109`؛ Governance PR: `#110`.
 
-Structured outcomeهای مجاز:
+فقط موارد زیر مجازند:
 
-```text
-REACHED
-NO_ANSWER
-BUSY
-CALLBACK_REQUESTED
-PHONE_INVALID
-APPOINTMENT_BOOKED
-DECLINED
-ESCALATED_TO_PHYSICIAN
-OTHER
-```
+- policy levels: `CLINICIAN_ONLY / MANUAL_APPROVAL / AUTO_GUARDED`؛
+- AUTO_GUARDED فقط برای `appointment_reminder` و `refill_due`؛
+- purpose فقط `CARE`؛
+- policy/template/candidate/decision immutable و append-only؛
+- TTL پیش‌فرض ۲۴ ساعت، bounded در ۱ تا ۷۲ ساعت؛
+- pre-send revalidation کامل؛
+- executor صریح، bounded و بدون GET/startup send؛
+- Flag `FOLLOWUP_SMS_AUTO_GUARDED` با پیش‌فرض OFF؛
+- Issue و PR مستقل runtime، full CI و owner UX review.
 
-قواعد اصلی:
+هر check نامعلوم یا failed باید fail-closed باشد. `CLINICIAN_ONLY` و `MANUAL_APPROVAL` هرگز خودکار ارسال نمی‌شوند.
 
-1. `CALLBACK_REQUESTED` بدون زمان آینده رد می‌شود.
-2. `NO_ANSWER/BUSY` قبل از threshold تماس مجدد می‌سازند.
-3. threshold عدم دسترسی فقط یک escalation ایجاد می‌کند.
-4. `PHONE_INVALID` retry را متوقف و مسیر اصلاح اطلاعات تماس را به پذیرش می‌برد.
-5. `APPOINTMENT_BOOKED` فقط گزارش عملیاتی است؛ نوبت نمی‌سازد و Clinical Task را کامل نمی‌کند.
-6. `ESCALATED_TO_PHYSICIAN` فقط صف بررسی پزشک را ثبت می‌کند، نه تصمیم بالینی.
-7. note آزاد محرک اتوماسیون نیست و در Timeline اصلی نمایش داده نمی‌شود.
-8. exact replay رویداد تکراری نمی‌سازد.
-9. Source Truthهای پیشین، SMS، Appointment، Rule و Accounting تغییر نمی‌کنند.
+## Pre-send checks اجباری
+
+- policy و allowlist؛
+- CARE consent head؛
+- phone canonical freshness؛
+- source event/period هنوز due؛
+- template version/hash و body hash؛
+- candidate expiry؛
+- quiet hours، daily cap و cooldown؛
+- dispatch/idempotency absence؛
+- provider readiness و affinity.
 
 ## Feature Flags
 
-همه default OFF:
-
-```text
-FOLLOWUP_EPISODES_ENABLED
-FOLLOWUP_PROJECTION_SHADOW
-FOLLOWUP_UNIFIED_WORKLIST_READONLY
-FOLLOWUP_UNIFIED_WORKLIST_ACTIONS
-FOLLOWUP_AUTO_ROUTING
-FOLLOWUP_STRUCTURED_CONTACT
-FOLLOWUP_SMS_AUTO_GUARDED
-FOLLOWUP_APPOINTMENT_SYNC
-FOLLOWUP_EVIDENCE_ASSIST
-FOLLOWUP_AUTOMATION_HEALTH
-```
-
-برای FO-5، Flags مربوط به Episode، Projection، Unified Read-only، Actions، Routing و Structured Contact باید صریح روشن شوند. خاموش‌بودن Routing یا Contact، کنترل تماس را مخفی و POST مربوط را 404 می‌کند.
+همه default OFF باقی می‌مانند. FO-6 فقط با `FOLLOWUP_SMS_AUTO_GUARDED=1` وارد executor صریح می‌شود؛ manual approvals و گزارش‌های فعلی با Flag خاموش باقی می‌مانند.
 
 ## دامنهٔ ممنوع
 
-- Governed SMS automation یا تغییر approval policy؛
-- ارسال خودکار SMS؛
-- ساخت، لغو یا تغییر Appointment؛
-- Operational Outbox یا Dead-letter؛
-- Clinical Evidence Assist؛
-- Clinical Task completion یا clinical decision؛
-- Rule یا Hypoglycemia Shadow؛
+- campaign یا MARKETING auto-send؛
+- free-text auto-send؛
+- auto-send برای `CLINICIAN_ONLY` یا `MANUAL_APPROVAL`؛
+- `lapsed`، invite و invoice outreach در allowlist اولیه؛
+- Appointment mutation؛
+- clinical inference/decision/completion؛
+- SMS delivery → Episode transition؛
+- Outbox/dead-letter/cross-channel state machine؛
+- scheduler health یا retry worker جدید؛
+- Rule/Hypoglycemia Shadow؛
 - Write به `clinic_new.db`؛
-- شروع FO-6 تا FO-10.
+- شروع FO-7 تا FO-10.
 
 ## مرزهای دائمی
 
 - Source Truthها authoritative هستند.
-- Episode حقیقت بالینی نیست؛ Projection cache است.
-- eventهای append-only UPDATE/DELETE نمی‌شوند.
+- SMS consent و delivery eventها append-only هستند.
+- `sms_messages` ledger سازگاری و `sms_message_governance` snapshot immutable باقی می‌مانند.
+- هیچ auto-send بدون decision تازه و تمام revalidationها مجاز نیست.
 - Clinical completion نیازمند Evidence و transition معتبر است.
 - Appointment به‌تنهایی Clinical Task را کامل نمی‌کند.
-- mutationها باید idempotent و audit‌شده باشند.
-- stale form و terminal mutation fail closed هستند.
 
 ## PR Contract
 
-هر PR باید Issue، scope، feature flag، permission، idempotency، stale/terminal guard، schema impact، rollback، focused/full tests و proof عدم تغییر SMS/Appointment/Clinical Rule/Accounting را ثبت کند.
+PR اجرای FO-6 باید Issue #109، schema additive، policy/allowlist، feature flag، permission، idempotency، concurrency، expiry/supersession، rollback، focused/full tests و proof عدم تغییر campaign/MARKETING/Appointment/Clinical/Accounting را ثبت کند.
 
-FO-5 اکنون فقط برای Local Owner UX Review یا defect متمرکز تحت Issue #107 باز است؛ بدون `FO5_UX_ACCEPTED = true` و governance مستقل وارد FO-6 نشوید.
+بدون Technical Validation، Local Owner UX Acceptance و governance مستقل وارد FO-7 نشوید.

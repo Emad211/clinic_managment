@@ -2,7 +2,7 @@
 
 > **Program:** `FOUX-V1`
 >
-> **Roadmap version:** `1.2.0`
+> **Roadmap version:** `1.3.0`
 >
 > **Canonical plan:** `specialist_clinic/docs/FOLLOWUP_ORCHESTRATION_UX_V1_IMPLEMENTATION_PLAN.md`
 >
@@ -10,7 +10,7 @@
 >
 > **Environment:** `TEST_ONLY / SYNTHETIC_OR_RESETTABLE`
 >
-> **Current gate:** `FO-5 Local Owner UX Acceptance — Issue #107`
+> **Current gate:** `FO-6 Governed SMS Automation implementation — Issue #109`
 
 ---
 
@@ -48,12 +48,12 @@ FO-1 = 1.0
 FO-2 = 1.0
 FO-3 = 1.0
 FO-4 = 1.0
-FO-5 = 0.8  (technically validated; owner UX pending)
+FO-5 = 1.0
 FO-6..FO-10 = 0.0
 --------------------------------
-Total = 5.8 / 11 = 52.7%
+Total = 6.0 / 11 = 54.5%
 Technical implementation = 6 / 11 = 54.5%
-Remaining = 47.3%
+Remaining = 45.5%
 ```
 
 این درصد فقط برنامهٔ FOUX-V1 را می‌سنجد و معیار آمادگی Production کل مطب نیست.
@@ -69,8 +69,8 @@ Remaining = 47.3%
 | FO-2 | Projection, Next Action & Shadow Parity | `VALIDATED` | `FOLLOWUP_PROJECTION_SHADOW` | FO-1 |
 | FO-3 | Read-only Unified Worklist & Timeline | `VALIDATED_WITH_OWNER_ACCEPTANCE` | `FOLLOWUP_UNIFIED_WORKLIST_READONLY` | FO-2 |
 | FO-4 | Claim, Assignment, Routing & Effective SLA | `VALIDATED_WITH_OWNER_ACCEPTANCE` | `FOLLOWUP_AUTO_ROUTING` | FO-3 |
-| FO-5 | Structured Contact, Retry & Escalation | `TECHNICALLY_VALIDATED_OWNER_UX_PENDING` | `FOLLOWUP_STRUCTURED_CONTACT` | FO-4 + PR #104/#106 |
-| FO-6 | Governed SMS Automation & Freshness | `BLOCKED_NOT_STARTED` | `FOLLOWUP_SMS_AUTO_GUARDED` | FO-5 acceptance + policy approval |
+| FO-5 | Structured Contact, Retry & Escalation | `VALIDATED_WITH_OWNER_ACCEPTANCE` | `FOLLOWUP_STRUCTURED_CONTACT` | FO-4 + PR #104/#106/#108 |
+| FO-6 | Governed SMS Automation & Freshness | `AUTHORIZED_NOT_STARTED` | `FOLLOWUP_SMS_AUTO_GUARDED` | FO-5 acceptance + Issue #109/PR #110 |
 | FO-7 | Cross-channel Transitions & Operational Outbox | `BLOCKED_NOT_STARTED` | `FOLLOWUP_APPOINTMENT_SYNC` | FO-5/FO-6 |
 | FO-8 | Clinical Evidence Assist | `BLOCKED_NOT_STARTED` | `FOLLOWUP_EVIDENCE_ASSIST` | FO-7 + clinical safety review |
 | FO-9 | Automation Health & Operational Control | `BLOCKED_NOT_STARTED` | `FOLLOWUP_AUTOMATION_HEALTH` | FO-7 contracts |
@@ -131,147 +131,64 @@ notes = بررسی شد و مشکل بحرانی مشاهده نشد
 
 ## 5. FO-5 — Structured Contact, Retry & Escalation
 
-### Technical validation evidence
-
-```text
-Authorization Issue #103 / PR #104 / merge 9c296e70511d73dd79a447cc34ef2aeb79f4edd9
-Implementation Issue #105 / PR #106
-Final head 2ab1cb1ec956bb9534dea7dd383b76bbf5fb3f5c
-Merge 94aa2c3eaf335a46e8911a5ac9984e1ff6f4b852
-CI 30865955479
-801 Specialist + 54 Accounting
-```
-
-Technical contract = `PASS`. Local owner UX acceptance = `PENDING` in Issue #107.
-
-Review guide:
-
-```text
-specialist_clinic/docs/FOLLOWUP_ORCHESTRATION_FO5_LOCAL_UX_ACCEPTANCE.md
-```
-
-### Product outcome
-
-ثبت تماس از note آزاد به outcome ساختاریافته تبدیل شود و تماس مجدد یا escalation گم نشود.
-
-### Authorized scope
-
-- outcomeهای ساختاریافته؛
-- Contact Attempt append-only و اتصال به Episode؛
-- callback scheduling با زمان آینده؛
-- retry policy برای `NO_ANSWER` و `BUSY`؛
-- escalation یک‌باره پس از threshold؛
-- workflow شمارهٔ نامعتبر؛
-- CTA و فرم کم‌کلیک در Unified detail؛
-- summary و callback در list/detail/timeline؛
-- idempotency، stale form، permission و terminal guard؛
-- Feature Flag `FOLLOWUP_STRUCTURED_CONTACT` با پیش‌فرض OFF.
-
-### Structured outcomes
-
-```text
-REACHED
-NO_ANSWER
-BUSY
-CALLBACK_REQUESTED
-PHONE_INVALID
-APPOINTMENT_BOOKED
-DECLINED
-ESCALATED_TO_PHYSICIAN
-OTHER
-```
-
-### Required transitions
-
-```text
-NO_ANSWER / BUSY before threshold
-→ callback_at
-→ CALLBACK_AT_TIME
-
-NO_ANSWER / BUSY at threshold
-→ one ESCALATED event
-→ MANAGER queue
-→ no duplicate escalation
-
-PHONE_INVALID
-→ stop retry
-→ FIX_CONTACT_DATA
-→ RECEPTION queue
-
-CALLBACK_REQUESTED
-→ future callback required
-
-APPOINTMENT_BOOKED
-→ WAIT_FOR_APPOINTMENT only
-→ no appointment creation or clinical completion
-
-ESCALATED_TO_PHYSICIAN
-→ PHYSICIAN review queue
-→ no clinical decision
-```
-
-### Safety boundary
-
-- SMS خودکار ارسال نمی‌شود؛
-- Appointment ساخته یا تغییر داده نمی‌شود؛
-- Clinical Task یا Commitment کامل نمی‌شود؛
-- outcome بالینی استنباط نمی‌شود؛
-- note آزاد محرک اتوماسیون مهم نیست؛
-- event قبلی UPDATE/DELETE نمی‌شود؛
-- FO-6+ شروع نمی‌شود.
-
-### Tests
-
-- outcome → next action deterministic؛
-- exact replay بدون duplicate؛
-- callback future validation؛
-- attempt threshold و escalation یک‌باره؛
-- phone-invalid routing؛
-- stale/terminal/permission fail-closed؛
-- Feature OFF → controls hidden و POST=404؛
-- note در Timeline اصلی افشا نشود؛
-- Source Truth، SMS، Appointment، Rule و Accounting بدون تغییر؛
-- full Specialist و Accounting CI.
-
-### Exit gate
-
-- همه outcomeهای مجاز transition مشخص دارند؛
-- callback گم‌شده = صفر در validation؛
-- duplicate contact/escalation = صفر؛
-- automatic clinical decision/completion = صفر؛
-- full CI سبز؛
-- Local Owner UX Acceptance؛
-- governance مستقل برای FO-6.
-
-Current result:
-
 ```text
 Technical validation = PASS
-Owner UX acceptance = PENDING (#107)
-FO-6 authorization = BLOCKED
+Owner UX acceptance = PASS
+Acceptance Issue = #107 completed
+Reviewed runtime = 94aa2c3eaf335a46e8911a5ac9984e1ff6f4b852
+critical_ux_defects = 0
 ```
+
+**State:** `VALIDATED_WITH_OWNER_ACCEPTANCE`.
 
 ---
 
 ## 6. FO-6 — Governed SMS Automation & Freshness
 
-### Scope
+### Authorization evidence
 
-Policy level، template versioning، approval expiry، pre-send revalidation، stale supersession، allowlisted auto-guarded path و audit decision.
+```text
+Issue #109
+Governance PR #110
+Feature Flag FOLLOWUP_SMS_AUTO_GUARDED
+Default OFF
+```
 
-### Safety and exit
+### Authorized outcome
 
-Consent، quiet hours، daily cap، cooldown، phone freshness، template hash و provider readiness fail-closed باشند. `CLINICIAN_ONLY` هرگز خودکار ارسال نشود. Zero stale/duplicate SMS و پذیرش مستقل لازم است.
+فقط `appointment_reminder` و `refill_due` با purpose=`CARE` می‌توانند پس از policy/template/candidate snapshot immutable و pre-send revalidation کامل به مسیر `AUTO_GUARDED` برسند.
 
-**State:** `BLOCKED_NOT_STARTED`.
+### Policy levels
+
+```text
+CLINICIAN_ONLY  → never automatic
+MANUAL_APPROVAL → current manual queue, fresh approval only
+AUTO_GUARDED    → exact administrative CARE allowlist only
+```
+
+### Freshness gate
+
+Consent head، phone، source period، policy، template hash، body hash، expiry، quiet hours، daily cap، cooldown، idempotency و provider باید همگی PASS باشند. هر failure/unknown، send را متوقف و decision audit ثبت می‌کند.
+
+### Execution boundary
+
+ارسال از GET/startup، scheduler پنهان، campaign/MARKETING/free-text، clinical content، Appointment mutation و Outbox/Dead-letter ممنوع است.
+
+### Exit
+
+- stale/duplicate auto-send = صفر؛
+- `CLINICIAN_ONLY` automatic = صفر؛
+- full CI؛
+- local owner UX acceptance؛
+- governance مستقل برای FO-7.
+
+**State:** `AUTHORIZED_NOT_STARTED`.
 
 ---
 
 ## 7. FO-7 — Cross-channel Transitions & Operational Outbox
 
 Operational Outbox، SMS delivered/failed transition، Appointment booked/cancelled/no-show، retry/dead-letter و administrative goal completion؛ بدون تکمیل خودکار Clinical Task.
-
-**Exit:** lost transition=0، replay-safe، dead-letter visible و rollback rehearsal.
 
 **State:** `BLOCKED_NOT_STARTED`.
 
@@ -281,8 +198,6 @@ Operational Outbox، SMS delivered/failed transition، Appointment booked/cancel
 
 Required-evidence reader، candidate matcher، provenance/confidence UI و accept/reject handoff؛ بدون auto-completion یا Fact mutation.
 
-**Exit:** zero completion without explicit authorized confirmation و clinical safety approval.
-
 **State:** `BLOCKED_NOT_STARTED`.
 
 ---
@@ -291,32 +206,13 @@ Required-evidence reader، candidate matcher، provenance/confidence UI و accep
 
 Scheduler heartbeat، job history، outbox/dead-letter، projection lag، stale approval monitor، safe retry controls و runbook.
 
-**Exit:** hidden critical failure=0 و recovery rehearsal.
-
 **State:** `BLOCKED_NOT_STARTED`.
 
 ---
 
 ## 10. FO-10 — Controlled Pilot, KPI Proof, Cutover & Legacy Retirement
 
-### KPI gates
-
-```text
-100% open items have next action/wait/block
-100% items have owner role or explicit unassigned reason
-median time to identify next action <= 5 seconds
-primary action starts in <= 2 interactions
-zero stale SMS sent
-zero duplicate mutation on scheduler rerun
-zero clinical completion without evidence
-zero hidden critical automation failure
->=80% reduction in routine SMS manual approval
-unassigned overdue <5% in pilot
-reduced cross-screen navigation
-reduced manual callback scheduling
-```
-
-Security/privacy review، clinical safety review، migration/rebuild rehearsal، rollback rehearsal، user acceptance و لغو صریح TEST_ONLY پیش از PHI واقعی لازم است.
+Security/privacy، clinical safety، migration/rebuild، rollback rehearsal، user acceptance و لغو صریح TEST_ONLY پیش از PHI واقعی لازم است.
 
 **State:** `BLOCKED_NOT_STARTED`.
 
@@ -325,27 +221,27 @@ Security/privacy review، clinical safety review، migration/rebuild rehearsal،
 ## 11. Exact continuation point
 
 ```text
-CURRENT = FO-5 Local Owner UX Acceptance
-ISSUE   = #107
-REVIEW  = merge 94aa2c3eaf335a46e8911a5ac9984e1ff6f4b852
-GUIDE   = docs/FOLLOWUP_ORCHESTRATION_FO5_LOCAL_UX_ACCEPTANCE.md
-THEN    = record owner acceptance and update governance state
-FO-6+   = BLOCKED
+CURRENT = FO-6 Governed SMS Automation & Freshness implementation
+ISSUE   = #109
+BASE    = main after governance PR #110
+THEN    = technical validation and local owner UX acceptance
+FO-7+   = BLOCKED
 ```
 
 کار مجاز:
 
-- اجرای review فقط روی دادهٔ TEST_ONLY؛
-- ثبت defect متمرکز FO-5 در صورت مشاهده؛
-- اصلاح محدود همان defect با CI کامل؛
-- ثبت attestation مالک در Issue #107.
+- Issue و PR مستقل runtime؛
+- additive append-only policy/template/candidate/decision storage؛
+- allowlist دقیق `appointment_reminder/refill_due`؛
+- CARE-only pre-send revalidation؛
+- executor صریح و bounded؛
+- Feature Flag OFF by default؛
+- full CI و owner review.
 
 کار غیرمجاز:
 
-- توسعهٔ بیشتر FO-5 خارج از defect review؛
-- SMS automation؛
+- campaign/MARKETING/free-text یا clinical auto-send؛
 - Appointment mutation؛
-- Outbox/Dead-letter؛
-- Clinical Evidence Assist؛
-- تصمیم یا تکمیل بالینی؛
-- FO-6 تا FO-10.
+- delivery transition به Episode؛
+- Outbox/dead-letter/scheduler health؛
+- FO-7 تا FO-10.
