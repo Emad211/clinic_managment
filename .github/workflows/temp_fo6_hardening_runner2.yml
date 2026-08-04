@@ -1,0 +1,117 @@
+name: Temporary final FO-6 hardening
+
+on:
+  push:
+    branches:
+      - feature/foux-v1-fo6-governed-sms
+    paths:
+      - .github/workflows/temp_fo6_hardening_runner2.yml
+  pull_request:
+    branches:
+      - main
+    paths:
+      - .github/workflows/temp_fo6_hardening_runner2.yml
+
+permissions:
+  contents: write
+
+jobs:
+  harden:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/foux-v1-fo6-governed-sms
+      - name: Apply final focused hardening
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          schema = Path('specialist_clinic/src/adapters/sqlite/sms_auto_guard_schema.py')
+          text = schema.read_text(encoding='utf-8')
+          old = '''    UNIQUE(policy_key, version),
+    UNIQUE(policy_key, content_hash)
+'''
+          if old not in text:
+              raise SystemExit('policy historical hash uniqueness block missing')
+          text = text.replace(old, '    UNIQUE(policy_key, version)\n', 1)
+          old = '''    UNIQUE(event_key, version),
+    UNIQUE(event_key, content_hash)
+'''
+          if old not in text:
+              raise SystemExit('template historical hash uniqueness block missing')
+          text = text.replace(old, '    UNIQUE(event_key, version)\n', 1)
+          schema.write_text(text, encoding='utf-8')
+
+          repo = Path('specialist_clinic/src/adapters/sqlite/sms_auto_guard_repo.py')
+          text = repo.read_text(encoding='utf-8')
+          start = text.index('        except sqlite3.IntegrityError:\n', text.index('def publish_policy'))
+          end = text.index('        row = self.db.execute(\n', start)
+          block = text[start:end]
+          if 'sms_auto_guard_policy_versions' not in block:
+              raise SystemExit('policy conflict block did not contain expected query')
+          replacement = '''        except sqlite3.IntegrityError:
+            self.db.rollback()
+            current = self.latest_policy(policy_key)
+            if current and str(current["content_hash"]) == digest:
+                return current, False
+            raise
+'''
+          text = text[:start] + replacement + text[end:]
+          start = text.index('        except sqlite3.IntegrityError:\n', text.index('def publish_template'))
+          end = text.index('        row = self.db.execute(\n', start)
+          block = text[start:end]
+          if 'sms_auto_guard_template_versions' not in block:
+              raise SystemExit('template conflict block did not contain expected query')
+          replacement = '''        except sqlite3.IntegrityError:
+            self.db.rollback()
+            current = self.latest_template(event_key)
+            if current and str(current["content_hash"]) == digest:
+                return current, False
+            raise
+'''
+          text = text[:start] + replacement + text[end:]
+          repo.write_text(text, encoding='utf-8')
+
+          service = Path('specialist_clinic/src/services/sms/auto_guard_service.py')
+          text = service.read_text(encoding='utf-8')
+          old = '''        current = _now(now)
+        repo = SmsAutoGuardRepository(self.db, ensure=True)
+        candidate = repo.get_candidate(candidate_id)
+'''
+          new = '''        current = _now(now)
+        repo = SmsAutoGuardRepository(self.db)
+        if not repo.ready():
+            if not _flag_enabled():
+                return {
+                    "ok": False,
+                    "candidate_id": int(candidate_id),
+                    "reason": "FEATURE_DISABLED",
+                }
+            repo = SmsAutoGuardRepository(self.db, ensure=True)
+        candidate = repo.get_candidate(candidate_id)
+'''
+          if text.count(old) != 1:
+              raise SystemExit(f'execute safe-off marker count={text.count(old)}')
+          service.write_text(text.replace(old, new, 1), encoding='utf-8')
+
+          tests = Path('specialist_clinic/tests/test_followup_orchestration_fo6_sms_auto_guard.py')
+          text = tests.read_text(encoding='utf-8')
+          text = text.replace(
+              '    assert "scheduler" not in service.lower()\n',
+              '    assert "apscheduler" not in service.lower()\n',
+              1,
+          )
+          tests.write_text(text, encoding='utf-8')
+          PY
+      - name: Commit and remove temporary workflows
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/temp_fo6_hardening.yml
+          git rm .github/workflows/temp_fo6_hardening_runner.yml
+          git rm .github/workflows/temp_fo6_hardening_runner2.yml
+          git add specialist_clinic/src specialist_clinic/tests
+          git commit -m "fix(foux): harden FO-6 versioning and safe-off execution"
+          git push origin HEAD:feature/foux-v1-fo6-governed-sms
