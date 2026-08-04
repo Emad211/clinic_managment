@@ -57,6 +57,13 @@ def test_fo5_owner_acceptance_and_fo6_authorization_are_consistent():
     assert freeze["followup_orchestration_fo6"].startswith("AUTHORIZED_IMPLEMENTATION_ONLY")
     assert freeze["followup_orchestration_fo7_and_later"].startswith("BLOCKED")
 
+    programs = state["operational_programs"]
+    assert "FOUX_V1_FO_5_TECHNICALLY_VALIDATED_OWNER_UX_PENDING" not in programs
+    assert "FOUX_V1_FO_6_AND_LATER_BLOCKED" not in programs
+    assert "FOUX_V1_FO_5_VALIDATED_WITH_OWNER_ACCEPTANCE" in programs
+    assert "FOUX_V1_FO_6_AUTHORIZED_NOT_STARTED" in programs
+    assert "FOUX_V1_FO_7_AND_LATER_BLOCKED" in programs
+
 
 def test_docs_keep_fo6_bounded_and_fo7_blocked():
     plan = (SPECIALIST / "docs" / "FOLLOWUP_ORCHESTRATION_UX_V1_IMPLEMENTATION_PLAN.md").read_text(encoding="utf-8")
@@ -76,3 +83,13 @@ def test_docs_keep_fo6_bounded_and_fo7_blocked():
         assert value in plan or value in roadmap or value in agent
     assert "campaign/MARKETING/free-text" in plan
     assert "CURRENT = FO-6 Governed SMS Automation" in roadmap
+
+
+def test_temporary_fo6_governance_workflows_are_absent():
+    workflows = ROOT / ".github" / "workflows"
+    for name in (
+        "temp_fo6_authorization.yml",
+        "temp_fo6_runner.yml",
+        "temp_fo6_test_repair.yml",
+    ):
+        assert not (workflows / name).exists()
