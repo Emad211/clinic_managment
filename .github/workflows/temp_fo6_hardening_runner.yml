@@ -1,0 +1,57 @@
+name: Temporary FO-6 hardening runner
+
+on:
+  push:
+    branches:
+      - feature/foux-v1-fo6-governed-sms
+    paths:
+      - .github/workflows/temp_fo6_hardening_runner.yml
+  pull_request:
+    branches:
+      - main
+    paths:
+      - .github/workflows/temp_fo6_hardening_runner.yml
+      - .github/workflows/temp_fo6_hardening.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/foux-v1-fo6-governed-sms
+      - name: Extract and apply hardening patch
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          workflow = Path('.github/workflows/temp_fo6_hardening.yml')
+          lines = workflow.read_text(encoding='utf-8').splitlines()
+          start = next(
+              i for i, line in enumerate(lines)
+              if line.strip() == "python - <<'PY'"
+          ) + 1
+          end = next(
+              i for i in range(start, len(lines))
+              if lines[i].strip() == 'PY'
+          )
+          body = [line[10:] if line.startswith('          ') else line for line in lines[start:end]]
+          Path('.tmp_fo6_hardening.py').write_text(
+              '\n'.join(body) + '\n', encoding='utf-8'
+          )
+          PY
+          python .tmp_fo6_hardening.py
+          rm .tmp_fo6_hardening.py
+      - name: Commit and remove temporary workflows
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/temp_fo6_hardening.yml
+          git rm .github/workflows/temp_fo6_hardening_runner.yml
+          git add specialist_clinic/src specialist_clinic/tests
+          git commit -m "fix(foux): harden FO-6 versioning and safe-off execution"
+          git push origin HEAD:feature/foux-v1-fo6-governed-sms
