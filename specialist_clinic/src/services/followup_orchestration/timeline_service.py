@@ -1,23 +1,28 @@
-"""Deterministic, PHI-minimized Timeline for FO-3 episode detail.
+"""Deterministic, PHI-minimized Unified Follow-up Timeline.
 
-The Timeline is a read model only.  It combines append-only Episode events with
-current source-state snapshots and deliberately omits free-text notes, SMS bodies,
-and clinical values.
+The Timeline combines Episode events with current source-state snapshots. It
+intentionally omits free notes, SMS bodies and clinical values. FO-5 contact
+events expose only their structured outcome, callback and operational next action.
 """
 from __future__ import annotations
 
 from datetime import datetime
+import json
 import sqlite3
 
 from src.services.followup_orchestration.source_state import (
     FollowupSourceStateReader,
+)
+from src.services.followup_orchestration.structured_contact_service import (
+    NEXT_ACTION_LABELS,
+    OUTCOME_LABELS,
 )
 
 
 EPISODE_EVENT_LABELS = {
     "EPISODE_OPENED": "مسیر پیگیری ایجاد شد",
     "SOURCE_LINKED": "یک منبع معتبر به مسیر متصل شد",
-    "ROUTED": "صف پیشنهادی مسیر تغییر کرد",
+    "ROUTED": "صف مسئول مسیر تغییر کرد",
     "CLAIMED": "مسیر برای رسیدگی دریافت شد",
     "ASSIGNED": "مسئول مسیر تغییر کرد",
     "ACTION_DUE_CHANGED": "زمان اقدام تغییر کرد",
@@ -65,7 +70,23 @@ STATUS_LABELS = {
     "REJECTED": "ردشده",
     "FAILED": "ناموفق",
     "UNAVAILABLE": "منبع در دسترس نیست",
+    "REACHED": "تماس موفق",
+    "NO_ANSWER": "پاسخ نداد",
+    "BUSY": "خط مشغول بود",
+    "WRONG_NUMBER": "شماره نامعتبر",
+    "CALLBACK_REQUESTED": "درخواست تماس مجدد",
+    "DECLINED": "عدم پذیرش ادامهٔ پیگیری",
+    "BOOKED": "نوبت اعلام‌شده",
+    "OTHER": "نتیجهٔ دیگر",
 }
+
+
+def _payload(value: object) -> dict:
+    try:
+        parsed = json.loads(str(value or "{}"))
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
 
 
 def _time_key(value: object) -> tuple[int, str]:
@@ -77,6 +98,53 @@ def _time_key(value: object) -> tuple[int, str]:
         return (0, parsed.isoformat(timespec="seconds"))
     except ValueError:
         return (0, rendered)
+
+
+def _episode_presentation(event_type: str, data: dict) -> tuple[str, str]:
+    title = EPISODE_EVENT_LABELS.get(event_type, "رویداد مسیر پیگیری")
+    subtitle = "تاریخچهٔ افزایشی مسیر"
+
+    if event_type == "CONTACT_RECORDED":
+        outcome = str(data.get("structured_outcome") or "").upper()
+        next_action = str(data.get("next_action_code") or "").upper()
+        title = f"نتیجهٔ تماس: {OUTCOME_LABELS.get(outcome, 'ثبت شد')}"
+        subtitle = (
+            "اقدام بعدی: "
+            + NEXT_ACTION_LABELS.get(next_action, "ادامهٔ مسیر فعلی")
+        )
+        callback_at = str(data.get("callback_at") or "").strip()
+        if callback_at:
+            subtitle += f" — تماس مجدد: {callback_at}"
+    elif event_type == "WAITING_STARTED" and (
+        str(data.get("reason_code") or "") == "CONTACT_CALLBACK"
+    ):
+        title = "تماس مجدد زمان‌بندی شد"
+        callback_at = str(data.get("callback_at") or "").strip()
+        subtitle = (
+            f"زمان تماس مجدد: {callback_at}"
+            if callback_at
+            else "در انتظار تماس مجدد"
+        )
+    elif event_type == "ESCALATED":
+        reason = str(data.get("reason_code") or "")
+        if reason == "UNREACHABLE_THRESHOLD":
+            title = "پس از چند تلاش، بیمار در دسترس نبود"
+            subtitle = "مورد برای بررسی مدیر عملیات ارجاع شد."
+        elif reason == "CONTACT_ESCALATED_TO_PHYSICIAN":
+            title = "تماس برای بررسی پزشک ارجاع شد"
+            subtitle = "این ارجاع فقط عملیاتی است و تصمیم بالینی ایجاد نمی‌کند."
+    elif event_type == "ROUTED":
+        reason = str(data.get("reason_code") or "")
+        if reason == "CONTACT_PHONE_INVALID":
+            title = "مسیر برای اصلاح اطلاعات تماس به پذیرش ارجاع شد"
+            subtitle = "شمارهٔ نامعتبر ثبت شد؛ ارسال پیام یا تماس مجدد اجرا نشد."
+        elif reason == "UNREACHABLE_THRESHOLD":
+            title = "مسیر به صف مدیر عملیات منتقل شد"
+            subtitle = "علت: عدم دسترسی پس از تعداد تلاش مجاز"
+        elif reason == "CONTACT_ESCALATED_TO_PHYSICIAN":
+            title = "مسیر به صف بررسی پزشک منتقل شد"
+            subtitle = "بدون تولید تصمیم یا نتیجهٔ بالینی"
+    return title, subtitle
 
 
 class FollowupTimelineService:
@@ -108,7 +176,7 @@ class FollowupTimelineService:
         if self._table("followup_episode_events"):
             events = self.db.execute(
                 """SELECT id, event_type, effective_at, recorded_at,
-                          actor_username, content_hash
+                          actor_username, content_hash, payload_json
                    FROM followup_episode_events
                    WHERE episode_id=?
                    ORDER BY effective_at, recorded_at, id""",
@@ -116,24 +184,60 @@ class FollowupTimelineService:
             ).fetchall()
             for event in events:
                 event_type = str(event["event_type"])
+                data = _payload(event["payload_json"])
+                title, subtitle = _episode_presentation(event_type, data)
+                audit = {
+                    "event_id": int(event["id"]),
+                    "event_type": event_type,
+                    "actor": str(event["actor_username"]),
+                    "content_hash": str(event["content_hash"]),
+                }
+                # Expose only bounded operational codes. Free note text never
+                # leaves the authoritative contact row.
+                for key in (
+                    "structured_outcome",
+                    "next_action_code",
+                    "callback_at",
+                    "reason_code",
+                    "target_role",
+                    "contact_event_id",
+                    "failed_attempt_count",
+                    "note_present",
+                ):
+                    if key in data:
+                        audit[key] = data.get(key)
                 nodes.append(
                     {
                         "kind": "EPISODE_EVENT",
                         "occurred_at": str(event["effective_at"]),
                         "recorded_at": str(event["recorded_at"]),
-                        "title": EPISODE_EVENT_LABELS.get(
-                            event_type, "رویداد مسیر پیگیری"
-                        ),
-                        "subtitle": "تاریخچهٔ افزایشی مسیر",
+                        "title": title,
+                        "subtitle": subtitle,
                         "status_label": None,
-                        "source_label": "مسیر پیگیری",
-                        "warning": False,
-                        "audit": {
-                            "event_id": int(event["id"]),
-                            "event_type": event_type,
-                            "actor": str(event["actor_username"]),
-                            "content_hash": str(event["content_hash"]),
-                        },
+                        "source_label": (
+                            "تماس"
+                            if event_type in {
+                                "CONTACT_RECORDED",
+                                "WAITING_STARTED",
+                            }
+                            and (
+                                event_type == "CONTACT_RECORDED"
+                                or data.get("reason_code") == "CONTACT_CALLBACK"
+                            )
+                            else "مسیر پیگیری"
+                        ),
+                        "warning": bool(
+                            event_type == "ESCALATED"
+                            or (
+                                event_type == "ROUTED"
+                                and data.get("reason_code")
+                                in {
+                                    "CONTACT_PHONE_INVALID",
+                                    "UNREACHABLE_THRESHOLD",
+                                }
+                            )
+                        ),
+                        "audit": audit,
                     }
                 )
 

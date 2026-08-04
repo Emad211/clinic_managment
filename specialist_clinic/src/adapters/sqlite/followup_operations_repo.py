@@ -70,6 +70,7 @@ class FollowupOperationsRepository:
         idempotency_key: str,
         actor_user_id: int | None = None,
         occurred_at: datetime | str | None = None,
+        recorded_at: datetime | str | None = None,
         note: str | None = None,
         next_contact_at: datetime | str | None = None,
         journey_id: str | None = None,
@@ -90,8 +91,10 @@ class FollowupOperationsRepository:
                 raise FollowupContactConflict("contact idempotency scope mismatch")
             return dict(prior)
 
-        recorded = _text()
+        recorded = _text(recorded_at)
         occurred = _text(occurred_at or recorded)
+        if datetime.fromisoformat(recorded) < datetime.fromisoformat(occurred):
+            recorded = occurred
         next_contact = _text(next_contact_at) if next_contact_at else None
         payload = {
             "task_id": int(task_id),

@@ -370,9 +370,12 @@ def test_templates_and_registration_preserve_read_only_boundary():
 
     assert "unified_followups_bp" in app_source
     assert "@bp.get" in route_source
-    assert route_source.count("@bp.post") == 4
+    assert route_source.count("@bp.post") == 5
     assert "_require_actions_flag()" in route_source
     assert "_require_routing_flag()" in route_source
+    assert "_require_structured_contact_flag()" in route_source
+    assert "FOLLOWUP_STRUCTURED_CONTACT" in route_source
+    assert "def record_contact" in route_source
     assert "methods=[\"POST\"]" not in route_source
     assert "FOLLOWUP_UNIFIED_WORKLIST_READONLY" in route_source
     assert 'method="post"' not in list_page.lower()

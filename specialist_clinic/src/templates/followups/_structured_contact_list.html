@@ -1,0 +1,16 @@
+{% if structured_contact_enabled and item.contact and item.contact.has_contact %}
+<div class="card card-soft"
+     style="box-shadow:none;margin-top:var(--s2);padding:var(--s2);">
+    <div class="muted text-xs">
+        آخرین تماس: <b>{{ item.contact.outcome_label }}</b>
+    </div>
+    <div class="muted text-xs">
+        اقدام بعدی: {{ item.contact.next_action_label or 'ادامهٔ مسیر فعلی' }}
+    </div>
+    {% if item.contact.callback_at %}
+    <span class="badge badge-info">
+        تماس مجدد: {{ item.contact.callback_at|jalali }}
+    </span>
+    {% endif %}
+</div>
+{% endif %}

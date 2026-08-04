@@ -1,6 +1,7 @@
-"""FO-3 read model plus feature-gated FO-4 ownership actions."""
+"""Unified Follow-up Worklist with feature-gated FO-4 and FO-5 actions."""
 from __future__ import annotations
 
+from datetime import datetime
 import secrets
 import sqlite3
 
@@ -17,7 +18,8 @@ from flask import (
 )
 
 from src.adapters.sqlite.core import get_db
-from src.common.utils import iran_now
+from src.adapters.sqlite.followup_episode_repo import FollowupEpisodeRepository
+from src.common.utils import iran_now, jalali_to_gregorian_str
 from src.security.permissions import Permission, has_permission, permission_required
 from src.services.followup_orchestration.ownership_service import (
     FollowupOwnershipError,
@@ -31,7 +33,14 @@ from src.services.followup_orchestration.read_model_service import (
     SLA_LABELS,
     STATE_LABELS,
 )
-from src.services.followup_orchestration.timeline_service import FollowupTimelineService
+from src.services.followup_orchestration.structured_contact_service import (
+    FollowupStructuredContactError,
+    FollowupStructuredContactService,
+    OUTCOME_LABELS as CONTACT_OUTCOME_LABELS,
+)
+from src.services.followup_orchestration.timeline_service import (
+    FollowupTimelineService,
+)
 
 
 bp = Blueprint("unified_followups", __name__, url_prefix="/followups/unified")
@@ -52,6 +61,38 @@ def _require_routing_flag() -> None:
     _require_actions_flag()
     if not current_app.config.get("FOLLOWUP_AUTO_ROUTING", False):
         abort(404)
+
+
+def _require_structured_contact_flag() -> None:
+    _require_routing_flag()
+    if not current_app.config.get("FOLLOWUP_STRUCTURED_CONTACT", False):
+        abort(404)
+
+
+def _contact_callback_value() -> str | None:
+    date_j = str(request.form.get("callback_date") or "").strip()
+    time_s = str(request.form.get("callback_time") or "").strip()
+    if not date_j and not time_s:
+        return None
+    if not date_j or not time_s:
+        raise FollowupStructuredContactError(
+            "INVALID_CALLBACK_AT",
+            "برای تماس مجدد، تاریخ و ساعت را کامل وارد کنید.",
+        )
+    date_g = jalali_to_gregorian_str(date_j)
+    if not date_g:
+        raise FollowupStructuredContactError(
+            "INVALID_CALLBACK_AT",
+            "تاریخ شمسی تماس مجدد معتبر نیست.",
+        )
+    try:
+        normalized_time = datetime.strptime(time_s, "%H:%M").strftime("%H:%M")
+    except ValueError as exc:
+        raise FollowupStructuredContactError(
+            "INVALID_CALLBACK_AT",
+            "ساعت تماس مجدد معتبر نیست.",
+        ) from exc
+    return f"{date_g} {normalized_time}:00"
 
 
 def _read_failure() -> dict:
@@ -81,7 +122,20 @@ def _redirect_detail(episode_id: str):
 
 def _handle_ownership_error(error: FollowupOwnershipError, episode_id: str):
     category = "warning" if error.code in {
-        "STALE_OWNERSHIP_FORM", "ALREADY_CLAIMED"
+        "STALE_OWNERSHIP_FORM",
+        "ALREADY_CLAIMED",
+    } else "error"
+    flash(error.message, category)
+    return _redirect_detail(episode_id)
+
+
+def _handle_contact_error(
+    error: FollowupStructuredContactError,
+    episode_id: str,
+):
+    category = "warning" if error.code in {
+        "STALE_CONTACT_FORM",
+        "CONTACT_IDEMPOTENCY_CONFLICT",
     } else "error"
     flash(error.message, category)
     return _redirect_detail(episode_id)
@@ -108,17 +162,29 @@ def index():
         sla_state=request.args.get("sla"),
         now=iran_now().replace(tzinfo=None, microsecond=0),
     )
+    actions_enabled = bool(
+        current_app.config.get("FOLLOWUP_UNIFIED_WORKLIST_ACTIONS", False)
+    )
+    routing_enabled = bool(
+        current_app.config.get("FOLLOWUP_AUTO_ROUTING", False)
+    )
+    structured_contact_enabled = bool(
+        actions_enabled
+        and routing_enabled
+        and current_app.config.get("FOLLOWUP_STRUCTURED_CONTACT", False)
+    )
     if model.get("projection_ready"):
         FollowupOwnershipService(db).decorate_items(model["items"])
+        if structured_contact_enabled:
+            FollowupStructuredContactService(db).decorate_items(model["items"])
     return render_template(
         "followups/unified_worklist.html",
         model=model,
         state_labels=STATE_LABELS,
         role_labels=ROLE_LABELS,
         sla_labels=SLA_LABELS,
-        actions_enabled=bool(
-            current_app.config.get("FOLLOWUP_UNIFIED_WORKLIST_ACTIONS", False)
-        ),
+        actions_enabled=actions_enabled,
+        structured_contact_enabled=structured_contact_enabled,
         hub_tab="unified",
         hub_pending=0,
         alert_pending=0,
@@ -157,6 +223,11 @@ def detail(episode_id: str):
     routing_enabled = bool(
         current_app.config.get("FOLLOWUP_AUTO_ROUTING", False)
     )
+    structured_contact_enabled = bool(
+        actions_enabled
+        and routing_enabled
+        and current_app.config.get("FOLLOWUP_STRUCTURED_CONTACT", False)
+    )
     capabilities = (
         ownership_service.capabilities(episode_id=episode_id, actor=g.user)
         if actions_enabled
@@ -173,15 +244,40 @@ def detail(episode_id: str):
         else []
     )
 
+    contact_summary = None
+    contact_capabilities = {
+        "can_record": False,
+        "reason": None,
+        "task_id": None,
+    }
+    contact_expected_event_id = 0
+    if structured_contact_enabled:
+        contact_service = FollowupStructuredContactService(db)
+        contact_summary = contact_service.summary(episode_id)
+        contact_capabilities = contact_service.capabilities(
+            episode_id=episode_id,
+            actor=g.user,
+        )
+        current_event = FollowupEpisodeRepository(db).current_event(episode_id)
+        contact_expected_event_id = (
+            int(current_event["id"]) if current_event else 0
+        )
+
     deep_links = [
         {
             "label": "بازکردن ورک‌لیست فعلی",
-            "href": url_for("followups.worklist", q=item.get("patient_name") or ""),
+            "href": url_for(
+                "followups.worklist",
+                q=item.get("patient_name") or "",
+            ),
             "primary": True,
         },
         {
             "label": "بازکردن پروندهٔ بیمار",
-            "href": url_for("patients.detail", pid=item["patient_link_id"]),
+            "href": url_for(
+                "patients.detail",
+                pid=item["patient_link_id"],
+            ),
             "primary": False,
         },
     ]
@@ -214,6 +310,12 @@ def detail(episode_id: str):
         ownership_action_token=secrets.token_hex(16),
         actions_enabled=actions_enabled,
         routing_enabled=routing_enabled,
+        structured_contact_enabled=structured_contact_enabled,
+        contact_summary=contact_summary,
+        contact_capabilities=contact_capabilities,
+        contact_outcome_labels=CONTACT_OUTCOME_LABELS,
+        contact_expected_event_id=contact_expected_event_id,
+        contact_action_token=secrets.token_hex(16),
         hub_tab="unified",
         hub_pending=0,
         alert_pending=0,
@@ -248,7 +350,10 @@ def release(episode_id: str):
             actor=g.user,
             expected_event_id=request.form.get("expected_event_id"),
             idempotency_key=request.form.get("idempotency_key", ""),
-            reason_code=request.form.get("reason_code", "OWNER_RELEASE"),
+            reason_code=request.form.get(
+                "reason_code",
+                "OWNER_RELEASE",
+            ),
         )
     except FollowupOwnershipError as error:
         return _handle_ownership_error(error, episode_id)
@@ -267,7 +372,10 @@ def assign(episode_id: str):
             actor=g.user,
             expected_event_id=request.form.get("expected_event_id"),
             idempotency_key=request.form.get("idempotency_key", ""),
-            reason_code=request.form.get("reason_code", "MANAGER_ASSIGN"),
+            reason_code=request.form.get(
+                "reason_code",
+                "MANAGER_ASSIGN",
+            ),
         )
     except (FollowupOwnershipError, TypeError, ValueError) as error:
         if isinstance(error, FollowupOwnershipError):
@@ -289,11 +397,46 @@ def route(episode_id: str):
             actor=g.user,
             expected_event_id=request.form.get("expected_event_id"),
             idempotency_key=request.form.get("idempotency_key", ""),
-            reason_code=request.form.get("reason_code", "MANAGER_ROUTE"),
+            reason_code=request.form.get(
+                "reason_code",
+                "MANAGER_ROUTE",
+            ),
         )
     except FollowupOwnershipError as error:
         return _handle_ownership_error(error, episode_id)
-    flash("صف مسئول تغییر کرد؛ مورد اکنون بدون مسئول فردی در صف جدید است.", "success")
+    flash(
+        "صف مسئول تغییر کرد؛ مورد اکنون بدون مسئول فردی در صف جدید است.",
+        "success",
+    )
+    return _redirect_detail(episode_id)
+
+
+@bp.post("/<episode_id>/contact")
+@permission_required(Permission.CLINICAL_TASK_VIEW)
+def record_contact(episode_id: str):
+    _require_structured_contact_flag()
+    try:
+        summary = FollowupStructuredContactService(get_db()).record(
+            episode_id=episode_id,
+            actor=g.user,
+            structured_outcome=request.form.get("structured_outcome"),
+            expected_event_id=request.form.get("expected_event_id"),
+            idempotency_key=request.form.get("idempotency_key", ""),
+            callback_at=_contact_callback_value(),
+            note=request.form.get("note") or None,
+            now=iran_now(),
+        )
+    except FollowupStructuredContactError as error:
+        return _handle_contact_error(error, episode_id)
+    if summary.get("callback_at"):
+        flash("نتیجهٔ تماس و زمان تماس مجدد ثبت شد.", "success")
+    elif summary.get("escalated"):
+        flash(
+            "نتیجهٔ تماس ثبت و مسیر برای بررسی بالاتر ارجاع شد.",
+            "success",
+        )
+    else:
+        flash("نتیجهٔ تماس ثبت شد.", "success")
     return _redirect_detail(episode_id)
 
 
