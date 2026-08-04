@@ -1,6 +1,7 @@
 """Unified Follow-up Worklist with feature-gated FO-4 and FO-5 actions."""
 from __future__ import annotations
 
+from datetime import datetime
 import secrets
 import sqlite3
 
@@ -18,7 +19,7 @@ from flask import (
 
 from src.adapters.sqlite.core import get_db
 from src.adapters.sqlite.followup_episode_repo import FollowupEpisodeRepository
-from src.common.utils import iran_now
+from src.common.utils import iran_now, jalali_to_gregorian_str
 from src.security.permissions import Permission, has_permission, permission_required
 from src.services.followup_orchestration.ownership_service import (
     FollowupOwnershipError,
@@ -63,9 +64,35 @@ def _require_routing_flag() -> None:
 
 
 def _require_structured_contact_flag() -> None:
-    _require_actions_flag()
+    _require_routing_flag()
     if not current_app.config.get("FOLLOWUP_STRUCTURED_CONTACT", False):
         abort(404)
+
+
+def _contact_callback_value() -> str | None:
+    date_j = str(request.form.get("callback_date") or "").strip()
+    time_s = str(request.form.get("callback_time") or "").strip()
+    if not date_j and not time_s:
+        return None
+    if not date_j or not time_s:
+        raise FollowupStructuredContactError(
+            "INVALID_CALLBACK_AT",
+            "برای تماس مجدد، تاریخ و ساعت را کامل وارد کنید.",
+        )
+    date_g = jalali_to_gregorian_str(date_j)
+    if not date_g:
+        raise FollowupStructuredContactError(
+            "INVALID_CALLBACK_AT",
+            "تاریخ شمسی تماس مجدد معتبر نیست.",
+        )
+    try:
+        normalized_time = datetime.strptime(time_s, "%H:%M").strftime("%H:%M")
+    except ValueError as exc:
+        raise FollowupStructuredContactError(
+            "INVALID_CALLBACK_AT",
+            "ساعت تماس مجدد معتبر نیست.",
+        ) from exc
+    return f"{date_g} {normalized_time}:00"
 
 
 def _read_failure() -> dict:
@@ -138,8 +165,12 @@ def index():
     actions_enabled = bool(
         current_app.config.get("FOLLOWUP_UNIFIED_WORKLIST_ACTIONS", False)
     )
+    routing_enabled = bool(
+        current_app.config.get("FOLLOWUP_AUTO_ROUTING", False)
+    )
     structured_contact_enabled = bool(
         actions_enabled
+        and routing_enabled
         and current_app.config.get("FOLLOWUP_STRUCTURED_CONTACT", False)
     )
     if model.get("projection_ready"):
@@ -194,6 +225,7 @@ def detail(episode_id: str):
     )
     structured_contact_enabled = bool(
         actions_enabled
+        and routing_enabled
         and current_app.config.get("FOLLOWUP_STRUCTURED_CONTACT", False)
     )
     capabilities = (
@@ -390,7 +422,7 @@ def record_contact(episode_id: str):
             structured_outcome=request.form.get("structured_outcome"),
             expected_event_id=request.form.get("expected_event_id"),
             idempotency_key=request.form.get("idempotency_key", ""),
-            callback_at=request.form.get("callback_at") or None,
+            callback_at=_contact_callback_value(),
             note=request.form.get("note") or None,
             now=iran_now(),
         )
