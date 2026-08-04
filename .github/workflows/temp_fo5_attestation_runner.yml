@@ -45,8 +45,13 @@ jobs:
                   body.append(line[10:])
               else:
                   body.append(line)
+          source = '\n'.join(body) + '\n'
+          source = source.replace(
+              'for value in state["status_tags"]',
+              'for value in state.get("status_tags", [])',
+          )
           script = Path('.tmp_apply_fo5_attestation.py')
-          script.write_text('\n'.join(body) + '\n', encoding='utf-8')
+          script.write_text(source, encoding='utf-8')
           PY
           python .tmp_apply_fo5_attestation.py
           rm .tmp_apply_fo5_attestation.py
