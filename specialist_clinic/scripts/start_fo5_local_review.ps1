@@ -44,9 +44,10 @@ try {
         "FOLLOWUP_EVIDENCE_ASSIST",
         "FOLLOWUP_AUTOMATION_HEALTH"
     )
+    $ManagedNames = $FlagNames + $BlockedFlagNames + @("SPECIALIST_DB_PATH")
 
     $PreviousValues = @{}
-    foreach ($Name in ($FlagNames + $BlockedFlagNames)) {
+    foreach ($Name in $ManagedNames) {
         $PreviousValues[$Name] = [Environment]::GetEnvironmentVariable($Name, "Process")
     }
 
@@ -57,9 +58,8 @@ try {
         foreach ($Name in $BlockedFlagNames) {
             [Environment]::SetEnvironmentVariable($Name, "0", "Process")
         }
-
         [Environment]::SetEnvironmentVariable(
-            "SPECIALIST_DATABASE_PATH",
+            "SPECIALIST_DB_PATH",
             $DatabasePath,
             "Process"
         )
@@ -80,19 +80,14 @@ try {
         }
     }
     finally {
-        foreach ($Name in ($FlagNames + $BlockedFlagNames)) {
+        foreach ($Name in $ManagedNames) {
             [Environment]::SetEnvironmentVariable(
                 $Name,
                 $PreviousValues[$Name],
                 "Process"
             )
         }
-        [Environment]::SetEnvironmentVariable(
-            "SPECIALIST_DATABASE_PATH",
-            $null,
-            "Process"
-        )
-        Write-Host "Previous process-level feature flag values restored." -ForegroundColor DarkGray
+        Write-Host "Previous process-level database and feature flag values restored." -ForegroundColor DarkGray
     }
 }
 finally {
