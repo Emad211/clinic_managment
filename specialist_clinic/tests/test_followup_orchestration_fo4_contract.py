@@ -48,6 +48,23 @@ def test_fo4_runtime_is_flagged_and_does_not_write_operational_sources():
     assert "TERMINAL_OWNERSHIP_MUTATION" in ownership
 
 
+def test_fo5_contact_repository_supports_explicit_monotonic_recorded_time():
+    repository = (
+        SPECIALIST_ROOT / "src" / "adapters" / "sqlite" /
+        "followup_operations_repo.py"
+    ).read_text(encoding="utf-8")
+    service = (
+        SPECIALIST_ROOT / "src" / "services" / "followup_orchestration" /
+        "structured_contact_service.py"
+    ).read_text(encoding="utf-8")
+
+    assert "recorded_at: datetime | str | None = None" in repository
+    assert "recorded = _text(recorded_at)" in repository
+    assert "datetime.fromisoformat(recorded) < datetime.fromisoformat(occurred)" in repository
+    assert "recorded = occurred" in repository
+    assert "recorded_at=current_time" in service
+
+
 def test_fo4_ui_distinguishes_queue_from_personal_owner():
     list_page = (
         SPECIALIST_ROOT / "src" / "templates" / "followups" /
