@@ -44,7 +44,7 @@ EXPECTED_FLAGS = (
     "FOLLOWUP_EVIDENCE_ASSIST",
     "FOLLOWUP_AUTOMATION_HEALTH",
 )
-# FO-5 authorization does not authorize FO-7/FO-9 durable automation stores.
+# FO-6 authorization does not authorize FO-7/FO-9 durable automation stores.
 POST_FO5_SCHEMA_NAMES = (
     "automation_decision_events",
     "operational_outbox",
@@ -286,7 +286,7 @@ def test_canonical_docs_and_agent_guard_authorize_fo5_but_block_fo6():
     )
     assert "Issue = #105 / PR #106" in plan
     assert "FOLLOWUP_STRUCTURED_CONTACT" in plan
-    assert "SMS automation" in plan
+    assert "AUTO_GUARDED" in plan
     assert "FO-6 Governed SMS Automation" in roadmap
     assert "AUTHORIZED_NOT_STARTED" in roadmap
     assert "6.0 / 11 = 54.5%" in roadmap
