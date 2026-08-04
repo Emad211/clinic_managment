@@ -62,6 +62,22 @@ jobs:
               "evidence_assertions = '''    evidence = stream[\"fo5_evidence\"]",
               "evidence_assertions = '''    assert authorization[\"status\"] == \"VALIDATED\"\\n    evidence = stream[\"fo5_evidence\"]",
           )
+          source = source.replace(
+              "('\"FO_5_AUTHORIZED_IMPLEMENTATION_PENDING\" in plan', '\"FO_5_TECHNICALLY_VALIDATED_OWNER_UX_PENDING\" in plan'),",
+              "('\"FO_5_LOCAL_OWNER_UX_ACCEPTANCE\" in plan', '\"FO_5_TECHNICALLY_VALIDATED_OWNER_UX_PENDING\" in plan'),",
+          )
+          source = source.replace(
+              '("Gate progress = 5.0 / 11 = 45.5%", "Gate progress = 5.8 / 11 = 52.7%"),',
+              '("Gate progress = 5.8 / 11 = 52.7%", "Gate progress = 5.8 / 11 = 52.7%"),',
+          )
+          source = source.replace(
+              '("ROADMAP PROGRESS = 5.0 / 11 = 45.5%", "ROADMAP PROGRESS = 5.8 / 11 = 52.7%"),',
+              '("ROADMAP PROGRESS = 5.8 / 11 = 52.7%", "ROADMAP PROGRESS = 5.8 / 11 = 52.7%"),',
+          )
+          source = source.replace(
+              "('stream[\"future_tranches\"][\"FO-5\"] == \"AUTHORIZED_NOT_STARTED\"', 'stream[\"future_tranches\"][\"FO-5\"] == \"TECHNICALLY_VALIDATED_OWNER_UX_PENDING\"'),",
+              "('stream[\"future_tranches\"][\"FO-5\"] == \"TECHNICALLY_VALIDATED_OWNER_UX_PENDING\"', 'stream[\"future_tranches\"][\"FO-5\"] == \"TECHNICALLY_VALIDATED_OWNER_UX_PENDING\"'),",
+          )
           script = Path('.tmp_apply_fo5_attestation.py')
           script.write_text(source, encoding='utf-8')
           PY
