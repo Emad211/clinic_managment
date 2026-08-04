@@ -50,6 +50,18 @@ jobs:
               'for value in state["status_tags"]',
               'for value in state.get("status_tags", [])',
           )
+          source = source.replace(
+              "              ('assert authorization[\"status\"] == \"AUTHORIZED\"', 'assert authorization[\"status\"] == \"VALIDATED\"'),\n",
+              "",
+          )
+          source = source.replace(
+              "marker = '    assert authorization[\"status\"] == \"VALIDATED\"\\n'",
+              "marker = '    assert authorization[\"default_enabled\"] is False\\n'",
+          )
+          source = source.replace(
+              "evidence_assertions = '''    evidence = stream[\"fo5_evidence\"]",
+              "evidence_assertions = '''    assert authorization[\"status\"] == \"VALIDATED\"\\n    evidence = stream[\"fo5_evidence\"]",
+          )
           script = Path('.tmp_apply_fo5_attestation.py')
           script.write_text(source, encoding='utf-8')
           PY
