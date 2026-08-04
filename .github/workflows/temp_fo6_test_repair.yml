@@ -1,0 +1,98 @@
+name: Temporary FO-6 governance test repair
+
+on:
+  push:
+    branches:
+      - docs/foux-v1-fo5-acceptance-fo6-authorization
+    paths:
+      - .github/workflows/temp_fo6_test_repair.yml
+  pull_request:
+    branches:
+      - main
+    paths:
+      - .github/workflows/temp_fo6_test_repair.yml
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: docs/foux-v1-fo5-acceptance-fo6-authorization
+      - name: Align stale governance guards
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          fo0 = Path('specialist_clinic/tests/test_followup_orchestration_fo0.py')
+          text = fo0.read_text(encoding='utf-8')
+          replacements = {
+              'assert "FO_5_TECHNICALLY_VALIDATED_OWNER_UX_PENDING" in stream["status"]':
+                  'assert "FO_5_OWNER_ACCEPTED" in stream["status"]',
+              'assert "FO_6_AND_LATER_BLOCKED" in stream["status"]':
+                  'assert "FO_6_AUTHORIZED_NOT_STARTED" in stream["status"]',
+              'assert stream["fo6_allowed"] is False':
+                  'assert stream["fo6_allowed"] is True',
+              'assert stream["next_gate"] == "ISSUE_107_FO5_LOCAL_OWNER_UX_ACCEPTANCE_ON_94AA2C3E"':
+                  'assert stream["next_gate"] == "FO6_IMPLEMENTATION_ISSUE_AND_PR"',
+              '"TECHNICALLY_VALIDATED_OWNER_UX_REVIEW_OR_FOCUSED_DEFECT_FIX_ONLY"':
+                  '"VALIDATED_WITH_OWNER_ACCEPTANCE"',
+              '"followup_orchestration_fo6_and_later"':
+                  '"followup_orchestration_fo7_and_later"',
+              'assert "نسخه:** `1.7.0`" in plan':
+                  'assert "نسخه:** `1.8.0`" in plan',
+              'assert "FO_5_TECHNICALLY_VALIDATED_OWNER_UX_PENDING" in plan':
+                  'assert "FO_5_VALIDATED_WITH_OWNER_ACCEPTANCE" in plan',
+              'assert "FO_6_AND_LATER_BLOCKED" in plan':
+                  'assert "FO_6_AUTHORIZED_IMPLEMENTATION_PENDING" in plan',
+              'assert "FO-5 Local Owner UX Acceptance" in roadmap':
+                  'assert "FO-6 Governed SMS Automation" in roadmap',
+              'assert "TECHNICALLY_VALIDATED_OWNER_UX_PENDING" in roadmap':
+                  'assert "AUTHORIZED_NOT_STARTED" in roadmap',
+              'assert "5.8 / 11 = 52.7%" in roadmap':
+                  'assert "6.0 / 11 = 54.5%" in roadmap',
+          }
+          for old, new in replacements.items():
+              if old not in text:
+                  raise SystemExit(f'fo0 missing expected text: {old}')
+              text = text.replace(old, new)
+          fo0.write_text(text, encoding='utf-8')
+
+          fo4 = Path('specialist_clinic/tests/test_followup_orchestration_fo4_repair_attestation.py')
+          text = fo4.read_text(encoding='utf-8')
+          old = 'assert stream["fo6_allowed"] is False'
+          if old not in text:
+              raise SystemExit('fo4 stale fo6 guard not found')
+          fo4.write_text(text.replace(old, 'assert stream["fo6_allowed"] is True', 1), encoding='utf-8')
+
+          local = Path('specialist_clinic/tests/test_followup_orchestration_fo5_local_review_contract.py')
+          text = local.read_text(encoding='utf-8')
+          if 'assert state["schema_version"] == "2.5"' not in text:
+              raise SystemExit('local review schema guard not found')
+          text = text.replace(
+              'assert state["schema_version"] == "2.5"',
+              'assert state["schema_version"] == "2.6"',
+              1,
+          )
+          marker = '        "temp_fo5_consistency_repair.yml",\n'
+          extra = (
+              '        "temp_fo6_authorization.yml",\n'
+              '        "temp_fo6_runner.yml",\n'
+              '        "temp_fo6_test_repair.yml",\n'
+          )
+          if marker not in text:
+              raise SystemExit('local temporary workflow marker not found')
+          text = text.replace(marker, marker + extra, 1)
+          local.write_text(text, encoding='utf-8')
+          PY
+      - name: Commit and remove temporary workflow
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/temp_fo6_test_repair.yml
+          git add specialist_clinic/tests
+          git commit -m "test(foux): align guards with FO-6 authorization"
+          git push origin HEAD:docs/foux-v1-fo5-acceptance-fo6-authorization
