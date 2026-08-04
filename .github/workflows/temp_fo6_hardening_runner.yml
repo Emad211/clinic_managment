@@ -24,28 +24,107 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: feature/foux-v1-fo6-governed-sms
-      - name: Extract and apply hardening patch
+      - name: Apply focused hardening
         run: |
           python - <<'PY'
           from pathlib import Path
+          import re
 
-          workflow = Path('.github/workflows/temp_fo6_hardening.yml')
-          lines = workflow.read_text(encoding='utf-8').splitlines()
-          start = next(
-              i for i, line in enumerate(lines)
-              if line.strip() == "python - <<'PY'"
-          ) + 1
-          end = next(
-              i for i in range(start, len(lines))
-              if lines[i].strip() == 'PY'
+          schema = Path('specialist_clinic/src/adapters/sqlite/sms_auto_guard_schema.py')
+          text = schema.read_text(encoding='utf-8')
+          text = text.replace(
+              '    UNIQUE(policy_key, version),\n    UNIQUE(policy_key, content_hash)\n',
+              '    UNIQUE(policy_key, version)\n',
+              1,
           )
-          body = [line[10:] if line.startswith('          ') else line for line in lines[start:end]]
-          Path('.tmp_fo6_hardening.py').write_text(
-              '\n'.join(body) + '\n', encoding='utf-8'
+          text = text.replace(
+              '    UNIQUE(event_key, version),\n    UNIQUE(event_key, content_hash)\n',
+              '    UNIQUE(event_key, version)\n',
+              1,
           )
+          if 'UNIQUE(policy_key, content_hash)' in text or 'UNIQUE(event_key, content_hash)' in text:
+              raise SystemExit('historical content hash uniqueness still present')
+          schema.write_text(text, encoding='utf-8')
+
+          repo = Path('specialist_clinic/src/adapters/sqlite/sms_auto_guard_repo.py')
+          text = repo.read_text(encoding='utf-8')
+          policy_pattern = re.compile(
+              r'''        except sqlite3\.IntegrityError:\n'''
+              r'''            self\.db\.rollback\(\)\n'''
+              r'''            row = self\.db\.execute\(\n'''
+              r'''                """SELECT \* FROM sms_auto_guard_policy_versions\n'''
+              r'''                   WHERE policy_key=\? AND content_hash=\?""",\n'''
+              r'''                \(str\(policy_key\), digest\),\n'''
+              r'''            \)\.fetchone\(\)\n'''
+              r'''            if row:\n'''
+              r'''                return dict\(row\), False\n'''
+              r'''            raise\n'''
+          )
+          policy_replacement = '''        except sqlite3.IntegrityError:
+            self.db.rollback()
+            current = self.latest_policy(policy_key)
+            if current and str(current["content_hash"]) == digest:
+                return current, False
+            raise
+'''
+          text, count = policy_pattern.subn(policy_replacement, text, count=1)
+          if count != 1:
+              raise SystemExit(f'policy conflict rewrite count={count}')
+          template_pattern = re.compile(
+              r'''        except sqlite3\.IntegrityError:\n'''
+              r'''            self\.db\.rollback\(\)\n'''
+              r'''            row = self\.db\.execute\(\n'''
+              r'''                """SELECT \* FROM sms_auto_guard_template_versions\n'''
+              r'''                   WHERE event_key=\? AND content_hash=\?""",\n'''
+              r'''                \(str\(event_key\), digest\),\n'''
+              r'''            \)\.fetchone\(\)\n'''
+              r'''            if row:\n'''
+              r'''                return dict\(row\), False\n'''
+              r'''            raise\n'''
+          )
+          template_replacement = '''        except sqlite3.IntegrityError:
+            self.db.rollback()
+            current = self.latest_template(event_key)
+            if current and str(current["content_hash"]) == digest:
+                return current, False
+            raise
+'''
+          text, count = template_pattern.subn(template_replacement, text, count=1)
+          if count != 1:
+              raise SystemExit(f'template conflict rewrite count={count}')
+          repo.write_text(text, encoding='utf-8')
+
+          service = Path('specialist_clinic/src/services/sms/auto_guard_service.py')
+          text = service.read_text(encoding='utf-8')
+          old = '''        current = _now(now)
+        repo = SmsAutoGuardRepository(self.db, ensure=True)
+        candidate = repo.get_candidate(candidate_id)
+'''
+          new = '''        current = _now(now)
+        repo = SmsAutoGuardRepository(self.db)
+        if not repo.ready():
+            if not _flag_enabled():
+                return {
+                    "ok": False,
+                    "candidate_id": int(candidate_id),
+                    "reason": "FEATURE_DISABLED",
+                }
+            repo = SmsAutoGuardRepository(self.db, ensure=True)
+        candidate = repo.get_candidate(candidate_id)
+'''
+          if text.count(old) != 1:
+              raise SystemExit(f'execute repository marker count={text.count(old)}')
+          service.write_text(text.replace(old, new, 1), encoding='utf-8')
+
+          tests = Path('specialist_clinic/tests/test_followup_orchestration_fo6_sms_auto_guard.py')
+          text = tests.read_text(encoding='utf-8')
+          text = text.replace(
+              '    assert "scheduler" not in service.lower()\n',
+              '    assert "apscheduler" not in service.lower()\n',
+              1,
+          )
+          tests.write_text(text, encoding='utf-8')
           PY
-          python .tmp_fo6_hardening.py
-          rm .tmp_fo6_hardening.py
       - name: Commit and remove temporary workflows
         run: |
           git config user.name "github-actions[bot]"
