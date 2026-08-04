@@ -8,6 +8,12 @@
         <h1><svg class="icon icon-lg"><use href="#i-megaphone"></use></svg> کمپین‌های پیامکی</h1>
         <p class="page-intro">کمپین را به‌صورت پیش‌نویس بسازید، گیرندگان را بررسی کنید و سپس ارسال و تحویل را از جزئیات همان کمپین دنبال کنید.</p>
     </div>
+    {% if permissions['sms.approval.review'] %}
+    <a class="btn btn-secondary" href="{{ url_for('sms_auto_guard.index') }}">
+        <svg class="icon"><use href="#i-shield"></use></svg>
+        ارسال محافظت‌شدهٔ CARE
+    </a>
+    {% endif %}
 </div>
 
 <div class="sms-flow" aria-label="چرخه کمپین پیامکی">

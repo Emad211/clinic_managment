@@ -126,6 +126,7 @@ def create_app(test_config=None):
     from src.api.patient_card import bp as patient_card_bp
     from src.api.patients import bp as patients_bp
     from src.api.sms import bp as sms_bp
+    from src.api.sms_auto_guard import bp as sms_auto_guard_bp
     from src.api.vitals import bp as vitals_bp
 
     for blueprint in (
@@ -140,6 +141,7 @@ def create_app(test_config=None):
         unified_followups_bp,
         finance_review_bp,
         sms_bp,
+        sms_auto_guard_bp,
         manager_bp,
         hypoglycemia_shadow_monitor_bp,
         control_room_bp,
