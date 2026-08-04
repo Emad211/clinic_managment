@@ -1,12 +1,12 @@
 {
-  "schema_version": "2.4",
-  "audited_at": "2026-08-04T02:24:00+03:30",
+  "schema_version": "2.5",
+  "audited_at": "2026-08-04T04:12:00+03:30",
   "repository": "Emad211/clinic_managment",
   "product_authority": {
     "branch": "main",
-    "head": "51221f9b69371085a7c4c745c2c095b6fff13f8e",
+    "head": "94aa2c3eaf335a46e8911a5ac9984e1ff6f4b852",
     "status": "ACTIVE_PRODUCT",
-    "head_note": "FOUX-V1 FO-4 owner accepted; FO-5 structured contact implementation authorized"
+    "head_note": "FOUX-V1 FO-5 technically validated; local owner UX acceptance pending"
   },
   "overall_status": "PRODUCT_OPERATIONAL_PRE_PRODUCTION_TEST_DATA_CLINICAL_CONTENT_NOT_APPROVED_GOVERNANCE_RECONCILIATION_REQUIRED",
   "streams": {
@@ -45,29 +45,29 @@
       "path": "specialist_clinic/",
       "canonical_plan": "specialist_clinic/docs/FOLLOWUP_ORCHESTRATION_UX_V1_IMPLEMENTATION_PLAN.md",
       "canonical_roadmap": "specialist_clinic/docs/FOLLOWUP_ORCHESTRATION_UX_V1_ROADMAP.md",
-      "plan_version": "1.6.0",
-      "roadmap_version": "1.0.0",
+      "plan_version": "1.7.0",
+      "roadmap_version": "1.2.0",
       "baseline_report": "specialist_clinic/docs/FOLLOWUP_ORCHESTRATION_UX_V1_BASELINE.md",
       "owner": "Emad211",
-      "current_tranche": "FO_5_AUTHORIZED_IMPLEMENTATION_PENDING",
-      "status": "FO_0_VALIDATED_FO_1_VALIDATED_FO_2_VALIDATED_FO_3_OWNER_ACCEPTED_FO_4_OWNER_ACCEPTED_FO_5_AUTHORIZED_NOT_STARTED_FO_6_AND_LATER_BLOCKED",
+      "current_tranche": "FO_5_LOCAL_OWNER_UX_ACCEPTANCE",
+      "status": "FO_0_VALIDATED_FO_1_VALIDATED_FO_2_VALIDATED_FO_3_OWNER_ACCEPTED_FO_4_OWNER_ACCEPTED_FO_5_TECHNICALLY_VALIDATED_OWNER_UX_PENDING_FO_6_AND_LATER_BLOCKED",
       "data_environment": "TEST_ONLY_RESETTABLE",
       "roadmap_progress": {
         "model": "TRANCHE_EQUIVALENT",
         "tranche_count": 11,
-        "validated_equivalent": 5.0,
-        "progress_percent": 45.5,
-        "remaining_percent": 54.5,
-        "technical_tranches_implemented": 5,
-        "technical_implementation_percent": 45.5,
+        "validated_equivalent": 5.8,
+        "progress_percent": 52.7,
+        "remaining_percent": 47.3,
+        "technical_tranches_implemented": 6,
+        "technical_implementation_percent": 54.5,
         "fully_accepted_tranches": 5,
-        "current_partial_tranche": null,
-        "current_partial_credit": 0.0,
-        "next_required_gate": "FO5_TECHNICAL_IMPLEMENTATION",
+        "current_partial_tranche": "FO-5",
+        "current_partial_credit": 0.8,
+        "next_required_gate": "FO5_OWNER_UX_ACCEPTANCE",
         "not_a_product_wide_readiness_metric": true
       },
       "future_tranches": {
-        "FO-5": "AUTHORIZED_NOT_STARTED",
+        "FO-5": "TECHNICALLY_VALIDATED_OWNER_UX_PENDING",
         "FO-6": "GOVERNED_SMS_AUTOMATION_BLOCKED",
         "FO-7": "CROSS_CHANNEL_TRANSITIONS_OUTBOX_BLOCKED",
         "FO-8": "CLINICAL_EVIDENCE_ASSIST_BLOCKED",
@@ -218,7 +218,7 @@
         ],
         "automatic_backfill_on_startup": false,
         "automatic_projection_rebuild_on_startup": false,
-        "ui_mode": "FEATURE_GATED_FO4_PILOT",
+        "ui_mode": "FEATURE_GATED_FO5_OWNER_REVIEW",
         "source_truth_mutated": false,
         "seed_preparation_mode": "EXPLICIT_AFTER_SOURCE_COMMIT",
         "seeded_view_recovery_command": "scripts/prepare_seeded_followup_view.py",
@@ -231,12 +231,24 @@
           "BLOCKED",
           "TERMINAL"
         ],
-        "effective_sla_evaluated_at_read_time": true
+        "effective_sla_evaluated_at_read_time": true,
+        "structured_contact_policy_version": "FOUX-CONTACT-V1",
+        "structured_contact_retry_threshold": 3,
+        "structured_contact_callback_input": "JALALI_DATE_PLUS_TIME_SERVER_CONVERTED",
+        "structured_contact_authoritative_store": "followup_contact_events",
+        "structured_contact_feature_prerequisites": [
+          "FOLLOWUP_EPISODES_ENABLED",
+          "FOLLOWUP_PROJECTION_SHADOW",
+          "FOLLOWUP_UNIFIED_WORKLIST_READONLY",
+          "FOLLOWUP_UNIFIED_WORKLIST_ACTIONS",
+          "FOLLOWUP_AUTO_ROUTING",
+          "FOLLOWUP_STRUCTURED_CONTACT"
+        ]
       },
       "fo3_allowed": true,
       "fo4_allowed": true,
       "fo5_allowed": true,
-      "next_gate": "FO5_IMPLEMENTATION_ISSUE_AND_PR",
+      "next_gate": "ISSUE_107_FO5_LOCAL_OWNER_UX_ACCEPTANCE_ON_94AA2C3E",
       "feature_flags": {
         "FOLLOWUP_EPISODES_ENABLED": false,
         "FOLLOWUP_PROJECTION_SHADOW": false,
@@ -274,7 +286,8 @@
         "FO4_OWNER_ACCEPTED_BEFORE_FO5_AUTHORIZATION",
         "FO5_STRUCTURED_OUTCOMES_DO_NOT_MAKE_CLINICAL_DECISIONS",
         "FO5_DOES_NOT_SEND_SMS_OR_MUTATE_APPOINTMENTS",
-        "FO5_CALLBACK_RETRY_ESCALATION_IS_APPEND_ONLY_AND_IDEMPOTENT"
+        "FO5_CALLBACK_RETRY_ESCALATION_IS_APPEND_ONLY_AND_IDEMPOTENT",
+        "FO5_TECHNICALLY_VALIDATED_BEFORE_OWNER_UX_REVIEW"
       ],
       "fo5_authorization": {
         "tracking_issue": 103,
@@ -282,9 +295,51 @@
         "scope": "STRUCTURED_CONTACT_RETRY_ESCALATION_ONLY",
         "feature_flag": "FOLLOWUP_STRUCTURED_CONTACT",
         "default_enabled": false,
-        "status": "AUTHORIZED"
+        "status": "VALIDATED",
+        "governance_merge_commit": "9c296e70511d73dd79a447cc34ef2aeb79f4edd9"
       },
-      "fo6_allowed": false
+      "fo6_allowed": false,
+      "fo5_evidence": {
+        "tracking_issue": 105,
+        "implementation_pr": 106,
+        "final_head": "2ab1cb1ec956bb9534dea7dd383b76bbf5fb3f5c",
+        "merge_commit": "94aa2c3eaf335a46e8911a5ac9984e1ff6f4b852",
+        "final_ci_run": 30865955479,
+        "specialist_tests_passed": 801,
+        "accounting_tests_passed": 54,
+        "structured_outcomes": [
+          "REACHED",
+          "NO_ANSWER",
+          "BUSY",
+          "CALLBACK_REQUESTED",
+          "PHONE_INVALID",
+          "APPOINTMENT_BOOKED",
+          "DECLINED",
+          "ESCALATED_TO_PHYSICIAN",
+          "OTHER"
+        ],
+        "policy_version": "FOUX-CONTACT-V1",
+        "retry_threshold": 3,
+        "authoritative_contact_store": "followup_contact_events",
+        "episode_link_source_type": "CONTACT_EVENT",
+        "append_only_contact_and_episode_events": true,
+        "callback_future_validation": true,
+        "threshold_callback_cleared_in_source_truth": true,
+        "one_time_unreachable_escalation": true,
+        "phone_invalid_routes_reception": true,
+        "routing_kill_switch_required": true,
+        "jalali_callback_input": true,
+        "exact_replay_idempotent": true,
+        "stale_terminal_permission_owner_guards": true,
+        "free_note_hidden_from_unified_timeline": true,
+        "automatic_sms": false,
+        "appointment_mutation": false,
+        "clinical_completion_or_decision": false,
+        "accounting_write": false,
+        "owner_acceptance_issue": 107,
+        "local_ux_acceptance": "PENDING",
+        "status": "TECHNICALLY_VALIDATED_OWNER_UX_PENDING"
+      }
     },
     "clinical_engine_v2": {
       "status": "INFRASTRUCTURE_IMPLEMENTED_ACTIVATION_GATED",
@@ -344,12 +399,11 @@
     "release_cleanup": "ALLOWED_AFTER_GOVERNANCE_MERGE",
     "focused_bug_and_security_fixes": "ALLOWED",
     "followup_orchestration_fo4": "VALIDATED_WITH_OWNER_ACCEPTANCE",
-    "followup_orchestration_fo5": "AUTHORIZED_IMPLEMENTATION_ONLY_UNDER_ISSUE_103_AND_SEPARATE_IMPLEMENTATION_PR",
-    "followup_orchestration_fo6_and_later": "BLOCKED_PENDING_FO5_TECHNICAL_VALIDATION_OWNER_ACCEPTANCE_AND_SEPARATE_GOVERNANCE"
+    "followup_orchestration_fo5": "TECHNICALLY_VALIDATED_OWNER_UX_REVIEW_OR_FOCUSED_DEFECT_FIX_ONLY_UNDER_ISSUE_107",
+    "followup_orchestration_fo6_and_later": "BLOCKED_PENDING_FO5_OWNER_ACCEPTANCE_AND_SEPARATE_GOVERNANCE"
   },
   "next_phases": [
-    "FO_5_STRUCTURED_CONTACT_RETRY_ESCALATION_IMPLEMENTATION",
-    "FO_5_LOCAL_OWNER_UX_ACCEPTANCE",
+    "FO_5_ISSUE_107_LOCAL_OWNER_UX_ACCEPTANCE",
     "R0_GOVERNANCE_RECONCILIATION",
     "R1_RELEASE_BASELINE_FROM_CURRENT_MAIN",
     "R2_BOUNDED_CLINICAL_CONTENT_FORMALIZATION"
@@ -364,8 +418,8 @@
     "FOUX_V1_FO_4_EFFECTIVE_SLA_REPAIR_COMPLETED",
     "FOUX_V1_COMPLETE_ROADMAP_REGISTERED",
     "FOUX_V1_FO_4_VALIDATED_WITH_OWNER_ACCEPTANCE",
-    "FOUX_V1_FO_5_AUTHORIZED_NOT_STARTED",
-    "FOUX_V1_FO_6_AND_LATER_BLOCKED"
+    "FOUX_V1_FO_6_AND_LATER_BLOCKED",
+    "FOUX_V1_FO_5_TECHNICALLY_VALIDATED_OWNER_UX_PENDING"
   ],
   "trust_order": [
     "GITHUB_MAIN_AND_PULL_REQUEST_STATE",
@@ -373,5 +427,9 @@
     "CODE_ADJACENT_DOCUMENTATION",
     "HISTORICAL_PULL_REQUEST_BODIES",
     "CONVERSATION_OR_AGENT_MEMORY"
+  ],
+  "status_tags": [
+    "FOUX_V1_FO_5_TECHNICALLY_VALIDATED_OWNER_UX_PENDING",
+    "FOUX_V1_FO_6_AND_LATER_BLOCKED"
   ]
 }

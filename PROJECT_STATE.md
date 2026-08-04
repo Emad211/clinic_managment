@@ -2,7 +2,7 @@
 
 > **Source of Truth مدیریتی مخزن.** پیش از توسعه، وضعیت واقعی GitHub، این فایل و `PROJECT_STATE.json` خوانده شوند.
 
-- آخرین ممیزی: `2026-08-04 02:24 +03:30`
+- آخرین ممیزی: `2026-08-04 04:12 +03:30`
 - شاخهٔ مرجع: `main`
 - محیط Specialist: `TEST_ONLY / SYNTHETIC_OR_RESETTABLE`
 - دادهٔ واقعی بیمار: `NOT EXPECTED`
@@ -15,7 +15,7 @@
 |---|---|---|---|
 | Specialist Product | `ACTIVE_PRE_PRODUCTION` | رفتار واقعی main | تغییر بالینی بدون گیت |
 | SMS Consent UX | `COMPLETED` | رابط روشن رضایت پیامکی | تغییر policy یا consent defaults |
-| FOUX-V1 | `FO_0..FO_4_VALIDATED / FO_5_AUTHORIZED` | فقط Structured Contact، Retry و Escalation | FO-6+ و اتوماسیون کانال‌ها |
+| FOUX-V1 | `FO_0..FO_4_VALIDATED / FO_5_TECHNICALLY_VALIDATED / OWNER_UX_PENDING` | مرور UX مالک یا defect متمرکز FO-5 | FO-6+ و توسعهٔ بیشتر Runtime |
 | Clinical Engine v2 | `INFRASTRUCTURE_IMPLEMENTED / ACTIVATION_GATED` | runtime/audit | activation بدون approval |
 | Rule package | `LEGACY_DRAFT_QUARANTINED` | provenance/test | clinical use |
 | ADA research | `FROZEN_V0_9_4` | evidence draft | runtime authority |
@@ -43,17 +43,18 @@ Consent defaults، append-only history، stale guard و send policy تغییر �
 ```text
 Canonical plan:
 specialist_clinic/docs/FOLLOWUP_ORCHESTRATION_UX_V1_IMPLEMENTATION_PLAN.md
-Version 1.6.0
+Version 1.7.0
 
 Complete roadmap:
 specialist_clinic/docs/FOLLOWUP_ORCHESTRATION_UX_V1_ROADMAP.md
-Roadmap version 1.1.0
+Roadmap version 1.2.0
 ```
 
 ```text
-Gate progress = 5.0 / 11 = 45.5% (~46%)
-Technical implementation through FO-4 = 5 / 11 = 45.5%
-Remaining = 54.5%
+Gate progress = 5.8 / 11 = 52.7% (~53%)
+Technical implementation through FO-5 = 6 / 11 = 54.5%
+Fully owner-accepted tranches = 5 / 11
+Remaining = 47.3%
 ```
 
 این درصد فقط trancheهای FOUX-V1 را می‌سنجد و production-readiness کل Specialist Clinic نیست.
@@ -116,37 +117,47 @@ critical_ux_defects = 0
 notes = بررسی شد و مشکل بحرانی مشاهده نشد
 ```
 
-### FO-5 — AUTHORIZED / IMPLEMENTATION PENDING
+### FO-5 — TECHNICALLY VALIDATED / OWNER UX PENDING
 
 ```text
 Authorization Issue = #103
 Governance PR = #104
-Scope = Structured Contact, Retry & Escalation only
-Feature Flag = FOLLOWUP_STRUCTURED_CONTACT
-Default = OFF
+Governance merge = 9c296e70511d73dd79a447cc34ef2aeb79f4edd9
+Implementation Issue = #105
+Implementation PR = #106
+Final head = 2ab1cb1ec956bb9534dea7dd383b76bbf5fb3f5c
+Merge = 94aa2c3eaf335a46e8911a5ac9984e1ff6f4b852
+CI = 30865955479
+801 Specialist + 54 Accounting
 ```
 
-دامنهٔ مجاز:
+Technical validation includes:
 
-- outcomeهای ساختاریافتهٔ تماس؛
-- callback scheduling؛
-- retry محدود برای `NO_ANSWER` و `BUSY`؛
-- escalation یک‌باره پس از threshold؛
-- phone-invalid workflow؛
-- فرم و summary در Unified Worklist؛
-- append-only/idempotent audit؛
-- stale/permission/terminal fail-closed.
+- authoritative append-only `followup_contact_events` and Episode contact links;
+- structured outcome → deterministic next action;
+- future callback validation with Jalali date plus time;
+- bounded retry and exactly-once unreachable escalation;
+- threshold escalation with no remaining due callback;
+- `PHONE_INVALID` → Reception/contact repair;
+- Routing kill switch as an FO-5 prerequisite;
+- exact replay and stale/terminal/permission/owner fail-closed guards;
+- free note excluded from Unified Timeline;
+- zero automatic SMS, Appointment mutation, clinical completion/decision or Accounting write.
 
-خارج از دامنه:
+Current gate:
 
-- SMS automation؛
-- Appointment mutation؛
-- Clinical completion/decision؛
-- Outbox/Dead-letter؛
-- Evidence Assist؛
-- Rule یا Hypoglycemia Shadow؛
-- Write به `clinic_new.db`؛
-- FO-6 و بعد.
+```text
+Issue = #107
+Action = Local Owner UX Acceptance on merge 94aa2c3e...
+Allowed = owner review or focused FO-5 defect fix only
+FO-6+ = BLOCKED
+```
+
+Local review guide:
+
+```text
+specialist_clinic/docs/FOLLOWUP_ORCHESTRATION_FO5_LOCAL_UX_ACCEPTANCE.md
+```
 
 ---
 
@@ -172,21 +183,18 @@ FOLLOWUP_AUTOMATION_HEALTH
 ## Exact continuation point
 
 ```text
-CURRENT = FO-5 Structured Contact implementation
-ISSUE = #103
-IMPLEMENTATION = separate runtime Issue/PR after governance PR #104
+CURRENT = FO-5 Local Owner UX Acceptance
+ISSUE = #107
+REVIEWED MERGE = 94aa2c3eaf335a46e8911a5ac9984e1ff6f4b852
+TECHNICAL CI = 30865955479 — 801 Specialist + 54 Accounting
+ALLOWED = local owner review or focused FO-5 defect fix only
 FO-6 AND LATER = BLOCKED
 ```
 
-Exit Gate FO-5:
+Remaining Exit Gate FO-5:
 
-- transition deterministic برای outcomeها؛
-- exact replay بدون duplicate؛
-- callback future validation؛
-- escalation threshold دقیقاً یک‌بار؛
-- phone-invalid → reception/contact repair؛
-- Feature OFF → controls hidden و POST=404؛
-- Source Truth، SMS، Appointment، Rule و Accounting بدون تغییر؛
-- full CI سبز؛
-- Local Owner UX Acceptance؛
-- governance مستقل پیش از FO-6.
+- execute the TEST_ONLY local review guide;
+- record the acceptance block in Issue #107;
+- `critical_ux_defects = 0` before acceptance;
+- update Project State after owner acceptance;
+- create a separate governance authorization before any FO-6 work.

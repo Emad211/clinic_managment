@@ -30,15 +30,15 @@ def test_complete_roadmap_preserves_fo5_through_fo10_and_current_gate():
     ):
         assert tranche in roadmap
 
-    assert "5.0 / 11 = 45.5%" in roadmap
-    assert "54.5%" in roadmap
-    assert "CURRENT = FO-5 Structured Contact implementation" in roadmap
-    assert "ISSUE   = #103" in roadmap
+    assert "5.8 / 11 = 52.7%" in roadmap
+    assert "47.3%" in roadmap
+    assert "CURRENT = FO-5 Local Owner UX Acceptance" in roadmap
+    assert "ISSUE   = #107" in roadmap
     assert (
-        "FO-5 technical validation and local owner UX acceptance"
+        "record owner acceptance and update governance state"
         in roadmap
     )
-    assert "AUTHORIZED_NOT_STARTED" in roadmap
+    assert "TECHNICALLY_VALIDATED_OWNER_UX_PENDING" in roadmap
     assert roadmap.count("BLOCKED_NOT_STARTED") >= 5
 
 
@@ -51,9 +51,9 @@ def test_important_governance_docs_link_the_complete_roadmap():
     assert roadmap_name in plan
     assert roadmap_name in state
     assert roadmap_name in agent
-    assert "5.0 / 11 = 45.5%" in plan
-    assert "Gate progress = 5.0 / 11 = 45.5%" in state
-    assert "ROADMAP PROGRESS = 5.0 / 11 = 45.5%" in agent
+    assert "5.8 / 11 = 52.7%" in plan
+    assert "Gate progress = 5.8 / 11 = 52.7%" in state
+    assert "ROADMAP PROGRESS = 5.8 / 11 = 52.7%" in agent
     assert "cd243424ecbae98892e0dfde1780bb846554942f" in plan
     assert "cd243424ecbae98892e0dfde1780bb846554942f" in state
     assert "cd243424ecbae98892e0dfde1780bb846554942f" in agent
@@ -65,24 +65,24 @@ def test_project_state_json_registers_fo5_authorization_and_future_gates():
     )
     stream = state["streams"]["followup_orchestration_ux_v1"]
 
-    assert state["schema_version"] == "2.4"
+    assert state["schema_version"] == "2.5"
     assert stream["canonical_roadmap"].endswith(
         "FOLLOWUP_ORCHESTRATION_UX_V1_ROADMAP.md"
     )
-    assert stream["roadmap_version"] == "1.0.0"
+    assert stream["roadmap_version"] == "1.2.0"
 
     progress = stream["roadmap_progress"]
     assert progress["model"] == "TRANCHE_EQUIVALENT"
     assert progress["tranche_count"] == 11
-    assert progress["validated_equivalent"] == 5.0
-    assert progress["progress_percent"] == 45.5
-    assert progress["remaining_percent"] == 54.5
-    assert progress["technical_tranches_implemented"] == 5
-    assert progress["technical_implementation_percent"] == 45.5
+    assert progress["validated_equivalent"] == 5.8
+    assert progress["progress_percent"] == 52.7
+    assert progress["remaining_percent"] == 47.3
+    assert progress["technical_tranches_implemented"] == 6
+    assert progress["technical_implementation_percent"] == 54.5
     assert progress["fully_accepted_tranches"] == 5
-    assert progress["current_partial_tranche"] is None
-    assert progress["current_partial_credit"] == 0.0
-    assert progress["next_required_gate"] == "FO5_TECHNICAL_IMPLEMENTATION"
+    assert progress["current_partial_tranche"] == "FO-5"
+    assert progress["current_partial_credit"] == 0.8
+    assert progress["next_required_gate"] == "FO5_OWNER_UX_ACCEPTANCE"
     assert progress["not_a_product_wide_readiness_metric"] is True
 
     assert list(stream["future_tranches"]) == [
@@ -93,7 +93,7 @@ def test_project_state_json_registers_fo5_authorization_and_future_gates():
         "FO-9",
         "FO-10",
     ]
-    assert stream["future_tranches"]["FO-5"] == "AUTHORIZED_NOT_STARTED"
+    assert stream["future_tranches"]["FO-5"] == "TECHNICALLY_VALIDATED_OWNER_UX_PENDING"
     assert stream["fo5_allowed"] is True
     assert stream["fo6_allowed"] is False
     assert state["global_freeze"][

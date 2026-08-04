@@ -2,7 +2,7 @@
 
 > **Program:** `FOUX-V1`
 >
-> **Roadmap version:** `1.1.0`
+> **Roadmap version:** `1.2.0`
 >
 > **Canonical plan:** `specialist_clinic/docs/FOLLOWUP_ORCHESTRATION_UX_V1_IMPLEMENTATION_PLAN.md`
 >
@@ -10,7 +10,7 @@
 >
 > **Environment:** `TEST_ONLY / SYNTHETIC_OR_RESETTABLE`
 >
-> **Current gate:** `FO-5 Structured Contact implementation — Issue #103`
+> **Current gate:** `FO-5 Local Owner UX Acceptance — Issue #107`
 
 ---
 
@@ -48,10 +48,12 @@ FO-1 = 1.0
 FO-2 = 1.0
 FO-3 = 1.0
 FO-4 = 1.0
-FO-5..FO-10 = 0.0
+FO-5 = 0.8  (technically validated; owner UX pending)
+FO-6..FO-10 = 0.0
 --------------------------------
-Total = 5.0 / 11 = 45.5%
-Remaining = 54.5%
+Total = 5.8 / 11 = 52.7%
+Technical implementation = 6 / 11 = 54.5%
+Remaining = 47.3%
 ```
 
 این درصد فقط برنامهٔ FOUX-V1 را می‌سنجد و معیار آمادگی Production کل مطب نیست.
@@ -67,7 +69,7 @@ Remaining = 54.5%
 | FO-2 | Projection, Next Action & Shadow Parity | `VALIDATED` | `FOLLOWUP_PROJECTION_SHADOW` | FO-1 |
 | FO-3 | Read-only Unified Worklist & Timeline | `VALIDATED_WITH_OWNER_ACCEPTANCE` | `FOLLOWUP_UNIFIED_WORKLIST_READONLY` | FO-2 |
 | FO-4 | Claim, Assignment, Routing & Effective SLA | `VALIDATED_WITH_OWNER_ACCEPTANCE` | `FOLLOWUP_AUTO_ROUTING` | FO-3 |
-| FO-5 | Structured Contact, Retry & Escalation | `AUTHORIZED_NOT_STARTED` | `FOLLOWUP_STRUCTURED_CONTACT` | FO-4 + PR #104 |
+| FO-5 | Structured Contact, Retry & Escalation | `TECHNICALLY_VALIDATED_OWNER_UX_PENDING` | `FOLLOWUP_STRUCTURED_CONTACT` | FO-4 + PR #104/#106 |
 | FO-6 | Governed SMS Automation & Freshness | `BLOCKED_NOT_STARTED` | `FOLLOWUP_SMS_AUTO_GUARDED` | FO-5 acceptance + policy approval |
 | FO-7 | Cross-channel Transitions & Operational Outbox | `BLOCKED_NOT_STARTED` | `FOLLOWUP_APPOINTMENT_SYNC` | FO-5/FO-6 |
 | FO-8 | Clinical Evidence Assist | `BLOCKED_NOT_STARTED` | `FOLLOWUP_EVIDENCE_ASSIST` | FO-7 + clinical safety review |
@@ -128,6 +130,25 @@ notes = بررسی شد و مشکل بحرانی مشاهده نشد
 ---
 
 ## 5. FO-5 — Structured Contact, Retry & Escalation
+
+### Technical validation evidence
+
+```text
+Authorization Issue #103 / PR #104 / merge 9c296e70511d73dd79a447cc34ef2aeb79f4edd9
+Implementation Issue #105 / PR #106
+Final head 2ab1cb1ec956bb9534dea7dd383b76bbf5fb3f5c
+Merge 94aa2c3eaf335a46e8911a5ac9984e1ff6f4b852
+CI 30865955479
+801 Specialist + 54 Accounting
+```
+
+Technical contract = `PASS`. Local owner UX acceptance = `PENDING` in Issue #107.
+
+Review guide:
+
+```text
+specialist_clinic/docs/FOLLOWUP_ORCHESTRATION_FO5_LOCAL_UX_ACCEPTANCE.md
+```
 
 ### Product outcome
 
@@ -222,6 +243,14 @@ ESCALATED_TO_PHYSICIAN
 - Local Owner UX Acceptance؛
 - governance مستقل برای FO-6.
 
+Current result:
+
+```text
+Technical validation = PASS
+Owner UX acceptance = PENDING (#107)
+FO-6 authorization = BLOCKED
+```
+
 ---
 
 ## 6. FO-6 — Governed SMS Automation & Freshness
@@ -296,22 +325,24 @@ Security/privacy review، clinical safety review، migration/rebuild rehearsal،
 ## 11. Exact continuation point
 
 ```text
-CURRENT = FO-5 Structured Contact implementation
-ISSUE   = #103
-BASE    = main after governance PR #104
-THEN    = FO-5 technical validation and local owner UX acceptance
+CURRENT = FO-5 Local Owner UX Acceptance
+ISSUE   = #107
+REVIEW  = merge 94aa2c3eaf335a46e8911a5ac9984e1ff6f4b852
+GUIDE   = docs/FOLLOWUP_ORCHESTRATION_FO5_LOCAL_UX_ACCEPTANCE.md
+THEN    = record owner acceptance and update governance state
 FO-6+   = BLOCKED
 ```
 
 کار مجاز:
 
-- فقط scope ثبت‌شدهٔ FO-5؛
-- PR مستقل runtime؛
-- Feature Flag OFF by default؛
-- full CI و owner review.
+- اجرای review فقط روی دادهٔ TEST_ONLY؛
+- ثبت defect متمرکز FO-5 در صورت مشاهده؛
+- اصلاح محدود همان defect با CI کامل؛
+- ثبت attestation مالک در Issue #107.
 
 کار غیرمجاز:
 
+- توسعهٔ بیشتر FO-5 خارج از defect review؛
 - SMS automation؛
 - Appointment mutation؛
 - Outbox/Dead-letter؛
