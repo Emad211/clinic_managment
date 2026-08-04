@@ -1,0 +1,61 @@
+name: Temporary FO-5 attestation runner
+
+on:
+  push:
+    branches:
+      - docs/foux-v1-fo5-technical-validation
+    paths:
+      - .github/workflows/temp_fo5_attestation_runner.yml
+  pull_request:
+    branches:
+      - main
+    paths:
+      - .github/workflows/temp_fo5_attestation_runner.yml
+      - .github/workflows/temp_fo5_technical_attestation.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: docs/foux-v1-fo5-technical-validation
+      - name: Extract and run canonical attestation patch
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          workflow = Path('.github/workflows/temp_fo5_technical_attestation.yml')
+          lines = workflow.read_text(encoding='utf-8').splitlines()
+          start = next(
+              index for index, line in enumerate(lines)
+              if line.strip() == "python - <<'PY'"
+          ) + 1
+          end = next(
+              index for index in range(start, len(lines))
+              if lines[index].strip() == 'PY'
+          )
+          body = []
+          for line in lines[start:end]:
+              if line.startswith('          '):
+                  body.append(line[10:])
+              else:
+                  body.append(line)
+          script = Path('.tmp_apply_fo5_attestation.py')
+          script.write_text('\n'.join(body) + '\n', encoding='utf-8')
+          PY
+          python .tmp_apply_fo5_attestation.py
+          rm .tmp_apply_fo5_attestation.py
+      - name: Commit canonical state
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/temp_fo5_technical_attestation.yml
+          git rm .github/workflows/temp_fo5_attestation_runner.yml
+          git add PROJECT_STATE.json PROJECT_STATE.md specialist_clinic/AGENTS.md specialist_clinic/docs specialist_clinic/tests specialist_clinic/scripts
+          git commit -m "docs(foux): attest FO-5 technical validation and owner gate"
+          git push origin HEAD:docs/foux-v1-fo5-technical-validation
