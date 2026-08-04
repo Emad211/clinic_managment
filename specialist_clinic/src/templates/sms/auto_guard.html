@@ -1,0 +1,169 @@
+{% extends 'base.html' %}
+{% block title %}ارسال محافظت‌شدهٔ پیامک{% endblock %}
+{% block content %}
+<div class="page-head">
+    <div>
+        <h1>ارسال محافظت‌شدهٔ پیامک</h1>
+        <p class="muted">FO-6 فقط برای پیام‌های CARE اداری و فقط پس از بازبینی دوبارهٔ تمام شرایط.</p>
+    </div>
+    <a class="btn btn-ghost" href="{{ url_for('sms.approvals') }}">صف تأیید دستی</a>
+</div>
+
+{% if not model.feature_enabled %}
+<section class="card" role="alert">
+    <h2>مسیر خودکار خاموش است</h2>
+    <p>هیچ نامزدی از این صفحه منتشر، جمع‌آوری یا اجرا نمی‌شود. صف تأیید دستی و گزارش پیام‌ها بدون تغییر در دسترس‌اند.</p>
+    <code>FOLLOWUP_SMS_AUTO_GUARDED=0</code>
+</section>
+{% else %}
+<section class="card card-soft" role="note">
+    <b>مرز ایمنی:</b>
+    فقط «یادآوری نوبت» و «پیگیری تجدید دارو» با هدف CARE مجازند. این مسیر کمپین، MARKETING، متن آزاد، تصمیم بالینی یا تغییر نوبت انجام نمی‌دهد.
+</section>
+{% endif %}
+
+<section class="grid grid-3">
+    <div class="card">
+        <span class="muted text-sm">وضعیت ذخیره‌سازی</span>
+        <h3>{{ 'آماده' if model.storage_ready else 'هنوز منتشر نشده' }}</h3>
+    </div>
+    <div class="card">
+        <span class="muted text-sm">Feature Flag</span>
+        <h3>{{ 'روشن' if model.feature_enabled else 'خاموش' }}</h3>
+    </div>
+    <div class="card">
+        <span class="muted text-sm">نسخهٔ سیاست</span>
+        <h3>{{ model.policy.version or '—' }}</h3>
+        {% if model.policy.hash_short %}<code>{{ model.policy.hash_short }}</code>{% endif %}
+    </div>
+</section>
+
+<section class="card">
+    <div class="section-title">
+        <div>
+            <h2>قرارداد مجاز</h2>
+            <p class="section-sub">Policy و Templateها فقط به‌صورت نسخهٔ جدید و غیرقابل‌ویرایش ثبت می‌شوند.</p>
+        </div>
+    </div>
+    <div class="grid grid-2">
+        <div>
+            <h3>فهرست دقیق AUTO_GUARDED</h3>
+            <ul>
+                <li><code>appointment_reminder</code> — یادآوری نوبت</li>
+                <li><code>refill_due</code> — پیگیری تجدید دارو</li>
+            </ul>
+        </div>
+        <div>
+            <h3>هرگز خودکار نیست</h3>
+            <ul>
+                <li><code>CLINICIAN_ONLY</code> و <code>MANUAL_APPROVAL</code></li>
+                <li>کمپین، MARKETING، متن آزاد و محتوای بالینی</li>
+                <li>ساخت یا تغییر Appointment</li>
+            </ul>
+        </div>
+    </div>
+
+    {% if model.feature_enabled and permissions['sms.settings.manage'] %}
+    <form method="post" action="{{ url_for('sms_auto_guard.publish') }}" class="row" style="margin-top:var(--s4);">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <label for="fo6-ttl">اعتبار نامزد</label>
+        <input id="fo6-ttl" name="ttl_hours" type="number" min="1" max="72" value="24" style="max-width:8rem;">
+        <span class="muted">ساعت</span>
+        <button class="btn" type="submit">انتشار نسخه‌های فعلی</button>
+    </form>
+    {% endif %}
+</section>
+
+<section class="card">
+    <div class="section-title">
+        <div>
+            <h2>عملیات صریح و محدود</h2>
+            <p class="section-sub">هیچ Job پنهانی وجود ندارد؛ هر عملیات با POST و ثبت نام کاربر انجام می‌شود.</p>
+        </div>
+    </div>
+    {% if model.feature_enabled and permissions['sms.settings.manage'] %}
+    <div class="row">
+        <form method="post" action="{{ url_for('sms_auto_guard.collect') }}" class="row">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input name="limit" type="number" min="1" max="500" value="100" style="max-width:8rem;">
+            <button class="btn btn-secondary" type="submit">جمع‌آوری نامزدها</button>
+        </form>
+        <form method="post" action="{{ url_for('sms_auto_guard.execute') }}" class="row">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input name="limit" type="number" min="1" max="50" value="10" style="max-width:8rem;">
+            <button class="btn" type="submit">بازبینی و اجرای محدود</button>
+        </form>
+    </div>
+    {% else %}
+    <p class="muted">برای عملیات، Flag و مجوز تنظیمات پیامک باید فعال باشند.</p>
+    {% endif %}
+</section>
+
+<section class="card">
+    <div class="section-title">
+        <div>
+            <h2>نامزدهای PHI-minimized</h2>
+            <p class="section-sub">شماره، نام بیمار و متن پیام در Candidate ذخیره یا نمایش داده نمی‌شود.</p>
+        </div>
+        <span class="badge">{{ model.candidates|length|fa_num }}</span>
+    </div>
+    {% if model.candidates %}
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>شناسه</th><th>پرونده</th><th>رویداد / دوره</th><th>نسل</th><th>پنل</th><th>انقضا</th><th>وضعیت</th><th></th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for item in model.candidates %}
+                <tr>
+                    <td class="nums">#{{ item.id|fa_num }}</td>
+                    <td><a href="{{ url_for('patients.detail', pid=item.patient_link_id) }}">پرونده #{{ item.patient_link_id|fa_num }}</a></td>
+                    <td><code>{{ item.event_key }}</code><br><span class="muted text-xs">{{ item.period_key }}</span></td>
+                    <td>{{ item.generation_no|fa_num }}</td>
+                    <td>{{ item.provider_name }}</td>
+                    <td class="nums">{{ item.expires_at|jalali }}</td>
+                    <td><span class="badge">{{ item.state }}</span><br><code>{{ item.snapshot_short }}</code></td>
+                    <td>
+                    {% if item.state == 'AVAILABLE' and model.feature_enabled and permissions['sms.settings.manage'] %}
+                        <form method="post" action="{{ url_for('sms_auto_guard.execute') }}">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <input type="hidden" name="candidate_id" value="{{ item.id }}">
+                            <button class="btn btn-sm" type="submit">بازبینی و اجرا</button>
+                        </form>
+                    {% else %}—{% endif %}
+                    </td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="empty-mini">هنوز نامزدی ثبت نشده است.</div>
+    {% endif %}
+</section>
+
+<section class="card">
+    <div class="section-title"><h2>آخرین تصمیم‌ها</h2></div>
+    {% if model.decisions %}
+    <div class="table-wrap">
+        <table>
+            <thead><tr><th>زمان</th><th>نامزد</th><th>تصمیم</th><th>دلیل</th><th>تلاش</th><th>پیام</th></tr></thead>
+            <tbody>
+            {% for item in model.decisions %}
+                <tr>
+                    <td class="nums">{{ item.recorded_at|jalali }}</td>
+                    <td>#{{ item.candidate_id|fa_num }}</td>
+                    <td><code>{{ item.decision_type }}</code></td>
+                    <td>{{ item.reason_label }}<br><code>{{ item.reason_code }}</code></td>
+                    <td>{{ item.attempt_no|fa_num }}</td>
+                    <td>{{ ('#' ~ item.message_id) if item.message_id else '—' }}</td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}<div class="empty-mini">تصمیمی ثبت نشده است.</div>{% endif %}
+</section>
+{% endblock %}
