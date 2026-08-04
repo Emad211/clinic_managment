@@ -78,7 +78,7 @@ def test_project_state_json_registers_fo5_authorization_and_future_gates():
     assert progress["progress_percent"] == 52.7
     assert progress["remaining_percent"] == 47.3
     assert progress["technical_tranches_implemented"] == 6
-    assert progress["technical_implementation_percent"] == 45.5
+    assert progress["technical_implementation_percent"] == 54.5
     assert progress["fully_accepted_tranches"] == 5
     assert progress["current_partial_tranche"] == "FO-5"
     assert progress["current_partial_credit"] == 0.8
