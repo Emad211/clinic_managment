@@ -15,13 +15,13 @@ def test_fo4_repairs_remain_attested_after_owner_acceptance():
     stream = state["streams"]["followup_orchestration_ux_v1"]
     fo4 = stream["fo4_evidence"]
 
-    assert stream["plan_version"] == "1.7.0"
+    assert stream["plan_version"] == "1.8.0"
     assert stream["current_tranche"] == (
-        "FO_5_LOCAL_OWNER_UX_ACCEPTANCE"
+        "FO_6_AUTHORIZED_IMPLEMENTATION_PENDING"
     )
     assert stream["fo4_allowed"] is True
     assert stream["fo5_allowed"] is True
-    assert stream["fo6_allowed"] is False
+    assert stream["fo6_allowed"] is True
     assert fo4["runtime_ui_review_commit"] == (
         "cd243424ecbae98892e0dfde1780bb846554942f"
     )
@@ -77,5 +77,5 @@ def test_plan_and_agent_preserve_fo4_evidence_while_authorizing_fo5():
     assert "Final CI 30844075841" in plan
     assert "CI 30851594179" in plan
     assert "CI 30852909213" in plan
-    assert "FO-5 = TECHNICALLY VALIDATED / OWNER UX PENDING" in agent
-    assert "FO-6 and later = BLOCKED" in agent
+    assert "FO-5 = VALIDATED WITH OWNER ACCEPTANCE" in agent
+    assert "FO-6 = AUTHORIZED / IMPLEMENTATION PENDING" in agent

@@ -4,11 +4,11 @@
 >
 > **کد برنامه:** `FOUX-V1`
 >
-> **نسخه:** `1.7.0`
+> **نسخه:** `1.8.0`
 >
 > **آخرین بازبینی:** `2026-08-04`
 >
-> **وضعیت:** `FO_0_VALIDATED / FO_1_VALIDATED / FO_2_VALIDATED / FO_3_VALIDATED_WITH_OWNER_ACCEPTANCE / FO_4_VALIDATED_WITH_OWNER_ACCEPTANCE / FO_5_TECHNICALLY_VALIDATED_OWNER_UX_PENDING / FO_6_AND_LATER_BLOCKED`
+> **وضعیت:** `FO_0_VALIDATED / FO_1_VALIDATED / FO_2_VALIDATED / FO_3_VALIDATED_WITH_OWNER_ACCEPTANCE / FO_4_VALIDATED_WITH_OWNER_ACCEPTANCE / FO_5_VALIDATED_WITH_OWNER_ACCEPTANCE / FO_6_AUTHORIZED_IMPLEMENTATION_PENDING / FO_7_AND_LATER_BLOCKED`
 >
 > **رودمپ کامل:** `specialist_clinic/docs/FOLLOWUP_ORCHESTRATION_UX_V1_ROADMAP.md`
 >
@@ -202,229 +202,179 @@ FO-5 فقط با روشن‌بودن صریح `FOLLOWUP_EPISODES_ENABLED`، `FOL
 
 ---
 
-## 6. FO-5 — TECHNICALLY VALIDATED / OWNER UX PENDING
+## 6. FO-5 — VALIDATED WITH OWNER ACCEPTANCE
 
 ```text
-Authorization Issue = #103 / PR #104
-Governance merge = 9c296e70511d73dd79a447cc34ef2aeb79f4edd9
 Implementation Issue = #105 / PR #106
-Final head = 2ab1cb1ec956bb9534dea7dd383b76bbf5fb3f5c
 Runtime merge = 94aa2c3eaf335a46e8911a5ac9984e1ff6f4b852
-Final CI = 30865955479
-801 Specialist + 54 Accounting
-Owner UX Acceptance Issue = #107
+CI 30865955479 — 801 Specialist + 54 Accounting
+Owner UX Issue = #107 — completed
 ```
-
-تمام قراردادهای فنی FO-5 PASS شده‌اند. تنها gate باز، مرور UX مالک روی دادهٔ TEST_ONLY است. توسعهٔ بیشتر Runtime یا شروع FO-6 مجاز نیست؛ فقط local review یا defect متمرکز FO-5 مجاز است.
-
-راهنمای canonical مرور:
 
 ```text
-specialist_clinic/docs/FOLLOWUP_ORCHESTRATION_FO5_LOCAL_UX_ACCEPTANCE.md
+FO5_UX_ACCEPTED = true
+reviewer = Emad211
+reviewed_commit = 94aa2c3eaf335a46e8911a5ac9984e1ff6f4b852
+reviewed_on_test_data = true
+critical_ux_defects = 0
+notes = بررسی شد و مشکل بحرانی مشاهده نشد
 ```
-
-### Outcomeهای ساختاریافته
-
-```text
-REACHED
-NO_ANSWER
-BUSY
-CALLBACK_REQUESTED
-PHONE_INVALID
-APPOINTMENT_BOOKED
-DECLINED
-ESCALATED_TO_PHYSICIAN
-OTHER
-```
-
-### قرارداد transition
-
-```text
-REACHED
-→ ادامهٔ مسیر فعلی
-→ callback حذف می‌شود
-
-CALLBACK_REQUESTED
-→ زمان آینده الزامی
-→ CALLBACK_AT_TIME
-
-NO_ANSWER / BUSY قبل از threshold
-→ attempt_count + 1
-→ callback آینده
-→ CALLBACK_AT_TIME
-
-NO_ANSWER / BUSY در threshold
-→ MANAGER_REVIEW_UNREACHABLE
-→ یک ESCALATED event
-→ route به MANAGER
-→ escalation تکراری ممنوع
-
-PHONE_INVALID
-→ callback/retry متوقف
-→ FIX_CONTACT_DATA
-→ route به RECEPTION
-
-APPOINTMENT_BOOKED
-→ گزارش عملیاتی WAIT_FOR_APPOINTMENT
-→ هیچ Appointment ساخته یا تغییر داده نمی‌شود
-→ Clinical Task کامل نمی‌شود
-
-DECLINED
-→ MANAGER_REVIEW_DECLINED
-→ تصمیم بالینی تولید نمی‌شود
-
-ESCALATED_TO_PHYSICIAN
-→ PHYSICIAN_REVIEW
-→ route عملیاتی به PHYSICIAN
-→ هیچ clinical decision ساخته نمی‌شود
-
-OTHER
-→ note کوتاه الزامی
-→ MANAGER_REVIEW_OTHER
-```
-
-### Persistence contract
-
-1. تماس معتبر در `followup_contact_events` به‌صورت append-only ذخیره می‌شود.
-2. همان Contact Event با `source_type=CONTACT_EVENT` به Episode لینک می‌شود.
-3. Episode یک `CONTACT_RECORDED` PHI-minimized ثبت می‌کند.
-4. callback، waiting، escalation و routing فقط با eventهای append-only ثبت می‌شوند.
-5. note آزاد فقط در Source Truth تماس می‌ماند و در Timeline اصلی کپی نمی‌شود.
-6. exact replay event یا Contact Event تکراری نمی‌سازد.
-7. full Episode head برای stale-form guard استفاده می‌شود.
-
-### Permission و ownership
-
-- ثبت تماس نیازمند `followup.contact.record` است؛
-- کاربر عادی ابتدا باید owner واقعی مورد باشد؛
-- مدیر مجاز می‌تواند برای مورد بدون owner یا واگذارشده ثبت کند؛
-- terminal item همیشه قبل از permission/owner checks رد می‌شود.
-
-### UI
-
-در Unified detail:
-
-- آخرین نتیجهٔ تماس؛
-- اقدام بعدی؛
-- زمان callback؛
-- attempt count؛
-- فرم نتیجهٔ ساختاریافته؛
-- تاریخ و ساعت callback؛
-- note اختیاری و فقط برای `OTHER` الزامی؛
-- توضیح صریح اینکه ثبت تماس SMS، Appointment یا تصمیم بالینی اجرا نمی‌کند.
-
-در Unified list:
-
-- آخرین outcome؛
-- اقدام پس از تماس؛
-- callback آینده، بدون N+1.
-
-Timeline باید outcome و operational next action را نشان دهد، ولی note آزاد، متن پیام یا دادهٔ بالینی را افشا نکند.
-
-### Tests اجباری
-
-- callback past/missing rejected؛
-- exact replay idempotent؛
-- attempt threshold؛
-- escalation دقیقاً یک‌بار؛
-- phone-invalid route؛
-- unclaimed/non-owner denied؛
-- stale form denied؛
-- terminal denied؛
-- Flag OFF → controls hidden و POST=404؛
-- note در Source Truth ذخیره ولی در Timeline/UI اصلی پنهان؛
-- batch list summary؛
-- Source Truthهای دیگر، SMS، Appointment، Clinical Rule و Accounting unchanged؛
-- full Specialist و Accounting CI.
-
-### Rollback
-
-```powershell
-$env:FOLLOWUP_STRUCTURED_CONTACT = "0"
-```
-
-نتیجه:
-
-- فرم و summary تماس FO-5 مخفی می‌شوند؛
-- mutation route FO-5، 404 می‌شود؛
-- FO-4 و FO-3 باقی می‌مانند؛
-- Contact و Episode eventهای ثبت‌شده حذف یا rewrite نمی‌شوند؛
-- data rollback لازم نیست.
 
 ---
 
-## 7. خط قرمزهای FO-5
+## 7. قدم مجاز فعلی — FO-6 Governed SMS Automation & Freshness
 
-FO-5 مجاز نیست:
+Authorization Issue: `#109`
 
-- SMS automation: پیامک خودکار ارسال کند یا approval policy را تغییر دهد؛
-- Appointment بسازد، لغو یا تغییر دهد؛
-- Clinical Task یا Commitment را complete کند؛
-- clinical outcome، diagnosis یا treatment decision استنباط کند؛
-- Operational Outbox یا Dead-letter بسازد؛
-- Evidence Assist را شروع کند؛
-- Rule یا Hypoglycemia Shadow را تغییر دهد؛
-- به `clinic_new.db` بنویسد؛
-- FO-6 تا FO-10 را شروع کند.
+Governance authorization PR: `#110`
+
+### هدف محصول
+
+هیچ approval یا candidate قدیمی ارسال نشود و فقط یک مسیر بسیار محدود برای پیام‌های CARE اداری، پس از revalidation کامل و deterministic، امکان AUTO_GUARDED داشته باشد.
+
+### Policy levels
+
+```text
+CLINICIAN_ONLY
+→ هرگز خودکار ارسال نمی‌شود
+→ approval تازه و صریح لازم است
+
+MANUAL_APPROVAL
+→ مسیر فعلی صف تأیید حفظ می‌شود
+→ approval منقضی یا stale قابل ارسال نیست
+
+AUTO_GUARDED
+→ فقط allowlist اداری CARE
+→ فقط template version immutable
+→ free-text ممنوع
+→ هر submission نیازمند decision تازه و fail-closed است
+```
+
+### Allowlist اولیه
+
+```text
+appointment_reminder
+refill_due
+```
+
+موارد زیر خودکار نیستند:
+
+```text
+lapsed
+control_room_invite
+invoice outreach
+campaign / MARKETING
+retired clinical events
+هر متن مبتنی بر diagnosis، treatment یا clinical inference
+```
+
+### قرارداد ذخیره‌سازی مجاز
+
+فقط storageهای additive و append-only زیر مجازند:
+
+- policy version؛
+- template version و content hash؛
+- candidate/approval freshness snapshot؛
+- automation decision event.
+
+Storageهای موجود برای مسئولیت فعلی خود authoritative می‌مانند و destructive migration مجاز نیست.
+
+### Pre-send revalidation اجباری
+
+تمام موارد باید PASS باشند:
+
+1. Flag روشن؛
+2. policy هنوز `AUTO_GUARDED`؛
+3. event روی allowlist دقیق؛
+4. purpose برابر `CARE`؛
+5. source event هنوز برای همان `period_key` معتبر و due؛
+6. CARE consent فعلی `GRANTED` و head بدون تغییر؛
+7. phone canonical معتبر و بدون تغییر؛
+8. template version/hash بدون تغییر؛
+9. body hash مطابق rendering deterministic؛
+10. candidate منقضی نشده؛
+11. quiet hours؛
+12. global daily cap؛
+13. event cooldown؛
+14. عدم dispatch/idempotency قبلی؛
+15. provider configured و مطابق snapshot.
+
+هر Unknown یا Failure باید submission را رد و decision audit ثبت کند.
+
+### Expiry و supersession
+
+```text
+TTL default = 24 hours
+Allowed range = 1..72 hours
+```
+
+تغییر consent، phone، template، source period، policy یا body hash candidate را stale/superseded می‌کند. stale candidate هرگز ارسال نمی‌شود.
+
+### Execution boundary
+
+- GET و startup ارسال نمی‌کنند؛
+- scheduler پنهان فعال نمی‌شود؛
+- executor باید صریح و bounded باشد؛
+- provider در تست fake/stub است؛
+- scheduler health، Outbox و dead-letter برای FO-7/FO-9 باقی می‌مانند.
 
 ---
 
-## 8. Exit Gate FO-5
+## 8. خط قرمزهای FO-6
 
-```text
-FO-4 owner acceptance                         = PASS
-FO-5 governance authorization PR #104         = PASS
-FO-5 implementation PR #106                   = PASS
-Structured outcome persistence                = PASS
-Deterministic transition policy               = PASS
-Callback future validation                    = PASS
-Threshold callback cleared in Source Truth    = PASS
-One-time escalation                           = PASS
-Routing kill-switch prerequisite              = PASS
-Jalali callback date + time                    = PASS
-Stale/permission/terminal/idempotency guards  = PASS
-Flag-off 404/hidden controls                  = PASS
-Source Truth/SMS/Appointment/Rule unchanged   = PASS
-Full CI 30865955479                            = PASS (801 + 54)
-Local Owner UX Acceptance Issue #107           = PENDING
-FO-6 governance authorization                 = BLOCKED
-```
-
-FO-5 اکنون `TECHNICALLY_VALIDATED / OWNER_UX_PENDING` است. پذیرش مالک باید روی merge دقیق `94aa2c3eaf335a46e8911a5ac9984e1ff6f4b852` و فقط با دادهٔ TEST_ONLY ثبت شود.
+- MARKETING/campaign/free-text auto-send؛
+- auto-send برای `CLINICIAN_ONLY` یا `MANUAL_APPROVAL`؛
+- تغییر Appointment؛
+- clinical inference/decision/completion؛
+- SMS delivery → Episode transition؛
+- Outbox/dead-letter/cross-channel state machine؛
+- retry worker جدید؛
+- Rule/Hypoglycemia Shadow؛
+- Write به `clinic_new.db`؛
+- شروع FO-7 تا FO-10.
 
 ---
 
-## 9. Roadmap و درصد پیشرفت
-
-رودمپ کامل FO-0 تا FO-10:
+## 9. Exit Gate FO-6
 
 ```text
-specialist_clinic/docs/FOLLOWUP_ORCHESTRATION_UX_V1_ROADMAP.md
+FO-5 owner acceptance Issue #107                = PASS
+FO-6 governance authorization Issue #109/PR #110 = AUTHORIZED
+Immutable policy/template/candidate/decision     = PENDING
+Exact CARE allowlist                             = PENDING
+Pre-send freshness revalidation                  = PENDING
+Expiry and append-only supersession              = PENDING
+Quiet/cap/cooldown/provider fail-closed           = PENDING
+Replay/concurrency one-winner                     = PENDING
+No GET/startup send                               = PENDING
+No campaign/MARKETING/free-text/clinical auto-send = PENDING
+Full CI                                            = PENDING
+Local Owner UX Acceptance                         = PENDING
+FO-7 governance authorization                     = BLOCKED
 ```
-
-```text
-FO-0..FO-4 validated with required acceptance = 5.0
-FO-5 technically validated / owner UX pending = 0.8
-FO-6..FO-10 blocked = 0.0
-Progress = 5.8 / 11 = 52.7%
-Technical implementation = 6 / 11 = 54.5%
-Remaining = 47.3%
-```
-
-این درصد فقط برنامهٔ FOUX-V1 است، نه production-readiness کل Specialist Clinic.
 
 ---
 
-## 10. تصمیم فعلی
+## 10. Roadmap و درصد پیشرفت
 
 ```text
-FO-0 = VALIDATED
-FO-1 = VALIDATED
-FO-2 = VALIDATED
-FO-3 = VALIDATED WITH OWNER ACCEPTANCE
-FO-4 = VALIDATED WITH OWNER ACCEPTANCE
-FO-5 = TECHNICALLY VALIDATED / OWNER UX PENDING
-CURRENT ISSUE = #107
-REVIEWED MERGE = 94aa2c3eaf335a46e8911a5ac9984e1ff6f4b852
-FO-6 AND LATER = BLOCKED
+FO-0..FO-5 validated with required acceptance = 6.0
+FO-6 authorized/not started = 0.0
+FO-7..FO-10 blocked = 0.0
+Progress = 6.0 / 11 = 54.5%
+Remaining = 45.5%
+```
+
+این درصد فقط FOUX-V1 است و معیار آمادگی Production کل مطب نیست.
+
+---
+
+## 11. تصمیم فعلی
+
+```text
+FO-0..FO-5 = VALIDATED WITH REQUIRED ACCEPTANCE
+FO-6 = AUTHORIZED / IMPLEMENTATION PENDING
+CURRENT ISSUE = #109
+FEATURE FLAG = FOLLOWUP_SMS_AUTO_GUARDED (default OFF)
+FO-7 AND LATER = BLOCKED
 ```

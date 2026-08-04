@@ -2,7 +2,7 @@
 
 > **Source of Truth مدیریتی مخزن.** پیش از توسعه، وضعیت واقعی GitHub، این فایل و `PROJECT_STATE.json` خوانده شوند.
 
-- آخرین ممیزی: `2026-08-04 04:12 +03:30`
+- آخرین ممیزی: `2026-08-04 17:20 +03:30`
 - شاخهٔ مرجع: `main`
 - محیط Specialist: `TEST_ONLY / SYNTHETIC_OR_RESETTABLE`
 - دادهٔ واقعی بیمار: `NOT EXPECTED`
@@ -15,7 +15,7 @@
 |---|---|---|---|
 | Specialist Product | `ACTIVE_PRE_PRODUCTION` | رفتار واقعی main | تغییر بالینی بدون گیت |
 | SMS Consent UX | `COMPLETED` | رابط روشن رضایت پیامکی | تغییر policy یا consent defaults |
-| FOUX-V1 | `FO_0..FO_4_VALIDATED / FO_5_TECHNICALLY_VALIDATED / OWNER_UX_PENDING` | مرور UX مالک یا defect متمرکز FO-5 | FO-6+ و توسعهٔ بیشتر Runtime |
+| FOUX-V1 | `FO_0..FO_5_VALIDATED / FO_6_AUTHORIZED` | فقط پیاده‌سازی محدود SMS CARE اداری تحت Issue #109 | FO-7+، کمپین/MARKETING و اتوماسیون بالینی |
 | Clinical Engine v2 | `INFRASTRUCTURE_IMPLEMENTED / ACTIVATION_GATED` | runtime/audit | activation بدون approval |
 | Rule package | `LEGACY_DRAFT_QUARANTINED` | provenance/test | clinical use |
 | ADA research | `FROZEN_V0_9_4` | evidence draft | runtime authority |
@@ -43,18 +43,18 @@ Consent defaults، append-only history، stale guard و send policy تغییر �
 ```text
 Canonical plan:
 specialist_clinic/docs/FOLLOWUP_ORCHESTRATION_UX_V1_IMPLEMENTATION_PLAN.md
-Version 1.7.0
+Version 1.8.0
 
 Complete roadmap:
 specialist_clinic/docs/FOLLOWUP_ORCHESTRATION_UX_V1_ROADMAP.md
-Roadmap version 1.2.0
+Roadmap version 1.3.0
 ```
 
 ```text
-Gate progress = 5.8 / 11 = 52.7% (~53%)
+Gate progress = 6.0 / 11 = 54.5% (~55%)
 Technical implementation through FO-5 = 6 / 11 = 54.5%
-Fully owner-accepted tranches = 5 / 11
-Remaining = 47.3%
+Fully owner-accepted tranches = 6 / 11
+Remaining = 45.5%
 ```
 
 این درصد فقط trancheهای FOUX-V1 را می‌سنجد و production-readiness کل Specialist Clinic نیست.
@@ -117,47 +117,56 @@ critical_ux_defects = 0
 notes = بررسی شد و مشکل بحرانی مشاهده نشد
 ```
 
-### FO-5 — TECHNICALLY VALIDATED / OWNER UX PENDING
+### FO-5 — VALIDATED WITH OWNER ACCEPTANCE
 
 ```text
-Authorization Issue = #103
-Governance PR = #104
-Governance merge = 9c296e70511d73dd79a447cc34ef2aeb79f4edd9
-Implementation Issue = #105
-Implementation PR = #106
-Final head = 2ab1cb1ec956bb9534dea7dd383b76bbf5fb3f5c
-Merge = 94aa2c3eaf335a46e8911a5ac9984e1ff6f4b852
-CI = 30865955479
-801 Specialist + 54 Accounting
+Implementation Issue = #105 / PR #106
+Runtime merge = 94aa2c3eaf335a46e8911a5ac9984e1ff6f4b852
+Runtime CI = 30865955479 — 801 Specialist + 54 Accounting
+Governance/docs PR = #108
+Governance merge = 7810245d6e858098af1a0db15d3f9d23bf97e138
+Owner acceptance Issue = #107 (completed)
 ```
-
-Technical validation includes:
-
-- authoritative append-only `followup_contact_events` and Episode contact links;
-- structured outcome → deterministic next action;
-- future callback validation with Jalali date plus time;
-- bounded retry and exactly-once unreachable escalation;
-- threshold escalation with no remaining due callback;
-- `PHONE_INVALID` → Reception/contact repair;
-- Routing kill switch as an FO-5 prerequisite;
-- exact replay and stale/terminal/permission/owner fail-closed guards;
-- free note excluded from Unified Timeline;
-- zero automatic SMS, Appointment mutation, clinical completion/decision or Accounting write.
-
-Current gate:
 
 ```text
-Issue = #107
-Action = Local Owner UX Acceptance on merge 94aa2c3e...
-Allowed = owner review or focused FO-5 defect fix only
-FO-6+ = BLOCKED
+FO5_UX_ACCEPTED = true
+reviewer = Emad211
+reviewed_commit = 94aa2c3eaf335a46e8911a5ac9984e1ff6f4b852
+reviewed_on_test_data = true
+critical_ux_defects = 0
+notes = بررسی شد و مشکل بحرانی مشاهده نشد
 ```
 
-Local review guide:
+### FO-6 — AUTHORIZED / IMPLEMENTATION PENDING
 
 ```text
-specialist_clinic/docs/FOLLOWUP_ORCHESTRATION_FO5_LOCAL_UX_ACCEPTANCE.md
+Authorization Issue = #109
+Governance PR = #110
+Scope = Administrative CARE SMS freshness and AUTO_GUARDED only
+Feature Flag = FOLLOWUP_SMS_AUTO_GUARDED
+Default = OFF
 ```
+
+محدودهٔ مجاز:
+
+- policy levels: `CLINICIAN_ONLY / MANUAL_APPROVAL / AUTO_GUARDED`؛
+- AUTO_GUARDED فقط برای `appointment_reminder` و `refill_due`؛
+- purpose فقط `CARE`؛
+- immutable policy/template/candidate/decision؛
+- TTL پیش‌فرض ۲۴ ساعت با بازهٔ ۱ تا ۷۲ ساعت؛
+- revalidation کامل consent، phone، template/body hash، source period، quiet hours، daily cap، cooldown، idempotency و provider؛
+- executor صریح و محدود؛ بدون ارسال از GET یا startup.
+
+خارج از دامنه:
+
+- MARKETING و campaign auto-send؛
+- free-text auto-send؛
+- `CLINICIAN_ONLY` یا `MANUAL_APPROVAL` auto-send؛
+- `lapsed`، دعوت‌ها و invoice outreach در allowlist اولیه؛
+- Appointment mutation یا clinical decision/completion؛
+- SMS delivery → Episode transition؛
+- Outbox، dead-letter، scheduler health و FO-7+؛
+- Rule/Hypoglycemia یا Accounting write.
 
 ---
 
@@ -183,18 +192,23 @@ FOLLOWUP_AUTOMATION_HEALTH
 ## Exact continuation point
 
 ```text
-CURRENT = FO-5 Local Owner UX Acceptance
-ISSUE = #107
-REVIEWED MERGE = 94aa2c3eaf335a46e8911a5ac9984e1ff6f4b852
-TECHNICAL CI = 30865955479 — 801 Specialist + 54 Accounting
-ALLOWED = local owner review or focused FO-5 defect fix only
-FO-6 AND LATER = BLOCKED
+CURRENT = FO-6 Governed SMS Automation & Freshness implementation
+ISSUE = #109
+BASE = main after governance PR #110
+ALLOWED = bounded administrative CARE SMS implementation only
+FO-7 AND LATER = BLOCKED
 ```
 
-Remaining Exit Gate FO-5:
+Exit Gate FO-6:
 
-- execute the TEST_ONLY local review guide;
-- record the acceptance block in Issue #107;
-- `critical_ux_defects = 0` before acceptance;
-- update Project State after owner acceptance;
-- create a separate governance authorization before any FO-6 work.
+- immutable policy/template/candidate/decision contracts؛
+- exact allowlist and policy-level enforcement؛
+- fresh consent/phone/template/body/source validation؛
+- expiry and append-only supersession؛
+- quiet-hours/daily-cap/cooldown/provider fail-closed؛
+- exact replay and concurrent one-winner؛
+- zero GET/startup send؛
+- zero campaign/MARKETING/free-text/clinical automatic send؛
+- full CI؛
+- local owner UX acceptance؛
+- separate governance before FO-7.
