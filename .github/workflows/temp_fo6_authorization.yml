@@ -1,0 +1,1023 @@
+name: Temporary FO-6 governance authorization
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - .github/workflows/temp_fo6_authorization.yml
+
+permissions:
+  contents: write
+
+jobs:
+  authorize:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: docs/foux-v1-fo5-acceptance-fo6-authorization
+      - name: Update canonical governance state
+        run: |
+          python - <<'PY'
+          from __future__ import annotations
+
+          import json
+          from pathlib import Path
+          import re
+
+          MAIN = "7810245d6e858098af1a0db15d3f9d23bf97e138"
+          FO5_RUNTIME = "94aa2c3eaf335a46e8911a5ac9984e1ff6f4b852"
+          FO6_ISSUE = 109
+          FO6_PR = 110
+
+          def replace_once(text: str, old: str, new: str, label: str) -> str:
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{label}: expected one match, found {count}")
+              return text.replace(old, new, 1)
+
+          def regex_once(text: str, pattern: str, replacement: str, label: str) -> str:
+              updated, count = re.subn(pattern, replacement, text, count=1, flags=re.S)
+              if count != 1:
+                  raise SystemExit(f"{label}: expected one regex match, found {count}")
+              return updated
+
+          # Machine-readable authority.
+          state_path = Path("PROJECT_STATE.json")
+          state = json.loads(state_path.read_text(encoding="utf-8"))
+          state["schema_version"] = "2.6"
+          state["audited_at"] = "2026-08-04T17:20:00+03:30"
+          state["product_authority"]["head"] = MAIN
+          state["product_authority"]["head_note"] = (
+              "FOUX-V1 FO-5 owner accepted; FO-6 bounded SMS governance authorized"
+          )
+          stream = state["streams"]["followup_orchestration_ux_v1"]
+          stream["plan_version"] = "1.8.0"
+          stream["roadmap_version"] = "1.3.0"
+          stream["current_tranche"] = "FO_6_AUTHORIZED_IMPLEMENTATION_PENDING"
+          stream["status"] = (
+              "FO_0_VALIDATED_FO_1_VALIDATED_FO_2_VALIDATED_"
+              "FO_3_OWNER_ACCEPTED_FO_4_OWNER_ACCEPTED_"
+              "FO_5_OWNER_ACCEPTED_FO_6_AUTHORIZED_NOT_STARTED_"
+              "FO_7_AND_LATER_BLOCKED"
+          )
+          stream["roadmap_progress"].update(
+              {
+                  "validated_equivalent": 6.0,
+                  "progress_percent": 54.5,
+                  "remaining_percent": 45.5,
+                  "technical_tranches_implemented": 6,
+                  "technical_implementation_percent": 54.5,
+                  "fully_accepted_tranches": 6,
+                  "current_partial_tranche": None,
+                  "current_partial_credit": 0.0,
+                  "next_required_gate": "FO6_TECHNICAL_IMPLEMENTATION",
+              }
+          )
+          stream["future_tranches"] = {
+              "FO-5": "VALIDATED_WITH_OWNER_ACCEPTANCE",
+              "FO-6": "AUTHORIZED_NOT_STARTED",
+              "FO-7": "CROSS_CHANNEL_TRANSITIONS_OUTBOX_BLOCKED",
+              "FO-8": "CLINICAL_EVIDENCE_ASSIST_BLOCKED",
+              "FO-9": "AUTOMATION_HEALTH_BLOCKED",
+              "FO-10": "CONTROLLED_PILOT_CUTOVER_BLOCKED",
+          }
+          fo5 = stream["fo5_evidence"]
+          fo5.update(
+              {
+                  "owner_acceptance_issue": 107,
+                  "local_ux_acceptance": True,
+                  "reviewer": "Emad211",
+                  "reviewed_commit": FO5_RUNTIME,
+                  "reviewed_on_test_data": True,
+                  "critical_ux_defects": 0,
+                  "owner_notes": "بررسی شد و مشکل بحرانی مشاهده نشد",
+                  "status": "VALIDATED_WITH_OWNER_ACCEPTANCE",
+              }
+          )
+          stream["fo6_authorization"] = {
+              "tracking_issue": FO6_ISSUE,
+              "governance_pr": FO6_PR,
+              "scope": "ADMINISTRATIVE_CARE_SMS_FRESHNESS_AUTO_GUARDED_ONLY",
+              "feature_flag": "FOLLOWUP_SMS_AUTO_GUARDED",
+              "default_enabled": False,
+              "policy_levels": [
+                  "CLINICIAN_ONLY",
+                  "MANUAL_APPROVAL",
+                  "AUTO_GUARDED",
+              ],
+              "initial_auto_guard_allowlist": [
+                  "appointment_reminder",
+                  "refill_due",
+              ],
+              "purpose": "CARE_ONLY",
+              "approval_ttl_hours_default": 24,
+              "approval_ttl_hours_bounds": [1, 72],
+              "requires_immutable_policy_template_candidate_and_decision": True,
+              "requires_pre_send_revalidation": True,
+              "no_get_or_startup_send": True,
+              "explicit_executor_only": True,
+              "marketing_or_campaign_auto_send": False,
+              "free_text_auto_send": False,
+              "clinician_only_auto_send": False,
+              "appointment_mutation": False,
+              "clinical_decision_or_completion": False,
+              "outbox_or_dead_letter": False,
+              "status": "AUTHORIZED",
+          }
+          contracts = stream["implemented_contracts"]
+          contracts["sms_auto_guard_feature_flag"] = "FOLLOWUP_SMS_AUTO_GUARDED"
+          contracts["sms_auto_guard_policy_levels"] = [
+              "CLINICIAN_ONLY",
+              "MANUAL_APPROVAL",
+              "AUTO_GUARDED",
+          ]
+          contracts["sms_auto_guard_initial_allowlist"] = [
+              "appointment_reminder",
+              "refill_due",
+          ]
+          contracts["sms_auto_guard_purpose"] = "CARE_ONLY"
+          contracts["sms_auto_guard_candidate_ttl_hours"] = 24
+          stream["fo6_allowed"] = True
+          stream["fo7_allowed"] = False
+          stream["next_gate"] = "FO6_IMPLEMENTATION_ISSUE_AND_PR"
+          for invariant in (
+              "FO5_OWNER_ACCEPTED_BEFORE_FO6_AUTHORIZATION",
+              "FO6_AUTO_GUARDED_IS_ADMINISTRATIVE_CARE_ALLOWLIST_ONLY",
+              "FO6_CLINICIAN_ONLY_AND_MANUAL_APPROVAL_NEVER_AUTO_SEND",
+              "FO6_PRE_SEND_REVALIDATION_FAILS_CLOSED",
+              "FO6_NO_GET_OR_STARTUP_SEND",
+              "FO6_NO_MARKETING_CAMPAIGN_FREE_TEXT_OR_CLINICAL_AUTO_SEND",
+          ):
+              if invariant not in stream["invariants"]:
+                  stream["invariants"].append(invariant)
+          state["global_freeze"]["followup_orchestration_fo5"] = (
+              "VALIDATED_WITH_OWNER_ACCEPTANCE"
+          )
+          state["global_freeze"]["followup_orchestration_fo6"] = (
+              "AUTHORIZED_IMPLEMENTATION_ONLY_UNDER_ISSUE_109"
+          )
+          state["global_freeze"]["followup_orchestration_fo7_and_later"] = (
+              "BLOCKED_PENDING_FO6_TECHNICAL_VALIDATION_OWNER_ACCEPTANCE_"
+              "AND_SEPARATE_GOVERNANCE"
+          )
+          state["global_freeze"].pop("followup_orchestration_fo6_and_later", None)
+          state["next_phases"] = [
+              "FO_6_GOVERNED_SMS_AUTOMATION_IMPLEMENTATION",
+              *[
+                  value for value in state.get("next_phases", [])
+                  if value != "FO_5_ISSUE_107_LOCAL_OWNER_UX_ACCEPTANCE"
+              ],
+          ]
+          programs = [
+              value for value in state.get("operational_programs", [])
+              if value not in {
+                  "FOUX_V1_FO_5_TECHNICALLY_VALIDATED_OWNER_UX_PENDING",
+                  "FOUX_V1_FO_6_AND_LATER_BLOCKED",
+              }
+          ]
+          for value in (
+              "FOUX_V1_FO_5_VALIDATED_WITH_OWNER_ACCEPTANCE",
+              "FOUX_V1_FO_6_AUTHORIZED_NOT_STARTED",
+              "FOUX_V1_FO_7_AND_LATER_BLOCKED",
+          ):
+              if value not in programs:
+                  programs.append(value)
+          state["operational_programs"] = programs
+          state["status_tags"] = [
+              "FOUX_V1_FO_5_VALIDATED_WITH_OWNER_ACCEPTANCE",
+              "FOUX_V1_FO_6_AUTHORIZED_NOT_STARTED",
+              "FOUX_V1_FO_7_AND_LATER_BLOCKED",
+          ]
+          state_path.write_text(
+              json.dumps(state, ensure_ascii=False, indent=2) + "\n",
+              encoding="utf-8",
+          )
+
+          # Human project authority.
+          path = Path("PROJECT_STATE.md")
+          text = path.read_text(encoding="utf-8")
+          text = replace_once(
+              text,
+              "- آخرین ممیزی: `2026-08-04 04:12 +03:30`",
+              "- آخرین ممیزی: `2026-08-04 17:20 +03:30`",
+              "project audit",
+          )
+          text = replace_once(text, "Version 1.7.0", "Version 1.8.0", "project plan")
+          text = replace_once(
+              text,
+              "Roadmap version 1.2.0",
+              "Roadmap version 1.3.0",
+              "project roadmap",
+          )
+          text = replace_once(
+              text,
+              "Gate progress = 5.8 / 11 = 52.7% (~53%)\nTechnical implementation through FO-5 = 6 / 11 = 54.5%\nFully owner-accepted tranches = 5 / 11\nRemaining = 47.3%",
+              "Gate progress = 6.0 / 11 = 54.5% (~55%)\nTechnical implementation through FO-5 = 6 / 11 = 54.5%\nFully owner-accepted tranches = 6 / 11\nRemaining = 45.5%",
+              "project progress",
+          )
+          text = text.replace(
+              "| FOUX-V1 | `FO_0..FO_4_VALIDATED / FO_5_TECHNICALLY_VALIDATED / OWNER_UX_PENDING` | مرور UX مالک یا defect متمرکز FO-5 | FO-6+ و توسعهٔ بیشتر Runtime |",
+              "| FOUX-V1 | `FO_0..FO_5_VALIDATED / FO_6_AUTHORIZED` | فقط پیاده‌سازی محدود SMS CARE اداری تحت Issue #109 | FO-7+، کمپین/MARKETING و اتوماسیون بالینی |",
+          )
+          tail = """### FO-5 — VALIDATED WITH OWNER ACCEPTANCE
+
+```text
+Implementation Issue = #105 / PR #106
+Runtime merge = 94aa2c3eaf335a46e8911a5ac9984e1ff6f4b852
+Runtime CI = 30865955479 — 801 Specialist + 54 Accounting
+Governance/docs PR = #108
+Governance merge = 7810245d6e858098af1a0db15d3f9d23bf97e138
+Owner acceptance Issue = #107 (completed)
+```
+
+```text
+FO5_UX_ACCEPTED = true
+reviewer = Emad211
+reviewed_commit = 94aa2c3eaf335a46e8911a5ac9984e1ff6f4b852
+reviewed_on_test_data = true
+critical_ux_defects = 0
+notes = بررسی شد و مشکل بحرانی مشاهده نشد
+```
+
+### FO-6 — AUTHORIZED / IMPLEMENTATION PENDING
+
+```text
+Authorization Issue = #109
+Governance PR = #110
+Scope = Administrative CARE SMS freshness and AUTO_GUARDED only
+Feature Flag = FOLLOWUP_SMS_AUTO_GUARDED
+Default = OFF
+```
+
+محدودهٔ مجاز:
+
+- policy levels: `CLINICIAN_ONLY / MANUAL_APPROVAL / AUTO_GUARDED`؛
+- AUTO_GUARDED فقط برای `appointment_reminder` و `refill_due`؛
+- purpose فقط `CARE`؛
+- immutable policy/template/candidate/decision؛
+- TTL پیش‌فرض ۲۴ ساعت با بازهٔ ۱ تا ۷۲ ساعت؛
+- revalidation کامل consent، phone، template/body hash، source period، quiet hours، daily cap، cooldown، idempotency و provider؛
+- executor صریح و محدود؛ بدون ارسال از GET یا startup.
+
+خارج از دامنه:
+
+- MARKETING و campaign auto-send؛
+- free-text auto-send؛
+- `CLINICIAN_ONLY` یا `MANUAL_APPROVAL` auto-send؛
+- `lapsed`، دعوت‌ها و invoice outreach در allowlist اولیه؛
+- Appointment mutation یا clinical decision/completion؛
+- SMS delivery → Episode transition؛
+- Outbox، dead-letter، scheduler health و FO-7+؛
+- Rule/Hypoglycemia یا Accounting write.
+
+---
+
+## Feature Flags
+
+همه default OFF:
+
+```text
+FOLLOWUP_EPISODES_ENABLED
+FOLLOWUP_PROJECTION_SHADOW
+FOLLOWUP_UNIFIED_WORKLIST_READONLY
+FOLLOWUP_UNIFIED_WORKLIST_ACTIONS
+FOLLOWUP_AUTO_ROUTING
+FOLLOWUP_STRUCTURED_CONTACT
+FOLLOWUP_SMS_AUTO_GUARDED
+FOLLOWUP_APPOINTMENT_SYNC
+FOLLOWUP_EVIDENCE_ASSIST
+FOLLOWUP_AUTOMATION_HEALTH
+```
+
+---
+
+## Exact continuation point
+
+```text
+CURRENT = FO-6 Governed SMS Automation & Freshness implementation
+ISSUE = #109
+BASE = main after governance PR #110
+ALLOWED = bounded administrative CARE SMS implementation only
+FO-7 AND LATER = BLOCKED
+```
+
+Exit Gate FO-6:
+
+- immutable policy/template/candidate/decision contracts؛
+- exact allowlist and policy-level enforcement؛
+- fresh consent/phone/template/body/source validation؛
+- expiry and append-only supersession؛
+- quiet-hours/daily-cap/cooldown/provider fail-closed؛
+- exact replay and concurrent one-winner؛
+- zero GET/startup send؛
+- zero campaign/MARKETING/free-text/clinical automatic send؛
+- full CI؛
+- local owner UX acceptance؛
+- separate governance before FO-7.
+"""
+          text = regex_once(text, r"### FO-5 —.*\Z", tail, "project tail")
+          path.write_text(text, encoding="utf-8")
+
+          # Canonical implementation plan: replace current tranche tail.
+          path = Path(
+              "specialist_clinic/docs/FOLLOWUP_ORCHESTRATION_UX_V1_IMPLEMENTATION_PLAN.md"
+          )
+          text = path.read_text(encoding="utf-8")
+          text = replace_once(text, "**نسخه:** `1.7.0`", "**نسخه:** `1.8.0`", "plan version")
+          text = replace_once(
+              text,
+              "**وضعیت:** `FO_0_VALIDATED / FO_1_VALIDATED / FO_2_VALIDATED / FO_3_VALIDATED_WITH_OWNER_ACCEPTANCE / FO_4_VALIDATED_WITH_OWNER_ACCEPTANCE / FO_5_TECHNICALLY_VALIDATED_OWNER_UX_PENDING / FO_6_AND_LATER_BLOCKED`",
+              "**وضعیت:** `FO_0_VALIDATED / FO_1_VALIDATED / FO_2_VALIDATED / FO_3_VALIDATED_WITH_OWNER_ACCEPTANCE / FO_4_VALIDATED_WITH_OWNER_ACCEPTANCE / FO_5_VALIDATED_WITH_OWNER_ACCEPTANCE / FO_6_AUTHORIZED_IMPLEMENTATION_PENDING / FO_7_AND_LATER_BLOCKED`",
+              "plan status",
+          )
+          plan_tail = """## 6. FO-5 — VALIDATED WITH OWNER ACCEPTANCE
+
+```text
+Implementation Issue = #105 / PR #106
+Runtime merge = 94aa2c3eaf335a46e8911a5ac9984e1ff6f4b852
+CI 30865955479 — 801 Specialist + 54 Accounting
+Owner UX Issue = #107 — completed
+```
+
+```text
+FO5_UX_ACCEPTED = true
+reviewer = Emad211
+reviewed_commit = 94aa2c3eaf335a46e8911a5ac9984e1ff6f4b852
+reviewed_on_test_data = true
+critical_ux_defects = 0
+notes = بررسی شد و مشکل بحرانی مشاهده نشد
+```
+
+---
+
+## 7. قدم مجاز فعلی — FO-6 Governed SMS Automation & Freshness
+
+Authorization Issue: `#109`
+
+Governance authorization PR: `#110`
+
+### هدف محصول
+
+هیچ approval یا candidate قدیمی ارسال نشود و فقط یک مسیر بسیار محدود برای پیام‌های CARE اداری، پس از revalidation کامل و deterministic، امکان AUTO_GUARDED داشته باشد.
+
+### Policy levels
+
+```text
+CLINICIAN_ONLY
+→ هرگز خودکار ارسال نمی‌شود
+→ approval تازه و صریح لازم است
+
+MANUAL_APPROVAL
+→ مسیر فعلی صف تأیید حفظ می‌شود
+→ approval منقضی یا stale قابل ارسال نیست
+
+AUTO_GUARDED
+→ فقط allowlist اداری CARE
+→ فقط template version immutable
+→ free-text ممنوع
+→ هر submission نیازمند decision تازه و fail-closed است
+```
+
+### Allowlist اولیه
+
+```text
+appointment_reminder
+refill_due
+```
+
+موارد زیر خودکار نیستند:
+
+```text
+lapsed
+control_room_invite
+invoice outreach
+campaign / MARKETING
+retired clinical events
+هر متن مبتنی بر diagnosis، treatment یا clinical inference
+```
+
+### قرارداد ذخیره‌سازی مجاز
+
+فقط storageهای additive و append-only زیر مجازند:
+
+- policy version؛
+- template version و content hash؛
+- candidate/approval freshness snapshot؛
+- automation decision event.
+
+Storageهای موجود برای مسئولیت فعلی خود authoritative می‌مانند و destructive migration مجاز نیست.
+
+### Pre-send revalidation اجباری
+
+تمام موارد باید PASS باشند:
+
+1. Flag روشن؛
+2. policy هنوز `AUTO_GUARDED`؛
+3. event روی allowlist دقیق؛
+4. purpose برابر `CARE`؛
+5. source event هنوز برای همان `period_key` معتبر و due؛
+6. CARE consent فعلی `GRANTED` و head بدون تغییر؛
+7. phone canonical معتبر و بدون تغییر؛
+8. template version/hash بدون تغییر؛
+9. body hash مطابق rendering deterministic؛
+10. candidate منقضی نشده؛
+11. quiet hours؛
+12. global daily cap؛
+13. event cooldown؛
+14. عدم dispatch/idempotency قبلی؛
+15. provider configured و مطابق snapshot.
+
+هر Unknown یا Failure باید submission را رد و decision audit ثبت کند.
+
+### Expiry و supersession
+
+```text
+TTL default = 24 hours
+Allowed range = 1..72 hours
+```
+
+تغییر consent، phone، template، source period، policy یا body hash candidate را stale/superseded می‌کند. stale candidate هرگز ارسال نمی‌شود.
+
+### Execution boundary
+
+- GET و startup ارسال نمی‌کنند؛
+- scheduler پنهان فعال نمی‌شود؛
+- executor باید صریح و bounded باشد؛
+- provider در تست fake/stub است؛
+- scheduler health، Outbox و dead-letter برای FO-7/FO-9 باقی می‌مانند.
+
+---
+
+## 8. خط قرمزهای FO-6
+
+- MARKETING/campaign/free-text auto-send؛
+- auto-send برای `CLINICIAN_ONLY` یا `MANUAL_APPROVAL`؛
+- تغییر Appointment؛
+- clinical inference/decision/completion؛
+- SMS delivery → Episode transition؛
+- Outbox/dead-letter/cross-channel state machine؛
+- retry worker جدید؛
+- Rule/Hypoglycemia Shadow؛
+- Write به `clinic_new.db`؛
+- شروع FO-7 تا FO-10.
+
+---
+
+## 9. Exit Gate FO-6
+
+```text
+FO-5 owner acceptance Issue #107                = PASS
+FO-6 governance authorization Issue #109/PR #110 = AUTHORIZED
+Immutable policy/template/candidate/decision     = PENDING
+Exact CARE allowlist                             = PENDING
+Pre-send freshness revalidation                  = PENDING
+Expiry and append-only supersession              = PENDING
+Quiet/cap/cooldown/provider fail-closed           = PENDING
+Replay/concurrency one-winner                     = PENDING
+No GET/startup send                               = PENDING
+No campaign/MARKETING/free-text/clinical auto-send = PENDING
+Full CI                                            = PENDING
+Local Owner UX Acceptance                         = PENDING
+FO-7 governance authorization                     = BLOCKED
+```
+
+---
+
+## 10. Roadmap و درصد پیشرفت
+
+```text
+FO-0..FO-5 validated with required acceptance = 6.0
+FO-6 authorized/not started = 0.0
+FO-7..FO-10 blocked = 0.0
+Progress = 6.0 / 11 = 54.5%
+Remaining = 45.5%
+```
+
+این درصد فقط FOUX-V1 است و معیار آمادگی Production کل مطب نیست.
+
+---
+
+## 11. تصمیم فعلی
+
+```text
+FO-0..FO-5 = VALIDATED WITH REQUIRED ACCEPTANCE
+FO-6 = AUTHORIZED / IMPLEMENTATION PENDING
+CURRENT ISSUE = #109
+FEATURE FLAG = FOLLOWUP_SMS_AUTO_GUARDED (default OFF)
+FO-7 AND LATER = BLOCKED
+```
+"""
+          text = regex_once(text, r"## 6\..*\Z", plan_tail, "plan tail")
+          path.write_text(text, encoding="utf-8")
+
+          # Complete roadmap: replace from FO-5 onward.
+          path = Path(
+              "specialist_clinic/docs/FOLLOWUP_ORCHESTRATION_UX_V1_ROADMAP.md"
+          )
+          text = path.read_text(encoding="utf-8")
+          text = replace_once(
+              text,
+              "**Roadmap version:** `1.2.0`",
+              "**Roadmap version:** `1.3.0`",
+              "roadmap version",
+          )
+          text = replace_once(
+              text,
+              "**Current gate:** `FO-5 Local Owner UX Acceptance — Issue #107`",
+              "**Current gate:** `FO-6 Governed SMS Automation implementation — Issue #109`",
+              "roadmap gate",
+          )
+          old_progress = """FO-0 = 1.0
+FO-1 = 1.0
+FO-2 = 1.0
+FO-3 = 1.0
+FO-4 = 1.0
+FO-5 = 0.8  (technically validated; owner UX pending)
+FO-6..FO-10 = 0.0
+--------------------------------
+Total = 5.8 / 11 = 52.7%
+Technical implementation = 6 / 11 = 54.5%
+Remaining = 47.3%"""
+          new_progress = """FO-0 = 1.0
+FO-1 = 1.0
+FO-2 = 1.0
+FO-3 = 1.0
+FO-4 = 1.0
+FO-5 = 1.0
+FO-6..FO-10 = 0.0
+--------------------------------
+Total = 6.0 / 11 = 54.5%
+Technical implementation = 6 / 11 = 54.5%
+Remaining = 45.5%"""
+          text = replace_once(text, old_progress, new_progress, "roadmap progress")
+          text = replace_once(
+              text,
+              "| FO-5 | Structured Contact, Retry & Escalation | `TECHNICALLY_VALIDATED_OWNER_UX_PENDING` | `FOLLOWUP_STRUCTURED_CONTACT` | FO-4 + PR #104/#106 |",
+              "| FO-5 | Structured Contact, Retry & Escalation | `VALIDATED_WITH_OWNER_ACCEPTANCE` | `FOLLOWUP_STRUCTURED_CONTACT` | FO-4 + PR #104/#106/#108 |",
+              "roadmap FO5 row",
+          )
+          text = replace_once(
+              text,
+              "| FO-6 | Governed SMS Automation & Freshness | `BLOCKED_NOT_STARTED` | `FOLLOWUP_SMS_AUTO_GUARDED` | FO-5 acceptance + policy approval |",
+              "| FO-6 | Governed SMS Automation & Freshness | `AUTHORIZED_NOT_STARTED` | `FOLLOWUP_SMS_AUTO_GUARDED` | FO-5 acceptance + Issue #109/PR #110 |",
+              "roadmap FO6 row",
+          )
+          roadmap_tail = """## 5. FO-5 — Structured Contact, Retry & Escalation
+
+```text
+Technical validation = PASS
+Owner UX acceptance = PASS
+Acceptance Issue = #107 completed
+Reviewed runtime = 94aa2c3eaf335a46e8911a5ac9984e1ff6f4b852
+critical_ux_defects = 0
+```
+
+**State:** `VALIDATED_WITH_OWNER_ACCEPTANCE`.
+
+---
+
+## 6. FO-6 — Governed SMS Automation & Freshness
+
+### Authorization evidence
+
+```text
+Issue #109
+Governance PR #110
+Feature Flag FOLLOWUP_SMS_AUTO_GUARDED
+Default OFF
+```
+
+### Authorized outcome
+
+فقط `appointment_reminder` و `refill_due` با purpose=`CARE` می‌توانند پس از policy/template/candidate snapshot immutable و pre-send revalidation کامل به مسیر `AUTO_GUARDED` برسند.
+
+### Policy levels
+
+```text
+CLINICIAN_ONLY  → never automatic
+MANUAL_APPROVAL → current manual queue, fresh approval only
+AUTO_GUARDED    → exact administrative CARE allowlist only
+```
+
+### Freshness gate
+
+Consent head، phone، source period، policy، template hash، body hash، expiry، quiet hours، daily cap، cooldown، idempotency و provider باید همگی PASS باشند. هر failure/unknown، send را متوقف و decision audit ثبت می‌کند.
+
+### Execution boundary
+
+ارسال از GET/startup، scheduler پنهان، campaign/MARKETING/free-text، clinical content، Appointment mutation و Outbox/Dead-letter ممنوع است.
+
+### Exit
+
+- stale/duplicate auto-send = صفر؛
+- `CLINICIAN_ONLY` automatic = صفر؛
+- full CI؛
+- local owner UX acceptance؛
+- governance مستقل برای FO-7.
+
+**State:** `AUTHORIZED_NOT_STARTED`.
+
+---
+
+## 7. FO-7 — Cross-channel Transitions & Operational Outbox
+
+Operational Outbox، SMS delivered/failed transition، Appointment booked/cancelled/no-show، retry/dead-letter و administrative goal completion؛ بدون تکمیل خودکار Clinical Task.
+
+**State:** `BLOCKED_NOT_STARTED`.
+
+---
+
+## 8. FO-8 — Clinical Evidence Assist
+
+Required-evidence reader، candidate matcher، provenance/confidence UI و accept/reject handoff؛ بدون auto-completion یا Fact mutation.
+
+**State:** `BLOCKED_NOT_STARTED`.
+
+---
+
+## 9. FO-9 — Automation Health & Operational Control
+
+Scheduler heartbeat، job history، outbox/dead-letter، projection lag، stale approval monitor، safe retry controls و runbook.
+
+**State:** `BLOCKED_NOT_STARTED`.
+
+---
+
+## 10. FO-10 — Controlled Pilot, KPI Proof, Cutover & Legacy Retirement
+
+Security/privacy، clinical safety، migration/rebuild، rollback rehearsal، user acceptance و لغو صریح TEST_ONLY پیش از PHI واقعی لازم است.
+
+**State:** `BLOCKED_NOT_STARTED`.
+
+---
+
+## 11. Exact continuation point
+
+```text
+CURRENT = FO-6 Governed SMS Automation & Freshness implementation
+ISSUE   = #109
+BASE    = main after governance PR #110
+THEN    = technical validation and local owner UX acceptance
+FO-7+   = BLOCKED
+```
+
+کار مجاز:
+
+- Issue و PR مستقل runtime؛
+- additive append-only policy/template/candidate/decision storage؛
+- allowlist دقیق `appointment_reminder/refill_due`؛
+- CARE-only pre-send revalidation؛
+- executor صریح و bounded؛
+- Feature Flag OFF by default؛
+- full CI و owner review.
+
+کار غیرمجاز:
+
+- campaign/MARKETING/free-text یا clinical auto-send؛
+- Appointment mutation؛
+- delivery transition به Episode؛
+- Outbox/dead-letter/scheduler health؛
+- FO-7 تا FO-10.
+"""
+          text = regex_once(text, r"## 5\..*\Z", roadmap_tail, "roadmap tail")
+          path.write_text(text, encoding="utf-8")
+
+          # Agent guard: replace current tranche and tail.
+          path = Path("specialist_clinic/AGENTS.md")
+          text = path.read_text(encoding="utf-8")
+          old_state = """FO-5 = TECHNICALLY VALIDATED / OWNER UX PENDING
+FO-6 and later = BLOCKED
+CURRENT ISSUE = #107
+REVIEWED MERGE = 94aa2c3eaf335a46e8911a5ac9984e1ff6f4b852
+ROADMAP PROGRESS = 5.8 / 11 = 52.7%
+TECHNICAL IMPLEMENTATION = 6 / 11 = 54.5%
+REMAINING = 47.3%"""
+          new_state = """FO-5 = VALIDATED WITH OWNER ACCEPTANCE
+FO-6 = AUTHORIZED / IMPLEMENTATION PENDING
+FO-7 and later = BLOCKED
+CURRENT ISSUE = #109
+REVIEWED FO-5 MERGE = 94aa2c3eaf335a46e8911a5ac9984e1ff6f4b852
+ROADMAP PROGRESS = 6.0 / 11 = 54.5%
+TECHNICAL IMPLEMENTATION = 6 / 11 = 54.5%
+REMAINING = 45.5%"""
+          text = replace_once(text, old_state, new_state, "agent state")
+          text = replace_once(
+              text,
+              "Canonical plan: `v1.7.0`.\nComplete roadmap: `docs/FOLLOWUP_ORCHESTRATION_UX_V1_ROADMAP.md` v1.2.0.",
+              "Canonical plan: `v1.8.0`.\nComplete roadmap: `docs/FOLLOWUP_ORCHESTRATION_UX_V1_ROADMAP.md` v1.3.0.",
+              "agent versions",
+          )
+          agent_tail = """## FO-5 Evidence و پذیرش مالک
+
+```text
+Implementation Issue #105 / PR #106
+Runtime merge 94aa2c3eaf335a46e8911a5ac9984e1ff6f4b852
+CI 30865955479 — 801 Specialist + 54 Accounting
+Owner UX Issue #107 — completed
+```
+
+```text
+FO5_UX_ACCEPTED = true
+reviewer = Emad211
+reviewed_commit = 94aa2c3eaf335a46e8911a5ac9984e1ff6f4b852
+reviewed_on_test_data = true
+critical_ux_defects = 0
+notes = بررسی شد و مشکل بحرانی مشاهده نشد
+```
+
+## مجوز فعلی FO-6
+
+Issue حاکم: `#109`؛ Governance PR: `#110`.
+
+فقط موارد زیر مجازند:
+
+- policy levels: `CLINICIAN_ONLY / MANUAL_APPROVAL / AUTO_GUARDED`؛
+- AUTO_GUARDED فقط برای `appointment_reminder` و `refill_due`؛
+- purpose فقط `CARE`؛
+- policy/template/candidate/decision immutable و append-only؛
+- TTL پیش‌فرض ۲۴ ساعت، bounded در ۱ تا ۷۲ ساعت؛
+- pre-send revalidation کامل؛
+- executor صریح، bounded و بدون GET/startup send؛
+- Flag `FOLLOWUP_SMS_AUTO_GUARDED` با پیش‌فرض OFF؛
+- Issue و PR مستقل runtime، full CI و owner UX review.
+
+هر check نامعلوم یا failed باید fail-closed باشد. `CLINICIAN_ONLY` و `MANUAL_APPROVAL` هرگز خودکار ارسال نمی‌شوند.
+
+## Pre-send checks اجباری
+
+- policy و allowlist؛
+- CARE consent head؛
+- phone canonical freshness؛
+- source event/period هنوز due؛
+- template version/hash و body hash؛
+- candidate expiry؛
+- quiet hours، daily cap و cooldown؛
+- dispatch/idempotency absence؛
+- provider readiness و affinity.
+
+## Feature Flags
+
+همه default OFF باقی می‌مانند. FO-6 فقط با `FOLLOWUP_SMS_AUTO_GUARDED=1` وارد executor صریح می‌شود؛ manual approvals و گزارش‌های فعلی با Flag خاموش باقی می‌مانند.
+
+## دامنهٔ ممنوع
+
+- campaign یا MARKETING auto-send؛
+- free-text auto-send؛
+- auto-send برای `CLINICIAN_ONLY` یا `MANUAL_APPROVAL`؛
+- `lapsed`، invite و invoice outreach در allowlist اولیه؛
+- Appointment mutation؛
+- clinical inference/decision/completion؛
+- SMS delivery → Episode transition؛
+- Outbox/dead-letter/cross-channel state machine؛
+- scheduler health یا retry worker جدید؛
+- Rule/Hypoglycemia Shadow؛
+- Write به `clinic_new.db`؛
+- شروع FO-7 تا FO-10.
+
+## مرزهای دائمی
+
+- Source Truthها authoritative هستند.
+- SMS consent و delivery eventها append-only هستند.
+- `sms_messages` ledger سازگاری و `sms_message_governance` snapshot immutable باقی می‌مانند.
+- هیچ auto-send بدون decision تازه و تمام revalidationها مجاز نیست.
+- Clinical completion نیازمند Evidence و transition معتبر است.
+- Appointment به‌تنهایی Clinical Task را کامل نمی‌کند.
+
+## PR Contract
+
+PR اجرای FO-6 باید Issue #109، schema additive، policy/allowlist، feature flag، permission، idempotency، concurrency، expiry/supersession، rollback، focused/full tests و proof عدم تغییر campaign/MARKETING/Appointment/Clinical/Accounting را ثبت کند.
+
+بدون Technical Validation، Local Owner UX Acceptance و governance مستقل وارد FO-7 نشوید.
+"""
+          text = regex_once(text, r"## FO-5 Technical Validation.*\Z", agent_tail, "agent tail")
+          path.write_text(text, encoding="utf-8")
+
+          # Governance tests: rewrite focused files to the new authority.
+          Path("specialist_clinic/tests/test_followup_orchestration_fo5_authorization.py").write_text(
+              '''from __future__ import annotations
+
+import json
+from pathlib import Path
+
+
+ROOT = Path(__file__).resolve().parents[2]
+SPECIALIST = ROOT / "specialist_clinic"
+
+
+def test_fo5_owner_acceptance_and_fo6_authorization_are_consistent():
+    state = json.loads((ROOT / "PROJECT_STATE.json").read_text(encoding="utf-8"))
+    stream = state["streams"]["followup_orchestration_ux_v1"]
+
+    assert stream["plan_version"] == "1.8.0"
+    assert stream["roadmap_version"] == "1.3.0"
+    assert stream["current_tranche"] == "FO_6_AUTHORIZED_IMPLEMENTATION_PENDING"
+    fo5 = stream["fo5_evidence"]
+    assert fo5["local_ux_acceptance"] is True
+    assert fo5["reviewer"] == "Emad211"
+    assert fo5["reviewed_commit"] == "94aa2c3eaf335a46e8911a5ac9984e1ff6f4b852"
+    assert fo5["reviewed_on_test_data"] is True
+    assert fo5["critical_ux_defects"] == 0
+    assert fo5["status"] == "VALIDATED_WITH_OWNER_ACCEPTANCE"
+
+    auth = stream["fo6_authorization"]
+    assert auth["tracking_issue"] == 109
+    assert auth["governance_pr"] == 110
+    assert auth["scope"] == "ADMINISTRATIVE_CARE_SMS_FRESHNESS_AUTO_GUARDED_ONLY"
+    assert auth["feature_flag"] == "FOLLOWUP_SMS_AUTO_GUARDED"
+    assert auth["default_enabled"] is False
+    assert auth["policy_levels"] == [
+        "CLINICIAN_ONLY", "MANUAL_APPROVAL", "AUTO_GUARDED"
+    ]
+    assert auth["initial_auto_guard_allowlist"] == [
+        "appointment_reminder", "refill_due"
+    ]
+    assert auth["purpose"] == "CARE_ONLY"
+    assert auth["approval_ttl_hours_default"] == 24
+    assert auth["approval_ttl_hours_bounds"] == [1, 72]
+    assert auth["status"] == "AUTHORIZED"
+    assert stream["fo6_allowed"] is True
+    assert stream["fo7_allowed"] is False
+    assert stream["feature_flags"]["FOLLOWUP_SMS_AUTO_GUARDED"] is False
+    assert stream["next_gate"] == "FO6_IMPLEMENTATION_ISSUE_AND_PR"
+
+    progress = stream["roadmap_progress"]
+    assert progress["validated_equivalent"] == 6.0
+    assert progress["progress_percent"] == 54.5
+    assert progress["remaining_percent"] == 45.5
+    assert progress["fully_accepted_tranches"] == 6
+    assert progress["current_partial_tranche"] is None
+    assert progress["next_required_gate"] == "FO6_TECHNICAL_IMPLEMENTATION"
+
+    freeze = state["global_freeze"]
+    assert freeze["followup_orchestration_fo5"] == "VALIDATED_WITH_OWNER_ACCEPTANCE"
+    assert freeze["followup_orchestration_fo6"].startswith("AUTHORIZED_IMPLEMENTATION_ONLY")
+    assert freeze["followup_orchestration_fo7_and_later"].startswith("BLOCKED")
+
+
+def test_docs_keep_fo6_bounded_and_fo7_blocked():
+    plan = (SPECIALIST / "docs" / "FOLLOWUP_ORCHESTRATION_UX_V1_IMPLEMENTATION_PLAN.md").read_text(encoding="utf-8")
+    roadmap = (SPECIALIST / "docs" / "FOLLOWUP_ORCHESTRATION_UX_V1_ROADMAP.md").read_text(encoding="utf-8")
+    agent = (SPECIALIST / "AGENTS.md").read_text(encoding="utf-8")
+
+    for value in (
+        "FO5_UX_ACCEPTED = true",
+        "FO_6_AUTHORIZED_IMPLEMENTATION_PENDING",
+        "appointment_reminder",
+        "refill_due",
+        "CLINICIAN_ONLY",
+        "AUTO_GUARDED",
+        "FOLLOWUP_SMS_AUTO_GUARDED",
+        "FO-7 AND LATER = BLOCKED",
+    ):
+        assert value in plan or value in roadmap or value in agent
+    assert "campaign/MARKETING/free-text" in plan
+    assert "CURRENT = FO-6 Governed SMS Automation" in roadmap
+''',
+              encoding="utf-8",
+          )
+
+          Path("specialist_clinic/tests/test_followup_orchestration_roadmap.py").write_text(
+              '''from __future__ import annotations
+
+import json
+from pathlib import Path
+
+
+SPECIALIST_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = SPECIALIST_ROOT.parent
+ROADMAP = SPECIALIST_ROOT / "docs" / "FOLLOWUP_ORCHESTRATION_UX_V1_ROADMAP.md"
+PLAN = SPECIALIST_ROOT / "docs" / "FOLLOWUP_ORCHESTRATION_UX_V1_IMPLEMENTATION_PLAN.md"
+
+
+def test_complete_roadmap_preserves_fo6_through_fo10_and_current_gate():
+    roadmap = ROADMAP.read_text(encoding="utf-8")
+    for tranche in (
+        "FO-6 — Governed SMS Automation & Freshness",
+        "FO-7 — Cross-channel Transitions & Operational Outbox",
+        "FO-8 — Clinical Evidence Assist",
+        "FO-9 — Automation Health & Operational Control",
+        "FO-10 — Controlled Pilot, KPI Proof, Cutover & Legacy Retirement",
+    ):
+        assert tranche in roadmap
+    assert "6.0 / 11 = 54.5%" in roadmap
+    assert "Remaining = 45.5%" in roadmap
+    assert "CURRENT = FO-6 Governed SMS Automation & Freshness implementation" in roadmap
+    assert "ISSUE   = #109" in roadmap
+    assert "AUTHORIZED_NOT_STARTED" in roadmap
+    assert roadmap.count("BLOCKED_NOT_STARTED") >= 4
+
+
+def test_important_governance_docs_link_the_complete_roadmap():
+    plan = PLAN.read_text(encoding="utf-8")
+    state = (REPO_ROOT / "PROJECT_STATE.md").read_text(encoding="utf-8")
+    agent = (SPECIALIST_ROOT / "AGENTS.md").read_text(encoding="utf-8")
+    name = "FOLLOWUP_ORCHESTRATION_UX_V1_ROADMAP.md"
+    assert name in plan and name in state and name in agent
+    assert "6.0 / 11 = 54.5%" in plan
+    assert "Gate progress = 6.0 / 11 = 54.5%" in state
+    assert "ROADMAP PROGRESS = 6.0 / 11 = 54.5%" in agent
+    assert "94aa2c3eaf335a46e8911a5ac9984e1ff6f4b852" in plan
+    assert "FO5_UX_ACCEPTED = true" in state
+    assert "CURRENT ISSUE = #109" in agent
+
+
+def test_project_state_json_registers_fo6_authorization_and_future_gates():
+    state = json.loads((REPO_ROOT / "PROJECT_STATE.json").read_text(encoding="utf-8"))
+    stream = state["streams"]["followup_orchestration_ux_v1"]
+    assert state["schema_version"] == "2.6"
+    assert stream["roadmap_version"] == "1.3.0"
+    progress = stream["roadmap_progress"]
+    assert progress["model"] == "TRANCHE_EQUIVALENT"
+    assert progress["tranche_count"] == 11
+    assert progress["validated_equivalent"] == 6.0
+    assert progress["progress_percent"] == 54.5
+    assert progress["remaining_percent"] == 45.5
+    assert progress["technical_tranches_implemented"] == 6
+    assert progress["technical_implementation_percent"] == 54.5
+    assert progress["fully_accepted_tranches"] == 6
+    assert progress["current_partial_tranche"] is None
+    assert progress["current_partial_credit"] == 0.0
+    assert progress["next_required_gate"] == "FO6_TECHNICAL_IMPLEMENTATION"
+    assert stream["future_tranches"]["FO-5"] == "VALIDATED_WITH_OWNER_ACCEPTANCE"
+    assert stream["future_tranches"]["FO-6"] == "AUTHORIZED_NOT_STARTED"
+    assert stream["fo6_allowed"] is True
+    assert stream["fo7_allowed"] is False
+''',
+              encoding="utf-8",
+          )
+
+          # Existing large FO-0 and FO-4 guards receive narrow string updates.
+          for file_name in (
+              "specialist_clinic/tests/test_followup_orchestration_fo0.py",
+              "specialist_clinic/tests/test_followup_orchestration_fo4_repair_attestation.py",
+          ):
+              p = Path(file_name)
+              body = p.read_text(encoding="utf-8")
+              replacements = {
+                  '"1.7.0"': '"1.8.0"',
+                  '"FO_5_LOCAL_OWNER_UX_ACCEPTANCE"': '"FO_6_AUTHORIZED_IMPLEMENTATION_PENDING"',
+                  'FO-5 = TECHNICALLY VALIDATED / OWNER UX PENDING': 'FO-5 = VALIDATED WITH OWNER ACCEPTANCE',
+                  'FO-6 and later = BLOCKED': 'FO-6 = AUTHORIZED / IMPLEMENTATION PENDING',
+                  'CURRENT ISSUE = #107': 'CURRENT ISSUE = #109',
+              }
+              for old, new in replacements.items():
+                  body = body.replace(old, new)
+              p.write_text(body, encoding="utf-8")
+
+          # Local review contract now confirms accepted status rather than pending gate.
+          p = Path("specialist_clinic/tests/test_followup_orchestration_fo5_local_review_contract.py")
+          body = p.read_text(encoding="utf-8")
+          body = body.replace(
+              'assert stream["current_tranche"] == "FO_5_LOCAL_OWNER_UX_ACCEPTANCE"',
+              'assert stream["current_tranche"] == "FO_6_AUTHORIZED_IMPLEMENTATION_PENDING"',
+          )
+          body = body.replace(
+              '"ISSUE_107_FO5_LOCAL_OWNER_UX_ACCEPTANCE_ON_94AA2C3E"',
+              '"FO6_IMPLEMENTATION_ISSUE_AND_PR"',
+          )
+          old_progress = '''        "validated_equivalent": 5.8,
+        "progress_percent": 52.7,
+        "remaining_percent": 47.3,
+        "technical_tranches_implemented": 6,
+        "technical_implementation_percent": 54.5,
+        "fully_accepted_tranches": 5,
+        "current_partial_tranche": "FO-5",
+        "current_partial_credit": 0.8,
+        "next_required_gate": "FO5_OWNER_UX_ACCEPTANCE",'''
+          new_progress = '''        "validated_equivalent": 6.0,
+        "progress_percent": 54.5,
+        "remaining_percent": 45.5,
+        "technical_tranches_implemented": 6,
+        "technical_implementation_percent": 54.5,
+        "fully_accepted_tranches": 6,
+        "current_partial_tranche": None,
+        "current_partial_credit": 0.0,
+        "next_required_gate": "FO6_TECHNICAL_IMPLEMENTATION",'''
+          if old_progress not in body:
+              raise SystemExit("local review progress block not found")
+          body = body.replace(old_progress, new_progress, 1)
+          body = body.replace(
+              'assert "FOUX_V1_FO_5_AUTHORIZED_NOT_STARTED" not in programs',
+              'assert "FOUX_V1_FO_5_TECHNICALLY_VALIDATED_OWNER_UX_PENDING" not in programs',
+          )
+          body = body.replace(
+              '"FOUX_V1_FO_5_TECHNICALLY_VALIDATED_OWNER_UX_PENDING"\n        in programs',
+              '"FOUX_V1_FO_5_VALIDATED_WITH_OWNER_ACCEPTANCE"\n        in programs',
+          )
+          body = body.replace('assert stream["fo6_allowed"] is False', 'assert stream["fo6_allowed"] is True')
+          body = body.replace(
+              '"followup_orchestration_fo6_and_later"',
+              '"followup_orchestration_fo7_and_later"',
+          )
+          p.write_text(body, encoding="utf-8")
+          PY
+      - name: Commit authorization and remove temporary workflow
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/temp_fo6_authorization.yml
+          git add PROJECT_STATE.json PROJECT_STATE.md specialist_clinic/AGENTS.md specialist_clinic/docs specialist_clinic/tests
+          git commit -m "docs(foux): record FO-5 acceptance and authorize FO-6"
+          git push origin HEAD:docs/foux-v1-fo5-acceptance-fo6-authorization
