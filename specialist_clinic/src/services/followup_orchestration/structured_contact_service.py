@@ -520,11 +520,49 @@ class FollowupStructuredContactService:
                     "مسیر از زمان بازشدن صفحه تغییر کرده است؛ صفحه را تازه کنید.",
                 )
 
-            if outcome == "NO_ANSWER" and requested_callback is None:
-                requested_callback = current_time + timedelta(days=1)
-            elif outcome == "BUSY" and requested_callback is None:
-                requested_callback = current_time + timedelta(hours=2)
+            prior_contact_count, prior_failed_attempts = self._contact_counts(task_id)
+            failed_attempt_count = (
+                prior_failed_attempts + 1
+                if outcome in RETRY_OUTCOMES
+                else 0
+            )
+            next_action = "CONTINUE_CURRENT_PATH"
+            route_role: str | None = None
+            escalation_reason: str | None = None
 
+            if outcome in RETRY_OUTCOMES:
+                if failed_attempt_count >= RETRY_THRESHOLD:
+                    # Do not persist a callback on the threshold attempt. The
+                    # authoritative append-only row must match escalation state.
+                    requested_callback = None
+                    next_action = "MANAGER_REVIEW_UNREACHABLE"
+                    route_role = "MANAGER"
+                    escalation_reason = "UNREACHABLE_THRESHOLD"
+                else:
+                    if outcome == "NO_ANSWER" and requested_callback is None:
+                        requested_callback = current_time + timedelta(days=1)
+                    elif outcome == "BUSY" and requested_callback is None:
+                        requested_callback = current_time + timedelta(hours=2)
+                    next_action = "CALLBACK_AT_TIME"
+            elif outcome == "CALLBACK_REQUESTED":
+                next_action = "CALLBACK_AT_TIME"
+            elif outcome == "PHONE_INVALID":
+                next_action = "FIX_CONTACT_DATA"
+                route_role = "RECEPTION"
+            elif outcome == "APPOINTMENT_BOOKED":
+                next_action = "WAIT_FOR_APPOINTMENT"
+            elif outcome == "DECLINED":
+                next_action = "MANAGER_REVIEW_DECLINED"
+                route_role = "MANAGER"
+            elif outcome == "ESCALATED_TO_PHYSICIAN":
+                next_action = "PHYSICIAN_REVIEW"
+                route_role = "PHYSICIAN"
+                escalation_reason = "CONTACT_ESCALATED_TO_PHYSICIAN"
+            elif outcome == "OTHER":
+                next_action = "MANAGER_REVIEW_OTHER"
+                route_role = "MANAGER"
+
+            callback_text = _text(requested_callback)
             contact = contact_repo.create_contact(
                 task_id=task_id,
                 channel="PHONE",
@@ -550,39 +588,7 @@ class FollowupStructuredContactService:
                 recorded_at=current_time,
                 commit=False,
             )
-
-            contact_count, failed_attempt_count = self._contact_counts(task_id)
-            callback_text = _text(requested_callback)
-            next_action = "CONTINUE_CURRENT_PATH"
-            route_role: str | None = None
-            escalation_reason: str | None = None
-
-            if outcome in RETRY_OUTCOMES:
-                if failed_attempt_count >= RETRY_THRESHOLD:
-                    next_action = "MANAGER_REVIEW_UNREACHABLE"
-                    route_role = "MANAGER"
-                    escalation_reason = "UNREACHABLE_THRESHOLD"
-                    requested_callback = None
-                    callback_text = None
-                else:
-                    next_action = "CALLBACK_AT_TIME"
-            elif outcome == "CALLBACK_REQUESTED":
-                next_action = "CALLBACK_AT_TIME"
-            elif outcome == "PHONE_INVALID":
-                next_action = "FIX_CONTACT_DATA"
-                route_role = "RECEPTION"
-            elif outcome == "APPOINTMENT_BOOKED":
-                next_action = "WAIT_FOR_APPOINTMENT"
-            elif outcome == "DECLINED":
-                next_action = "MANAGER_REVIEW_DECLINED"
-                route_role = "MANAGER"
-            elif outcome == "ESCALATED_TO_PHYSICIAN":
-                next_action = "PHYSICIAN_REVIEW"
-                route_role = "PHYSICIAN"
-                escalation_reason = "CONTACT_ESCALATED_TO_PHYSICIAN"
-            elif outcome == "OTHER":
-                next_action = "MANAGER_REVIEW_OTHER"
-                route_role = "MANAGER"
+            contact_count = prior_contact_count + 1
 
             already_escalated = bool(
                 escalation_reason
