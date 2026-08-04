@@ -21,7 +21,7 @@ def test_fo4_repairs_remain_attested_after_owner_acceptance():
     )
     assert stream["fo4_allowed"] is True
     assert stream["fo5_allowed"] is True
-    assert stream["fo6_allowed"] is False
+    assert stream["fo6_allowed"] is True
     assert fo4["runtime_ui_review_commit"] == (
         "cd243424ecbae98892e0dfde1780bb846554942f"
     )

@@ -66,7 +66,7 @@ def test_machine_state_has_one_unambiguous_fo5_owner_gate():
     stream = state["streams"]["followup_orchestration_ux_v1"]
     programs = state["operational_programs"]
 
-    assert state["schema_version"] == "2.5"
+    assert state["schema_version"] == "2.6"
     assert stream["current_tranche"] == "FO_6_AUTHORIZED_IMPLEMENTATION_PENDING"
     assert stream["next_gate"] == (
         "FO6_IMPLEMENTATION_ISSUE_AND_PR"
@@ -102,5 +102,8 @@ def test_temporary_governance_workflows_are_not_part_of_the_pr():
         "temp_fo5_technical_attestation.yml",
         "temp_fo5_attestation_runner.yml",
         "temp_fo5_consistency_repair.yml",
+        "temp_fo6_authorization.yml",
+        "temp_fo6_runner.yml",
+        "temp_fo6_test_repair.yml",
     ):
         assert not (workflows / name).exists()

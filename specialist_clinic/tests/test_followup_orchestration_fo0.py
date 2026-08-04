@@ -213,8 +213,8 @@ def test_project_state_attests_fo4_acceptance_and_authorizes_bounded_fo5():
         "FO_6_AUTHORIZED_IMPLEMENTATION_PENDING"
     )
     assert "FO_4_OWNER_ACCEPTED" in stream["status"]
-    assert "FO_5_TECHNICALLY_VALIDATED_OWNER_UX_PENDING" in stream["status"]
-    assert "FO_6_AND_LATER_BLOCKED" in stream["status"]
+    assert "FO_5_OWNER_ACCEPTED" in stream["status"]
+    assert "FO_6_AUTHORIZED_NOT_STARTED" in stream["status"]
 
     fo3 = stream["fo3_evidence"]
     assert fo3["owner_acceptance"] is True
@@ -257,16 +257,16 @@ def test_project_state_attests_fo4_acceptance_and_authorizes_bounded_fo5():
     assert authorization["default_enabled"] is False
     assert authorization["status"] == "VALIDATED"
     assert stream["fo5_allowed"] is True
-    assert stream["fo6_allowed"] is False
-    assert stream["next_gate"] == "ISSUE_107_FO5_LOCAL_OWNER_UX_ACCEPTANCE_ON_94AA2C3E"
+    assert stream["fo6_allowed"] is True
+    assert stream["next_gate"] == "FO6_IMPLEMENTATION_ISSUE_AND_PR"
     assert stream["feature_flags"] == {
         name: False for name in EXPECTED_FLAGS
     }
     assert state["global_freeze"]["followup_orchestration_fo5"].startswith(
-        "TECHNICALLY_VALIDATED_OWNER_UX_REVIEW_OR_FOCUSED_DEFECT_FIX_ONLY"
+        "VALIDATED_WITH_OWNER_ACCEPTANCE"
     )
     assert state["global_freeze"][
-        "followup_orchestration_fo6_and_later"
+        "followup_orchestration_fo7_and_later"
     ].startswith("BLOCKED")
 
 
@@ -276,9 +276,9 @@ def test_canonical_docs_and_agent_guard_authorize_fo5_but_block_fo6():
     baseline = BASELINE_PATH.read_text(encoding="utf-8")
     agent = (SPECIALIST_ROOT / "AGENTS.md").read_text(encoding="utf-8")
 
-    assert "نسخه:** `1.7.0`" in plan
-    assert "FO_5_TECHNICALLY_VALIDATED_OWNER_UX_PENDING" in plan
-    assert "FO_6_AND_LATER_BLOCKED" in plan
+    assert "نسخه:** `1.8.0`" in plan
+    assert "FO_5_VALIDATED_WITH_OWNER_ACCEPTANCE" in plan
+    assert "FO_6_AUTHORIZED_IMPLEMENTATION_PENDING" in plan
     assert "FO4_UX_ACCEPTED = true" in plan
     assert (
         "reviewed_commit = cd243424ecbae98892e0dfde1780bb846554942f"
@@ -287,9 +287,9 @@ def test_canonical_docs_and_agent_guard_authorize_fo5_but_block_fo6():
     assert "Issue = #105 / PR #106" in plan
     assert "FOLLOWUP_STRUCTURED_CONTACT" in plan
     assert "SMS automation" in plan
-    assert "FO-5 Local Owner UX Acceptance" in roadmap
-    assert "TECHNICALLY_VALIDATED_OWNER_UX_PENDING" in roadmap
-    assert "5.8 / 11 = 52.7%" in roadmap
+    assert "FO-6 Governed SMS Automation" in roadmap
+    assert "AUTHORIZED_NOT_STARTED" in roadmap
+    assert "6.0 / 11 = 54.5%" in roadmap
     assert "FO-5 = VALIDATED WITH OWNER ACCEPTANCE" in agent
     assert "FO-6 = AUTHORIZED / IMPLEMENTATION PENDING" in agent
     assert "CURRENT ISSUE = #109" in agent
