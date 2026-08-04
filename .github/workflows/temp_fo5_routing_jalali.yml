@@ -1,0 +1,182 @@
+name: Temporary FO-5 routing and Jalali repairs
+
+on:
+  push:
+    branches:
+      - feature/foux-v1-fo5-structured-contact
+    paths:
+      - .github/workflows/temp_fo5_routing_jalali.yml
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/foux-v1-fo5-structured-contact
+      - name: Apply routing and Jalali repairs
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          api = Path('specialist_clinic/src/api/unified_followups.py')
+          text = api.read_text(encoding='utf-8')
+          text = text.replace(
+              'from __future__ import annotations\n\nimport secrets',
+              'from __future__ import annotations\n\nfrom datetime import datetime\nimport secrets',
+          )
+          text = text.replace(
+              'from src.common.utils import iran_now\n',
+              'from src.common.utils import iran_now, jalali_to_gregorian_str\n',
+          )
+          text = text.replace(
+              'def _require_structured_contact_flag() -> None:\n'
+              '    _require_actions_flag()\n'
+              '    if not current_app.config.get("FOLLOWUP_STRUCTURED_CONTACT", False):\n'
+              '        abort(404)\n\n\n',
+              'def _require_structured_contact_flag() -> None:\n'
+              '    _require_routing_flag()\n'
+              '    if not current_app.config.get("FOLLOWUP_STRUCTURED_CONTACT", False):\n'
+              '        abort(404)\n\n\n'
+              'def _contact_callback_value() -> str | None:\n'
+              '    date_j = str(request.form.get("callback_date") or "").strip()\n'
+              '    time_s = str(request.form.get("callback_time") or "").strip()\n'
+              '    if not date_j and not time_s:\n'
+              '        return None\n'
+              '    if not date_j or not time_s:\n'
+              '        raise FollowupStructuredContactError(\n'
+              '            "INVALID_CALLBACK_AT",\n'
+              '            "برای تماس مجدد، تاریخ و ساعت را کامل وارد کنید.",\n'
+              '        )\n'
+              '    date_g = jalali_to_gregorian_str(date_j)\n'
+              '    if not date_g:\n'
+              '        raise FollowupStructuredContactError(\n'
+              '            "INVALID_CALLBACK_AT",\n'
+              '            "تاریخ شمسی تماس مجدد معتبر نیست.",\n'
+              '        )\n'
+              '    try:\n'
+              '        normalized_time = datetime.strptime(time_s, "%H:%M").strftime("%H:%M")\n'
+              '    except ValueError as exc:\n'
+              '        raise FollowupStructuredContactError(\n'
+              '            "INVALID_CALLBACK_AT",\n'
+              '            "ساعت تماس مجدد معتبر نیست.",\n'
+              '        ) from exc\n'
+              '    return f"{date_g} {normalized_time}:00"\n\n\n',
+          )
+          old = (
+              '    structured_contact_enabled = bool(\n'
+              '        actions_enabled\n'
+              '        and current_app.config.get("FOLLOWUP_STRUCTURED_CONTACT", False)\n'
+              '    )\n'
+          )
+          new = (
+              '    structured_contact_enabled = bool(\n'
+              '        actions_enabled\n'
+              '        and current_app.config.get("FOLLOWUP_AUTO_ROUTING", False)\n'
+              '        and current_app.config.get("FOLLOWUP_STRUCTURED_CONTACT", False)\n'
+              '    )\n'
+          )
+          if text.count(old) != 2:
+              raise SystemExit(f'expected two structured enable blocks, got {text.count(old)}')
+          text = text.replace(old, new)
+          text = text.replace(
+              '            callback_at=request.form.get("callback_at") or None,\n',
+              '            callback_at=_contact_callback_value(),\n',
+          )
+          api.write_text(text, encoding='utf-8')
+
+          partial = Path('specialist_clinic/src/templates/followups/_structured_contact_detail.html')
+          text = partial.read_text(encoding='utf-8')
+          old = '''        <div class="fld">
+            <label for="contact-callback-at">زمان تماس مجدد — در صورت نیاز</label>
+            <input id="contact-callback-at"
+                   name="callback_at"
+                   type="datetime-local"
+                   dir="ltr">
+            <p class="muted text-xs">برای «درخواست تماس مجدد» الزامی است و باید در آینده باشد.</p>
+        </div>
+'''
+          new = '''        <div class="fld">
+            <label>زمان تماس مجدد — در صورت نیاز</label>
+            <div class="row">
+                <input id="contact-callback-date"
+                       name="callback_date"
+                       type="text"
+                       class="jdate"
+                       placeholder="انتخاب تاریخ شمسی"
+                       autocomplete="off">
+                <input id="contact-callback-time"
+                       name="callback_time"
+                       type="time"
+                       class="time-input"
+                       step="300"
+                       lang="fa-IR">
+            </div>
+            <p class="muted text-xs">برای «درخواست تماس مجدد» تاریخ شمسی و ساعت آینده الزامی است.</p>
+        </div>
+'''
+          if old not in text:
+              raise SystemExit('callback template marker not found')
+          partial.write_text(text.replace(old, new), encoding='utf-8')
+
+          tests = Path('specialist_clinic/tests/test_followup_orchestration_fo5.py')
+          text = tests.read_text(encoding='utf-8')
+          addition = '''
+
+def test_contact_requires_routing_flag_and_parses_jalali_callback(fo5_app):
+    from src.api.unified_followups import _contact_callback_value
+    from src.common.utils import jalali_to_gregorian_str
+
+    episode_id = fo5_app.config["FO5_EPISODES"]["callback"]
+    client = fo5_app.test_client()
+    with client.session_transaction() as session:
+        session["user_id"] = fo5_app.config["FO5_STAFF_ID"]
+
+    fo5_app.config["FOLLOWUP_AUTO_ROUTING"] = False
+    html = client.get(f"/followups/unified/{episode_id}").get_data(as_text=True)
+    assert "ثبت نتیجهٔ تماس" not in html
+    assert client.post(
+        f"/followups/unified/{episode_id}/contact",
+        data={
+            "structured_outcome": "REACHED",
+            "expected_event_id": "0",
+            "idempotency_key": "fo5-routing-off-contact",
+        },
+    ).status_code == 404
+
+    fo5_app.config["FOLLOWUP_AUTO_ROUTING"] = True
+    with fo5_app.test_request_context(
+        "/followups/unified/test/contact",
+        method="POST",
+        data={
+            "callback_date": "1405/05/14",
+            "callback_time": "11:30",
+        },
+    ):
+        expected_date = jalali_to_gregorian_str("1405/05/14")
+        assert _contact_callback_value() == f"{expected_date} 11:30:00"
+
+    with fo5_app.test_request_context(
+        "/followups/unified/test/contact",
+        method="POST",
+        data={"callback_date": "1405/05/14", "callback_time": ""},
+    ):
+        with pytest.raises(FollowupStructuredContactError) as incomplete:
+            _contact_callback_value()
+        assert incomplete.value.code == "INVALID_CALLBACK_AT"
+'''
+          if 'def test_contact_requires_routing_flag_and_parses_jalali_callback' not in text:
+              text += addition
+          tests.write_text(text, encoding='utf-8')
+          PY
+      - name: Commit repairs
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/temp_fo5_routing_jalali.yml
+          git add specialist_clinic/src specialist_clinic/tests
+          git commit -m "fix(foux): require routing and parse Jalali callbacks"
+          git push origin HEAD:feature/foux-v1-fo5-structured-contact
