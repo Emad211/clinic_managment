@@ -42,8 +42,7 @@ CREATE TABLE IF NOT EXISTS sms_auto_guard_policy_versions (
     content_hash TEXT NOT NULL CHECK(length(content_hash) = 64),
     created_by TEXT NOT NULL,
     created_at TEXT NOT NULL,
-    UNIQUE(policy_key, version),
-    UNIQUE(policy_key, content_hash)
+    UNIQUE(policy_key, version)
 );
 
 CREATE TABLE IF NOT EXISTS sms_auto_guard_template_versions (
@@ -60,8 +59,7 @@ CREATE TABLE IF NOT EXISTS sms_auto_guard_template_versions (
     approved_at TEXT NOT NULL,
     FOREIGN KEY(policy_version_id)
         REFERENCES sms_auto_guard_policy_versions(id),
-    UNIQUE(event_key, version),
-    UNIQUE(event_key, content_hash)
+    UNIQUE(event_key, version)
 );
 
 CREATE TABLE IF NOT EXISTS sms_auto_guard_candidates (
