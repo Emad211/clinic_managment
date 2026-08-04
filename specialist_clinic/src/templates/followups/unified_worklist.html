@@ -106,6 +106,7 @@
                         {% if item.is_stale %}<span class="badge badge-warn">اطلاعات نما قدیمی است</span>{% endif %}
                         <div class="text-sm">{{ item.primary_explanation }}</div>
                         <div class="muted text-xs">آخرین وضعیت منبع: {{ item.last_source_event_at|jalali if item.last_source_event_at else 'نامشخص' }}</div>
+                        {% include "followups/_structured_contact_list.html" %}
                     </td>
                     <td>
                         <div><span class="muted text-xs">صف مسئول</span><br><b>{{ item.ownership.owner_role_label }}</b></div>
