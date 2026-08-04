@@ -63,6 +63,11 @@ def test_fo5_owner_acceptance_and_fo6_authorization_are_consistent():
     assert "FOUX_V1_FO_5_VALIDATED_WITH_OWNER_ACCEPTANCE" in programs
     assert "FOUX_V1_FO_6_AUTHORIZED_NOT_STARTED" in programs
     assert "FOUX_V1_FO_7_AND_LATER_BLOCKED" in programs
+    assert state["status_tags"] == [
+        "FOUX_V1_FO_5_VALIDATED_WITH_OWNER_ACCEPTANCE",
+        "FOUX_V1_FO_6_AUTHORIZED_NOT_STARTED",
+        "FOUX_V1_FO_7_AND_LATER_BLOCKED",
+    ]
 
 
 def test_docs_keep_fo6_bounded_and_fo7_blocked():
