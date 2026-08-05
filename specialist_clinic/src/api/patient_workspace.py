@@ -43,8 +43,9 @@ _ENDPOINT_TO_TAB = {
     "patients.record_note_delete": "clinical",
     "patients.add_medication": "meds",
     "patients.stop_medication": "meds",
-    "patients.change_medication_dose": "meds",
-    "patients.add_prescription": "meds",
+    "patients.change_dose": "meds",
+    "patients.prescription_free": "meds",
+    "patients.invite_patient": "meds",
     "appointments.new_appointment": "encounters",
 }
 
@@ -109,9 +110,10 @@ def install_compatibility(app) -> None:
         if query.get("legacy") == "1":
             return response
         fragment_tab = _FRAGMENT_TO_TAB.get(parsed.fragment.lower())
+        form_tab = _normalize_tab(request.form.get("workspace_tab")) if request.form.get("workspace_tab") else None
         endpoint_tab = _ENDPOINT_TO_TAB.get(request.endpoint or "")
         requested_tab = query.get("tab")
-        tab = fragment_tab or endpoint_tab or requested_tab or "summary"
+        tab = form_tab or fragment_tab or endpoint_tab or requested_tab or "summary"
         path = url_for(
             "patient_workspace.detail",
             pid=int(match.group("pid")),
