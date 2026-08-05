@@ -4,39 +4,82 @@
 {% block content %}
 <header class="auto-page-header">
     <div class="auto-page-header__copy">
-        <a class="muted text-sm" href="{{ url_for('appointments.list_appointments') }}">نوبت‌ها / بازگشت</a>
+        <a class="muted text-sm" href="{{ url_for('appointments.list_appointments', view='today') }}">نوبت‌ها / بازگشت</a>
         <h1><svg class="icon"><use href="#i-calendar"></use></svg> ثبت نوبت</h1>
-        <p class="muted">اطلاعات اصلی را ثبت کنید؛ تنظیمات کم‌استفاده در بخش اختیاری قرار دارند.</p>
+        <p class="muted">زمان پیشنهادی از نزدیک‌ترین ربع ساعت آینده پر شده است؛ معمولاً فقط تأیید بیمار و زمان لازم است.</p>
     </div>
 </header>
 
+{% if errors %}
+<div class="alert-banner alert-warn appointment-form-errors" role="alert" aria-labelledby="appointment-errors-title">
+    <svg class="icon"><use href="#i-alert"></use></svg>
+    <div>
+        <b id="appointment-errors-title">نوبت ثبت نشد؛ موارد زیر را اصلاح کنید:</b>
+        <ul>{% for error in errors %}<li>{{ error }}</li>{% endfor %}</ul>
+    </div>
+</div>
+{% endif %}
+
+{% if selected_patient %}
+<div class="alert-banner alert-info appointment-context-banner">
+    <svg class="icon"><use href="#i-user"></use></svg>
+    <span>این نوبت از پروندهٔ <b>{{ selected_patient.full_name }}</b> شروع شده است؛ پس از ثبت به همان مسیر برمی‌گردید.</span>
+</div>
+{% endif %}
+
 <section class="card appointment-create-card">
     <form method="post" class="appointment-create-form">
+        <input type="hidden" name="return_url" value="{{ form_values.return_url }}">
         <div class="fld appointment-patient-field">
             <label for="appointment-patient">بیمار <span class="req">*</span></label>
-            <select id="appointment-patient" name="patient_link_id" required autofocus>
+            <select id="appointment-patient" name="patient_link_id" required {% if not form_values.patient_link_id %}autofocus{% endif %}>
                 <option value="">انتخاب بیمار...</option>
-                {% for p in patients %}<option value="{{ p.id }}" {% if pre_pid==p.id %}selected{% endif %}>{{ p.full_name }} {% if p.national_id %}({{ p.national_id }}){% endif %}</option>{% endfor %}
+                {% for patient in patients %}
+                <option value="{{ patient.id }}" {% if form_values.patient_link_id==patient.id %}selected{% endif %}>
+                    {{ patient.full_name }} {% if patient.national_id %}({{ patient.national_id }}){% endif %}
+                </option>
+                {% endfor %}
             </select>
-            {% if pre_pid %}<p class="help">بیمار از مسیر قبلی انتخاب شده است؛ در صورت نیاز می‌توانید تغییر دهید.</p>{% endif %}
+            {% if form_values.patient_link_id %}<p class="help">بیمار از مسیر قبلی انتخاب شده است؛ در صورت نیاز می‌توانید تغییر دهید.</p>{% endif %}
         </div>
 
         <div class="appointment-date-grid">
-            <div class="fld"><label for="appointment-date">تاریخ <span class="req">*</span></label><input id="appointment-date" type="text" class="jdate" name="date" placeholder="انتخاب تاریخ" required></div>
-            <div class="fld"><label for="appointment-time">ساعت <span class="req">*</span></label><input id="appointment-time" type="time" class="time-input" name="time" value="12:00" step="900" lang="fa-IR" required></div>
-            <div class="fld"><label for="appointment-type">نوع نوبت</label><select id="appointment-type" name="appt_type">{% for k,v in appt_types.items() %}<option value="{{ k }}">{{ v }}</option>{% endfor %}</select></div>
+            <div class="fld">
+                <label for="appointment-date">تاریخ <span class="req">*</span></label>
+                <input id="appointment-date" type="text" class="jdate" name="date" value="{{ form_values.date }}" placeholder="انتخاب تاریخ" required {% if form_values.patient_link_id %}autofocus{% endif %}>
+            </div>
+            <div class="fld">
+                <label for="appointment-time">ساعت <span class="req">*</span></label>
+                <input id="appointment-time" type="time" class="time-input" name="time" value="{{ form_values.time }}" step="900" lang="fa-IR" required>
+            </div>
+            <div class="fld">
+                <label for="appointment-type">نوع نوبت</label>
+                <select id="appointment-type" name="appt_type">
+                    {% for key, label in appt_types.items() %}<option value="{{ key }}" {% if form_values.appt_type==key %}selected{% endif %}>{{ label }}</option>{% endfor %}
+                </select>
+            </div>
         </div>
+        <p class="help appointment-smart-default"><svg class="icon icon-sm"><use href="#i-zap"></use></svg> تاریخ و ساعت، پیشنهاد هستند و پیش از ثبت قابل تغییرند.</p>
 
-        <details class="appointment-optional">
+        <details class="appointment-optional" {% if form_values.recurrence_months or form_values.notes %}open{% endif %}>
             <summary>تنظیمات اختیاری</summary>
             <div class="appointment-optional__body">
-                <div class="fld"><label for="appointment-recurrence">تکرار دوره‌ای</label><select id="appointment-recurrence" name="recurrence_months"><option value="">بدون تکرار</option><option value="1">هر ۱ ماه</option><option value="3">هر ۳ ماه</option><option value="6">هر ۶ ماه</option><option value="12">هر ۱۲ ماه</option></select></div>
-                <div class="fld"><label for="appointment-notes">یادداشت</label><textarea id="appointment-notes" name="notes" rows="2" placeholder="در صورت نیاز"></textarea></div>
+                <div class="fld">
+                    <label for="appointment-recurrence">تکرار دوره‌ای</label>
+                    <select id="appointment-recurrence" name="recurrence_months">
+                        <option value="">بدون تکرار</option>
+                        {% for months in recurrence_options %}<option value="{{ months }}" {% if form_values.recurrence_months==months|string %}selected{% endif %}>هر {{ months|fa_num }} ماه</option>{% endfor %}
+                    </select>
+                </div>
+                <div class="fld">
+                    <label for="appointment-notes">یادداشت</label>
+                    <textarea id="appointment-notes" name="notes" rows="2" placeholder="در صورت نیاز">{{ form_values.notes }}</textarea>
+                </div>
             </div>
         </details>
 
         <div class="appointment-create-actions">
-            <a class="btn btn-ghost" href="{{ url_for('appointments.list_appointments') }}">انصراف</a>
+            <a class="btn btn-ghost" href="{{ url_for('appointments.list_appointments', view='today') }}">انصراف</a>
             <button class="btn" type="submit"><svg class="icon"><use href="#i-calendar"></use></svg> ثبت نوبت</button>
         </div>
     </form>
