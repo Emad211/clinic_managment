@@ -163,6 +163,24 @@ class WorkCenterActionService:
             )
         return parsed.isoformat(sep=" ", timespec="seconds")
 
+    def _with_projection_refresh(self, episode_id: str, result: dict) -> dict:
+        """Never turn a committed source mutation into a false failure message.
+
+        The projection is disposable. If its refresh fails after the authoritative
+        mutation committed, return success plus a PHI-free refresh warning so the UI can
+        ask for a reload without implying that the action itself was rolled back.
+        """
+        output = dict(result)
+        try:
+            self.refresh_projection(episode_id)
+        except Exception as exc:  # Source already committed; preserve truthful outcome.
+            output["projection_refreshed"] = False
+            output["projection_refresh_error"] = type(exc).__name__
+        else:
+            output["projection_refreshed"] = True
+            output["projection_refresh_error"] = None
+        return output
+
     def defer(
         self,
         episode_id: str,
@@ -229,8 +247,7 @@ class WorkCenterActionService:
                 note=note or "تغییر موعد از مرکز کارها",
             )
             result = {"task_id": task_id, "due_at": event["due_at"]}
-        self.refresh_projection(episode_id)
-        return result
+        return self._with_projection_refresh(episode_id, result)
 
     def book(
         self,
@@ -259,8 +276,7 @@ class WorkCenterActionService:
             actor_user_id=int(actor_user_id),
             idempotency_key=str(idempotency_key),
         )
-        self.refresh_projection(episode_id)
-        return result
+        return self._with_projection_refresh(episode_id, result)
 
     def complete_administrative(
         self,
@@ -286,12 +302,14 @@ class WorkCenterActionService:
             "done",
             note or f"تکمیل از مرکز کارها توسط {actor_username}",
         )
-        self.refresh_projection(episode_id)
-        return {
-            "task_id": int(task["id"]),
-            "patient_link_id": int(task["patient_link_id"]),
-            "status": "done",
-        }
+        return self._with_projection_refresh(
+            episode_id,
+            {
+                "task_id": int(task["id"]),
+                "patient_link_id": int(task["patient_link_id"]),
+                "status": "done",
+            },
+        )
 
     def refresh_projection(self, episode_id: str) -> dict:
         current = self._naive_now()
