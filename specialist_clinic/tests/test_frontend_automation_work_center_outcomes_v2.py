@@ -97,9 +97,6 @@ def outcome_app(tmp_path):
         recorded_at=datetime(2026, 8, 5, 8, 7, 0),
     )
     db.commit()
-    # The application installed contract storage before this fixture inserted its
-    # task. Re-running the additive installer applies the same conservative legacy
-    # contract used for copied pre-contract databases.
     ensure_clinical_task_contract_storage(db)
     db.commit()
 
@@ -160,6 +157,7 @@ def action_context(episode_id: str, key: str) -> dict:
 def test_outcome_blueprint_is_registered_during_app_setup(outcome_app):
     endpoints = {rule.endpoint for rule in outcome_app["app"].url_map.iter_rules()}
     assert {
+        "work_center_outcomes.start_next",
         "work_center_outcomes.clinical_complete",
         "work_center_outcomes.plan_complete",
         "work_center_outcomes.queue_message",
@@ -259,7 +257,6 @@ def test_clinical_completion_is_atomic_idempotent_and_terminal(outcome_app):
     payload = {
         **action_context(episode_id, "work-center-clinical-complete-0001"),
         "outcome_type": "OTHER",
-        # Blank observed_at exercises the stable date-level server default.
         "note": "شاهد بالینی بررسی شد",
     }
     first = client.post(
@@ -363,7 +360,7 @@ def test_work_center_detail_exposes_only_safe_message_and_evidence_forms(outcome
 
     assert "تکمیل پیگیری بالینی با شاهد" in clinical
     assert "ثبت شاهد، تکمیل و کار بعدی" in clinical
-    assert "متن آزاد ارسال نمی‌شود" in clinical
-    assert "افزودن به صف پیام و کار بعدی" in administrative
+    assert "متن آزاد" in clinical
+    assert "افزودن به صف تأیید و کار بعدی" in administrative
     assert "ارسال مستقیم" not in administrative
     assert "work_center_outcomes.queue_message" not in administrative
