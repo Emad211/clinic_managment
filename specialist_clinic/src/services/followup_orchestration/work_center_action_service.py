@@ -275,6 +275,7 @@ class WorkCenterActionService:
             actor_username=actor_username,
             actor_user_id=int(actor_user_id),
             idempotency_key=str(idempotency_key),
+            episode_id=str(episode_id),
         )
         return self._with_projection_refresh(episode_id, result)
 
