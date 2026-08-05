@@ -1,25 +1,23 @@
-{% extends "base.html" %}
-{% block title %}نمای یکپارچه در دسترس نیست{% endblock %}
+{% extends "automation_base.html" %}
+{% block title %}مرکز کارها در دسترس نیست{% endblock %}
 {% block content %}
-{% include "sms/_hub_tabs.html" %}
-
-<div class="topbar">
-    <div>
-        <h1><svg class="icon"><use href="#i-alert"></use></svg> نمای یکپارچه فعلاً در دسترس نیست</h1>
-        <p class="muted m-0">هیچ داده، رابطه یا وضعیت بالینی حدس زده نشده است.</p>
+<header class="auto-page-header">
+    <div class="auto-page-header__copy">
+        <h1><svg class="icon"><use href="#i-alert"></use></svg> مرکز کارها موقتاً در دسترس نیست</h1>
+        <p class="muted">هیچ وضعیت یا رابطه‌ای حدس زده نشده است.</p>
     </div>
-</div>
+</header>
 
-<div class="card error-state" role="status" aria-live="polite">
+<section class="auto-empty" role="status" aria-live="polite">
     <h2>{{ readiness.label }}</h2>
-    <p class="muted">{{ readiness.help }}</p>
+    <p>{{ readiness.help }}</p>
     <div class="flex gap-2 wrap">
-        <a class="btn" href="{{ url_for('followups.worklist') }}">بازکردن ورک‌لیست فعلی</a>
-        <a class="btn btn-ghost" href="{{ url_for('unified_followups.index') }}">بازگشت به نمای یکپارچه</a>
+        <a class="btn" href="{{ url_for('unified_followups.index') }}">تلاش دوباره</a>
+        <a class="btn btn-ghost" href="{{ url_for('followups.worklist') }}">مسیر قدیمی پیگیری</a>
     </div>
-    <details class="text-xs muted" style="margin-top:var(--s3);">
-        <summary>شناسهٔ وضعیت برای پشتیبانی</summary>
-        <code dir="ltr">{{ readiness.code }}</code>
+    <details class="auto-technical" data-technical-details>
+        <summary>جزئیات فنی برای پشتیبانی</summary>
+        <div class="auto-technical__body"><code dir="ltr">{{ readiness.code }}</code></div>
     </details>
-</div>
+</section>
 {% endblock %}
