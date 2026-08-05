@@ -74,6 +74,7 @@ def test_patient_detail_and_workspace_assets_are_served(patient_workspace_app):
 
     for asset in (
         "/static/js/patient-workspace-automation-v2.js",
+        "/static/js/patient-workspace-context-v2.js",
         "/static/css/patient-workspace-automation-v2.css",
     ):
         response = client.get(asset)
@@ -104,7 +105,6 @@ def test_workspace_reuses_existing_nodes_and_preserves_backend_contracts():
     source = read("src/templates/patients/detail.html")
     consent = read("src/templates/patients/_sms_consent.html")
 
-    # Existing source anchors are moved, not cloned into a parallel set of forms.
     for marker in (
         "followupsCard",
         "quickVitalsCard",
@@ -121,7 +121,6 @@ def test_workspace_reuses_existing_nodes_and_preserves_backend_contracts():
     assert "appendChild(consent)" in workspace
     assert "grid.appendChild(inviteForm)" in workspace
 
-    # The source remains the owner of all mutation forms and fields.
     for endpoint in (
         "vitals.add_reading",
         "patients.add_medication",
@@ -178,6 +177,29 @@ def test_legacy_hashes_resolve_to_the_five_tab_workspace():
     assert "history.replaceState(null, '', `#${name}`)" in workspace
 
 
+def test_tab_context_memory_persists_only_the_ui_tab_name():
+    context = read("src/static/js/patient-workspace-context-v2.js")
+    loader = read("src/static/js/automation-v1.js")
+
+    assert "patient-workspace-context-v2.js" in loader
+    assert "module.addEventListener('load'" in loader
+    assert "clinic.patient-workspace.active-tab" in context
+    assert "sessionStorage.setItem(STORAGE_KEY, name)" in context
+    assert "sessionStorage.getItem(STORAGE_KEY)" in context
+    assert "workspace_tab" in context
+    assert "qsa('form', document)" in context
+    assert "persist(selectedTab())" in context
+
+    # Context memory is deliberately limited to one of five fixed strings.
+    assert "patient_id" not in context.lower()
+    assert "patient-link" not in context.lower()
+    assert "national" not in context.lower()
+    assert "phone" not in context.lower()
+    assert "fetch(" not in context
+    assert "localStorage" not in context
+    assert "FormData" not in context
+
+
 def test_workspace_keyboard_sticky_and_mobile_contracts():
     workspace = read("src/static/js/patient-workspace-automation-v2.js")
     css = read("src/static/css/patient-workspace-automation-v2.css")
@@ -185,7 +207,8 @@ def test_workspace_keyboard_sticky_and_mobile_contracts():
 
     assert "setupPatientWorkspaceModule" in loader
     assert "if (!qs('.patient-hero') || !qs('.tabbar[role=\"tablist\"]')) return" in loader
-    assert "script.dataset.patientWorkspaceV2 = 'true'" in loader
+    assert "module.dataset.patientWorkspaceV2 = 'true'" in loader
+    assert "context.dataset.patientWorkspaceContextV2 = 'true'" in loader
     assert "setupPatientWorkspaceModule();" in loader
 
     assert "['ArrowRight', 'ArrowLeft', 'Home', 'End']" in workspace
@@ -214,6 +237,7 @@ def test_workspace_javascript_is_syntactically_valid_when_node_is_available():
     for relative in (
         "src/static/js/automation-v1.js",
         "src/static/js/patient-workspace-automation-v2.js",
+        "src/static/js/patient-workspace-context-v2.js",
     ):
         result = subprocess.run(
             [node, "--check", str(ROOT / relative)],
