@@ -12,13 +12,13 @@ import sqlite3
 from src.adapters.sqlite.engagement_repo import EngagementRepository
 from src.adapters.sqlite.followup_episode_repo import FollowupEpisodeRepository
 from src.adapters.sqlite.followup_projection_repo import FollowupProjectionRepository
+from src.adapters.sqlite.sms_governance_repo import SmsGovernanceRepository
 from src.common.utils import iran_now, today_str
 from src.security.permissions import Permission
 from src.services.followup_orchestration.identity import canonical_hash
 from src.services.followup_orchestration.projection_service import FollowupProjectionService
 from src.services.sms.campaign_service import personalize
 from src.services.sms.compliance import sanitize
-from src.services.sms.governance_service import SmsConsentDenied, SmsGovernanceService
 
 
 class WorkCenterMessageError(RuntimeError):
@@ -36,6 +36,7 @@ class WorkCenterMessageService:
         self.db.row_factory = sqlite3.Row
         self.clock = clock or iran_now
         self.repo = EngagementRepository()
+        self.governance = SmsGovernanceRepository(db)
 
     def _now_text(self) -> str:
         value = self.clock()
@@ -74,16 +75,16 @@ class WorkCenterMessageService:
                 "MESSAGE_PHONE_REQUIRED",
                 "شمارهٔ معتبر برای بیمار ثبت نشده است.",
             )
-        try:
-            SmsGovernanceService().require_allowed(
-                patient_link_id=int(patient_link_id),
-                purpose="CARE",
-            )
-        except SmsConsentDenied as exc:
+
+        consent = self.governance.ensure_patient_defaults(
+            int(patient_link_id),
+            commit=False,
+        ).get("CARE")
+        if not consent or str(consent.get("decision") or "") != "GRANTED":
             raise WorkCenterMessageError(
                 "MESSAGE_CONSENT_REQUIRED",
                 "رضایت CARE بیمار اجازهٔ افزودن پیام را نمی‌دهد.",
-            ) from exc
+            )
 
         config = self.repo.get_event(self.EVENT_KEY)
         if not config or not bool(config.get("is_active")):
@@ -131,6 +132,7 @@ class WorkCenterMessageService:
             "period_key": period_key,
             "message": body,
             "due_date": today_str(),
+            "consent_event_id": int(consent["id"]),
         }
 
     def queue(
@@ -151,8 +153,6 @@ class WorkCenterMessageService:
 
         self.db.execute("BEGIN IMMEDIATE")
         try:
-            # Policy/config checks and writes share the same SQLite write lock. A
-            # concurrent manager edit cannot slip between validation and enqueue.
             candidate = self._candidate(int(task["patient_link_id"]))
             existing = self.repo.find_approval(
                 patient_link_id=candidate["patient_link_id"],
@@ -221,6 +221,7 @@ class WorkCenterMessageService:
                 payload={
                     "approval_id": int(approval_id),
                     "event_key": self.EVENT_KEY,
+                    "consent_event_id": candidate["consent_event_id"],
                 },
                 commit=False,
             )
