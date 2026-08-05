@@ -1,0 +1,52 @@
+/* Repair 4 — Doctor Queue and Encounter only. */
+
+.doctor-queue-header{align-items:center}
+.doctor-queue-summary{margin-block-end:var(--s4,16px)}
+.doctor-queue-next-kpi b{max-inline-size:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.doctor-queue-section{scroll-margin-block-start:var(--s4,16px)}
+.doctor-queue-current{border-color:color-mix(in srgb,var(--violet) 35%,var(--line))}
+.doctor-queue-card.is-current{border-color:color-mix(in srgb,var(--violet) 55%,var(--line));background:linear-gradient(180deg,color-mix(in srgb,var(--violet-soft) 45%,var(--panel)),var(--panel))}
+.doctor-queue-card.is-next{border-color:color-mix(in srgb,var(--primary) 55%,var(--line));box-shadow:inset 3px 0 0 var(--primary)}
+.doctor-queue-badges{display:flex;gap:var(--s2,8px);flex-wrap:wrap;margin-block-start:var(--s2,8px)}
+.doctor-queue-card__action .btn{min-inline-size:150px;justify-content:center}
+.doctor-queue-start-form{display:grid;gap:var(--s2,8px);justify-items:end}
+.doctor-queue-start-form>.btn{min-height:var(--touch-target,44px)}
+.doctor-queue-unavailable{max-inline-size:680px;margin:8vh auto 0}
+
+.encounter-workspace .encounter-brief{align-self:start}
+.encounter-workspace .encounter-main{min-width:0}
+.encounter-workspace .encounter-actions-sticky{z-index:20}
+.encounter-workspace .encounter-step{display:inline-grid;place-items:center;inline-size:30px;block-size:30px;border-radius:999px;background:var(--primary-soft);color:var(--primary);font-weight:800}
+.encounter-workspace textarea{resize:vertical}
+.encounter-workspace [name="assessment"],
+.encounter-workspace [name="plan"]{min-block-size:110px}
+.encounter-no-autosave{display:flex;align-items:flex-start;gap:var(--s2,8px);padding:var(--s3,12px);border:1px solid var(--line-soft);border-radius:10px;background:var(--auto-panel-soft);color:var(--muted);font-size:.8rem}
+.queue-next-focus{animation:queue-next-pulse 1.2s ease 1}
+@keyframes queue-next-pulse{
+  0%,100%{box-shadow:none}
+  45%{box-shadow:0 0 0 5px rgba(59,130,246,.24)}
+}
+
+@media(max-width:900px){
+  .doctor-queue-card__action .btn{width:100%}
+  .doctor-queue-start-form{justify-items:stretch}
+  .encounter-workspace .encounter-brief{position:static}
+}
+
+@media(max-width:700px){
+  .doctor-queue-summary{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .doctor-queue-card{grid-template-columns:1fr}
+  .doctor-queue-card__action,.doctor-queue-card__context{width:100%}
+  .doctor-queue-card__action .btn{min-height:var(--touch-target,44px)}
+  .encounter-workspace .encounter-actions-sticky{inset-block-end:calc(68px + env(safe-area-inset-bottom));padding:var(--s3,12px)}
+  .encounter-workspace .encounter-actions-sticky>div{display:grid;grid-template-columns:1fr;width:100%}
+  .encounter-workspace .encounter-actions-sticky .btn{width:100%;justify-content:center;min-height:var(--touch-target,44px)}
+}
+
+@media(max-width:420px){
+  .doctor-queue-summary{grid-template-columns:1fr}
+}
+
+@media(prefers-reduced-motion:reduce){
+  .queue-next-focus{animation:none}
+}
