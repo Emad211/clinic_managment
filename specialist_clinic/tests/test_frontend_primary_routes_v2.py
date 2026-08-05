@@ -59,7 +59,9 @@ def test_doctor_queue_canonical_path_renders_and_aliases_redirect(frontend_app, 
     assert canonical.status_code == 200
     html = canonical.get_data(as_text=True)
     assert "صف پزشک" in html
-    assert "صف خالی است" in html
+    assert "ویزیت فعالی وجود ندارد" in html
+    assert "بیماری در انتظار نیست" in html
+    assert "تکمیل‌شده امروز" in html
     assert "مرکز کارها" in html
     assert "اتاقِ کنترل" not in html
 
