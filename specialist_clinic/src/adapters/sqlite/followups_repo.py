@@ -126,11 +126,13 @@ class FollowupRepository:
         *,
         due_at: str,
         assigned_to: str | None = None,
+        commit: bool = True,
     ) -> dict:
         """Move an administrative task to a future due time.
 
         Governed clinical and encounter-plan tasks must continue to use their
-        append-only lifecycle services and are rejected here.
+        append-only lifecycle services and are rejected here. ``commit=False`` lets a
+        narrow orchestration service append its audit event in the same transaction.
         """
         db = self._db()
         normalized_id = int(task_id)
@@ -152,9 +154,11 @@ class FollowupRepository:
             (str(due_at), assigned_to, normalized_id),
         )
         if cursor.rowcount != 1:
-            db.rollback()
+            if commit:
+                db.rollback()
             raise LookupError("administrative follow-up task not found")
-        db.commit()
+        if commit:
+            db.commit()
         return {
             "task_id": normalized_id,
             "patient_link_id": int(row["patient_link_id"]),
@@ -335,6 +339,8 @@ class FollowupRepository:
         task_id: int,
         status: str,
         call_log: str | None = None,
+        *,
+        commit: bool = True,
     ):
         db = self._db()
         self._assert_administrative(db, [int(task_id)])
@@ -351,9 +357,11 @@ class FollowupRepository:
             ),
         )
         if cursor.rowcount != 1:
-            db.rollback()
+            if commit:
+                db.rollback()
             raise LookupError("administrative follow-up task not found")
-        db.commit()
+        if commit:
+            db.commit()
 
     def counts_by_reason(self) -> dict:
         db = self._db()
