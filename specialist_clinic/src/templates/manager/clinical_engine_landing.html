@@ -1,0 +1,79 @@
+{% extends "automation_base.html" %}
+{% block title %}موتور بالینی{% endblock %}
+{% block head %}{{ super() }}<link rel="stylesheet" href="{{ url_for('static', filename='css/remaining-surfaces-automation-v2.css') }}">{% endblock %}
+{% block content %}
+{% set package = engine.package %}
+{% set approval_count = (1 if engine.approvals.clinical else 0) + (1 if engine.approvals.technical else 0) %}
+{% if package.state == 'missing' %}
+  {% set next_title = 'بستهٔ اولیهٔ قواعد را آماده کنید' %}
+  {% set next_text = 'بسته پیش‌نویس فعلی را برای بازبینی فنی و بالینی آماده کنید.' %}
+  {% set next_step = 1 %}
+{% elif package.state == 'review' %}
+  {% set next_title = 'تکمیل بازبینی قواعد' %}
+  {% set next_text = 'بازبینی مستقل بالینی و فنی قواعد را در مسیر پیشرفته ادامه دهید.' %}
+  {% set next_step = 2 %}
+{% elif not engine.report_ok %}
+  {% set next_title = 'تکمیل آزمون ایمنی' %}
+  {% set next_text = 'اعتبارسنجی و آزمون پرونده‌های نمونه هنوز کامل نشده است.' %}
+  {% set next_step = 3 %}
+{% elif approval_count < 2 %}
+  {% set next_title = 'ثبت تأییدهای مستقل' %}
+  {% set next_text = 'گزارش آماده است، اما تأیید بالینی و فنی هر دو ثبت نشده‌اند.' %}
+  {% set next_step = 4 %}
+{% elif not engine.seal_valid %}
+  {% set next_title = 'انتشار محدود' %}
+  {% set next_text = 'گزارش و تأییدها آماده‌اند؛ انتشار محدود باید با مجوز انجام شود.' %}
+  {% set next_step = 5 %}
+{% elif not engine.verification %}
+  {% set next_title = 'پایش انتشار محدود' %}
+  {% set next_text = 'نتیجه پایش انتشار محدود هنوز ثبت نشده است.' %}
+  {% set next_step = 6 %}
+{% elif engine.effective_mode != 'on' %}
+  {% set next_title = 'انتشار عمومی' %}
+  {% set next_text = 'همه گیت‌ها کامل شده‌اند و فعال‌سازی عمومی در مسیر پیشرفته قرار دارد.' %}
+  {% set next_step = 7 %}
+{% else %}
+  {% set next_title = 'موتور فعال است' %}
+  {% set next_text = 'نسخه جاری برای همه بیماران فعال است؛ تغییرات فقط از مسیر governشده انجام می‌شوند.' %}
+  {% set next_step = 7 %}
+{% endif %}
+
+<div class="engine-landing">
+  <header class="engine-landing-status">
+    <div>
+      <a class="muted text-sm" href="{{ url_for('manager.index') }}">مدیریت / بازگشت</a>
+      <h1><svg class="icon icon-lg"><use href="#i-shield"></use></svg> موتور بالینی</h1>
+      <p class="muted">خلاصه وضعیت و اقدام بعدی؛ راه‌اندازی قدم‌به‌قدم، جزئیات قواعد، تأییدها و فعال‌سازی در بخش پیشرفته باقی مانده‌اند.</p>
+    </div>
+    <div class="engine-mode-summary engine-tone-{{ engine.mode_tone }}">
+      <small>وضعیت فعلی</small>
+      <strong>{{ engine.mode_fa }}</strong>
+    </div>
+  </header>
+
+  <section class="engine-landing-grid" aria-label="خلاصه موتور بالینی">
+    <div class="engine-landing-card"><small>بسته قواعد</small><strong>{% if package.state == 'missing' %}آماده نشده{% elif package.state == 'review' %}در حال بازبینی{% else %}آماده{% endif %}</strong><span class="muted text-xs">{{ package.rules|length|fa_num }} قاعده در نمای جاری</span></div>
+    <div class="engine-landing-card"><small>اعتبارسنجی</small><strong>{% if engine.validation.release_ready %}آماده انتشار{% elif engine.validation.report %}{{ engine.validation.report.status }}{% else %}اجرا نشده{% endif %}</strong><span class="muted text-xs">{{ engine.validation.blockers|length|fa_num }} مانع باقی‌مانده</span></div>
+    <div class="engine-landing-card"><small>تأیید مستقل</small><strong>{{ approval_count|fa_num }} از ۲</strong><span class="muted text-xs">بالینی و فنی</span></div>
+    <div class="engine-landing-card"><small>انتشار محدود</small><strong>{% if engine.seal_valid %}ثبت شده{% else %}ثبت نشده{% endif %}</strong><span class="muted text-xs">پایش: {{ 'ثبت شده' if engine.verification else 'ثبت نشده' }}</span></div>
+  </section>
+
+  <section class="engine-next-action" aria-labelledby="engine-next-title">
+    <div>
+      <span class="badge badge-info">اقدام بعدی</span>
+      <h2 id="engine-next-title">{{ next_title }}</h2>
+      <p>{{ next_text }}</p>
+    </div>
+    <a class="btn" href="{{ url_for('manager.clinical_engine', view='advanced', step=next_step) }}#engine-actions">{{ 'آماده‌سازی بستهٔ اولیه' if package.state == 'missing' else 'ادامه در بخش پیشرفته' }}</a>
+  </section>
+
+  <section class="card">
+    <div class="section-title"><svg class="icon"><use href="#i-list-checks"></use></svg><div><div>مسیرهای مرتبط</div><div class="section-sub">بدون نمایش جزئیات فنی در صفحه اصلی</div></div></div>
+    <div class="engine-landing-links">
+      <a class="btn btn-ghost" href="{{ url_for('manager.clinical_validation') }}"><svg class="icon icon-sm"><use href="#i-check"></use></svg> مرکز اعتبارسنجی</a>
+      <a class="btn btn-ghost" href="{{ url_for('manager.clinical_engine', view='advanced') }}#engine-actions"><svg class="icon icon-sm"><use href="#i-settings"></use></svg> قواعد و فعال‌سازی پیشرفته</a>
+      {% if g.user and g.user['role']=='manager' %}<a class="btn btn-ghost" href="{{ url_for('manager.diseases') }}"><svg class="icon icon-sm"><use href="#i-clipboard"></use></svg> کاتالوگ بیماری‌ها و شاخص‌ها</a>{% endif %}
+    </div>
+  </section>
+</div>
+{% endblock %}

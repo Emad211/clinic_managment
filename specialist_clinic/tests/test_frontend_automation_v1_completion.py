@@ -54,7 +54,8 @@ def test_settings_preserve_all_existing_post_contracts_without_extra_confirmatio
 
 def test_message_center_has_no_duplicate_followup_destinations():
     page = read("src/templates/sms/_hub_tabs.html")
-    assert page.count("hub-nav-btn") == 4
+    assert page.count("hub-nav-btn") == 5
+    assert "تنظیمات پیشرفته" in page
     assert "clinical_alerts.index" not in page
     assert "نمای یکپارچه" not in page
     assert "ورک‌لیستِ تماس" not in page

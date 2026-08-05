@@ -98,20 +98,33 @@ def test_control_room_has_a_balanced_three_level_layout_but_is_not_primary_nav()
     assert "url_for('control_room.index')" not in base
 
 
-def test_message_center_has_four_clear_destinations_and_responsive_controls():
+def test_message_center_has_five_clear_destinations_and_responsive_controls():
     page = template("sms/_hub_tabs.html")
-    assert page.count("hub-nav-btn") == 4
+    assert page.count("hub-nav-btn") == 5
     assert "مرکز پیام‌ها" in page
-    for label in ("نیازمند تأیید", "کمپین‌ها", "خودکارسازی", "گزارش ارسال"):
+    for label in (
+        "نیازمند تأیید",
+        "کمپین‌ها",
+        "خودکارسازی",
+        "گزارش ارسال",
+        "تنظیمات پیشرفته",
+    ):
         assert label in page
+    assert "permissions.get('sms.settings.manage')" in page
     css = (ROOT / "src" / "static" / "css" / "message-center-automation-v1.css").read_text(encoding="utf-8")
     assert ".message-center-shell" in css
     assert "@media(max-width:700px)" in css
 
 
-def test_message_center_follows_exception_compose_automate_deliver_order():
+def test_message_center_follows_exception_compose_automate_deliver_advanced_order():
     hub = template("sms/_hub_tabs.html")
-    assert hub.index("sms.approvals") < hub.index("sms.campaigns") < hub.index("manager.engagement") < hub.index("sms.messages_report")
+    assert (
+        hub.index("sms.approvals")
+        < hub.index("sms.campaigns")
+        < hub.index("manager.engagement")
+        < hub.index("sms.messages_report")
+        < hub.index("manager.settings")
+    )
     assert 'aria-current="page"' in hub
     campaigns = template("sms/campaigns.html")
     assert 'class="card campaign-composer"' in campaigns
@@ -125,6 +138,7 @@ def test_message_center_follows_exception_compose_automate_deliver_order():
 
 def test_settings_keep_existing_server_contract_but_use_progressive_sections():
     page = template("manager/settings.html")
+    route = (ROOT / "src" / "api" / "manager.py").read_text(encoding="utf-8")
     assert '{% extends "automation_base.html" %}' in page
     for section in (
         "settings-network", "settings-sms", "settings-costs",
@@ -141,16 +155,26 @@ def test_settings_keep_existing_server_contract_but_use_progressive_sections():
     assert page.count("ذخیره تنظیمات") == 1
     assert "data-sensitive-clear" in page
     assert "تنظیمات طولانی" not in page
+    assert 'name="settings_context"' in page
+    assert "message_settings_context" in page
+    assert route.count('@bp.route("/settings", methods=["GET", "POST"])') == 1
+    assert "settings_redirect" in route
+    assert "ذخیره مستقل تا وجود Endpoint جدا فعال نمی‌شود" in page
 
 
-def test_finance_review_is_exception_first_and_only_reversal_confirms():
+def test_finance_review_is_exception_first_keyboard_ready_and_only_reversal_confirms():
     page = template("finance_review/index.html")
+    css = (ROOT / "src" / "static" / "css" / "finance-automation-v1.css").read_text(encoding="utf-8")
     assert '{% extends "automation_base.html" %}' in page
     assert "نیازمند بازبینی" in page
     assert "تکمیل بازبینی" in page
     assert "جزئیات فنی برای پشتیبانی" in page
     assert page.count("confirm(") == 1
     assert "برگشت داده شود" in page
+    assert ".finance-review-primary:focus-within" in css
+    assert ":focus-visible" in css
+    assert "min-height:var(--touch-target,44px)" in css
+    assert "@media(max-width:700px)" in css
 
 
 def test_control_room_messages_are_approval_gated_not_sent_directly():
@@ -260,7 +284,5 @@ def test_patient_workspace_exposes_exact_five_tabs_keyboard_and_legacy_hashes():
     assert "@media(max-width:700px)" in css
     assert "@media(max-width:420px)" in css
 
-    # Existing forms and field accessibility remain in the source template; the
-    # frontend composer moves their DOM nodes rather than duplicating or replacing them.
     for label in ("مقدار آزمایش", "واحد آزمایش", "حد پایین مرجع", "حد بالای مرجع"):
         assert f'aria-label="{label}"' in page
