@@ -20,11 +20,13 @@
                 <summary class="btn btn-sm btn-ghost">اقدامات دارو</summary>
                 <div class="workspace-medication-actions__body">
                     <form method="post" action="{{ url_for('patients.change_dose', pid=patient.id, med_id=medication.id) }}" class="workspace-inline-form workspace-inline-form--compact">
+                        <input type="hidden" name="workspace_tab" value="meds">
                         <div class="fld"><label>دوز جدید</label><input name="dose" required></div>
                         <div class="fld"><label>تاریخ تغییر</label><input class="jdate" name="change_date" placeholder="خالی = امروز"></div>
                         <button class="btn" type="submit">ثبت تغییر دوز</button>
                     </form>
                     <form method="post" action="{{ url_for('patients.stop_medication', pid=patient.id, med_id=medication.id) }}" class="workspace-inline-form workspace-inline-form--compact">
+                        <input type="hidden" name="workspace_tab" value="meds">
                         <div class="fld"><label>تاریخ قطع</label><input class="jdate" name="end_date" placeholder="خالی = امروز"></div>
                         <button class="btn btn-danger" type="submit">قطع دارو</button>
                     </form>
@@ -39,6 +41,7 @@
     <details class="workspace-entry-details">
         <summary>افزودن داروی جدید</summary>
         <form method="post" action="{{ url_for('patients.add_medication', pid=patient.id) }}" class="workspace-medication-add-form">
+            <input type="hidden" name="workspace_tab" value="meds">
             <div class="fld"><label for="workspace-drug-name">نام دارو</label><input id="workspace-drug-name" name="drug_name" required placeholder="نام ژنریک یا تجاری"></div>
             <div class="fld"><label for="workspace-drug-class">کلاس دارویی</label><select id="workspace-drug-class" name="drug_class"><option value="">انتخاب‌نشده</option>{% for item in drug_class_options %}<option value="{{ item.class_key }}">{{ item.label }}</option>{% endfor %}</select></div>
             <div class="fld"><label for="workspace-drug-dose">دوز</label><input id="workspace-drug-dose" name="dose"></div>
@@ -54,10 +57,10 @@
     <div class="section-title"><svg class="icon"><use href="#i-clipboard"></use></svg><div><div id="workspace-prescriptions-title">نسخه‌ها</div><div class="section-sub">نسخه آزاد، نسخه بیمه‌ای ثبت‌شده و اقلام هر نسخه.</div></div></div>
     <div class="workspace-prescription-actions">
         {% if permissions.get('patient.edit') %}
-        <form method="post" action="{{ url_for('patients.prescription_free', pid=patient.id) }}" target="_blank"><button class="btn" type="submit"><svg class="icon icon-sm"><use href="#i-clipboard"></use></svg> صدور نسخه آزاد</button></form>
+        <form method="post" action="{{ url_for('patients.prescription_free', pid=patient.id) }}" target="_blank"><input type="hidden" name="workspace_tab" value="meds"><button class="btn" type="submit"><svg class="icon icon-sm"><use href="#i-clipboard"></use></svg> صدور نسخه آزاد</button></form>
         {% endif %}
         {% if permissions.get('sms.approval.review') %}
-        <form method="post" action="{{ url_for('patients.invite_patient', pid=patient.id) }}"><button class="btn btn-ghost" type="submit"><svg class="icon icon-sm"><use href="#i-bell"></use></svg> دعوت مصوب به نوبت</button></form>
+        <form method="post" action="{{ url_for('patients.invite_patient', pid=patient.id) }}"><input type="hidden" name="workspace_tab" value="meds"><button class="btn btn-ghost" type="submit"><svg class="icon icon-sm"><use href="#i-bell"></use></svg> دعوت مصوب به نوبت</button></form>
         {% endif %}
     </div>
     {% if prescriptions %}
@@ -84,7 +87,7 @@
     {% if medication_events %}
     <div class="workspace-compact-list">
         {% for event in medication_events[:30] %}
-        <div><span><b>{{ event.drug_name or 'دارو' }}</b><small>{{ event.event_type }}{% if event.new_dose %} · {{ event.new_dose }}{% endif %}</small></span><time>{{ event.date|jalali if event.date else 'بدون تاریخ' }}</time></div>
+        <div><span><b>{{ event.drug_name or 'دارو' }}</b><small>{{ event.event_type }}{% if event.dose %} · {{ event.dose }}{% endif %}{% if event.note %} · {{ event.note }}{% endif %}</small></span><time>{{ event.event_date|jalali_date if event.event_date else 'بدون تاریخ' }}</time></div>
         {% endfor %}
     </div>
     {% else %}<div class="empty-mini">رویداد دارویی ثبت نشده است.</div>{% endif %}
