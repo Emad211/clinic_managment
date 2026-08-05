@@ -291,7 +291,7 @@ def test_stage_one_roadmap_and_ui_stay_narrow():
     assert "work_center_complete" in routes
     assert "WorkCenterActionService" in routes
     assert "FollowupBookingService" in service
-    assert "ClinicalCareLoopService" in service
+    assert "ClinicalCareLoopRepository" in service
     assert "EncounterPlanCommitmentService" in service
     assert "ارسال پیام" not in detail
     assert "تکمیل و رفتن به کار بعدی" in detail
