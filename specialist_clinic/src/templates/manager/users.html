@@ -1,80 +1,66 @@
-{% extends "base.html" %}
+{% extends "automation_base.html" %}
 {% block title %}کاربران{% endblock %}
+{% block head %}{{ super() }}<link rel="stylesheet" href="{{ url_for('static', filename='css/remaining-surfaces-automation-v2.css') }}">{% endblock %}
 {% block content %}
-<div class="crumb">
-    <svg class="icon icon-sm"><use href="#i-settings"></use></svg>
-    <span>مدیریت</span>
-    <svg class="icon icon-sm"><use href="#i-chevron-left"></use></svg>
-    <span>کاربران</span>
-</div>
-<div class="topbar"><h1><svg class="icon"><use href="#i-key"></use></svg> مدیریت کاربران</h1></div>
+{% set ns = namespace(active=0, managers=0, tokens=0) %}
+{% for u in users %}
+  {% if u.is_active %}{% set ns.active = ns.active + 1 %}{% endif %}
+  {% if u.role == 'manager' %}{% set ns.managers = ns.managers + 1 %}{% endif %}
+  {% if u.api_token %}{% set ns.tokens = ns.tokens + 1 %}{% endif %}
+{% endfor %}
 
-<div class="grid grid-2">
-    <div class="card">
-        <div class="section-title">
-            <svg class="icon"><use href="#i-users"></use></svg>
-            <span>کاربران</span>
-            <span class="section-sub">دسترسی‌ها و وضعیت حساب</span>
+<header class="auto-page-header">
+  <div class="auto-page-header__copy">
+    <a class="muted text-sm" href="{{ url_for('manager.index') }}">مدیریت / بازگشت</a>
+    <h1><svg class="icon icon-lg"><use href="#i-users"></use></svg> کاربران</h1>
+    <p class="muted">حساب‌ها، نقش و وضعیت توکن؛ عملیات حساس فقط با اقدام صریح انجام می‌شوند.</p>
+  </div>
+  <div class="auto-page-header__actions"><a class="btn" href="#create-user"><svg class="icon icon-sm"><use href="#i-plus"></use></svg> افزودن کاربر</a></div>
+</header>
+
+<section class="work-center-summary user-summary" aria-label="خلاصه کاربران">
+  <div class="work-center-kpi"><b>{{ users|length|fa_num }}</b><span>کل کاربران</span></div>
+  <div class="work-center-kpi"><b>{{ ns.active|fa_num }}</b><span>فعال</span></div>
+  <div class="work-center-kpi"><b>{{ ns.managers|fa_num }}</b><span>مدیر</span></div>
+  <div class="work-center-kpi"><b>{{ ns.tokens|fa_num }}</b><span>دارای توکن اکستنشن</span></div>
+</section>
+
+<div class="user-management-layout">
+  <section class="card" aria-labelledby="users-list-title">
+    <div class="section-title"><svg class="icon"><use href="#i-users"></use></svg><div><div id="users-list-title">فهرست کاربران</div><div class="section-sub">{{ users|length|fa_num }} حساب ثبت‌شده</div></div></div>
+    {% if users %}
+    <div class="user-card-list">
+      {% for u in users %}
+      <article class="user-card">
+        <div class="user-card__identity">
+          <h2><svg class="icon icon-sm c-info"><use href="#i-user"></use></svg> {{ u.full_name or u.username }}</h2>
+          <div class="muted text-xs nums" dir="ltr">{{ u.username }}</div>
+          <div class="user-card__meta">
+            {% if u.role == 'manager' %}<span class="badge badge-violet">مدیر</span>{% elif u.role == 'staff' %}<span class="badge badge-info">کارمند</span>{% else %}<span class="badge badge-muted">{{ u.role }}</span>{% endif %}
+            {% if u.is_active %}<span class="badge badge-ok">فعال</span>{% else %}<span class="badge badge-muted">غیرفعال</span>{% endif %}
+            {% if u.api_token %}<span class="badge badge-ok">توکن دارد</span>{% else %}<span class="badge badge-muted">بدون توکن</span>{% endif %}
+          </div>
         </div>
-        {% if users %}
-        <div class="table-wrap">
-            <table>
-                <thead><tr><th>نام کاربری</th><th>نام</th><th>نقش</th><th>وضعیت</th><th>توکنِ اکستنشن</th></tr></thead>
-                <tbody>
-                {% for u in users %}
-                    <tr>
-                        <td><span class="flex items-center gap-2"><svg class="icon icon-sm c-info"><use href="#i-user"></use></svg>{{ u.username }}</span></td>
-                        <td>{{ u.full_name or '—' }}</td>
-                        <td>
-                            {% if u.role == 'manager' %}
-                                <span class="badge badge-violet">مدیر</span>
-                            {% elif u.role == 'staff' %}
-                                <span class="badge badge-info">کارمند</span>
-                            {% else %}
-                                <span class="badge badge-muted">{{ u.role }}</span>
-                            {% endif %}
-                        </td>
-                        <td>{% if u.is_active %}<span class="badge badge-ok">فعال</span>{% else %}<span class="badge badge-muted">غیرفعال</span>{% endif %}</td>
-                        <td>
-                            <span class="flex items-center gap-2 wrap">
-                                {% if u.api_token %}<span class="badge badge-ok">دارد</span>{% else %}<span class="badge badge-muted">ندارد</span>{% endif %}
-                                <form method="post" action="{{ url_for('manager.user_token', uid=u.id) }}" onsubmit="return confirm('توکن جدید صادر شود؟ توکن قبلی باطل می‌شود.');"><button class="btn btn-sm btn-ghost">توکنِ اکستنشن</button></form>
-                            </span>
-                        </td>
-                    </tr>
-                {% endfor %}
-                </tbody>
-            </table>
+        <div class="user-card__actions">
+          <form method="post" action="{{ url_for('manager.user_token', uid=u.id) }}" onsubmit="return confirm('توکن جدید صادر شود؟ توکن قبلی باطل می‌شود.');">
+            <button class="btn btn-sm btn-ghost" type="submit" aria-label="صدور توکن اکستنشن برای {{ u.full_name or u.username }}"><svg class="icon icon-sm"><use href="#i-key"></use></svg> {{ 'صدور مجدد توکن' if u.api_token else 'صدور توکن' }}</button>
+          </form>
         </div>
-        {% else %}
-        <div class="empty"><svg class="icon"><use href="#i-users"></use></svg><div>کاربری ثبت نشده</div></div>
-        {% endif %}
+      </article>
+      {% endfor %}
     </div>
-    <div class="card">
-        <div class="section-title">
-            <svg class="icon"><use href="#i-plus"></use></svg>
-            <span>افزودن کاربر</span>
-            <span class="section-sub">ساخت حساب کاربری جدید</span>
-        </div>
-        <form method="post">
-            <div class="fld">
-                <label>نام کاربری <span class="req">*</span></label>
-                <input type="text" name="username" required>
-            </div>
-            <div class="fld">
-                <label>رمز عبور <span class="req">*</span></label>
-                <input type="text" name="password" required>
-            </div>
-            <div class="fld">
-                <label>نام کامل</label>
-                <input type="text" name="full_name">
-            </div>
-            <div class="fld">
-                <label>نقش</label>
-                <select name="role"><option value="staff">کارمند</option><option value="manager">مدیر</option></select>
-            </div>
-            <button class="btn btn-block" type="submit"><svg class="icon"><use href="#i-save"></use></svg> ساخت کاربر</button>
-        </form>
-    </div>
+    {% else %}<div class="auto-empty"><svg class="icon"><use href="#i-users"></use></svg><h2>کاربری ثبت نشده است</h2></div>{% endif %}
+  </section>
+
+  <section class="card user-create-card" id="create-user" aria-labelledby="create-user-title">
+    <div class="section-title"><svg class="icon"><use href="#i-plus"></use></svg><div><div id="create-user-title">افزودن کاربر</div><div class="section-sub">ساخت حساب جدید با نقش موجود</div></div></div>
+    <form method="post">
+      <div class="fld"><label for="new-username">نام کاربری <span class="req">*</span></label><input id="new-username" type="text" name="username" autocomplete="username" required></div>
+      <div class="fld"><label for="new-password">رمز عبور <span class="req">*</span></label><input id="new-password" type="password" name="password" autocomplete="new-password" required></div>
+      <div class="fld"><label for="new-full-name">نام کامل</label><input id="new-full-name" type="text" name="full_name" autocomplete="name"></div>
+      <div class="fld"><label for="new-role">نقش</label><select id="new-role" name="role"><option value="staff">کارمند</option><option value="manager">مدیر</option></select></div>
+      <button class="btn btn-block" type="submit"><svg class="icon"><use href="#i-save"></use></svg> ساخت کاربر</button>
+    </form>
+  </section>
 </div>
 {% endblock %}
