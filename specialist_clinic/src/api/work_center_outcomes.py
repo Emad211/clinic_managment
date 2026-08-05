@@ -1,7 +1,6 @@
 """Focused Work Center start, evidence and communication mutations."""
 from __future__ import annotations
 
-import secrets
 from urllib.parse import urlsplit
 
 from flask import (
@@ -197,32 +196,82 @@ def template_context() -> dict:
     return {"work_action": action}
 
 
-@bp.post("/start-next")
-@permission_required(Permission.CLINICAL_TASK_VIEW)
-def start_next():
-    """Open and, when allowed, claim the first eligible work item."""
-    context = _work_context(request.form)
-    db = get_db()
-    reader = WorkCenterReadModelService(db)
+def _first_actionable_item(
+    *,
+    reader: WorkCenterReadModelService,
+    ownership: FollowupOwnershipService,
+    context: dict,
+    view: str,
+) -> tuple[dict, object, dict] | None:
+    """Find the first item the current actor can actually work on.
 
-    def find(view: str):
-        return reader.next_item(
+    The scan follows the same stable ordering and filters as the visible Work Center.
+    It opens owned work, claims compatible unassigned work, and allows managers to
+    inspect items in the manager view. Work assigned to another user is skipped for
+    non-managers instead of being presented as the next actionable item.
+    """
+    page = 1
+    while True:
+        model = reader.list_items(
             actor_user_id=int(g.user["id"]),
             allow_manager_view=context["allow_manager"],
             work_view=view,
+            page=page,
+            per_page=50,
             query=context["q"],
             state_class=context["state"],
             role=context["role"],
             sla_state=context["sla"],
             now=iran_now().replace(tzinfo=None, microsecond=0),
         )
+        if not model.get("projection_ready"):
+            return None
+        for item in model["items"]:
+            episode_id = str(item["episode_id"])
+            state = ownership.state(episode_id)
+            capabilities = ownership.capabilities(
+                episode_id=episode_id,
+                actor=g.user,
+            )
+            terminal = item.get("state_class") == "TERMINAL"
+            owned_by_actor = state.owner_user_id == int(g.user["id"])
+            claimable = state.owner_user_id is None and capabilities["can_claim"]
+            manager_inspection = bool(
+                view == "manager" and context["allow_manager"]
+            )
+            if terminal or owned_by_actor or claimable or manager_inspection:
+                return item, state, capabilities
+        if not model.get("has_next"):
+            return None
+        page += 1
 
-    item = find(context["view"])
-    if item is None and context["view"] == "mine":
-        item = find("unassigned")
-        if item is not None:
+
+@bp.post("/start-next")
+@permission_required(Permission.CLINICAL_TASK_VIEW)
+def start_next():
+    """Open and, when allowed, claim the first truly actionable work item."""
+    context = _work_context(request.form)
+    db = get_db()
+    reader = WorkCenterReadModelService(db)
+    ownership = FollowupOwnershipService(db)
+
+    found = _first_actionable_item(
+        reader=reader,
+        ownership=ownership,
+        context=context,
+        view=context["view"],
+    )
+    if found is None and context["view"] == "mine":
+        found = _first_actionable_item(
+            reader=reader,
+            ownership=ownership,
+            context=context,
+            view="unassigned",
+        )
+        if found is not None:
             context["view"] = "unassigned"
-    if item is None:
+
+    if found is None:
         flash("در این نما کار واجدشرایطی باقی نمانده است.", "success")
         return redirect(
             url_for(
@@ -235,11 +284,9 @@ def start_next():
             )
         )
 
+    item, state, capabilities = found
     episode_id = str(item["episode_id"])
-    ownership = FollowupOwnershipService(db)
     try:
-        state = ownership.state(episode_id)
-        capabilities = ownership.capabilities(episode_id=episode_id, actor=g.user)
         if item.get("state_class") != "TERMINAL" and capabilities["can_claim"]:
             ownership.claim(
                 episode_id=episode_id,
@@ -247,7 +294,7 @@ def start_next():
                 expected_event_id=state.expected_event_id,
                 idempotency_key=(
                     f"work-center-start:{g.user['id']}:{episode_id}:"
-                    f"{secrets.token_hex(8)}"
+                    f"{state.expected_event_id}"
                 ),
             )
             flash("رسیدگی اولین کار واجدشرایط برای شما شروع شد.", "success")
