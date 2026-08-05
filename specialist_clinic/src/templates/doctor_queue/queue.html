@@ -1,101 +1,116 @@
-{% extends "base.html" %}
+{% extends "automation_base.html" %}
 {% block title %}صف پزشک{% endblock %}
 {% block content %}
-<div class="topbar">
-    <div>
-        <h1><svg class="icon icon-lg"><use href="#i-stethoscope"></use></svg> صف پزشک <span class="muted text-sm">{{ work_date|jalali_date }}</span></h1>
-        <div class="muted text-sm">شروع ویزیت، حضور واقعی Encounter را ثبت می‌کند. پایان ویزیت فقط پس از امضای سند Encounter ممکن است.</div>
+{% set queue_ns = namespace(in_progress=0) %}
+{% for p in waiting %}{% if p.status == 'in_progress' %}{% set queue_ns.in_progress = queue_ns.in_progress + 1 %}{% endif %}{% endfor %}
+
+<header class="auto-page-header">
+    <div class="auto-page-header__copy">
+        <h1><svg class="icon icon-lg"><use href="#i-stethoscope"></use></svg> صف پزشک</h1>
+        <p class="muted">{{ work_date|jalali_date }} · بیمار بعدی را شروع کنید؛ اطلاعات تکمیلی فقط در صورت نیاز باز می‌شود.</p>
     </div>
-    <a class="btn btn-ghost" href="{{ url_for('doctor_queue.index') }}">تازه‌سازی</a>
-</div>
-<p class="page-intro">
-    بیماران دارای فاکتور ویزیت باز امروز، زنده و فقط‌خواندنی از پذیرش. نوبت و پاسخ کمپین فقط با انتخاب صریح متصل می‌شوند؛
-    <b>فاکتور حسابداری در این صفحه تغییر نمی‌کند.</b>
-</p>
+    <div class="auto-page-header__actions">
+        <a class="btn btn-ghost" href="{{ url_for('doctor_queue.index') }}">تازه‌سازی</a>
+    </div>
+</header>
 
-<div class="card">
-    <div class="section-title"><svg class="icon"><use href="#i-list-checks"></use></svg> در نوبت <span class="badge badge-warn">{{ waiting|length|fa_num }}</span></div>
+<section class="work-center-summary" aria-label="خلاصه صف پزشک">
+    <div class="work-center-kpi"><b>{{ waiting|length|fa_num }}</b><span>منتظر رسیدگی</span></div>
+    <div class="work-center-kpi"><b>{{ queue_ns.in_progress|fa_num }}</b><span>در حال ویزیت</span></div>
+    <div class="work-center-kpi"><b>{{ done|length|fa_num }}</b><span>تکمیل‌شده امروز</span></div>
+    <div class="work-center-kpi"><b>{% if waiting %}{{ waiting[0].full_name }}{% else %}—{% endif %}</b><span>بیمار بعدی</span></div>
+</section>
+
+<section class="card" aria-labelledby="waiting-title">
+    <div class="section-title">
+        <svg class="icon"><use href="#i-list-checks"></use></svg>
+        <div><div id="waiting-title">منتظر ویزیت</div><div class="section-sub">برای شروع، فقط اقدام اصلی را بزنید؛ اتصال نوبت و کمپین اختیاری است.</div></div>
+    </div>
+
     {% if waiting %}
-    <div class="table-wrap"><table>
-        <thead><tr><th>بیمار</th><th>زمان پذیرش</th><th>نوبت تخصصی</th><th>پاسخ مثبت کمپین</th><th>اقدام بعدی</th></tr></thead>
-        <tbody>
+    <div class="doctor-queue-list">
         {% for p in waiting %}
-        <tr>
-            <td>
-                <strong>{{ p.full_name }}</strong>
-                <div class="muted text-xs nums">{{ p.national_id|fa_num }}</div>
-                {% if p.enrolled %}<span class="badge badge-info text-xs">عضو برنامه تخصصی</span>{% else %}<span class="badge badge-muted text-xs">ثبت‌نشده</span>{% endif %}
-                {% if p.status=='in_progress' %}<span class="badge badge-violet text-xs">در حال ویزیت</span>{% endif %}
-            </td>
-            <td class="nums">{{ p.opened_at|jalali }}</td>
-            <td>
-                {% if p.linked_appointment_id %}
-                    <span class="badge badge-ok">متصل به نوبت #{{ p.linked_appointment_id|fa_num }}</span>
-                {% elif p.appointment_options %}
-                    <div class="muted text-xs">هنگام شروع، نوبت واقعی را انتخاب کنید.</div>
-                    {% for appointment in p.appointment_options %}
-                        <div class="text-sm nums">#{{ appointment.id|fa_num }} · {{ appointment.scheduled_at|jalali }}</div>
-                    {% endfor %}
-                {% else %}<span class="badge badge-muted">Walk-in / بدون نوبت همان روز</span>{% endif %}
-            </td>
-            <td>
-                {% if p.campaign_response_options %}
-                <div class="muted text-xs">فقط آخرین پاسخ مثبت صریح قابل انتخاب است.</div>
-                {% for response in p.campaign_response_options %}
-                <div class="text-sm">{{ response.campaign_name }} · پاسخ #{{ response.id|fa_num }} · {{ response.recorded_at|jalali }}</div>
-                {% endfor %}
-                {% else %}<span class="badge badge-muted">بدون پاسخ مثبت قابل انتساب</span>{% endif %}
-            </td>
-            <td>
-                {% if not p.enrolled %}
-                    <span class="muted text-xs">ابتدا بیمار را وارد برنامه تخصصی کنید.</span>
-                {% elif p.status=='in_progress' %}
-                    <a class="btn btn-sm" href="{{ url_for('doctor_queue.visit', invoice_id=p.invoice_id) }}"><svg class="icon icon-sm"><use href="#i-edit"></use></svg> ادامه مستندسازی</a>
-                {% else %}
-                    <form class="m-0 flex items-center gap-2 wrap" method="post" action="{{ url_for('doctor_queue.start', invoice_id=p.invoice_id) }}">
-                        {% if not p.linked_appointment_id and p.appointment_options %}
-                        <select name="appointment_id" aria-label="نوبت مرتبط">
-                            <option value="">Walk-in / بدون اتصال نوبت</option>
-                            {% for appointment in p.appointment_options %}
-                            <option value="{{ appointment.id }}">نوبت #{{ appointment.id|fa_num }} — {{ appointment.scheduled_at|jalali }}</option>
-                            {% endfor %}
-                        </select>
-                        {% endif %}
-                        {% if p.campaign_response_options and permissions.get('sms.campaign.attribution.record') %}
-                        <select name="campaign_response_event_id" aria-label="پاسخ کمپین مرتبط">
-                            <option value="">بدون انتساب کمپین</option>
-                            {% for response in p.campaign_response_options %}
-                            <option value="{{ response.id }}">{{ response.campaign_name }} — پاسخ #{{ response.id|fa_num }}</option>
-                            {% endfor %}
-                        </select>
-                        {% endif %}
-                        <button class="btn btn-sm btn-ok" type="submit"><svg class="icon icon-sm"><use href="#i-stethoscope"></use></svg> شروع و ثبت حضور</button>
-                    </form>
-                {% endif %}
-            </td>
-        </tr>
-        {% endfor %}
-        </tbody>
-    </table></div>
-    {% else %}<div class="empty"><svg class="icon"><use href="#i-check"></use></svg><div>صف خالی است — فاکتور ویزیت بازی نیست.</div></div>{% endif %}
-</div>
+        <article class="doctor-queue-card {% if p.status == 'in_progress' %}is-current{% endif %}">
+            <div class="doctor-queue-card__patient">
+                <div class="patient-avatar" aria-hidden="true"><svg class="icon"><use href="#i-user"></use></svg></div>
+                <div>
+                    <h2>{{ p.full_name }}</h2>
+                    <div class="muted text-xs nums">{{ p.national_id|fa_num }} · پذیرش {{ p.opened_at|jalali }}</div>
+                    <div class="flex gap-2 wrap" style="margin-top:var(--s2);">
+                        {% if p.enrolled %}<span class="badge badge-info">عضو برنامه تخصصی</span>{% else %}<span class="badge badge-muted">نیازمند ثبت در برنامه</span>{% endif %}
+                        {% if p.status == 'in_progress' %}<span class="badge badge-violet">در حال ویزیت</span>{% endif %}
+                        {% if p.linked_appointment_id %}<span class="badge badge-ok">نوبت #{{ p.linked_appointment_id|fa_num }}</span>{% endif %}
+                    </div>
+                </div>
+            </div>
 
-<div class="card">
-    <div class="section-title"><svg class="icon"><use href="#i-check"></use></svg> انجام‌شده امروز <span class="badge badge-ok">{{ done|length|fa_num }}</span></div>
-    {% if done %}
-    <div class="table-wrap"><table>
-        <thead><tr><th>بیمار</th><th>اتصال نوبت</th><th>توسط</th><th>سند Encounter</th></tr></thead>
-        <tbody>
-        {% for p in done %}
-        <tr>
-            <td>{{ p.full_name }} <span class="muted text-xs nums">{{ p.national_id|fa_num }}</span></td>
-            <td>{% if p.linked_appointment_id %}<span class="badge badge-ok">#{{ p.linked_appointment_id|fa_num }}</span>{% else %}<span class="muted">Walk-in</span>{% endif %}</td>
-            <td class="muted text-sm">{{ p.done_by or '—' }}</td>
-            <td><a class="btn btn-sm btn-ghost" href="{{ url_for('doctor_queue.document_detail', invoice_id=p.invoice_id) }}"><svg class="icon icon-sm"><use href="#i-clipboard"></use></svg> مشاهده سند</a></td>
-        </tr>
+            <div class="doctor-queue-card__context">
+                {% if p.linked_appointment_id %}
+                <span class="muted text-sm">نوبت مرتبط از قبل ثبت شده است.</span>
+                {% elif p.appointment_options %}
+                <span class="muted text-sm">{{ p.appointment_options|length|fa_num }} نوبت قابل اتصال</span>
+                {% else %}
+                <span class="muted text-sm">مراجعه بدون نوبت همان روز</span>
+                {% endif %}
+                {% if p.campaign_response_options %}<span class="muted text-sm"> · دارای پاسخ مثبت کمپین</span>{% endif %}
+            </div>
+
+            <div class="doctor-queue-card__action">
+                {% if not p.enrolled %}
+                <span class="muted text-sm">ابتدا بیمار را وارد برنامه تخصصی کنید.</span>
+                {% elif p.status == 'in_progress' %}
+                <a class="btn" href="{{ url_for('doctor_queue.visit', invoice_id=p.invoice_id) }}"><svg class="icon icon-sm"><use href="#i-edit"></use></svg> ادامه مستندسازی</a>
+                {% else %}
+                <form method="post" action="{{ url_for('doctor_queue.start', invoice_id=p.invoice_id) }}" class="doctor-queue-start-form">
+                    {% if (not p.linked_appointment_id and p.appointment_options) or (p.campaign_response_options and permissions.get('sms.campaign.attribution.record')) %}
+                    <details class="auto-technical">
+                        <summary>اتصال اختیاری نوبت یا کمپین</summary>
+                        <div class="auto-technical__body">
+                            {% if not p.linked_appointment_id and p.appointment_options %}
+                            <div class="fld">
+                                <label for="appointment-{{ p.invoice_id }}">نوبت مرتبط</label>
+                                <select id="appointment-{{ p.invoice_id }}" name="appointment_id">
+                                    <option value="">بدون اتصال نوبت</option>
+                                    {% for appointment in p.appointment_options %}<option value="{{ appointment.id }}">نوبت #{{ appointment.id|fa_num }} — {{ appointment.scheduled_at|jalali }}</option>{% endfor %}
+                                </select>
+                            </div>
+                            {% endif %}
+                            {% if p.campaign_response_options and permissions.get('sms.campaign.attribution.record') %}
+                            <div class="fld">
+                                <label for="campaign-{{ p.invoice_id }}">پاسخ کمپین مرتبط</label>
+                                <select id="campaign-{{ p.invoice_id }}" name="campaign_response_event_id">
+                                    <option value="">بدون انتساب کمپین</option>
+                                    {% for response in p.campaign_response_options %}<option value="{{ response.id }}">{{ response.campaign_name }} — پاسخ #{{ response.id|fa_num }}</option>{% endfor %}
+                                </select>
+                            </div>
+                            {% endif %}
+                        </div>
+                    </details>
+                    {% endif %}
+                    <button class="btn btn-ok" type="submit"><svg class="icon icon-sm"><use href="#i-stethoscope"></use></svg> شروع ویزیت</button>
+                </form>
+                {% endif %}
+            </div>
+        </article>
         {% endfor %}
-        </tbody>
-    </table></div>
-    {% else %}<div class="empty"><div>هنوز ویزیتی انجام نشده است.</div></div>{% endif %}
-</div>
+    </div>
+    {% else %}
+    <div class="auto-empty"><svg class="icon"><use href="#i-check"></use></svg><h2>صف خالی است</h2><p>در حال حاضر بیمار منتظر ویزیتی وجود ندارد.</p></div>
+    {% endif %}
+</section>
+
+<section class="card" aria-labelledby="done-title">
+    <div class="section-title"><svg class="icon"><use href="#i-check"></use></svg><div><div id="done-title">انجام‌شده امروز</div><div class="section-sub">اسناد نهایی‌شده ویزیت‌های امروز.</div></div></div>
+    {% if done %}
+    <div class="compact-result-list">
+        {% for p in done %}
+        <div class="compact-result-row">
+            <div><b>{{ p.full_name }}</b><div class="muted text-xs nums">{{ p.national_id|fa_num }} · {{ p.done_by or '—' }}</div></div>
+            <div>{% if p.linked_appointment_id %}<span class="badge badge-ok">نوبت #{{ p.linked_appointment_id|fa_num }}</span>{% else %}<span class="badge badge-muted">بدون نوبت</span>{% endif %}</div>
+            <a class="btn btn-sm btn-ghost" href="{{ url_for('doctor_queue.document_detail', invoice_id=p.invoice_id) }}"><svg class="icon icon-sm"><use href="#i-clipboard"></use></svg> مشاهده سند</a>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}<div class="empty-mini">هنوز ویزیتی تکمیل نشده است.</div>{% endif %}
+</section>
 {% endblock %}

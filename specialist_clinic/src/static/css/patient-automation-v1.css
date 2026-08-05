@@ -1,0 +1,29 @@
+.patient-hero{position:sticky;top:8px;z-index:35;backdrop-filter:blur(14px);background:color-mix(in srgb,var(--card,#111827) 92%,transparent);box-shadow:0 10px 30px rgba(0,0,0,.16)}
+.patient-hero .patient-actions{align-items:center}
+.patient-hero .patient-actions .btn:first-child{background:var(--primary);border-color:var(--primary);color:#fff}
+.patient-tabbar{position:sticky;top:118px;z-index:30;background:color-mix(in srgb,var(--bg,#07101f) 92%,transparent);backdrop-filter:blur(12px);padding-block:8px;border-bottom:1px solid var(--line-soft)}
+.patient-tabbar .ptab{min-height:42px}
+.patient-status-strip{overflow:auto;scrollbar-width:thin}
+.next-action-card{border-color:color-mix(in srgb,var(--primary,#3b82f6) 65%,var(--line));background:linear-gradient(135deg,color-mix(in srgb,var(--primary,#3b82f6) 12%,var(--panel2)),var(--panel2))}
+.next-action-card .next-action-text{font-size:1.05rem;line-height:1.8}
+.patient-consent{border:1px solid var(--line);border-radius:var(--r-md);background:var(--panel2)}
+.patient-consent>summary{list-style:none;cursor:pointer;padding:var(--s4);display:flex;align-items:center;justify-content:space-between;gap:var(--s3);flex-wrap:wrap}
+.patient-consent>summary::-webkit-details-marker{display:none}
+.patient-consent__body{padding:0 var(--s4) var(--s4)}
+.patient-consent-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--s3)}
+.patient-consent-card{padding:var(--s4);border:1px solid var(--line-soft);border-radius:var(--r-sm);background:var(--card)}
+.patient-consent-card__head{display:flex;align-items:flex-start;justify-content:space-between;gap:var(--s3)}
+.patient-consent-card form{margin-top:var(--s3)}
+.patient-consent-card .consent-change{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:var(--s2);align-items:end}
+.patient-consent-card .consent-change .fld{margin:0}
+.patient-consent .auto-technical,.cev2 .auto-technical{margin-top:var(--s3);font-size:.8rem;color:var(--muted)}
+.patient-consent .auto-technical>summary,.cev2 .auto-technical>summary{display:inline-flex;align-items:center;gap:.35rem;cursor:pointer;padding:.35rem 0;color:var(--primary);font-weight:600}
+.patient-consent .auto-technical__body,.cev2 .auto-technical__body{margin-top:.5rem;padding:var(--s3);border:1px solid var(--line-soft);border-radius:var(--r-sm);background:var(--bg2);overflow:auto;color:var(--muted)}
+.cev2{scroll-margin-top:190px}
+.cev2-grid{grid-template-columns:1fr!important}
+.cev2-item{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:var(--s3);align-items:start}
+.cev2-item>p,.cev2-item>.cev2-state,.cev2-item>.cev2-decision-meta,.cev2-item>.cev2-decision,.cev2-item>.cev2-reason{grid-column:1/-1}
+.cev2-quick-state{display:flex;align-items:center;gap:var(--s2);flex-wrap:wrap}
+.cev2-technical{margin-top:var(--s2)}
+@media(max-width:900px){.patient-hero{position:relative;top:auto}.patient-tabbar{top:0}.patient-consent-grid{grid-template-columns:1fr}}
+@media(max-width:700px){.patient-tabbar{overflow-x:auto;display:flex;flex-wrap:nowrap}.patient-tabbar .ptab{flex:0 0 auto}.patient-consent-card .consent-change{grid-template-columns:1fr}.patient-consent-card .consent-change .btn{width:100%;justify-content:center;min-height:44px}}

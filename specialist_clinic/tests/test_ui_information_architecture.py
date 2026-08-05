@@ -52,7 +52,8 @@ def test_visit_has_one_message_action_with_explicit_message_type():
     assert page.count("url_for('doctor_queue.invite'") == 1
     assert "url_for('patients.invite_patient'" not in page
     assert 'name="event_key"' in page
-    assert "افزودن پیام به صف تأیید" in page
+    assert "افزودن پیام" in page
+    assert "ارسال مستقیم" not in page
 
 
 def test_disease_page_is_the_visible_home_for_indicator_management():

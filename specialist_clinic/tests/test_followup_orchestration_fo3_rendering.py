@@ -84,7 +84,7 @@ def _install_legacy_projection_cache(db) -> None:
     db.commit()
 
 
-def test_real_flask_app_renders_unified_list_and_timeline(tmp_path):
+def test_real_flask_app_renders_work_center_and_history(tmp_path):
     from src.adapters.sqlite import core
 
     _app, context, db, client = _build_real_app(tmp_path)
@@ -92,9 +92,9 @@ def test_real_flask_app_renders_unified_list_and_timeline(tmp_path):
         list_response = client.get("/followups/unified/")
         assert list_response.status_code == 200
         list_html = list_response.get_data(as_text=True)
-        assert "نمای یکپارچهٔ پیگیری" in list_html
+        assert "مرکز کارها" in list_html
         assert "بیمار تست نمای یکپارچه" in list_html
-        assert "بازکردن ورک‌لیست فعلی" in list_html
+        assert "رسیدگی" in list_html
 
         episode_id = str(
             db.execute(
@@ -105,7 +105,7 @@ def test_real_flask_app_renders_unified_list_and_timeline(tmp_path):
         assert detail_response.status_code == 200
         detail_html = detail_response.get_data(as_text=True)
         assert "بیمار تست نمای یکپارچه" in detail_html
-        assert "Timeline یکپارچه" in detail_html
+        assert "تاریخچه کار" in detail_html
         assert "هیچ تغییری در پرونده یا تسک ایجاد نمی‌کند" in detail_html
     finally:
         context.pop()
@@ -122,7 +122,7 @@ def test_real_flask_app_renders_controlled_legacy_cache_state_not_500(tmp_path):
         assert response.status_code == 200
         html = response.get_data(as_text=True)
         assert "اطلاعات ذخیره‌شدهٔ این نما با نسخهٔ جدید سازگار نیست" in html
-        assert "بازگشت به ورک‌لیست فعلی" in html
+        assert "مسیر قدیمی پیگیری" in html
         assert "PROJECTION_SCHEMA_INCOMPATIBLE" in html
         assert "خطای غیرمنتظره" not in html
     finally:
@@ -149,7 +149,7 @@ def test_unified_templates_do_not_use_ambiguous_dict_items_attribute():
     assert "timeline['items']" in detail_template
 
 
-def test_user_facing_copy_avoids_projection_jargon():
+def test_user_facing_copy_avoids_projection_jargon_and_hides_technical_data():
     from src.services.followup_orchestration.read_model_service import READINESS_COPY
 
     list_template = (
@@ -176,8 +176,8 @@ def test_user_facing_copy_avoids_projection_jargon():
         assert forbidden not in visible_copy
         assert forbidden not in detail_template
 
-    assert "اطلاعات نما قدیمی است" in list_template
-    assert "آخرین بازسازی نما" in list_template
+    assert "اطلاعات نیازمند بازخوانی" in list_template
+    assert "جزئیات فنی برای پشتیبانی" in list_template
     assert "اطلاعات این نما قدیمی است یا زمان بازسازی معتبری ندارد" in detail_template
     assert "آخرین بازسازی نما" in detail_template
     assert "اطلاعات نمای یکپارچه هنوز آماده نشده است" in readiness_copy
