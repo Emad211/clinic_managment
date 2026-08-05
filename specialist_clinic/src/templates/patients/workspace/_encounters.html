@@ -1,0 +1,86 @@
+<section class="workspace-encounter-toolbar">
+    <a class="btn" href="{{ url_for('appointments.new_appointment', patient_link_id=patient.id, return_url=request.full_path) }}"><svg class="icon icon-sm"><use href="#i-calendar"></use></svg> ثبت نوبت</a>
+    <a class="btn btn-ghost" href="{{ url_for('doctor_queue.index') }}"><svg class="icon icon-sm"><use href="#i-stethoscope"></use></svg> صف پزشک</a>
+</section>
+
+<section class="work-center-summary" aria-label="خلاصه ویزیت و خدمات">
+    <div class="work-center-kpi"><b>{{ appointments|length|fa_num }}</b><span>نوبت ثبت‌شده</span></div>
+    <div class="work-center-kpi"><b>{{ visit_history|length|fa_num }}</b><span>ویزیت تاریخی</span></div>
+    <div class="work-center-kpi"><b>{{ encounter_documents|length|fa_num }}</b><span>سند امضاشده</span></div>
+    <div class="work-center-kpi"><b>{{ service_line_summary.total|fa_num }}</b><span>خدمت متصل</span></div>
+</section>
+
+<div class="workspace-two-column">
+    <section class="card" aria-labelledby="workspace-appointments-title">
+        <div class="section-title"><svg class="icon"><use href="#i-calendar"></use></svg><div><div id="workspace-appointments-title">نوبت‌ها</div><div class="section-sub">برنامه‌ریزی‌شده، انجام‌شده، لغو یا غیبت.</div></div></div>
+        {% if appointments %}
+        <div class="workspace-compact-list">
+            {% for appointment in appointments %}
+            <div>
+                <span><b>{{ appointment.appt_type or 'ویزیت' }}</b><small>{{ appointment.status }}{% if appointment.notes %} · {{ appointment.notes }}{% endif %}</small></span>
+                <time>{{ appointment.scheduled_at|jalali }}</time>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}<div class="empty-mini">نوبتی ثبت نشده است.</div>{% endif %}
+    </section>
+
+    <section class="card" aria-labelledby="workspace-service-lines-title">
+        <div class="section-title"><svg class="icon"><use href="#i-activity"></use></svg><div><div id="workspace-service-lines-title">خدمات متصل به Encounter</div><div class="section-sub">شمارش فقط از lineage قابل اثبات.</div></div></div>
+        <div class="workspace-fact-grid">
+            <div><span>ویزیت</span><b>{{ service_line_summary.visits|fa_num }}</b></div>
+            <div><span>تزریق</span><b>{{ service_line_summary.injections|fa_num }}</b></div>
+            <div><span>خدمت عملی</span><b>{{ service_line_summary.procedures|fa_num }}</b></div>
+            <div><span>کل</span><b>{{ service_line_summary.total|fa_num }}</b></div>
+        </div>
+    </section>
+</div>
+
+<section class="card" aria-labelledby="workspace-documents-title">
+    <div class="section-title"><svg class="icon"><use href="#i-file-text"></use></svg><div><div id="workspace-documents-title">اسناد امضاشده ویزیت</div><div class="section-sub">نسخه جاری هر Encounter؛ نسخه‌های قبلی در جزئیات سند حفظ شده‌اند.</div></div></div>
+    {% if encounter_documents %}
+    <div class="workspace-document-list">
+        {% for document in encounter_documents %}
+        <article class="workspace-document-card">
+            <div>
+                <div class="flex gap-2 wrap"><span class="badge badge-ok">امضاشده</span><span class="badge badge-info">{{ document.encounter_type }}</span><span class="badge badge-muted">{{ document.outcome_code }}</span></div>
+                <h3>{{ document.assessment }}</h3>
+                <p class="muted text-sm">{{ document.plan }}</p>
+                {% if document.followup_instructions %}<p class="text-sm"><b>پیگیری:</b> {{ document.followup_instructions }}</p>{% endif %}
+                <small class="muted">{{ document.authored_at|jalali }} · ثبت‌کننده: {{ document.actor_username }}</small>
+            </div>
+            <a class="btn btn-sm btn-ghost" href="{{ url_for('doctor_queue.document_detail', invoice_id=document.accounting_invoice_id) }}">جزئیات سند</a>
+        </article>
+        {% endfor %}
+    </div>
+    {% else %}<div class="empty-mini">سند Encounter امضاشده‌ای ثبت نشده است.</div>{% endif %}
+</section>
+
+<section class="card care-timeline-card" aria-labelledby="workspace-care-timeline-title">
+    <div class="section-title"><svg class="icon"><use href="#i-activity"></use></svg><div><div id="workspace-care-timeline-title">تاریخچه مراقبت</div><div class="section-sub">ویزیت، خدمت، آزمایش، نوبت، دارو و پیگیری در یک خط زمانی.</div></div></div>
+    {% if care_timeline %}
+    <ol class="care-timeline">
+        {% for event in care_timeline %}
+        <li class="care-event tone-{{ event.tone }}">
+            <div class="care-event-icon"><svg class="icon icon-sm"><use href="#i-{{ event.icon }}"></use></svg></div>
+            <div class="care-event-copy">
+                <strong>{% if event.document_invoice_id %}<a href="{{ url_for('doctor_queue.document_detail', invoice_id=event.document_invoice_id) }}">{{ event.title }}</a>{% else %}{{ event.title }}{% endif %}</strong>
+                {% if event.detail %}<span>{{ event.detail }}</span>{% endif %}
+            </div>
+            <time>{{ event.date|jalali }}</time>
+        </li>
+        {% endfor %}
+    </ol>
+    {% else %}<div class="empty-mini">رویدادی در تاریخچه مراقبت ثبت نشده است.</div>{% endif %}
+</section>
+
+{% if visit_history %}
+<details class="card workspace-legacy-visits">
+    <summary class="section-title"><svg class="icon"><use href="#i-clock"></use></svg> ویزیت‌های تاریخی قدیمی</summary>
+    <div class="workspace-history-list">
+        {% for visit in visit_history %}
+        <div><b>{{ visit.visit_type or visit.kind or 'ویزیت' }}</b><small>{{ (visit.visit_date or visit.created_at or visit.date)|jalali if (visit.visit_date or visit.created_at or visit.date) else 'بدون تاریخ' }}{% if visit.notes %} · {{ visit.notes }}{% endif %}</small></div>
+        {% endfor %}
+    </div>
+</details>
+{% endif %}
