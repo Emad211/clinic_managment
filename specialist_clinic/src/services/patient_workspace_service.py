@@ -46,6 +46,7 @@ class PatientWorkspaceService:
         if not profile:
             return None
 
+        patient_repo = PatientRepository()
         analytics = AnalyticsService().patient_analytics(pid)
         clinical_v2 = ClinicalEngineReadOnlyFacade().patient_detail(pid)
         vitals_repo = VitalsRepository()
@@ -82,7 +83,8 @@ class PatientWorkspaceService:
             item for item in all_followups if item.get("status") == "open"
         ]
 
-        medication_events = PatientRepository().get_medication_events(pid)
+        medications = patient_repo.get_medications(pid, active_only=False)
+        medication_events = patient_repo.get_medication_events(pid)
         prescriptions = record_repo.list_prescriptions(pid)
         for prescription in prescriptions:
             try:
@@ -137,7 +139,7 @@ class PatientWorkspaceService:
         return {
             "patient": profile["patient"],
             "conditions": profile["conditions"],
-            "medications": profile["medications"],
+            "medications": medications,
             "allergies": profile["allergies"],
             "visit_history": profile["visit_history"],
             "reconciliation": profile.get("reconciliation") or {},
@@ -149,7 +151,7 @@ class PatientWorkspaceService:
             "appointments": appointments,
             "all_followups": all_followups,
             "followups": open_followups,
-            "condition_catalog": PatientRepository().list_condition_catalog(),
+            "condition_catalog": patient_repo.list_condition_catalog(),
             "flags_by_section": flags_repo.catalog_by_record_section(),
             "patient_flags": flags_repo.get_flag_states(pid),
             "drug_class_options": flags_repo.drug_classes(),
