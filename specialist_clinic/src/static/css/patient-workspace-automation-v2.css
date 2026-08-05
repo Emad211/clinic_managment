@@ -1,0 +1,161 @@
+/* Repair 3 — approved five-tab Patient Workspace. */
+
+.patient-workspace-v2 .patient-hero{
+  position:sticky;
+  inset-block-start:var(--s2,8px);
+  z-index:24;
+  border-color:color-mix(in srgb,var(--primary) 24%,var(--line));
+  background:color-mix(in srgb,var(--panel) 94%,transparent);
+  backdrop-filter:blur(14px);
+  transition:padding var(--t) var(--ease),box-shadow var(--t) var(--ease);
+}
+.patient-workspace-v2 .patient-hero.is-compact{
+  padding-block:var(--s3,12px);
+  box-shadow:var(--shadow-lg);
+}
+.patient-workspace-v2 .patient-hero.is-compact .patient-conditions,
+.patient-workspace-v2 .patient-hero.is-compact .patient-next-action small,
+.patient-workspace-v2 .patient-hero.is-compact .patient-workspace-allergy{
+  display:none;
+}
+.patient-workspace-v2 .patient-hero.is-compact .patient-status-strip{
+  margin-block-start:var(--s2,8px);
+}
+.patient-workspace-v2 .patient-workspace-allergy{
+  grid-column:1/-1;
+  margin:var(--s2,8px) 0 0;
+  box-shadow:none;
+}
+.patient-workspace-v2 .patient-workspace-tabs{
+  display:flex;
+  gap:var(--s2,8px);
+  margin-block:var(--s4,16px);
+  padding-block-end:var(--s1,4px);
+  overflow-x:auto;
+  scroll-snap-type:inline proximity;
+  scrollbar-width:thin;
+}
+.patient-workspace-v2 .patient-workspace-tabs [role="tab"]{
+  flex:0 0 auto;
+  min-inline-size:150px;
+  min-block-size:var(--touch-target,44px);
+  scroll-snap-align:start;
+  white-space:nowrap;
+}
+.patient-workspace-v2 .patient-workspace-pane[hidden]{display:none!important}
+.patient-workspace-v2 .patient-workspace-pane{
+  min-width:0;
+  animation:patient-workspace-enter var(--t) var(--ease);
+}
+@keyframes patient-workspace-enter{
+  from{opacity:.65;transform:translateY(4px)}
+  to{opacity:1;transform:none}
+}
+.patient-workspace-v2 .patient-workspace-quick-actions{
+  border-color:color-mix(in srgb,var(--primary) 26%,var(--line));
+}
+.patient-workspace-v2 .patient-workspace-action-grid{
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:var(--s2,8px);
+}
+.patient-workspace-v2 .patient-workspace-action{
+  width:100%;
+  min-height:var(--touch-target,44px);
+  justify-content:center;
+  margin:0;
+}
+.patient-workspace-v2 .patient-workspace-inline-action{
+  display:flex;
+  margin:0;
+}
+.patient-workspace-v2 .patient-workspace-inline-action .patient-workspace-action{
+  height:100%;
+}
+.patient-workspace-v2 #pane-actions>.patient-consent,
+.patient-workspace-v2 #pane-actions>.card,
+.patient-workspace-v2 #pane-encounters-documents>.card,
+.patient-workspace-v2 #pane-encounters-documents>.grid{
+  margin-block-end:var(--s4,16px);
+}
+.patient-workspace-v2 #pane-clinical-data{
+  display:grid;
+  gap:var(--s4,16px);
+}
+.patient-workspace-v2 #pane-clinical-data>.card,
+.patient-workspace-v2 #pane-clinical-data>.grid{
+  margin-block-end:0;
+}
+.patient-workspace-v2 #pane-encounters-documents>.grid{
+  grid-template-columns:repeat(2,minmax(0,1fr));
+}
+.patient-workspace-v2 .patient-status-item strong{
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.patient-workspace-v2 .pt-actions{
+  align-self:start;
+}
+
+@media(max-width:1100px){
+  .patient-workspace-v2 .patient-workspace-action-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .patient-workspace-v2 #pane-encounters-documents>.grid{grid-template-columns:1fr}
+}
+
+@media(max-width:900px){
+  .patient-workspace-v2 .patient-hero{
+    inset-block-start:68px;
+    max-height:calc(100dvh - 136px);
+    overflow:auto;
+  }
+  .patient-workspace-v2 .patient-hero.is-compact .patient-status-strip{
+    display:none;
+  }
+}
+
+@media(max-width:700px){
+  .patient-workspace-v2 .patient-hero{
+    position:sticky;
+    padding:var(--s3,12px);
+  }
+  .patient-workspace-v2 .patient-hero-main{
+    align-items:flex-start;
+  }
+  .patient-workspace-v2 .pt-meta{
+    display:grid;
+    gap:2px;
+  }
+  .patient-workspace-v2 .pt-meta .sep{display:none}
+  .patient-workspace-v2 .patient-status-strip{
+    grid-template-columns:repeat(2,minmax(0,1fr));
+  }
+  .patient-workspace-v2 .patient-next-action{
+    align-items:flex-start;
+  }
+  .patient-workspace-v2 .patient-workspace-tabs{
+    margin-inline:-4px;
+    padding-inline:4px;
+  }
+  .patient-workspace-v2 .patient-workspace-tabs [role="tab"]{
+    min-inline-size:138px;
+  }
+  .patient-workspace-v2 .patient-workspace-action-grid{
+    grid-template-columns:1fr;
+  }
+  .patient-workspace-v2 #pane-actions .grid-4,
+  .patient-workspace-v2 #pane-clinical-data .grid-4,
+  .patient-workspace-v2 #pane-medications .grid-4{
+    grid-template-columns:1fr;
+  }
+}
+
+@media(max-width:420px){
+  .patient-workspace-v2 .patient-status-strip{grid-template-columns:1fr}
+  .patient-workspace-v2 .patient-hero.is-compact .patient-next-action{display:none}
+}
+
+@media(prefers-reduced-motion:reduce){
+  .patient-workspace-v2 .patient-workspace-pane{animation:none}
+  .patient-workspace-v2 .patient-hero{transition:none}
+}

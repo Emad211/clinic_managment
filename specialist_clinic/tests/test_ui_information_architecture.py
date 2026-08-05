@@ -206,22 +206,61 @@ def test_global_shell_supports_native_role_navigation_mobile_bottom_nav_and_erro
 
 def test_patient_record_has_one_summary_next_action_and_unified_timeline():
     page = template("patients/detail.html")
+    workspace = (ROOT / "src" / "static" / "js" / "patient-workspace-automation-v2.js").read_text(encoding="utf-8")
     assert page.count('class="patient-hero"') == 1
     assert page.count('class="patient-status-strip"') == 1
     assert page.count("اولویت بعدی پرونده") == 1
     assert page.count('class="care-timeline"') == 1
+    assert "moveHeaderContextIntoStickyHero" in workspace
+    assert "careTimelineCard" in workspace
+    assert "encountersPane.appendChild(careTimelineCard)" in workspace
     assert "وضعیت سلامت کلی" not in page
     assert "📅" not in page
 
 
-def test_patient_record_tabs_expose_keyboard_and_aria_contract():
+def test_patient_workspace_exposes_exact_five_tabs_keyboard_and_legacy_hashes():
     page = template("patients/detail.html")
-    for name in ("cockpit", "trends", "meds", "record"):
-        assert f'id="tab-{name}"' in page
-        assert f'aria-controls="pane-{name}"' in page
-        assert f'id="pane-{name}"' in page
-        assert f'aria-labelledby="tab-{name}"' in page
-    assert "b.setAttribute('aria-selected'" in page
-    assert "['ArrowRight','ArrowLeft','Home','End']" in page
+    loader = (ROOT / "src" / "static" / "js" / "automation-v1.js").read_text(encoding="utf-8")
+    workspace = (ROOT / "src" / "static" / "js" / "patient-workspace-automation-v2.js").read_text(encoding="utf-8")
+    css = (ROOT / "src" / "static" / "css" / "patient-workspace-automation-v2.css").read_text(encoding="utf-8")
+
+    expected = (
+        ("summary", "خلاصه"),
+        ("actions", "اقدامات"),
+        ("clinical-data", "داده‌های بالینی"),
+        ("medications", "دارو و نسخه"),
+        ("encounters-documents", "ویزیت‌ها و اسناد"),
+    )
+    for name, label in expected:
+        assert f"name: '{name}', label: '{label}'" in workspace
+        assert f"tab-${{definition.name}}" in workspace
+        assert f"pane-${{definition.name}}" in workspace
+    assert "paneDefinitions" in workspace
+    assert "['ArrowRight', 'ArrowLeft', 'Home', 'End']" in workspace
+    assert "button.setAttribute('aria-selected'" in workspace
+    assert "pane.setAttribute('aria-labelledby'" in workspace
+
+    for legacy, target in (
+        ("cockpit", "summary"),
+        ("trends", "clinical-data"),
+        ("record", "clinical-data"),
+        ("meds", "medications"),
+        ("labs", "clinical-data"),
+        ("vitals", "clinical-data"),
+    ):
+        assert f"{legacy}: '{target}'" in workspace
+
+    assert "setupPatientWorkspaceModule" in loader
+    assert "patient-workspace-automation-v2.js" in loader
+    assert "localStorage" not in workspace
+    assert "sessionStorage" not in workspace
+    assert "fetch(" not in workspace
+    assert ".patient-workspace-tabs" in css
+    assert ".patient-hero.is-compact" in css
+    assert "@media(max-width:700px)" in css
+    assert "@media(max-width:420px)" in css
+
+    # Existing forms and field accessibility remain in the source template; the
+    # frontend composer moves their DOM nodes rather than duplicating or replacing them.
     for label in ("مقدار آزمایش", "واحد آزمایش", "حد پایین مرجع", "حد بالای مرجع"):
         assert f'aria-label="{label}"' in page
