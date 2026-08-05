@@ -1,8 +1,8 @@
 """Contracts for the automation-first frontend layer.
 
-These tests intentionally inspect the rendered-template contracts rather than
-business logic. Server endpoints remain authoritative; the browser may only
-orchestrate actions that already exist.
+These tests inspect rendered-template contracts rather than business logic.
+Server endpoints remain authoritative; the browser may only orchestrate actions
+that already exist.
 """
 from pathlib import Path
 
@@ -31,12 +31,44 @@ def test_frontend_automation_plan_is_the_implementation_source_of_truth():
     assert "never fakes persistence" in plan
 
 
-def test_automation_layer_is_additive_and_loaded_only_by_opted_in_pages():
-    base = read("src/templates/automation_base.html")
-    assert '{% extends "base.html" %}' in base
+def test_automation_layer_is_global_and_navigation_is_not_rewritten_after_load():
+    base = read("src/templates/base.html")
+    automation_base = read("src/templates/automation_base.html")
+    script = read("src/static/js/automation-v1.js")
+    shell_script = read("src/static/js/shell-automation-v2.js")
+
     assert "css/automation-v1.css" in base
+    assert "css/shell-automation-v2.css" in base
     assert "js/automation-v1.js" in base
-    assert "{{ super() }}" in base
+    assert "js/shell-automation-v2.js" in base
+    assert automation_base.startswith('{% extends "base.html" %}')
+    assert "css/automation-v1.css" not in automation_base
+    assert "js/automation-v1.js" not in automation_base
+    assert "humanizePrimaryNavigation" not in script
+    assert "data-shell-menu-toggle" in base
+    assert "setupNavigationDrawer" in shell_script
+
+
+def test_native_shell_matches_approved_information_architecture():
+    base = read("src/templates/base.html")
+    for label in (
+        "خانه",
+        "مرکز کارها",
+        "بیماران",
+        "نوبت‌ها",
+        "صف پزشک",
+        "مرکز پیام‌ها",
+        "امور مالی",
+        "موتور بالینی",
+        "کاربران",
+        "تنظیمات",
+    ):
+        assert label in base
+    assert "اتاقِ کنترل" not in base
+    assert "هاب پیام" not in base
+    assert "بازبینی وصول" not in base
+    assert 'class="mobile-bottom-nav"' in base
+    assert 'id="global-patient-search"' in base
 
 
 def test_work_center_has_one_primary_action_and_automatic_filters():
@@ -89,6 +121,7 @@ def test_contact_outcomes_are_one_click_but_use_the_existing_server_form():
 
 def test_doctor_queue_is_next_patient_first_and_keeps_safe_linking():
     page = read("src/templates/doctor_queue/queue.html")
+    dashboard_route = read("src/api/dashboard.py")
     assert '{% extends "automation_base.html" %}' in page
     assert "بیمار بعدی" in page
     assert "شروع ویزیت" in page
@@ -98,6 +131,8 @@ def test_doctor_queue_is_next_patient_first_and_keeps_safe_linking():
     assert 'name="campaign_response_event_id"' in page
     assert "/done" not in page
     assert "فاکتور حسابداری" not in page
+    assert '@bp.get("/doctor-queue")' in dashboard_route
+    assert '@bp.get("/doctor_queue")' in dashboard_route
 
 
 def test_encounter_has_three_human_steps_and_one_final_action():
@@ -116,7 +151,6 @@ def test_encounter_has_three_human_steps_and_one_final_action():
     assert "Ctrl/⌘ + S" in page
     assert "تعهدهای اجرایی طرح درمان" not in page
     assert "امضا، ساخت Worklist و پایان ویزیت" not in page
-    # Existing backend contract is preserved behind simpler wording.
     for field in (
         "commitment_client_key",
         "commitment_type",
@@ -128,7 +162,6 @@ def test_encounter_has_three_human_steps_and_one_final_action():
     assert "FOLLOWUP_REQUIRED" in page
     assert "REFERRED" in page
     assert "URGENT_ESCALATION" in page
-    # The current redirect/idempotency endpoint is not safe for repeated autosave.
     assert 'data-autosave="server"' not in page
 
 
@@ -169,6 +202,7 @@ def test_autosave_is_explicit_opt_in_and_never_local_only():
 
 def test_automation_styles_cover_mobile_focus_and_reduced_motion():
     css = read("src/static/css/automation-v1.css")
+    shell_css = read("src/static/css/shell-automation-v2.css")
     assert "@media(max-width:700px)" in css
     assert "@media(prefers-reduced-motion:reduce)" in css
     assert ":focus-visible" in css
@@ -177,3 +211,5 @@ def test_automation_styles_cover_mobile_focus_and_reduced_motion():
     assert ".doctor-queue-card" in css
     assert ".encounter-layout" in css
     assert ".encounter-actions-sticky" in css
+    assert ".mobile-bottom-nav" in shell_css
+    assert "@media(max-width:900px)" in shell_css
