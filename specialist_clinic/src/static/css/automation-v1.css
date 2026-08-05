@@ -24,7 +24,7 @@
 /* Work Center */
 .work-center-summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:var(--s3,12px);margin-block-end:var(--s4,16px)}
 .work-center-kpi{padding:var(--s3,12px) var(--s4,16px);border:1px solid var(--auto-border);border-radius:var(--radius-lg,14px);background:var(--auto-panel)}
-.work-center-kpi b{display:block;font-size:1.35rem;line-height:1.2;margin-block-end:.3rem}
+.work-center-kpi b{display:block;font-size:1.35rem;line-height:1.2;margin-block-end:.3rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .work-center-kpi span{font-size:.82rem;color:var(--muted,#9aa8c6)}
 
 .work-center-list{display:grid;gap:var(--s3,12px)}
@@ -47,6 +47,19 @@
 .task-card__menu{position:absolute;inset-inline-end:0;top:calc(100% + 6px);z-index:20;min-width:210px;padding:6px;background:var(--card,#111827);border:1px solid var(--auto-border);border-radius:12px;box-shadow:var(--auto-shadow)}
 .task-card__menu a{display:flex;align-items:center;gap:.5rem;padding:.65rem .75rem;border-radius:8px;text-decoration:none;color:var(--text,#e9eef9);font-size:.85rem}
 .task-card__menu a:hover,.task-card__menu a:focus-visible{background:rgba(59,130,246,.12)}
+
+/* Doctor queue */
+.doctor-queue-list{display:grid;gap:var(--s3,12px)}
+.doctor-queue-card{display:grid;grid-template-columns:minmax(260px,1.35fr) minmax(190px,.75fr) minmax(220px,auto);align-items:center;gap:var(--s4,16px);padding:var(--s4,16px);border:1px solid var(--auto-border);border-radius:var(--radius-lg,14px);background:var(--auto-panel)}
+.doctor-queue-card.is-current{border-color:color-mix(in srgb,var(--violet,#8b5cf6) 65%,var(--auto-border));box-shadow:inset 3px 0 0 var(--violet,#8b5cf6)}
+.doctor-queue-card__patient{display:flex;align-items:center;gap:var(--s3,12px);min-width:0}
+.doctor-queue-card__patient h2{margin:0;font-size:1.02rem}
+.doctor-queue-card__context{line-height:1.8}
+.doctor-queue-card__action{display:flex;justify-content:flex-end}
+.doctor-queue-start-form{display:grid;justify-items:end;gap:var(--s2,8px);min-width:min(100%,260px)}
+.doctor-queue-start-form>.btn{min-width:150px;justify-content:center}
+.compact-result-list{display:grid;gap:1px;background:var(--auto-border);border:1px solid var(--auto-border);border-radius:var(--radius-lg,14px);overflow:hidden}
+.compact-result-row{display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:center;gap:var(--s3,12px);padding:var(--s3,12px) var(--s4,16px);background:var(--auto-panel)}
 
 .auto-empty{display:grid;justify-items:center;text-align:center;gap:var(--s2,8px);padding:clamp(32px,7vw,72px) 20px;border:1px dashed var(--auto-border);border-radius:var(--radius-lg,14px);background:var(--auto-panel-soft)}
 .auto-empty h2,.auto-empty p{margin:0}
@@ -78,6 +91,8 @@
   .task-card{grid-template-columns:minmax(0,1fr) minmax(160px,.65fr) auto}
   .task-card__due{display:none}
   .work-center-summary{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .doctor-queue-card{grid-template-columns:minmax(0,1fr) auto}
+  .doctor-queue-card__context{grid-column:1/-1;grid-row:2}
 }
 
 @media(max-width:700px){
@@ -94,6 +109,12 @@
   .task-card__actions{justify-content:stretch}
   .task-card__actions>.btn{flex:1;justify-content:center;min-height:var(--touch-target,44px)}
   .task-card__menu{inset-inline-start:0;inset-inline-end:auto;max-width:calc(100vw - 48px)}
+  .doctor-queue-card{grid-template-columns:1fr;padding:var(--s3,12px)}
+  .doctor-queue-card__context{grid-column:auto;grid-row:auto}
+  .doctor-queue-card__action,.doctor-queue-start-form{justify-content:stretch;justify-items:stretch;width:100%}
+  .doctor-queue-card__action .btn,.doctor-queue-start-form>.btn{width:100%;min-height:var(--touch-target,44px);justify-content:center}
+  .compact-result-row{grid-template-columns:1fr auto}
+  .compact-result-row>.btn{grid-column:1/-1;justify-content:center}
   .auto-toast-region{inset-inline:12px;inset-block-end:12px;max-width:none}
 }
 
