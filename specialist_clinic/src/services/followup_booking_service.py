@@ -68,12 +68,13 @@ class FollowupBookingService:
         appointment = AppointmentRepository(self._db()).get(int(appointment_id))
         if not appointment:
             raise FollowupBookingError("نوبت ساخته شد اما برای اتصال به مسیر پیدا نشد")
+        # Link revision describes immutable appointment identity. Mutable delivery/status
+        # fields must not make an idempotent retry conflict with the original link.
         revision_payload = {
             "id": int(appointment["id"]),
             "patient_link_id": int(appointment["patient_link_id"]),
             "scheduled_at": str(appointment["scheduled_at"]),
             "appt_type": str(appointment.get("appt_type") or ""),
-            "status": str(appointment.get("status") or "scheduled"),
             "created_by": str(appointment.get("created_by") or ""),
         }
         repository.link_source_once(
