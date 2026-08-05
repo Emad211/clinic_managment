@@ -5,7 +5,7 @@
 {% set package = engine.package %}
 {% set approval_count = (1 if engine.approvals.clinical else 0) + (1 if engine.approvals.technical else 0) %}
 {% if package.state == 'missing' %}
-  {% set next_title = 'آماده‌سازی بسته قواعد' %}
+  {% set next_title = 'بستهٔ اولیهٔ قواعد را آماده کنید' %}
   {% set next_text = 'بسته پیش‌نویس فعلی را برای بازبینی فنی و بالینی آماده کنید.' %}
   {% set next_step = 1 %}
 {% elif package.state == 'review' %}
@@ -43,7 +43,7 @@
     <div>
       <a class="muted text-sm" href="{{ url_for('manager.index') }}">مدیریت / بازگشت</a>
       <h1><svg class="icon icon-lg"><use href="#i-shield"></use></svg> موتور بالینی</h1>
-      <p class="muted">خلاصه وضعیت و اقدام بعدی؛ جزئیات قواعد، تأییدها و فعال‌سازی در بخش پیشرفته باقی مانده‌اند.</p>
+      <p class="muted">خلاصه وضعیت و اقدام بعدی؛ راه‌اندازی قدم‌به‌قدم، جزئیات قواعد، تأییدها و فعال‌سازی در بخش پیشرفته باقی مانده‌اند.</p>
     </div>
     <div class="engine-mode-summary engine-tone-{{ engine.mode_tone }}">
       <small>وضعیت فعلی</small>
@@ -64,7 +64,7 @@
       <h2 id="engine-next-title">{{ next_title }}</h2>
       <p>{{ next_text }}</p>
     </div>
-    <a class="btn" href="{{ url_for('manager.clinical_engine', view='advanced', step=next_step) }}#engine-actions">ادامه در بخش پیشرفته</a>
+    <a class="btn" href="{{ url_for('manager.clinical_engine', view='advanced', step=next_step) }}#engine-actions">{{ 'آماده‌سازی بستهٔ اولیه' if package.state == 'missing' else 'ادامه در بخش پیشرفته' }}</a>
   </section>
 
   <section class="card">
