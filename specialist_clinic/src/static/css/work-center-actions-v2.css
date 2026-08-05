@@ -1,5 +1,9 @@
 /* Stage 1 — focused Work Center mutations. */
 
+/* Patient-reported appointment status is still available in the detailed outcome
+   selector, but it must not look like the real booking action. */
+[data-contact-outcome="APPOINTMENT_BOOKED"]{display:none!important}
+
 .work-item-actions{display:grid;gap:var(--s4,16px)}
 .work-item-action-group{
   display:grid;

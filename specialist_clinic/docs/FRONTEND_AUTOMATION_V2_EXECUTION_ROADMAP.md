@@ -1,6 +1,6 @@
 # Frontend Automation V2 — Execution Roadmap
 
-**Status:** Stage 1 checkpoint 2 proven; critical closure in progress  
+**Status:** Stage 1 automated implementation proven; Stage 2 active  
 **Scope:** finish the remaining logical gaps in the specialist-clinic frontend  
 **Parent baseline:** `fix/frontend-automation-v1-browser-acceptance`  
 **Primary objective:** routine work should be automatic, frequent work should be one click, and only sensitive or irreversible work should require confirmation.
@@ -31,18 +31,24 @@
 
 **Exit:** one task can be handled from start to definitive outcome without manually returning to the list or visiting unrelated pages.
 
-### Stage 1 proof to date
+### Stage 1 proof
 
-Checkpoint 2 at `afc13184da7bda31ec66c85031e6019789f0fbd1` passed:
+Stage 1 branch:
 
-- Specialist Clinic: `868 passed`
+`feat/frontend-automation-v2-work-center`
+
+Proven head:
+
+`d4797288ac1d11035982b8a6cd7ca122b28f1b9f`
+
+CI result:
+
+- Specialist Clinic: `884 passed`
 - Accounting: passed
 
-The proven implementation includes authoritative deferral, appointment booking, administrative completion, clinical Outcome completion, plan-evidence completion, safe approval-queue creation, retry protection, scoped projection refresh and successful-mutation auto-next.
+The implementation includes real Start Next, claim-safe action selection, progressive drawer with full-page fallback, structured contact, authoritative deferral, atomic appointment booking, administrative completion, contract-governed clinical Outcome completion, commitment-specific evidence completion, policy-aware atomic message approval queueing, auto-next after successful mutation, Control Room absorption and focused desktop/mobile/keyboard contracts.
 
-The remaining Stage 1 gaps and their evidence are recorded in:
-
-`docs/FRONTEND_AUTOMATION_V2_GAP_AUDIT_2026-08-05.md`
+Actual visual browser acceptance remains intentionally pending until the final integration stage; automated browser-facing contracts do not replace local visual review.
 
 ## Stage 2 — Appointment automation and task continuity
 
@@ -99,16 +105,16 @@ The remaining Stage 1 gaps and their evidence are recorded in:
 
 ## Current continuation point
 
-Continue **Stage 1 — Checkpoint 3: critical closure** on branch:
+Continue **Stage 2 — Appointment automation and task continuity** on branch:
 
-`feat/frontend-automation-v2-work-center`
+`feat/frontend-automation-v2-appointments`
 
 Exact order:
 
-1. Replace the no-op `focus=first` links with a real server-authoritative Start Next action that reuses Handle/claim.
-2. Correct Work Center message permission and require an active configured CARE event.
-3. Coordinate approval creation, Episode link and `SMS_QUEUED` as one truthful workflow; do not auto-next after a partial link failure.
-4. Render clinical Outcome choices from the immutable task contract.
-5. Render plan evidence choices from the current commitment type.
-
-After focused tests pass, continue to Checkpoint 4 for Control Room absorption, progressive drawer behavior and browser smoke. Do not merge Stage 1 before both checkpoints are complete.
+1. Add explicit Today/List views while preserving the current appointment repository.
+2. Make invalid submissions render with all entered values and a clear field-level summary; never redirect and erase work.
+3. Add a conservative next-quarter-hour default plus patient and visit-type context.
+4. Preserve a safe return target so Patient Workspace booking returns to the same patient.
+5. Keep Work Center booking on its existing authoritative Task/Episode path; do not create a duplicate booking workflow.
+6. Remove misleading contact copy that implies an Appointment exists when only a patient-reported contact outcome was recorded.
+7. Add focused runtime tests, then one Stage 2 checkpoint CI run.

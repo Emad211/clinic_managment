@@ -5,72 +5,103 @@
 <header class="auto-page-header">
     <div class="auto-page-header__copy">
         <h1><svg class="icon icon-lg"><use href="#i-calendar"></use></svg> نوبت‌ها</h1>
-        <p class="muted">نوبت‌های امروز و بازه انتخابی؛ اقدام پرتکرار مستقیم و بقیه در منوی بیشتر.</p>
+        <p class="muted">نمای امروز برای کار جاری؛ فهرست برای جست‌وجوی بازه‌ای و سابقه.</p>
     </div>
     <div class="auto-page-header__actions">
-        <a class="btn" href="{{ url_for('appointments.new_appointment') }}"><svg class="icon"><use href="#i-plus"></use></svg> ثبت نوبت</a>
+        <a class="btn" href="{{ url_for('appointments.new_appointment', return_url=request.full_path) }}"><svg class="icon"><use href="#i-plus"></use></svg> ثبت نوبت</a>
     </div>
 </header>
 
+<nav class="appointment-view-tabs" aria-label="نمای نوبت‌ها">
+    <a class="work-center-tab{% if active_view=='today' %} active{% endif %}"
+       href="{{ url_for('appointments.list_appointments', view='today', status=active_status) }}"
+       {% if active_view=='today' %}aria-current="page"{% endif %}>
+        <span>امروز</span><b class="nums">{{ summary.today|fa_num }}</b>
+    </a>
+    <a class="work-center-tab{% if active_view=='list' %} active{% endif %}"
+       href="{{ url_for('appointments.list_appointments', view='list', status=active_status) }}"
+       {% if active_view=='list' %}aria-current="page"{% endif %}>
+        <span>فهرست</span><b class="nums">{{ summary.total|fa_num }}</b>
+    </a>
+</nav>
+
 <section class="work-center-summary" aria-label="خلاصه نوبت‌ها">
-    <div class="work-center-kpi"><b>{{ summary.today|fa_num }}</b><span>نوبت امروز</span></div>
+    <div class="work-center-kpi"><b>{{ summary.today|fa_num }}</b><span>نوبت امروز در این نما</span></div>
     <div class="work-center-kpi"><b>{{ summary.scheduled|fa_num }}</b><span>برنامه‌ریزی‌شده</span></div>
     <div class="work-center-kpi"><b>{{ summary.done|fa_num }}</b><span>انجام‌شده</span></div>
     <div class="work-center-kpi"><b>{{ summary.no_show|fa_num }}</b><span>غیبت</span></div>
 </section>
 
+{% if active_view == 'list' %}
 <section class="auto-filter-bar" aria-label="فیلتر نوبت‌ها">
     <form class="appointment-filter-grid" method="get">
-        <div class="fld"><label for="appointments-from">از تاریخ</label><input id="appointments-from" type="text" class="jdate" name="from" value="{{ request.args.get('from','') }}" placeholder="انتخاب تاریخ"></div>
-        <div class="fld"><label for="appointments-to">تا تاریخ</label><input id="appointments-to" type="text" class="jdate" name="to" value="{{ request.args.get('to','') }}" placeholder="انتخاب تاریخ"></div>
+        <input type="hidden" name="view" value="list">
+        <div class="fld"><label for="appointments-from">از تاریخ</label><input id="appointments-from" type="text" class="jdate" name="from" value="{{ date_from_fa }}" placeholder="انتخاب تاریخ"></div>
+        <div class="fld"><label for="appointments-to">تا تاریخ</label><input id="appointments-to" type="text" class="jdate" name="to" value="{{ date_to_fa }}" placeholder="انتخاب تاریخ"></div>
         <input type="hidden" name="status" value="{{ active_status }}">
         <button class="btn btn-ghost" type="submit"><svg class="icon"><use href="#i-filter"></use></svg> اعمال بازه</button>
     </form>
-    <div class="filter-strip appointment-filter-strip" aria-label="فیلتر وضعیت نوبت‌ها">
-        <span class="muted text-xs">وضعیت</span>
-        <div class="filter-options">
-        <a class="btn btn-sm filter-option {% if not active_status %}btn{% else %}btn-ghost{% endif %}" href="{{ url_for('appointments.list_appointments', **{'from':request.args.get('from',''),'to':request.args.get('to','')}) }}">همه</a>
-        {% for k, v in status_fa.items() %}<a class="btn btn-sm filter-option {% if active_status==k %}btn{% else %}btn-ghost{% endif %}" href="{{ url_for('appointments.list_appointments', status=k, **{'from':request.args.get('from',''),'to':request.args.get('to','')}) }}">{{ v }}</a>{% endfor %}
-        </div>
+</section>
+{% endif %}
+
+<section class="filter-strip appointment-filter-strip" aria-label="فیلتر وضعیت نوبت‌ها">
+    <span class="muted text-xs">وضعیت</span>
+    <div class="filter-options">
+        <a class="btn btn-sm filter-option {% if not active_status %}btn{% else %}btn-ghost{% endif %}"
+           href="{{ url_for('appointments.list_appointments', view=active_view, **{'from':date_from_fa if active_view=='list' else '', 'to':date_to_fa if active_view=='list' else ''}) }}">همه</a>
+        {% for key, label in status_fa.items() %}
+        <a class="btn btn-sm filter-option {% if active_status==key %}btn{% else %}btn-ghost{% endif %}"
+           href="{{ url_for('appointments.list_appointments', view=active_view, status=key, **{'from':date_from_fa if active_view=='list' else '', 'to':date_to_fa if active_view=='list' else ''}) }}">{{ label }}</a>
+        {% endfor %}
     </div>
 </section>
 
 <section class="card" aria-labelledby="appointments-title">
-    <div class="section-title"><svg class="icon"><use href="#i-calendar"></use></svg><div><div id="appointments-title">فهرست نوبت‌ها</div><div class="section-sub">{{ summary.total|fa_num }} نوبت در این بازه</div></div></div>
+    <div class="section-title">
+        <svg class="icon"><use href="#i-calendar"></use></svg>
+        <div>
+            <div id="appointments-title">{{ 'نوبت‌های امروز' if active_view=='today' else 'فهرست نوبت‌ها' }}</div>
+            <div class="section-sub">{{ summary.total|fa_num }} نوبت در این نما</div>
+        </div>
+    </div>
     {% if appointments %}
     <div class="appointment-card-list">
-        {% for a in appointments %}
-        <article class="appointment-card {% if a.is_today %}is-today{% endif %}">
+        {% for appointment in appointments %}
+        <article class="appointment-card {% if appointment.is_today %}is-today{% endif %}">
             <div class="appointment-card__patient">
-                <a href="{{ url_for('patients.detail', pid=a.patient_link_id) }}"><svg class="icon icon-sm"><use href="#i-user"></use></svg> {{ a.patient_name }}</a>
-                {% if a.phone_number %}<span class="muted text-xs nums">{{ a.phone_number }}</span>{% endif %}
+                <a href="{{ url_for('patients.detail', pid=appointment.patient_link_id) }}"><svg class="icon icon-sm"><use href="#i-user"></use></svg> {{ appointment.patient_name }}</a>
+                {% if appointment.phone_number %}<span class="muted text-xs nums">{{ appointment.phone_number }}</span>{% endif %}
             </div>
             <div class="appointment-card__time nums">
-                {% if a.is_today %}<span class="badge badge-info">امروز</span>{% endif %}
-                <b>{{ a.scheduled_fa }}</b>
-                <span class="muted text-xs">{{ a.type_fa }}{% if a.recurrence_months %} · هر {{ a.recurrence_months|fa_num }} ماه{% endif %}</span>
+                {% if appointment.is_today %}<span class="badge badge-info">امروز</span>{% endif %}
+                <b>{{ appointment.scheduled_fa }}</b>
+                <span class="muted text-xs">{{ appointment.type_fa }}{% if appointment.recurrence_months %} · هر {{ appointment.recurrence_months|fa_num }} ماه{% endif %}</span>
             </div>
             <div class="appointment-card__status">
-                {% if a.status=='scheduled' %}<span class="badge badge-warn">{{ a.status_fa }}</span>{% elif a.status=='done' %}<span class="badge badge-ok">{{ a.status_fa }}</span>{% else %}<span class="badge badge-danger">{{ a.status_fa }}</span>{% endif %}
+                {% if appointment.status=='scheduled' %}<span class="badge badge-warn">{{ appointment.status_fa }}</span>{% elif appointment.status=='done' %}<span class="badge badge-ok">{{ appointment.status_fa }}</span>{% else %}<span class="badge badge-danger">{{ appointment.status_fa }}</span>{% endif %}
             </div>
             <div class="appointment-card__actions">
-                {% if a.status=='scheduled' %}
-                <form class="m-0" method="post" action="{{ url_for('appointments.set_status', appt_id=a.id) }}">
-                    <input type="hidden" name="status" value="done"><button class="btn btn-sm btn-ok" type="submit"><svg class="icon icon-sm"><use href="#i-check"></use></svg> انجام شد</button>
+                {% if appointment.status=='scheduled' %}
+                <form class="m-0" method="post" action="{{ url_for('appointments.set_status', appt_id=appointment.id) }}">
+                    <input type="hidden" name="status" value="done">
+                    <input type="hidden" name="return_url" value="{{ request.full_path }}">
+                    <button class="btn btn-sm btn-ok" type="submit"><svg class="icon icon-sm"><use href="#i-check"></use></svg> انجام شد</button>
                 </form>
                 <details class="task-card__more" data-action-menu>
-                    <summary class="btn btn-sm btn-ghost" aria-label="اقدامات بیشتر برای نوبت {{ a.patient_name }}">•••</summary>
+                    <summary class="btn btn-sm btn-ghost" aria-label="اقدامات بیشتر برای نوبت {{ appointment.patient_name }}">•••</summary>
                     <div class="task-card__menu">
-                        <form method="post" action="{{ url_for('appointments.set_status', appt_id=a.id) }}"><input type="hidden" name="status" value="no_show"><button class="appointment-menu-action" type="submit">ثبت غیبت</button></form>
-                        <form method="post" action="{{ url_for('appointments.set_status', appt_id=a.id) }}"><input type="hidden" name="status" value="cancelled"><button class="appointment-menu-action is-danger" type="submit">لغو نوبت</button></form>
-                        <a href="{{ url_for('patients.detail', pid=a.patient_link_id) }}">پرونده بیمار</a>
+                        <form method="post" action="{{ url_for('appointments.set_status', appt_id=appointment.id) }}"><input type="hidden" name="status" value="no_show"><input type="hidden" name="return_url" value="{{ request.full_path }}"><button class="appointment-menu-action" type="submit">ثبت غیبت</button></form>
+                        <form method="post" action="{{ url_for('appointments.set_status', appt_id=appointment.id) }}"><input type="hidden" name="status" value="cancelled"><input type="hidden" name="return_url" value="{{ request.full_path }}"><button class="appointment-menu-action is-danger" type="submit">لغو نوبت</button></form>
+                        <a href="{{ url_for('patients.detail', pid=appointment.patient_link_id) }}">پرونده بیمار</a>
                     </div>
                 </details>
-                {% else %}<a class="btn btn-sm btn-ghost" href="{{ url_for('patients.detail', pid=a.patient_link_id) }}">پرونده</a>{% endif %}
+                {% else %}<a class="btn btn-sm btn-ghost" href="{{ url_for('patients.detail', pid=appointment.patient_link_id) }}">پرونده</a>{% endif %}
             </div>
         </article>
         {% endfor %}
     </div>
-    {% else %}<div class="auto-empty"><svg class="icon"><use href="#i-calendar"></use></svg><h2>نوبتی در این بازه نیست</h2><p>بازه را تغییر دهید یا نوبت جدیدی ثبت کنید.</p><a class="btn" href="{{ url_for('appointments.new_appointment') }}">ثبت نوبت</a></div>{% endif %}
+    {% else %}
+    <div class="auto-empty"><svg class="icon"><use href="#i-calendar"></use></svg><h2>{{ 'امروز نوبتی ثبت نشده است' if active_view=='today' else 'نوبتی در این بازه نیست' }}</h2><p>می‌توانید نوبت جدید را با زمان پیشنهادی ثبت کنید.</p><a class="btn" href="{{ url_for('appointments.new_appointment', return_url=request.full_path) }}">ثبت نوبت</a></div>
+    {% endif %}
 </section>
 {% endblock %}
