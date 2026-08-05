@@ -2,25 +2,30 @@
 {% block title %}تنظیمات{% endblock %}
 {% block head %}{{ super() }}<link rel="stylesheet" href="{{ url_for('static', filename='css/settings-automation-v1.css') }}">{% endblock %}
 {% block content %}
+{% if message_settings_context %}
+{% set hub_tab = 'advanced' %}
+{% include "sms/_hub_tabs.html" %}
+{% endif %}
 <header class="auto-page-header">
     <div class="auto-page-header__copy">
-        <a class="muted text-sm" href="{{ url_for('manager.index') }}">مدیریت / بازگشت</a>
-        <h1><svg class="icon icon-lg"><use href="#i-settings"></use></svg> تنظیمات</h1>
-        <p class="muted">هر بخش فقط هنگام نیاز باز می‌شود؛ ذخیره معمولی تأیید دوم ندارد.</p>
+        <a class="muted text-sm" href="{{ url_for('sms.campaigns') if message_settings_context else url_for('manager.index') }}">{{ 'مرکز پیام‌ها' if message_settings_context else 'مدیریت' }} / بازگشت</a>
+        <h1><svg class="icon icon-lg"><use href="#i-settings"></use></svg> {{ 'تنظیمات پیشرفته پیام‌ها' if message_settings_context else 'تنظیمات' }}</h1>
+        <p class="muted">{% if message_settings_context %}Provider، هزینه و متن‌های پیام از قرارداد تنظیمات موجود استفاده می‌کنند؛ Endpoint موازی ساخته نشده است.{% else %}هر بخش فقط هنگام نیاز باز می‌شود؛ ذخیره معمولی تأیید دوم ندارد.{% endif %}</p>
     </div>
 </header>
 
-<form method="post" class="settings-workspace" id="settings-form">
+<form method="post" class="settings-workspace{% if message_settings_context %} message-settings-workspace{% endif %}" id="settings-form">
+    <input type="hidden" name="settings_context" value="{{ 'messages' if message_settings_context else '' }}">
     <nav class="settings-nav" aria-label="بخش‌های تنظیمات">
-        <a href="#settings-network"><svg class="icon icon-sm"><use href="#i-building"></use></svg> شبکه و حسابداری</a>
+        {% if not message_settings_context %}<a href="#settings-network"><svg class="icon icon-sm"><use href="#i-building"></use></svg> شبکه و حسابداری</a>{% endif %}
         <a href="#settings-sms"><svg class="icon icon-sm"><use href="#i-megaphone"></use></svg> سرویس پیامک</a>
         <a href="#settings-costs"><svg class="icon icon-sm"><use href="#i-banknote"></use></svg> هزینه و متن‌ها</a>
-        <a href="#settings-card"><svg class="icon icon-sm"><use href="#i-user"></use></svg> کارت بیمار</a>
-        <a href="#settings-prescription"><svg class="icon icon-sm"><use href="#i-clipboard"></use></svg> نسخه و سربرگ</a>
+        {% if not message_settings_context %}<a href="#settings-card"><svg class="icon icon-sm"><use href="#i-user"></use></svg> کارت بیمار</a>
+        <a href="#settings-prescription"><svg class="icon icon-sm"><use href="#i-clipboard"></use></svg> نسخه و سربرگ</a>{% endif %}
     </nav>
 
     <div class="settings-content">
-        <details class="settings-panel" id="settings-network" open>
+        <details class="settings-panel settings-general-panel" id="settings-network" {% if not message_settings_context %}open{% endif %}>
             <summary><div class="section-title"><svg class="icon"><use href="#i-building"></use></svg><div><div>شبکه و اتصال حسابداری</div><div class="section-sub">نشانی‌های قابل استفاده در شبکه درمانگاه</div></div></div><span class="badge {% if network_info.accounting_bridge_available %}badge-ok{% else %}badge-warn{% endif %}">{% if network_info.accounting_bridge_available %}حسابداری متصل{% else %}حسابداری در دسترس نیست{% endif %}</span></summary>
             <div class="settings-panel__body">
                 <div class="settings-network-primary">
@@ -42,7 +47,7 @@
             </div>
         </details>
 
-        <details class="settings-panel" id="settings-sms" {% if data.sms_provider %}open{% endif %}>
+        <details class="settings-panel" id="settings-sms" {% if message_settings_context or data.sms_provider %}open{% endif %}>
             <summary><div class="section-title"><svg class="icon"><use href="#i-megaphone"></use></svg><div><div>سرویس پیامک</div><div class="section-sub">Provider فعال و اطلاعات اتصال</div></div></div><span class="badge badge-info">{{ 'کاوه‌نگار' if data.sms_provider=='kavenegar' else 'مدیانا' }}</span></summary>
             <div class="settings-panel__body">
                 <div class="fld"><label for="sms-provider">پنل فعال</label><select id="sms-provider" name="sms_provider"><option value="kavenegar" {% if data.sms_provider=='kavenegar' %}selected{% endif %}>کاوه‌نگار</option><option value="mediana" {% if data.sms_provider=='mediana' %}selected{% endif %}>مدیانا</option></select><p class="help">فقط پیام‌های جدید از پنل انتخاب‌شده ارسال می‌شوند.</p></div>
@@ -74,7 +79,7 @@
             </div>
         </details>
 
-        <details class="settings-panel" id="settings-costs">
+        <details class="settings-panel" id="settings-costs" {% if message_settings_context %}open{% endif %}>
             <summary><div class="section-title"><svg class="icon"><use href="#i-banknote"></use></svg><div><div>هزینه و متن پیام‌ها</div><div class="section-sub">برآورد هر بخش و متن یادآوری نوبت</div></div></div></summary>
             <div class="settings-panel__body">
                 <div class="alert-banner alert-info"><svg class="icon"><use href="#i-info"></use></svg><span>این مبالغ برآورد تنظیم‌شده‌اند، نه صورتحساب مستقیم Provider.</span></div>
@@ -86,7 +91,7 @@
             </div>
         </details>
 
-        <details class="settings-panel" id="settings-card">
+        <details class="settings-panel settings-general-panel" id="settings-card">
             <summary><div class="section-title"><svg class="icon"><use href="#i-user"></use></svg><div><div>کارت بیمار</div><div class="section-sub">نمای عمومی توکن‌دار برای بیمار</div></div></div>{% if data.patient_card_enabled=='1' %}<span class="badge badge-ok">فعال</span>{% else %}<span class="badge badge-muted">غیرفعال</span>{% endif %}</summary>
             <div class="settings-panel__body">
                 <label class="flex items-center gap-2"><input type="checkbox" name="patient_card_enabled" value="1" {% if data.patient_card_enabled=='1' %}checked{% endif %}> فعال‌سازی کارت بیمار</label>
@@ -94,7 +99,7 @@
             </div>
         </details>
 
-        <details class="settings-panel" id="settings-prescription">
+        <details class="settings-panel settings-general-panel" id="settings-prescription">
             <summary><div class="section-title"><svg class="icon"><use href="#i-clipboard"></use></svg><div><div>نسخه و سربرگ</div><div class="section-sub">اطلاعات نسخه آزاد چاپی</div></div></div></summary>
             <div class="settings-panel__body">
                 <div class="settings-grid-2">
@@ -108,7 +113,7 @@
             </div>
         </details>
 
-        <div class="settings-savebar"><span class="muted text-sm">تمام بخش‌های باز و بسته در یک ذخیره ثبت می‌شوند.</span><button class="btn" type="submit"><svg class="icon"><use href="#i-save"></use></svg> ذخیره تنظیمات</button></div>
+        <div class="settings-savebar"><span class="muted text-sm">{% if message_settings_context %}تنظیمات پیام با همان قرارداد امن تنظیمات اصلی ذخیره می‌شود؛ ذخیره مستقل تا وجود Endpoint جدا فعال نمی‌شود.{% else %}تمام بخش‌های باز و بسته در یک ذخیره ثبت می‌شوند.{% endif %}</span><button class="btn" type="submit"><svg class="icon"><use href="#i-save"></use></svg> ذخیره تنظیمات</button></div>
     </div>
 </form>
 
