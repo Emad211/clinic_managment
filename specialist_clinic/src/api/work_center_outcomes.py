@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from urllib.parse import urlsplit
 
-from flask import Blueprint, current_app, flash, g, redirect, request, url_for
+from flask import Blueprint, abort, current_app, flash, g, redirect, request, url_for
 
 from src.adapters.sqlite.core import get_db
 from src.common.utils import iran_now, jalali_to_gregorian_str
@@ -20,6 +20,15 @@ bp = Blueprint(
     __name__,
     url_prefix="/followups/work-center-outcomes",
 )
+
+
+@bp.before_request
+def require_work_center_actions():
+    if not (
+        current_app.config.get("FOLLOWUP_UNIFIED_WORKLIST_READONLY", False)
+        and current_app.config.get("FOLLOWUP_UNIFIED_WORKLIST_ACTIONS", False)
+    ):
+        abort(404)
 
 
 def _safe_work_url(value: object, fallback: str) -> str:
