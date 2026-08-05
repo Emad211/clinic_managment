@@ -411,9 +411,34 @@ def detail(episode_id: str):
     )
 
 
+@bp.post("/<episode_id>/handle")
+@permission_required(Permission.CLINICAL_TASK_VIEW)
+def handle(episode_id: str):
+    """Start handling when claim is allowed, otherwise open the workspace."""
+    _require_flag()
+    context = _work_context(request.form)
+    if current_app.config.get("FOLLOWUP_UNIFIED_WORKLIST_ACTIONS", False):
+        service = FollowupOwnershipService(get_db())
+        try:
+            capabilities = service.capabilities(episode_id=episode_id, actor=g.user)
+            state = service.state(episode_id)
+            if capabilities["can_claim"] and not state.assigned:
+                service.claim(
+                    episode_id=episode_id,
+                    actor=g.user,
+                    expected_event_id=request.form.get("expected_event_id"),
+                    idempotency_key=request.form.get("idempotency_key", ""),
+                )
+                flash("رسیدگی این مورد برای شما شروع شد.", "success")
+        except FollowupOwnershipError as error:
+            return _handle_ownership_error(error, episode_id, context)
+    return _redirect_detail(episode_id, context)
+
+
 @bp.post("/<episode_id>/claim")
 @permission_required(Permission.CLINICAL_TASK_VIEW)
 def claim(episode_id: str):
+    """Compatibility endpoint; normal Work Center flow uses handle()."""
     _require_actions_flag()
     context = _work_context(request.form)
     try:
