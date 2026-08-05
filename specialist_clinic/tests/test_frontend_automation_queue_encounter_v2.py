@@ -140,7 +140,7 @@ def test_finalisation_returns_to_queue_with_next_focus_but_never_auto_starts():
 
     assert route.count('url_for("doctor_queue.index", focus="next")') == 2
     assert "ویزیت نهایی شد؛ بیمار بعدی در صف آماده است." in route
-    assert "requested === 'next'" in automation
+    assert "requested !== 'next'" in automation
     assert "qs('[data-queue-next]')" in automation
     assert "next.focus({ preventScroll: true })" in automation
 
