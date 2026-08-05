@@ -145,3 +145,12 @@ def captured():
             call_log="نسخهٔ بیمه‌ای از پل ثبت شد",
         )
     return jsonify({"ok": True, "prescription_id": prescription_id})
+
+
+@bp.record_once
+def register_work_center_outcomes(state):
+    """Register the focused Work Center mutations during application setup."""
+    from src.api.work_center_outcomes import bp as work_center_outcomes_bp
+
+    if work_center_outcomes_bp.name not in state.app.blueprints:
+        state.app.register_blueprint(work_center_outcomes_bp)
