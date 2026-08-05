@@ -248,8 +248,7 @@ def test_administrative_completion_retry_is_one_authoritative_event(outcome_app)
     assert task["call_log"] == "کار اداری واقعاً انجام شد"
     assert outcome_app["db"].execute(
         """SELECT COUNT(*) FROM followup_episode_events
-           WHERE episode_id=? AND event_type='ADMINISTRATIVE_GOAL_MET'
-             AND idempotency_key='work-center-admin-complete-0001'""",
+           WHERE episode_id=? AND event_type='ADMINISTRATIVE_GOAL_MET'""",
         (episode_id,),
     ).fetchone()[0] == 1
 
