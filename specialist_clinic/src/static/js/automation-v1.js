@@ -32,6 +32,18 @@
       if (section.textContent.trim() === 'عملیات') section.textContent = 'کار روزانه';
       if (section.textContent.trim() === 'سیستم') section.textContent = 'مدیریت';
     });
+
+    if (window.location.pathname.startsWith('/followups/unified')) {
+      qsa('a.nav-item.active', nav).forEach((link) => {
+        link.classList.remove('active');
+        link.removeAttribute('aria-current');
+      });
+      const workCenter = qs('[data-automation-nav="مرکز کارها"]', nav);
+      if (workCenter) {
+        workCenter.classList.add('active');
+        workCenter.setAttribute('aria-current', 'page');
+      }
+    }
   }
 
   function closeSiblingMenus(opened) {
@@ -93,6 +105,41 @@
             window.clearTimeout(timer);
             submit();
           }
+        });
+      });
+    });
+  }
+
+  function setupOneClickContactOutcomes() {
+    qsa('form[data-contact-form]').forEach((form) => {
+      const outcome = qs('[name="structured_outcome"]', form);
+      const callbackFields = qs('[data-callback-fields]', form);
+      const help = qs('[data-contact-help]', form);
+      const submitButton = qs('button[type="submit"]', form);
+      if (!outcome) return;
+
+      const syncConditionalFields = () => {
+        const needsCallback = outcome.value === 'CALLBACK_REQUESTED';
+        if (callbackFields) callbackFields.hidden = !needsCallback;
+        qsa('input', callbackFields || document.createElement('div')).forEach((input) => {
+          input.required = needsCallback;
+        });
+      };
+
+      outcome.addEventListener('change', syncConditionalFields);
+      syncConditionalFields();
+
+      qsa('[data-contact-outcome]', form).forEach((button) => {
+        button.addEventListener('click', () => {
+          if (form.getAttribute('aria-busy') === 'true') return;
+          outcome.value = button.dataset.contactOutcome || '';
+          syncConditionalFields();
+          if (help) help.textContent = `${button.textContent.trim()} انتخاب شد؛ در حال ثبت…`;
+          qsa('[data-contact-outcome]', form).forEach((candidate) => {
+            candidate.setAttribute('aria-pressed', candidate === button ? 'true' : 'false');
+          });
+          if (typeof form.requestSubmit === 'function') form.requestSubmit(submitButton || undefined);
+          else form.submit();
         });
       });
     });
@@ -210,6 +257,7 @@
   humanizePrimaryNavigation();
   setupActionMenus();
   setupAutomaticFilters();
+  setupOneClickContactOutcomes();
   setupOptInAutosave();
   setupAutoNextFocus();
   setupTechnicalDetails();
