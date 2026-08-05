@@ -5,4 +5,7 @@
 {% if request.endpoint == 'manager.settings' %}
 <meta name="clinic-kavenegar-api-key-source" content="CLINIC_KAVENEGAR_API_KEY">
 {% endif %}
+{% if request.endpoint == 'doctor_queue.visit' %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/queue-encounter-automation-v2.css') }}">
+{% endif %}
 {% endblock %}
