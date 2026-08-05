@@ -89,7 +89,9 @@ def test_real_flask_app_renders_work_center_and_history(tmp_path):
 
     _app, context, db, client = _build_real_app(tmp_path)
     try:
-        list_response = client.get("/followups/unified/")
+        # The approved default is "My work". This fixture has not claimed the item,
+        # so the broad rendering check explicitly opens the All-active view.
+        list_response = client.get("/followups/unified/?view=all")
         assert list_response.status_code == 200
         list_html = list_response.get_data(as_text=True)
         assert "مرکز کارها" in list_html
@@ -101,12 +103,15 @@ def test_real_flask_app_renders_work_center_and_history(tmp_path):
                 "SELECT episode_id FROM followup_episodes ORDER BY episode_id LIMIT 1"
             ).fetchone()[0]
         )
-        detail_response = client.get(f"/followups/unified/{episode_id}")
+        detail_response = client.get(
+            f"/followups/unified/{episode_id}?view=all"
+        )
         assert detail_response.status_code == 200
         detail_html = detail_response.get_data(as_text=True)
         assert "بیمار تست نمای یکپارچه" in detail_html
         assert "تاریخچه کار" in detail_html
-        assert "هیچ تغییری در پرونده یا تسک ایجاد نمی‌کند" in detail_html
+        assert "کاری که اکنون باید انجام شود" in detail_html
+        assert "دریافت برای رسیدگی" not in detail_html
     finally:
         context.pop()
         core._initialized = False
@@ -118,11 +123,11 @@ def test_real_flask_app_renders_controlled_legacy_cache_state_not_500(tmp_path):
     _app, context, db, client = _build_real_app(tmp_path)
     try:
         _install_legacy_projection_cache(db)
-        response = client.get("/followups/unified/")
+        response = client.get("/followups/unified/?view=all")
         assert response.status_code == 200
         html = response.get_data(as_text=True)
         assert "اطلاعات ذخیره‌شدهٔ این نما با نسخهٔ جدید سازگار نیست" in html
-        assert "مسیر قدیمی پیگیری" in html
+        assert "بازکردن پیگیری قدیمی" in html
         assert "PROJECTION_SCHEMA_INCOMPATIBLE" in html
         assert "خطای غیرمنتظره" not in html
     finally:
@@ -176,9 +181,9 @@ def test_user_facing_copy_avoids_projection_jargon_and_hides_technical_data():
         assert forbidden not in visible_copy
         assert forbidden not in detail_template
 
-    assert "اطلاعات نیازمند بازخوانی" in list_template
-    assert "جزئیات فنی برای پشتیبانی" in list_template
-    assert "اطلاعات این نما قدیمی است یا زمان بازسازی معتبری ندارد" in detail_template
-    assert "آخرین بازسازی نما" in detail_template
+    assert "نیازمند بازخوانی" in list_template
+    assert "جزئیات پشتیبانی" in list_template
+    assert "اطلاعات این نما نیازمند بازخوانی است" in detail_template
+    assert "آخرین بازسازی" in detail_template
     assert "اطلاعات نمای یکپارچه هنوز آماده نشده است" in readiness_copy
     assert "اطلاعات ذخیره‌شدهٔ این نما با نسخهٔ جدید سازگار نیست" in readiness_copy
