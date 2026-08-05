@@ -6,6 +6,16 @@
   const qs = (selector, root = document) => root.querySelector(selector);
   const qsa = (selector, root = document) => Array.from(root.querySelectorAll(selector));
 
+  function setupPatientWorkspaceModule() {
+    if (!qs('.patient-hero') || !qs('.tabbar[role="tablist"]')) return;
+    if (qs('script[data-patient-workspace-v2]')) return;
+    const script = document.createElement('script');
+    script.src = '/static/js/patient-workspace-automation-v2.js';
+    script.async = false;
+    script.dataset.patientWorkspaceV2 = 'true';
+    document.body.appendChild(script);
+  }
+
   function closeSiblingMenus(opened) {
     qsa('details[data-action-menu][open]').forEach((menu) => {
       if (menu !== opened) menu.removeAttribute('open');
@@ -213,6 +223,7 @@
   window.ClinicAutomation = Object.freeze({ toast, persistForm });
 
   document.addEventListener('DOMContentLoaded', () => {
+    setupPatientWorkspaceModule();
     setupActionMenus();
     setupAutomaticFilters();
     setupOneClickContactOutcomes();
