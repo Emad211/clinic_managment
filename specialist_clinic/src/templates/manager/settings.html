@@ -1,276 +1,118 @@
-{% extends "base.html" %}
+{% extends "automation_base.html" %}
 {% block title %}تنظیمات{% endblock %}
+{% block head %}{{ super() }}<link rel="stylesheet" href="{{ url_for('static', filename='css/settings-automation-v1.css') }}">{% endblock %}
 {% block content %}
-<div class="topbar">
-    <h1><svg class="icon icon-lg"><use href="#i-settings"></use></svg> تنظیمات</h1>
-</div>
-<div class="page-intro">تنظیم دسترسی شبکهٔ درمانگاه، پیامک، کارت بیمار و سربرگ نسخه.</div>
-
-<section class="card network-settings" aria-labelledby="network-settings-title">
-    <div class="section-title">
-        <svg class="icon"><use href="#i-building"></use></svg>
-        <span id="network-settings-title">دسترسی شبکهٔ درمانگاه</span>
-        <span class="section-sub">اجرای کلینیک تخصصی روی همهٔ سیستم‌های متصل به شبکه</span>
+<header class="auto-page-header">
+    <div class="auto-page-header__copy">
+        <a class="muted text-sm" href="{{ url_for('manager.index') }}">مدیریت / بازگشت</a>
+        <h1><svg class="icon icon-lg"><use href="#i-settings"></use></svg> تنظیمات</h1>
+        <p class="muted">هر بخش فقط هنگام نیاز باز می‌شود؛ ذخیره معمولی تأیید دوم ندارد.</p>
     </div>
+</header>
 
-    <div class="network-primary">
-        <div>
-            <div class="network-label">نشانی پیشنهادی کلینیک تخصصی</div>
-            <code id="specialist-network-url" class="network-url nums" dir="ltr">{{ network_info.primary_url }}</code>
-        </div>
-        <div class="network-actions">
-            <button type="button" class="btn btn-sm network-copy" data-copy-target="specialist-network-url">
-                <svg class="icon"><use href="#i-clipboard"></use></svg> کپی نشانی
-            </button>
-            <a class="btn btn-ghost btn-sm" href="{{ network_info.primary_url }}" target="_blank" rel="noopener">باز کردن</a>
-        </div>
-    </div>
+<form method="post" class="settings-workspace" id="settings-form">
+    <nav class="settings-nav" aria-label="بخش‌های تنظیمات">
+        <a href="#settings-network"><svg class="icon icon-sm"><use href="#i-building"></use></svg> شبکه و حسابداری</a>
+        <a href="#settings-sms"><svg class="icon icon-sm"><use href="#i-megaphone"></use></svg> سرویس پیامک</a>
+        <a href="#settings-costs"><svg class="icon icon-sm"><use href="#i-banknote"></use></svg> هزینه و متن‌ها</a>
+        <a href="#settings-card"><svg class="icon icon-sm"><use href="#i-user"></use></svg> کارت بیمار</a>
+        <a href="#settings-prescription"><svg class="icon icon-sm"><use href="#i-clipboard"></use></svg> نسخه و سربرگ</a>
+    </nav>
 
-    <div class="network-facts">
-        <div><span>نام سیستم</span><b class="nums" dir="ltr">{{ network_info.hostname }}</b></div>
-        <div><span>پورت کلینیک تخصصی</span><b class="nums">{{ network_info.port }}</b></div>
-        <div><span>اتصال داده‌های حسابداری</span>
-            {% if network_info.accounting_bridge_available %}
-            <b class="network-status is-online"><svg class="icon icon-sm"><use href="#i-shield"></use></svg> متصل، فقط‌خواندنی</b>
-            {% else %}
-            <b class="network-status is-offline"><svg class="icon icon-sm"><use href="#i-alert"></use></svg> در دسترس نیست</b>
-            {% endif %}
-        </div>
-    </div>
-
-    <div class="network-addresses">
-        <div class="network-label">نشانی‌های قابل استفاده</div>
-        {% for address in network_info.addresses %}
-        <div class="network-address-row">
-            <div>
-                <code id="network-url-{{ loop.index }}" class="nums" dir="ltr">{{ address.specialist_url }}</code>
-                <span class="badge">{{ 'فقط همین سیستم' if address.is_localhost else 'شبکه درمانگاه' }}</span>
+    <div class="settings-content">
+        <details class="settings-panel" id="settings-network" open>
+            <summary><div class="section-title"><svg class="icon"><use href="#i-building"></use></svg><div><div>شبکه و اتصال حسابداری</div><div class="section-sub">نشانی‌های قابل استفاده در شبکه درمانگاه</div></div></div><span class="badge {% if network_info.accounting_bridge_available %}badge-ok{% else %}badge-warn{% endif %}">{% if network_info.accounting_bridge_available %}حسابداری متصل{% else %}حسابداری در دسترس نیست{% endif %}</span></summary>
+            <div class="settings-panel__body">
+                <div class="settings-network-primary">
+                    <div><span class="muted text-xs">نشانی پیشنهادی کلینیک</span><br><code id="specialist-network-url" class="nums" dir="ltr">{{ network_info.primary_url }}</code></div>
+                    <div class="flex gap-2 wrap"><button type="button" class="btn btn-sm network-copy" data-copy-target="specialist-network-url"><svg class="icon icon-sm"><use href="#i-clipboard"></use></svg> کپی</button><a class="btn btn-sm btn-ghost" href="{{ network_info.primary_url }}" target="_blank" rel="noopener">بازکردن</a></div>
+                </div>
+                <div class="settings-grid-3">
+                    <div class="work-center-kpi"><b class="nums" dir="ltr">{{ network_info.hostname }}</b><span>نام سیستم</span></div>
+                    <div class="work-center-kpi"><b class="nums">{{ network_info.port }}</b><span>پورت کلینیک</span></div>
+                    <div class="work-center-kpi"><b>فقط‌خواندنی</b><span>نوع اتصال حسابداری</span></div>
+                </div>
+                <details class="auto-technical" data-technical-details>
+                    <summary>همه نشانی‌های شبکه</summary>
+                    <div class="auto-technical__body settings-network-list">
+                        {% for address in network_info.addresses %}<div class="settings-network-row"><div><code id="network-url-{{ loop.index }}" class="nums" dir="ltr">{{ address.specialist_url }}</code> <span class="badge badge-muted">{{ 'همین سیستم' if address.is_localhost else 'شبکه درمانگاه' }}</span></div><button type="button" class="btn btn-sm btn-ghost network-copy" data-copy-target="network-url-{{ loop.index }}" aria-label="کپی نشانی"><svg class="icon icon-sm"><use href="#i-clipboard"></use></svg></button></div>{% endfor %}
+                        <div class="settings-network-row"><span>اپ حسابداری</span><a class="btn btn-sm btn-ghost nums" href="{{ network_info.accounting_url }}" target="_blank" rel="noopener" dir="ltr">{{ network_info.accounting_url }}</a></div>
+                    </div>
+                </details>
             </div>
-            <button type="button" class="btn btn-ghost btn-sm network-copy" data-copy-target="network-url-{{ loop.index }}" aria-label="کپی نشانی">
-                <svg class="icon"><use href="#i-clipboard"></use></svg>
-            </button>
-        </div>
-        {% endfor %}
-    </div>
+        </details>
 
-    <div class="network-peer">
-        <div>
-            <b>اپ حسابداری</b>
-            <div class="help">در همان سیستم و شبکه، روی پورت ۸۰۸۰ در دسترس است.</div>
-        </div>
-        <a href="{{ network_info.accounting_url }}" target="_blank" rel="noopener" class="btn btn-ghost btn-sm nums" dir="ltr">{{ network_info.accounting_url }}</a>
-    </div>
+        <details class="settings-panel" id="settings-sms" {% if data.sms_provider %}open{% endif %}>
+            <summary><div class="section-title"><svg class="icon"><use href="#i-megaphone"></use></svg><div><div>سرویس پیامک</div><div class="section-sub">Provider فعال و اطلاعات اتصال</div></div></div><span class="badge badge-info">{{ 'کاوه‌نگار' if data.sms_provider=='kavenegar' else 'مدیانا' }}</span></summary>
+            <div class="settings-panel__body">
+                <div class="fld"><label for="sms-provider">پنل فعال</label><select id="sms-provider" name="sms_provider"><option value="kavenegar" {% if data.sms_provider=='kavenegar' %}selected{% endif %}>کاوه‌نگار</option><option value="mediana" {% if data.sms_provider=='mediana' %}selected{% endif %}>مدیانا</option></select><p class="help">فقط پیام‌های جدید از پنل انتخاب‌شده ارسال می‌شوند.</p></div>
 
-    <div class="alert-banner alert-info network-note">
-        <svg class="icon"><use href="#i-info"></use></svg>
-        <div>سیستم‌ها باید به یک شبکهٔ داخلی یا Wi-Fi متصل باشند. اگر نشانی باز نشد، دسترسی پورت <span class="nums">{{ network_info.port }}</span> را در Windows Firewall مجاز کنید. اتصال پرونده‌های حسابداری همچنان فقط‌خواندنی باقی می‌ماند.</div>
-    </div>
-</section>
+                <section class="settings-provider-status" aria-labelledby="kavenegar-title">
+                    <div><b id="kavenegar-title">کاوه‌نگار</b><div class="muted text-xs">پنل اصلی</div></div>
+                    {% if data.kavenegar_api_key_set %}<span class="badge badge-ok">کلید تنظیم شده</span>{% else %}<span class="badge badge-warn">کلید تنظیم نشده</span>{% endif %}
+                </section>
+                <div class="settings-grid-3">
+                    <div class="fld"><label for="kavenegar-key">API Key</label><input id="kavenegar-key" type="password" name="kavenegar_api_key" autocomplete="new-password" placeholder="{% if data.kavenegar_api_key_set %}برای حفظ، خالی بگذارید{% else %}کلید API{% endif %}">{% if data.kavenegar_api_key_set %}<p class="help"><code dir="ltr">{{ data.kavenegar_api_key_masked }}</code></p>{% endif %}</div>
+                    <div class="fld"><label for="kavenegar-sender">خط ارسال <span class="muted">اختیاری</span></label><input id="kavenegar-sender" name="kavenegar_sender" value="{{ data.kavenegar_sender }}" placeholder="خط پیش‌فرض پنل"></div>
+                    <div class="fld"><label for="kavenegar-timeout">مهلت پاسخ</label><input id="kavenegar-timeout" type="number" name="kavenegar_timeout" min="10" max="120" value="{{ data.kavenegar_timeout }}"><p class="help">ثانیه</p></div>
+                </div>
+                <label class="settings-secret-clear"><input type="checkbox" name="clear_kavenegar_api_key" value="1" data-sensitive-clear> پاک‌کردن کلید ذخیره‌شده کاوه‌نگار</label>
 
-<form method="post" class="settings-form">
-
-    <!-- پنلِ فعال -->
-    <div class="card">
-        <div class="section-title">
-            <svg class="icon"><use href="#i-list-checks"></use></svg>
-            <span>پنلِ پیامکِ فعال</span>
-            <span class="section-sub">کدام سرویس پیام‌ها را ارسال کند</span>
-        </div>
-        <div class="fld">
-            <select name="sms_provider">
-                <option value="kavenegar" {% if data.sms_provider=='kavenegar' %}selected{% endif %}>کاوه‌نگار (Kavenegar)</option>
-                <option value="mediana" {% if data.sms_provider=='mediana' %}selected{% endif %}>مدیانا (Mediana)</option>
-            </select>
-            <div class="help">پیام‌ها فقط از همین پنل ارسال می‌شوند. تغییر پنل روی استعلام پیام‌های قبلی اثر ندارد؛ هر پیام با سرویس‌دهندهٔ ثبت‌شدهٔ خودش بررسی می‌شود.</div>
-        </div>
-    </div>
-
-    <!-- کاوه‌نگار -->
-    <div class="card" style="margin-top:var(--s4);">
-        <div class="section-title">
-            <svg class="icon"><use href="#i-megaphone"></use></svg>
-            <span>پنل پیامک کاوه‌نگار (Kavenegar)</span>
-            <span class="section-sub">پنلِ اصلیِ پروژه</span>
-        </div>
-
-        <div class="fld">
-            <label><svg class="icon icon-sm"><use href="#i-key"></use></svg> API Key کاوه‌نگار</label>
-            <input type="password" name="kavenegar_api_key" value="" autocomplete="new-password" placeholder="{% if data.kavenegar_api_key_set %}تنظیم شده — برای حفظ، خالی بگذارید{% else %}کلید API پنل کاوه‌نگار{% endif %}">
-            <div class="help">
-                {% if data.kavenegar_api_key_set %}<span class="badge badge-ok">تنظیم شده</span> <code dir="ltr">{{ data.kavenegar_api_key_masked }}</code>{% else %}<span class="badge badge-warn">تنظیم نشده</span>{% endif %}
-                · در production از متغیر <code>CLINIC_KAVENEGAR_API_KEY</code> خوانده می‌شود و مقدار خام هرگز در صفحه نمایش داده نمی‌شود.
+                <details class="auto-technical" data-technical-details {% if data.sms_provider=='mediana' %}open{% endif %}">
+                    <summary>پنل جایگزین مدیانا</summary>
+                    <div class="auto-technical__body">
+                        <div class="settings-provider-status"><div><b>مدیانا</b><div class="muted text-xs">فقط در صورت انتخاب به‌عنوان پنل فعال</div></div>{% if data.mediana_api_key_set %}<span class="badge badge-ok">کلید تنظیم شده</span>{% else %}<span class="badge badge-warn">کلید تنظیم نشده</span>{% endif %}</div>
+                        <div class="settings-grid-2 mt-3">
+                            <div class="fld"><label for="mediana-key">API Key</label><input id="mediana-key" type="password" name="mediana_api_key" autocomplete="new-password" placeholder="{% if data.mediana_api_key_set %}برای حفظ، خالی بگذارید{% else %}کلید API{% endif %}">{% if data.mediana_api_key_set %}<p class="help"><code dir="ltr">{{ data.mediana_api_key_masked }}</code></p>{% endif %}</div>
+                            <div class="fld"><label for="mediana-number">شماره ارسال</label><input id="mediana-number" name="mediana_sending_number" value="{{ data.mediana_sending_number }}"></div>
+                            <div class="fld"><label for="mediana-type">نوع پیام پیش‌فرض</label><select id="mediana-type" name="mediana_message_type"><option value="PromotionalToCustomers" {% if data.mediana_message_type=='PromotionalToCustomers' %}selected{% endif %}>تبلیغاتی به مشتریان</option><option value="PromotionalAll" {% if data.mediana_message_type=='PromotionalAll' %}selected{% endif %}>تبلیغاتی به همه</option><option value="Informational" {% if data.mediana_message_type=='Informational' %}selected{% endif %}>اطلاع‌رسانی خدماتی</option></select></div>
+                            <div class="fld"><label for="mediana-timeout">مهلت پاسخ</label><input id="mediana-timeout" type="number" name="mediana_timeout" min="10" max="120" value="{{ data.mediana_timeout }}"></div>
+                        </div>
+                        <label class="settings-secret-clear"><input type="checkbox" name="clear_mediana_api_key" value="1" data-sensitive-clear> پاک‌کردن کلید ذخیره‌شده مدیانا</label>
+                    </div>
+                </details>
             </div>
-            <label class="flex items-center gap-2 text-sm"><input type="checkbox" name="clear_kavenegar_api_key" value="1"> پاک‌کردن کلید ذخیره‌شدهٔ development</label>
-        </div>
+        </details>
 
-        <div class="fld">
-            <label><svg class="icon icon-sm"><use href="#i-phone"></use></svg> خطِ ارسال (Sender) <span class="muted">— اختیاری</span></label>
-            <input type="text" name="kavenegar_sender" value="{{ data.kavenegar_sender }}" placeholder="مثلاً 10004346 — خالی = خطِ پیش‌فرضِ حساب">
-            <div class="help">اگر خالی بماند، کاوه‌نگار از خطِ پیش‌فرضِ تنظیم‌شده در پنل استفاده می‌کند. برای یادآوری‌های درمانی، خطِ خدماتی توصیه می‌شود.</div>
-        </div>
-
-        <div class="fld">
-            <label><svg class="icon icon-sm"><use href="#i-settings"></use></svg> مهلتِ انتظارِ پاسخِ پنل <span class="muted">(ثانیه)</span></label>
-            <input type="number" name="kavenegar_timeout" min="10" max="120" value="{{ data.kavenegar_timeout }}" placeholder="45">
-            <div class="help">اگر پنل دیر پاسخ دهد تا این مدت منتظر می‌مانیم. در صورتِ عبور از مهلت، پیام «در انتظار تأیید» ثبت می‌شود (نه «ناموفق») چون معمولاً ارسال شده است. پیشنهاد: ۴۵ ثانیه.</div>
-        </div>
-    </div>
-
-    <!-- مدیانا (جایگزین/قدیمی) -->
-    <details class="card" style="margin-top:var(--s4);" {% if data.sms_provider=='mediana' %}open{% endif %}>
-        <summary class="section-title" style="cursor:pointer;list-style:none;">
-            <svg class="icon"><use href="#i-megaphone"></use></svg>
-            <span>پنل پیامک مدیانا (Mediana)</span>
-            <span class="section-sub">پنلِ جایگزین — برای فعال‌سازی، «پنلِ فعال» را مدیانا کنید</span>
-        </summary>
-
-        <div class="fld" style="margin-top:var(--s3);">
-            <label><svg class="icon icon-sm"><use href="#i-key"></use></svg> API Key مدیانا</label>
-            <input type="password" name="mediana_api_key" value="" autocomplete="new-password" placeholder="{% if data.mediana_api_key_set %}تنظیم شده — برای حفظ، خالی بگذارید{% else %}کلید API پنل مدیانا{% endif %}">
-            <div class="help">
-                {% if data.mediana_api_key_set %}<span class="badge badge-ok">تنظیم شده</span> <code dir="ltr">{{ data.mediana_api_key_masked }}</code>{% else %}<span class="badge badge-warn">تنظیم نشده</span>{% endif %}
-                · در production از <code>CLINIC_MEDIANA_API_KEY</code> خوانده می‌شود.
+        <details class="settings-panel" id="settings-costs">
+            <summary><div class="section-title"><svg class="icon"><use href="#i-banknote"></use></svg><div><div>هزینه و متن پیام‌ها</div><div class="section-sub">برآورد هر بخش و متن یادآوری نوبت</div></div></div></summary>
+            <div class="settings-panel__body">
+                <div class="alert-banner alert-info"><svg class="icon"><use href="#i-info"></use></svg><span>این مبالغ برآورد تنظیم‌شده‌اند، نه صورتحساب مستقیم Provider.</span></div>
+                <div class="settings-grid-2">
+                    <div class="fld"><label for="cost-kavenegar">کاوه‌نگار — تومان برای هر بخش</label><input id="cost-kavenegar" type="number" min="0" name="sms_cost_per_part_kavenegar_toman" value="{{ data.sms_cost_per_part_kavenegar_toman }}" placeholder="خالی = نامشخص"></div>
+                    <div class="fld"><label for="cost-mediana">مدیانا — تومان برای هر بخش</label><input id="cost-mediana" type="number" min="0" name="sms_cost_per_part_mediana_toman" value="{{ data.sms_cost_per_part_mediana_toman }}" placeholder="خالی = نامشخص"></div>
+                </div>
+                <div class="fld"><label for="reminder-template">متن یادآوری نوبت</label><textarea id="reminder-template" name="reminder_template" rows="3">{{ data.reminder_template }}</textarea><p class="help"><code>{name}</code> با نام بیمار جایگزین می‌شود.</p></div>
             </div>
-            <label class="flex items-center gap-2 text-sm"><input type="checkbox" name="clear_mediana_api_key" value="1"> پاک‌کردن کلید ذخیره‌شدهٔ development</label>
-        </div>
+        </details>
 
-        <div class="fld">
-            <label><svg class="icon icon-sm"><use href="#i-phone"></use></svg> شماره ارسال اختصاصی <span class="muted">— اختیاری</span></label>
-            <input type="text" name="mediana_sending_number" value="{{ data.mediana_sending_number }}" placeholder="مثلاً 100090000 (در صورت داشتن خط اختصاصی)">
-        </div>
-
-        <div class="fld">
-            <label><svg class="icon icon-sm"><use href="#i-list-checks"></use></svg> نوع پیام پیش‌فرض <span class="muted">(وقتی خط اختصاصی ندارید)</span></label>
-            <select name="mediana_message_type">
-                <option value="PromotionalToCustomers" {% if data.mediana_message_type=='PromotionalToCustomers' %}selected{% endif %}>تبلیغاتی به مشتریان</option>
-                <option value="PromotionalAll" {% if data.mediana_message_type=='PromotionalAll' %}selected{% endif %}>تبلیغاتی به همه</option>
-                <option value="Informational" {% if data.mediana_message_type=='Informational' %}selected{% endif %}>اطلاع‌رسانی (خدماتی)</option>
-            </select>
-        </div>
-
-        <div class="fld">
-            <label><svg class="icon icon-sm"><use href="#i-settings"></use></svg> مهلتِ انتظارِ پاسخِ پنل <span class="muted">(ثانیه)</span></label>
-            <input type="number" name="mediana_timeout" min="10" max="120" value="{{ data.mediana_timeout }}" placeholder="45">
-        </div>
-    </details>
-
-    <div class="card" style="margin-top:var(--s4);">
-        <div class="section-title">
-            <svg class="icon"><use href="#i-banknote"></use></svg>
-            <span>هزینه مستقیم پیامک برای سنجش کمپین</span>
-            <span class="section-sub">تومان برای هر بخش؛ صرفاً برآورد تنظیم‌شده</span>
-        </div>
-        <div class="alert-banner alert-info">
-            این نرخ «هزینه واقعی گزارش‌شده توسط پنل» نیست. تا زمانی که نرخ معتبر وارد نشود، ROI کمپین عمداً نمایش داده نمی‌شود.
-        </div>
-        <div class="grid grid-2" style="margin-top:var(--s3);">
-            <div class="fld">
-                <label>کاوه‌نگار — تومان برای هر بخش</label>
-                <input type="number" min="0" name="sms_cost_per_part_kavenegar_toman"
-                       value="{{ data.sms_cost_per_part_kavenegar_toman }}"
-                       placeholder="خالی = هزینه نامشخص">
+        <details class="settings-panel" id="settings-card">
+            <summary><div class="section-title"><svg class="icon"><use href="#i-user"></use></svg><div><div>کارت بیمار</div><div class="section-sub">نمای عمومی توکن‌دار برای بیمار</div></div></div>{% if data.patient_card_enabled=='1' %}<span class="badge badge-ok">فعال</span>{% else %}<span class="badge badge-muted">غیرفعال</span>{% endif %}</summary>
+            <div class="settings-panel__body">
+                <label class="flex items-center gap-2"><input type="checkbox" name="patient_card_enabled" value="1" {% if data.patient_card_enabled=='1' %}checked{% endif %}> فعال‌سازی کارت بیمار</label>
+                <div class="fld"><label for="public-base-url">نشانی پایه عمومی</label><div class="flex gap-2 wrap"><input id="public-base-url" class="input-ltr" name="public_base_url" value="{{ data.public_base_url }}" placeholder="مثلاً http://192.168.1.10:8090"><button type="button" class="btn btn-ghost" id="use-network-url">استفاده از نشانی شبکه</button></div><p class="help">خالی بماند، نشانی همین مرورگر استفاده می‌شود.</p></div>
             </div>
-            <div class="fld">
-                <label>مدیانا — تومان برای هر بخش</label>
-                <input type="number" min="0" name="sms_cost_per_part_mediana_toman"
-                       value="{{ data.sms_cost_per_part_mediana_toman }}"
-                       placeholder="خالی = هزینه نامشخص">
+        </details>
+
+        <details class="settings-panel" id="settings-prescription">
+            <summary><div class="section-title"><svg class="icon"><use href="#i-clipboard"></use></svg><div><div>نسخه و سربرگ</div><div class="section-sub">اطلاعات نسخه آزاد چاپی</div></div></div></summary>
+            <div class="settings-panel__body">
+                <div class="settings-grid-2">
+                    <div class="fld"><label for="clinic-name">نام کلینیک</label><input id="clinic-name" name="clinic_name" value="{{ data.clinic_name }}"></div>
+                    <div class="fld"><label for="clinic-phone">تلفن کلینیک</label><input id="clinic-phone" name="clinic_phone" value="{{ data.clinic_phone }}"></div>
+                    <div class="fld"><label for="clinic-address">نشانی کلینیک</label><input id="clinic-address" name="clinic_address" value="{{ data.clinic_address }}"></div>
+                    <div class="fld"><label for="prescriber-name">نام پزشک</label><input id="prescriber-name" name="prescriber_name" value="{{ data.prescriber_name }}"></div>
+                    <div class="fld"><label for="prescriber-license">شماره نظام پزشکی</label><input id="prescriber-license" name="prescriber_license" value="{{ data.prescriber_license }}"></div>
+                </div>
+                <div class="fld"><label for="rx-disclaimer">پاورقی نسخه</label><textarea id="rx-disclaimer" name="rx_disclaimer" rows="2">{{ data.rx_disclaimer }}</textarea></div>
             </div>
-        </div>
-        <div class="help">پیام فارسی تک‌بخشی تا ۷۰ نویسه و چندبخشی با ظرفیت ۶۷ نویسه برای هر بخش برآورد می‌شود؛ پیام لاتین به‌ترتیب ۱۶۰/۱۵۳.</div>
+        </details>
+
+        <div class="settings-savebar"><span class="muted text-sm">تمام بخش‌های باز و بسته در یک ذخیره ثبت می‌شوند.</span><button class="btn" type="submit"><svg class="icon"><use href="#i-save"></use></svg> ذخیره تنظیمات</button></div>
     </div>
-
-    <!-- متنِ یادآوری -->
-    <div class="card" style="margin-top:var(--s4);">
-        <div class="section-title">
-            <svg class="icon"><use href="#i-bell"></use></svg>
-            <span>متنِ یادآوریِ نوبت</span>
-            <span class="section-sub">{name} = نام بیمار</span>
-        </div>
-        <div class="fld">
-            <textarea name="reminder_template" rows="3">{{ data.reminder_template }}</textarea>
-            <div class="help">از <span class="nums">{name}</span> برای درجِ خودکارِ نامِ بیمار در متنِ پیام استفاده کنید.</div>
-        </div>
-    </div>
-
-    <!-- کارتِ بیمار (ADR-0004) -->
-    <div class="card" style="margin-top:var(--s4);">
-        <div class="section-title">
-            <svg class="icon"><use href="#i-bell"></use></svg>
-            <span>کارتِ بیمار</span>
-            <span class="section-sub">نمای فقط‌خواندنیِ توکن‌دار برای بیمار (قند/فشار + نوبتِ بعدی)؛ پیش‌فرض خاموش</span>
-        </div>
-        <label class="flex items-center gap-2" style="cursor:pointer;">
-            <input type="checkbox" name="patient_card_enabled" value="1" {% if data.patient_card_enabled == '1' %}checked{% endif %}>
-            <span>فعال‌سازیِ کارتِ بیمار (نشانیِ <code>/card/&lt;توکن&gt;</code> را در دسترس قرار می‌دهد)</span>
-        </label>
-        <div class="fld" style="margin-top:var(--s2);">
-            <label>نشانیِ پایهٔ عمومی (برای لینک و QR)</label>
-            <div class="network-input-row">
-                <input id="public-base-url" class="input-ltr" type="text" name="public_base_url" value="{{ data.public_base_url }}" placeholder="مثلاً http://192.168.1.10:8090">
-                <button type="button" class="btn btn-ghost btn-sm" id="use-network-url">استفاده از نشانی شبکه</button>
-            </div>
-            <div class="help">برای تبلتِ پذیرش، IPِ کلینیک در شبکه را بگذارید تا QR روی موبایلِ بیمار باز شود؛ خالی = نشانیِ همین مرورگر. (مسیرِ اینترنتی بعداً: دامنهٔ عمومی.)</div>
-        </div>
-        <div class="help"><svg class="icon icon-sm"><use href="#i-info"></use></svg> تحویلِ داخلِ درمانگاه (تبلت/QR روی شبکهٔ کلینیک) همین حالا کار می‌کند؛ ارسالِ پیامکی به موبایلِ بیمار نیازمندِ زیرساختِ اینترنتی + احراز هویتِ پنل است.</div>
-    </div>
-
-    <!-- نسخهٔ آزاد — سربرگ و مهر/امضا -->
-    <div class="card" style="margin-top:var(--s4);">
-        <div class="section-title">
-            <svg class="icon"><use href="#i-clipboard"></use></svg>
-            <span>نسخهٔ آزاد — سربرگ و مهر/امضا</span>
-            <span class="section-sub">روی نسخه‌های غیربیمه‌ای که خودِ سامانه چاپ می‌کند درج می‌شود</span>
-        </div>
-
-        <div class="fld">
-            <label>نامِ کلینیک</label>
-            <input type="text" name="clinic_name" value="{{ data.clinic_name }}" placeholder="کلینیک تخصصی">
-        </div>
-
-        <div class="fld">
-            <label><svg class="icon icon-sm"><use href="#i-phone"></use></svg> تلفنِ کلینیک</label>
-            <input type="text" name="clinic_phone" value="{{ data.clinic_phone }}" placeholder="مثلاً ۰۲۱-…">
-        </div>
-
-        <div class="fld">
-            <label>نشانیِ کلینیک</label>
-            <input type="text" name="clinic_address" value="{{ data.clinic_address }}" placeholder="نشانیِ کاملِ کلینیک">
-        </div>
-
-        <div class="fld">
-            <label>نامِ پزشک</label>
-            <input type="text" name="prescriber_name" value="{{ data.prescriber_name }}" placeholder="نامِ پزشکِ صادرکننده">
-        </div>
-
-        <div class="fld">
-            <label>شمارهٔ نظامِ پزشکی</label>
-            <input type="text" name="prescriber_license" value="{{ data.prescriber_license }}" placeholder="کدِ نظامِ پزشکی">
-        </div>
-
-        <div class="fld">
-            <label>متنِ ابلاغیه (پاورقیِ نسخه)</label>
-            <textarea name="rx_disclaimer" rows="2">{{ data.rx_disclaimer }}</textarea>
-            <div class="help">در پای نسخهٔ آزاد چاپ می‌شود تا ماهیتِ غیربیمه‌ای آن روشن باشد.</div>
-        </div>
-    </div>
-
-    <button class="btn mt-4" type="submit">
-        <svg class="icon"><use href="#i-save"></use></svg> ذخیره تنظیمات
-    </button>
 </form>
 
-<div class="card" style="max-width:680px;margin-top:var(--s4);">
-    <div class="alert-banner alert-warn">
-        <svg class="icon"><use href="#i-info"></use></svg>
-        <div>
-            تا زمانی که کلید API معتبر وارد نشود، هیچ پیامکی ارسال یا به‌عنوان موفق ثبت نمی‌شود.
-            یادآوری‌ها به‌صورتِ خدماتی و کمپین‌ها به‌صورتِ تبلیغاتی در نظر گرفته می‌شوند؛ راهنمای کاملِ کاوه‌نگار در
-            <span class="nums">docs/kavenegar_reference.md</span>.
-        </div>
-    </div>
-</div>
-<div id="copy-feedback" class="copy-feedback" role="status" aria-live="polite"></div>
+<div id="copy-feedback" class="settings-copy-feedback" role="status" aria-live="polite"></div>
 <script>
 (() => {
     const feedback = document.getElementById('copy-feedback');
@@ -283,23 +125,20 @@
         button.addEventListener('click', async () => {
             const value = document.getElementById(button.dataset.copyTarget)?.textContent.trim();
             if (!value) return;
-            try {
-                await navigator.clipboard.writeText(value);
-                showFeedback('نشانی کپی شد');
-            } catch (_) {
-                const input = document.createElement('textarea');
-                input.value = value;
-                document.body.appendChild(input);
-                input.select();
-                document.execCommand('copy');
-                input.remove();
-                showFeedback('نشانی کپی شد');
+            try { await navigator.clipboard.writeText(value); }
+            catch (_) {
+                const input = document.createElement('textarea'); input.value = value; document.body.appendChild(input); input.select(); document.execCommand('copy'); input.remove();
             }
+            showFeedback('نشانی کپی شد');
         });
     });
     document.getElementById('use-network-url')?.addEventListener('click', () => {
         document.getElementById('public-base-url').value = document.getElementById('specialist-network-url').textContent.trim();
-        showFeedback('نشانی شبکه در فیلد کارت بیمار قرار گرفت؛ برای ثبت، تنظیمات را ذخیره کنید');
+        showFeedback('نشانی شبکه انتخاب شد؛ برای ثبت، تنظیمات را ذخیره کنید');
+    });
+    document.getElementById('settings-form')?.addEventListener('submit', (event) => {
+        const clearing = [...document.querySelectorAll('[data-sensitive-clear]:checked')];
+        if (clearing.length && !confirm('کلید ذخیره‌شده پاک شود؟ این اقدام نیازمند ورود دوباره کلید است.')) event.preventDefault();
     });
 })();
 </script>

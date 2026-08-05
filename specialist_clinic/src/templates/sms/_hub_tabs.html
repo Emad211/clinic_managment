@@ -1,22 +1,16 @@
-{# Shared "messaging hub" tab bar. Including template sets `hub_tab` to one of
-   'campaigns' | 'messages' | 'approvals' | 'engagement' | 'alerts' | 'worklist' | 'unified'. #}
-<div class="card card-soft hub-nav-card">
-    <div class="hub-nav">
-        <span class="hub-nav-label muted text-sm"><svg class="icon icon-sm"><use href="#i-megaphone"></use></svg> هابِ پیام</span>
-        <div class="hub-nav-actions">
-        {% if permissions.get('sms.view') %}<a class="btn btn-sm hub-nav-btn {% if hub_tab=='campaigns' %}btn{% else %}btn-ghost{% endif %}"{% if hub_tab=='campaigns' %} aria-current="page"{% endif %} href="{{ url_for('sms.campaigns') }}"><svg class="icon icon-sm"><use href="#i-megaphone"></use></svg> کمپین‌ها</a>{% endif %}
-        {% if permissions.get('sms.view') %}<a class="btn btn-sm hub-nav-btn {% if hub_tab=='approvals' %}btn{% else %}btn-ghost{% endif %}"{% if hub_tab=='approvals' %} aria-current="page"{% endif %} href="{{ url_for('sms.approvals') }}"><svg class="icon icon-sm"><use href="#i-check"></use></svg> صفِ تأیید پیام{% if hub_pending %} <span class="pill pill-danger">{{ hub_pending|fa_num }}</span>{% endif %}</a>{% endif %}
-        {% if permissions.get('sms.view') %}<a class="btn btn-sm hub-nav-btn {% if hub_tab=='messages' %}btn{% else %}btn-ghost{% endif %}"{% if hub_tab=='messages' %} aria-current="page"{% endif %} href="{{ url_for('sms.messages_report') }}"><svg class="icon icon-sm"><use href="#i-list-checks"></use></svg> گزارش تحویل</a>{% endif %}
-        {% if g.user and g.user['role']=='manager' %}
-        <a class="btn btn-sm hub-nav-btn {% if hub_tab=='engagement' %}btn{% else %}btn-ghost{% endif %}"{% if hub_tab=='engagement' %} aria-current="page"{% endif %} href="{{ url_for('manager.engagement') }}"><svg class="icon icon-sm"><use href="#i-zap"></use></svg> یادآوری و پیگیریِ خودکار</a>
-        {% endif %}
-        {% if permissions.get('clinical.alert.view') %}
-        <a class="btn btn-sm hub-nav-btn {% if hub_tab=='alerts' %}btn{% else %}btn-ghost{% endif %}"{% if hub_tab=='alerts' %} aria-current="page"{% endif %} href="{{ url_for('clinical_alerts.index') }}"><svg class="icon icon-sm"><use href="#i-alert"></use></svg> هشدارهای بالینی{% if alert_pending %} <span class="pill pill-danger">{{ alert_pending|fa_num }}</span>{% endif %}</a>
-        {% endif %}
-        <a class="btn btn-sm hub-nav-btn {% if hub_tab=='worklist' %}btn{% else %}btn-ghost{% endif %}"{% if hub_tab=='worklist' %} aria-current="page"{% endif %} href="{{ url_for('followups.worklist') }}"><svg class="icon icon-sm"><use href="#i-list-checks"></use></svg> ورک‌لیستِ تماس</a>
-        {% if config.get('FOLLOWUP_UNIFIED_WORKLIST_READONLY') and permissions.get('clinical.task.view') %}
-        <a class="btn btn-sm hub-nav-btn {% if hub_tab=='unified' %}btn{% else %}btn-ghost{% endif %}"{% if hub_tab=='unified' %} aria-current="page"{% endif %} href="{{ url_for('unified_followups.index') }}"><svg class="icon icon-sm"><use href="#i-activity"></use></svg> نمای یکپارچه</a>
-        {% endif %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/message-center-automation-v1.css') }}">
+<section class="message-center-shell" aria-labelledby="message-center-title">
+    <div class="message-center-heading">
+        <div>
+            <h2 id="message-center-title"><svg class="icon"><use href="#i-megaphone"></use></svg> مرکز پیام‌ها</h2>
+            <p class="muted text-sm">پیام‌های نیازمند تصمیم، کمپین‌ها، خودکارسازی و گزارش ارسال؛ پیگیری بیمار در مرکز کارها انجام می‌شود.</p>
         </div>
+        <a class="btn btn-sm btn-ghost" href="{% if config.get('FOLLOWUP_UNIFIED_WORKLIST_READONLY') %}{{ url_for('unified_followups.index') }}{% else %}{{ url_for('followups.worklist') }}{% endif %}"><svg class="icon icon-sm"><use href="#i-list-checks"></use></svg> مرکز کارها</a>
     </div>
-</div>
+    <nav class="hub-nav" aria-label="بخش‌های مرکز پیام‌ها">
+        {% if permissions.get('sms.view') %}<a class="btn btn-sm hub-nav-btn {% if hub_tab=='approvals' %}btn{% else %}btn-ghost{% endif %}"{% if hub_tab=='approvals' %} aria-current="page"{% endif %} href="{{ url_for('sms.approvals') }}"><svg class="icon icon-sm"><use href="#i-check"></use></svg> نیازمند تأیید{% if hub_pending %} <span class="pill pill-danger">{{ hub_pending|fa_num }}</span>{% endif %}</a>{% endif %}
+        {% if permissions.get('sms.view') %}<a class="btn btn-sm hub-nav-btn {% if hub_tab=='campaigns' %}btn{% else %}btn-ghost{% endif %}"{% if hub_tab=='campaigns' %} aria-current="page"{% endif %} href="{{ url_for('sms.campaigns') }}"><svg class="icon icon-sm"><use href="#i-megaphone"></use></svg> کمپین‌ها</a>{% endif %}
+        {% if g.user and g.user['role']=='manager' %}<a class="btn btn-sm hub-nav-btn {% if hub_tab=='engagement' %}btn{% else %}btn-ghost{% endif %}"{% if hub_tab=='engagement' %} aria-current="page"{% endif %} href="{{ url_for('manager.engagement') }}"><svg class="icon icon-sm"><use href="#i-zap"></use></svg> خودکارسازی</a>{% endif %}
+        {% if permissions.get('sms.view') %}<a class="btn btn-sm hub-nav-btn {% if hub_tab=='messages' %}btn{% else %}btn-ghost{% endif %}"{% if hub_tab=='messages' %} aria-current="page"{% endif %} href="{{ url_for('sms.messages_report') }}"><svg class="icon icon-sm"><use href="#i-activity"></use></svg> گزارش ارسال</a>{% endif %}
+    </nav>
+</section>

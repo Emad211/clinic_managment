@@ -1,0 +1,5 @@
+.message-center-shell{display:grid;gap:var(--s3);padding:var(--s4);margin-bottom:var(--s4);border:1px solid var(--line);border-radius:var(--r-md);background:var(--panel2)}
+.message-center-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:var(--s3)}
+.message-center-heading h2{display:flex;align-items:center;gap:var(--s2);margin:0;font-size:1rem}.message-center-heading p{margin:.25rem 0 0;max-width:70ch}
+.message-center-shell .hub-nav{display:flex;align-items:center;gap:var(--s2);overflow:auto;padding-bottom:2px}.message-center-shell .hub-nav-btn{inline-size:auto;min-width:150px;flex:0 0 auto}
+@media(max-width:700px){.message-center-heading{flex-direction:column}.message-center-heading>.btn{width:100%;justify-content:center}.message-center-shell .hub-nav-btn{min-width:135px}}

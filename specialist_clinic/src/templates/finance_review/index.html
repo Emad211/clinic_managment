@@ -1,141 +1,75 @@
-{% extends "base.html" %}
-{% block title %}بازبینی وصول و اصلاحات{% endblock %}
+{% extends "automation_base.html" %}
+{% block title %}امور مالی{% endblock %}
+{% block head %}{{ super() }}<link rel="stylesheet" href="{{ url_for('static', filename='css/finance-automation-v1.css') }}">{% endblock %}
 {% block content %}
-{% set status_labels = {
-    'READY':'بازبینی‌شده',
-    'FINANCIAL_REVIEW_REQUIRED':'نیازمند بازبینی',
-    'FINANCIAL_REVIEW_STALE':'بازبینی قدیمی است',
-    'PAYER_BREAKDOWN_MISSING':'تفکیک پرداخت ناقص است'
-} %}
-<div class="topbar">
-    <div>
-        <h1><svg class="icon icon-lg"><use href="#i-banknote"></use></svg> بازبینی وصول و اصلاحات</h1>
-        <p class="page-intro">
-            مبلغ حسابداری فقط‌خواندنی است. refund، chargeback، write-off یا اصلاح تسویهٔ بیمه فقط با شاهد صریح در دیتابیس تخصصی ثبت می‌شود.
-        </p>
+{% set status_labels = {'READY':'بازبینی‌شده','FINANCIAL_REVIEW_REQUIRED':'نیازمند بازبینی','FINANCIAL_REVIEW_STALE':'بازبینی قدیمی','PAYER_BREAKDOWN_MISSING':'تفکیک پرداخت ناقص'} %}
+<header class="auto-page-header">
+    <div class="auto-page-header__copy">
+        <h1><svg class="icon icon-lg"><use href="#i-banknote"></use></svg> امور مالی</h1>
+        <p class="muted">فقط فاکتورهای نیازمند تصمیم را بررسی کنید؛ مبالغ حسابداری همچنان فقط‌خواندنی‌اند.</p>
     </div>
-    <form method="post" action="{{ url_for('finance_review.reconcile') }}">
-        <button class="btn" type="submit"><svg class="icon"><use href="#i-activity"></use></svg> بازخوانی حسابداری</button>
-    </form>
-</div>
+    <div class="auto-page-header__actions"><form method="post" action="{{ url_for('finance_review.reconcile') }}"><button class="btn btn-ghost" type="submit"><svg class="icon"><use href="#i-refresh"></use></svg> بازخوانی حسابداری</button></form></div>
+</header>
 
-<div class="alert-banner alert-info">
-    <svg class="icon"><use href="#i-info"></use></svg>
-    <span>مبلغ پرداخت‌نشده به بیمار یا بیمه نسبت داده نمی‌شود مگر آن‌که accounting evidence آن را مشخص کرده باشد. «خالص تعدیل‌شده» فقط پس از review snapshot فعلی قابل جمع است.</span>
-</div>
-
-<section class="campaign-metrics" aria-label="خلاصه بازبینی مالی">
-    <div class="message-summary-item"><span>فاکتورهای مشاهده‌شده</span><strong>{{ totals.invoices|fa_num }}</strong></div>
-    <div class="message-summary-item is-ok"><span>بازبینی‌شده</span><strong>{{ totals.reviewed_invoices|fa_num }}</strong></div>
-    <div class="message-summary-item is-warn"><span>در انتظار بازبینی</span><strong>{{ totals.pending_review|fa_num }}</strong></div>
-    <div class="message-summary-item"><span>نقد بازبینی‌شده</span><strong>{% if totals.safe_to_sum %}{{ totals.cash_collected|fa_num }}{% else %}—{% endif %}</strong></div>
-    <div class="message-summary-item"><span>کارت بازبینی‌شده</span><strong>{% if totals.safe_to_sum %}{{ totals.card_collected|fa_num }}{% else %}—{% endif %}</strong></div>
-    <div class="message-summary-item"><span>بیمه بازبینی‌شده</span><strong>{% if totals.safe_to_sum %}{{ totals.insurance_collected|fa_num }}{% else %}—{% endif %}</strong></div>
-    <div class="message-summary-item is-info"><span>خالص تعدیل‌شده</span><strong>{% if totals.safe_to_sum %}{{ totals.adjusted_collected|fa_num }}{% else %}—{% endif %}</strong></div>
+<section class="work-center-summary" aria-label="خلاصه امور مالی">
+    <div class="work-center-kpi"><b>{{ totals.invoices|fa_num }}</b><span>فاکتور مشاهده‌شده</span></div>
+    <div class="work-center-kpi"><b>{{ totals.pending_review|fa_num }}</b><span>نیازمند بازبینی</span></div>
+    <div class="work-center-kpi"><b>{{ totals.reviewed_invoices|fa_num }}</b><span>بازبینی‌شده</span></div>
+    <div class="work-center-kpi"><b>{% if totals.safe_to_sum %}{{ totals.adjusted_collected|fa_num }}{% else %}—{% endif %}</b><span>خالص قابل جمع</span></div>
 </section>
 
-<div class="flex gap-2 wrap" style="margin-bottom:var(--s4);">
-    <a class="btn {% if status_filter=='pending' %}btn{% else %}btn-ghost{% endif %}" href="{{ url_for('finance_review.index', status='pending') }}">نیازمند بازبینی</a>
-    <a class="btn {% if status_filter=='reviewed' %}btn{% else %}btn-ghost{% endif %}" href="{{ url_for('finance_review.index', status='reviewed') }}">بازبینی‌شده</a>
-    <a class="btn {% if status_filter=='all' %}btn{% else %}btn-ghost{% endif %}" href="{{ url_for('finance_review.index', status='all') }}">همه</a>
-</div>
+<section class="auto-filter-bar" aria-label="فیلتر امور مالی">
+    <div class="flex gap-2 wrap">
+        <a class="btn {% if status_filter=='pending' %}btn{% else %}btn-ghost{% endif %}" href="{{ url_for('finance_review.index', status='pending') }}">نیازمند بازبینی</a>
+        <a class="btn {% if status_filter=='reviewed' %}btn{% else %}btn-ghost{% endif %}" href="{{ url_for('finance_review.index', status='reviewed') }}">بازبینی‌شده</a>
+        <a class="btn {% if status_filter=='all' %}btn{% else %}btn-ghost{% endif %}" href="{{ url_for('finance_review.index', status='all') }}">همه</a>
+    </div>
+</section>
 
 {% if items %}
+<div class="work-center-list">
 {% for item in items %}
-{% set p = item.projection %}
-{% set b = p.payer_breakdown or {} %}
-{% set review = p.review or {} %}
-<section class="card" id="invoice-{{ item.accounting_invoice_id }}">
-    <div class="section-title" style="justify-content:space-between;">
-        <div>
-            <svg class="icon"><use href="#i-wallet"></use></svg>
-            فاکتور #{{ item.accounting_invoice_id|fa_num }} — {{ item.full_name }}
-            <span class="badge {% if p.safe_to_sum %}badge-ok{% else %}badge-warn{% endif %}">{{ status_labels.get(p.measurement_status, p.measurement_status) }}</span>
+{% set p = item.projection %}{% set b = p.payer_breakdown or {} %}{% set review = p.review or {} %}
+<article class="card" id="invoice-{{ item.accounting_invoice_id }}">
+    <div class="auto-page-header finance-item-header">
+        <div class="auto-page-header__copy">
+            <h2><svg class="icon"><use href="#i-wallet"></use></svg> {{ item.full_name }}</h2>
+            <p class="muted text-sm nums">فاکتور #{{ item.accounting_invoice_id|fa_num }} · مشاهده {{ item.observed_at|jalali }}</p>
         </div>
-        <div class="muted text-xs">مشاهده: {{ item.observed_at|jalali }} · Journey: <span class="nums">{{ item.journey_id }}</span></div>
+        <span class="badge {% if p.safe_to_sum %}badge-ok{% else %}badge-warn{% endif %}">{{ status_labels.get(p.measurement_status, p.measurement_status) }}</span>
     </div>
 
     <div class="grid grid-4">
         <div class="mini"><div class="m-num">{{ item.billed_amount|fa_num }}</div><div class="m-lbl">صورتحساب</div></div>
-        <div class="mini"><div class="m-num">{{ p.gross_collected|fa_num }}</div><div class="m-lbl">وصول ثبت‌شده در حسابداری</div></div>
-        <div class="mini"><div class="m-num {% if p.adjustment_total < 0 %}c-danger{% elif p.adjustment_total > 0 %}c-ok{% endif %}">{{ p.adjustment_total|fa_num }}</div><div class="m-lbl">جمع اصلاحات فعال</div></div>
-        <div class="mini"><div class="m-num {% if p.safe_to_sum %}c-ok{% endif %}">{% if p.safe_to_sum %}{{ p.adjusted_collected|fa_num }}{% else %}—{% endif %}</div><div class="m-lbl">خالص تعدیل‌شده</div></div>
+        <div class="mini"><div class="m-num">{{ p.gross_collected|fa_num }}</div><div class="m-lbl">وصول حسابداری</div></div>
+        <div class="mini"><div class="m-num {% if p.adjustment_total < 0 %}c-danger{% elif p.adjustment_total > 0 %}c-ok{% endif %}">{{ p.adjustment_total|fa_num }}</div><div class="m-lbl">اصلاحات فعال</div></div>
+        <div class="mini"><div class="m-num {% if p.safe_to_sum %}c-ok{% endif %}">{% if p.safe_to_sum %}{{ p.adjusted_collected|fa_num }}{% else %}—{% endif %}</div><div class="m-lbl">خالص قابل جمع</div></div>
     </div>
 
-    {% if b %}
-    <div class="legend" style="margin-top:var(--s3);">
-        <span class="chip">نقد: {{ b.patient_cash_collected|fa_num }}</span>
-        <span class="chip">کارت: {{ b.patient_card_collected|fa_num }}</span>
-        <span class="chip">بیمه: {{ b.insurance_collected|fa_num }}</span>
-        <span class="chip">نوع نامشخص: {{ b.unknown_collected|fa_num }}</span>
-        <span class="chip">پرداخت‌نشده: {{ b.unpaid_amount|fa_num }}</span>
-        {% if b.unknown_payment_type_count %}<span class="chip c-warn">{{ b.unknown_payment_type_count|fa_num }} آیتم با نوع پرداخت نامشخص</span>{% endif %}
-    </div>
-    {% endif %}
+    {% if b %}<details class="auto-technical" data-technical-details><summary>تفکیک پرداخت</summary><div class="auto-technical__body"><div class="flex gap-2 wrap"><span class="chip">نقد: {{ b.patient_cash_collected|fa_num }}</span><span class="chip">کارت: {{ b.patient_card_collected|fa_num }}</span><span class="chip">بیمه: {{ b.insurance_collected|fa_num }}</span><span class="chip">نامشخص: {{ b.unknown_collected|fa_num }}</span><span class="chip">پرداخت‌نشده: {{ b.unpaid_amount|fa_num }}</span></div></div></details>{% endif %}
 
     {% if p.adjustments %}
-    <div class="table-wrap" style="margin-top:var(--s3);"><table>
-        <thead><tr><th>نوع</th><th>مبلغ</th><th>شاهد</th><th>زمان</th><th>اصلاح</th></tr></thead>
-        <tbody>{% for adjustment in p.adjustments %}
-        <tr>
-            <td>{{ adjustment.adjustment_type }}</td>
-            <td class="nums {% if adjustment.signed_amount < 0 %}c-danger{% else %}c-ok{% endif %}">{{ adjustment.signed_amount|fa_num }}</td>
-            <td>{{ adjustment.evidence_type }} · <code>{{ adjustment.evidence_ref }}</code>{% if adjustment.note %}<div class="muted text-xs">{{ adjustment.note }}</div>{% endif %}</td>
-            <td>{{ adjustment.occurred_at|jalali }}</td>
-            <td>{% if permissions.get('financial.adjustment.correct') %}
-                <form method="post" action="{{ url_for('finance_review.reverse_adjustment', adjustment_id=adjustment.adjustment_id) }}" class="row">
-                    <input type="hidden" name="expected_current_event_id" value="{{ adjustment.id }}">
-                    <input name="note" placeholder="دلیل برگشت" required>
-                    <button class="btn btn-danger btn-sm" type="submit">برگشت</button>
-                </form>{% endif %}
-            </td>
-        </tr>{% endfor %}</tbody>
-    </table></div>
-    {% endif %}
-
-    {% if permissions.get('financial.adjustment.record') %}
-    <details class="card card-soft" style="margin-top:var(--s3);">
-        <summary>ثبت refund / chargeback / اصلاح تسویه</summary>
-        <form method="post" action="{{ url_for('finance_review.record_adjustment', invoice_id=item.accounting_invoice_id) }}" class="grid grid-3" style="margin-top:var(--s3);">
-            <div class="fld"><label>نوع</label><select name="adjustment_type" required>
-                <option value="REFUND">Refund / برگشت وجه</option>
-                <option value="CHARGEBACK">Chargeback</option>
-                <option value="INSURANCE_SETTLEMENT_CORRECTION">اصلاح تسویه بیمه</option>
-                <option value="WRITE_OFF">Write-off</option>
-                <option value="OTHER">سایر</option>
-            </select></div>
-            <div class="fld"><label>مبلغ علامت‌دار (تومان)</label><input type="number" name="signed_amount" placeholder="کاهش با عدد منفی" required></div>
-            <div class="fld"><label>نوع شاهد</label><select name="evidence_type" required>
-                <option value="BANK_REFERENCE">مرجع بانکی</option>
-                <option value="INSURANCE_DOCUMENT">سند بیمه</option>
-                <option value="ACCOUNTING_ACTIVITY_LOG">رویداد حسابداری</option>
-                <option value="RECEIPT_DOCUMENT">رسید</option>
-                <option value="MANUAL_VERIFIED">تأیید دستی مستند</option>
-            </select></div>
-            <div class="fld"><label>شناسه شاهد</label><input name="evidence_ref" required></div>
-            <div class="fld"><label>زمان وقوع</label><input type="datetime-local" name="occurred_at"></div>
-            <div class="fld"><label>یادداشت</label><input name="note"></div>
-            <button class="btn" type="submit">ثبت اصلاح افزایشی</button>
-        </form>
+    <details class="auto-technical" data-technical-details>
+        <summary>اصلاحات ثبت‌شده ({{ p.adjustments|length|fa_num }})</summary>
+        <div class="auto-technical__body table-wrap"><table><thead><tr><th>نوع</th><th>مبلغ</th><th>شاهد</th><th>زمان</th><th>اقدام</th></tr></thead><tbody>{% for adjustment in p.adjustments %}<tr><td>{{ adjustment.adjustment_type }}</td><td class="nums {% if adjustment.signed_amount < 0 %}c-danger{% else %}c-ok{% endif %}">{{ adjustment.signed_amount|fa_num }}</td><td>{{ adjustment.evidence_type }} · <code>{{ adjustment.evidence_ref }}</code>{% if adjustment.note %}<div class="muted text-xs">{{ adjustment.note }}</div>{% endif %}</td><td>{{ adjustment.occurred_at|jalali }}</td><td>{% if permissions.get('financial.adjustment.correct') %}<form method="post" action="{{ url_for('finance_review.reverse_adjustment', adjustment_id=adjustment.adjustment_id) }}" class="row" onsubmit="return confirm('این اصلاح مالی برگشت داده شود؟');"><input type="hidden" name="expected_current_event_id" value="{{ adjustment.id }}"><input name="note" placeholder="دلیل برگشت" required><button class="btn btn-danger btn-sm" type="submit">برگشت</button></form>{% endif %}</td></tr>{% endfor %}</tbody></table></div>
     </details>
     {% endif %}
 
+    {% if permissions.get('financial.adjustment.record') %}
+    <details class="auto-technical"><summary>ثبت اصلاح مالی</summary><div class="auto-technical__body"><form method="post" action="{{ url_for('finance_review.record_adjustment', invoice_id=item.accounting_invoice_id) }}" class="grid grid-3"><div class="fld"><label>نوع</label><select name="adjustment_type" required><option value="REFUND">برگشت وجه</option><option value="CHARGEBACK">Chargeback</option><option value="INSURANCE_SETTLEMENT_CORRECTION">اصلاح تسویه بیمه</option><option value="WRITE_OFF">Write-off</option><option value="OTHER">سایر</option></select></div><div class="fld"><label>مبلغ علامت‌دار</label><input type="number" name="signed_amount" placeholder="کاهش با عدد منفی" required></div><div class="fld"><label>نوع شاهد</label><select name="evidence_type" required><option value="BANK_REFERENCE">مرجع بانکی</option><option value="INSURANCE_DOCUMENT">سند بیمه</option><option value="ACCOUNTING_ACTIVITY_LOG">رویداد حسابداری</option><option value="RECEIPT_DOCUMENT">رسید</option><option value="MANUAL_VERIFIED">تأیید دستی مستند</option></select></div><div class="fld"><label>شناسه شاهد</label><input name="evidence_ref" required></div><div class="fld"><label>زمان وقوع</label><input type="datetime-local" name="occurred_at"></div><div class="fld"><label>یادداشت</label><input name="note"></div><div><button class="btn btn-ghost" type="submit">ثبت اصلاح</button></div></form></div></details>
+    {% endif %}
+
     {% if review and review.status!='REVIEWED' and permissions.get('financial.review.complete') %}
-    <form method="post" action="{{ url_for('finance_review.complete_review', invoice_id=item.accounting_invoice_id) }}" class="card card-soft" style="margin-top:var(--s3);">
+    <form method="post" action="{{ url_for('finance_review.complete_review', invoice_id=item.accounting_invoice_id) }}" class="finance-review-primary">
         <input type="hidden" name="expected_current_event_id" value="{{ review.id }}">
-        <div class="row">
-            <div class="fld" style="flex:1;"><label>نتیجه بازبینی</label><select name="with_adjustment">
-                <option value="0">هیچ refund/chargeback/اصلاح دیگری برای snapshot فعلی وجود ندارد</option>
-                <option value="1" {% if p.adjustments %}selected{% endif %}>اصلاحات فعال بالا کامل و صحیح‌اند</option>
-            </select></div>
-            <div class="fld" style="flex:2;"><label>یادداشت اجباری</label><input name="note" required placeholder="منبع بررسی و نتیجه"></div>
-            <button class="btn btn-ok" type="submit">تأیید snapshot فعلی</button>
-        </div>
+        <div class="grid grid-2"><div class="fld"><label>نتیجه بازبینی</label><select name="with_adjustment"><option value="0">اصلاح دیگری برای snapshot فعلی وجود ندارد</option><option value="1" {% if p.adjustments %}selected{% endif %}>اصلاحات فعال کامل و صحیح‌اند</option></select></div><div class="fld"><label>یادداشت بازبینی</label><input name="note" required placeholder="منبع بررسی و نتیجه"></div></div>
+        <button class="btn btn-ok" type="submit"><svg class="icon icon-sm"><use href="#i-check"></use></svg> تکمیل بازبینی</button>
     </form>
     {% endif %}
-</section>
+
+    <details class="auto-technical" data-technical-details><summary>جزئیات فنی برای پشتیبانی</summary><div class="auto-technical__body text-xs nums"><div>Journey: <code dir="ltr">{{ item.journey_id }}</code></div><div>Measurement status: <code dir="ltr">{{ p.measurement_status }}</code></div></div></details>
+</article>
 {% endfor %}
-{% else %}
-<div class="empty"><svg class="icon"><use href="#i-check"></use></svg><div>فاکتوری مطابق فیلتر فعلی وجود ندارد.</div></div>
-{% endif %}
+</div>
+{% else %}<div class="auto-empty"><svg class="icon"><use href="#i-check"></use></svg><h2>فاکتوری مطابق این فیلتر نیست</h2><p>فیلتر دیگری را انتخاب کنید یا حسابداری را بازخوانی کنید.</p></div>{% endif %}
 {% endblock %}

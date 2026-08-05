@@ -9,15 +9,18 @@ def template(name):
     return (ROOT / "src" / "templates" / name).read_text(encoding="utf-8")
 
 
-def test_followups_live_inside_message_hub_not_as_second_sidebar_destination():
+def test_followups_have_one_primary_work_center_and_not_message_tabs():
     base = template("base.html")
     assert "url_for('followups.worklist')" not in base
-    assert "> هاب پیام</a>" in base
     hub = template("sms/_hub_tabs.html")
     assert hub.count("url_for('followups.worklist')") == 1
+    assert "مرکز کارها" in hub
+    assert "هشدارهای بالینی" not in hub
+    assert "ورک‌لیستِ تماس" not in hub
+    assert "نمای یکپارچه" not in hub
 
 
-def test_management_page_has_one_navigation_surface_and_no_operational_duplicates():
+def test_management_page_has_one_daily_surface_and_advanced_tools_are_collapsed():
     page = template("manager/index.html")
     for endpoint in (
         "manager.settings", "manager.clinical_engine", "manager.users",
@@ -26,17 +29,25 @@ def test_management_page_has_one_navigation_surface_and_no_operational_duplicate
     assert "url_for('manager.diseases')" not in page
     assert "url_for('manager.engagement')" not in page
     assert "url_for('manager.protocols')" not in page
-    assert "پیگیری‌های باز" not in page
+    assert "ابزارهای پیشرفته و Shadow" in page
+    assert 'data-technical-details' in page
     assert "card kpi" not in page
 
 
-def test_dashboard_exposes_only_one_followup_call_to_action():
-    page = template("dashboard.html")
-    assert page.count("url_for('followups.worklist')") == 1
+def test_dashboard_routes_to_action_first_home():
+    route = (ROOT / "src" / "api" / "dashboard.py").read_text(encoding="utf-8")
+    dashboard = template("dashboard_v1.html")
+    assert '"dashboard_v1.html"' in route
+    assert '{% extends "automation_base.html" %}' in dashboard
+    assert "الان چه کاری لازم است؟" in dashboard
+    assert "شروع کارهای امروز" in dashboard
+    assert "مرکز کارها" in dashboard
+    assert "صف پزشک" in dashboard
+    assert "نوبت‌های بعدی" in dashboard
 
 
-def test_dashboard_is_summary_only_and_worklist_owns_admin_ranking():
-    dashboard = template("dashboard.html")
+def test_dashboard_is_summary_only_and_work_center_owns_admin_ranking():
+    dashboard = template("dashboard_v1.html")
     control_room = template("control_room.html")
     route = (ROOT / "src" / "api" / "dashboard.py").read_text(encoding="utf-8")
     assert dashboard.count("url_for('control_room.index')") == 1
@@ -75,17 +86,20 @@ def test_control_room_has_a_balanced_three_level_layout():
     assert page.count('class="card kpi') == 3
 
 
-def test_message_hub_destinations_share_one_fixed_button_size():
+def test_message_center_has_four_clear_destinations_and_responsive_controls():
     page = template("sms/_hub_tabs.html")
-    assert page.count("hub-nav-btn") == 7
-    assert "FOLLOWUP_UNIFIED_WORKLIST_READONLY" in page
-    css = (ROOT / "src" / "static" / "css" / "app.css").read_text(encoding="utf-8")
-    assert ".hub-nav-btn{inline-size:190px;block-size:38px;min-width:190px" in css
+    assert page.count("hub-nav-btn") == 4
+    assert "مرکز پیام‌ها" in page
+    for label in ("نیازمند تأیید", "کمپین‌ها", "خودکارسازی", "گزارش ارسال"):
+        assert label in page
+    css = (ROOT / "src" / "static" / "css" / "message-center-automation-v1.css").read_text(encoding="utf-8")
+    assert ".message-center-shell" in css
+    assert "@media(max-width:700px)" in css
 
 
-def test_message_hub_follows_compose_approve_deliver_order_and_one_delivery_report():
+def test_message_center_follows_exception_compose_automate_deliver_order():
     hub = template("sms/_hub_tabs.html")
-    assert hub.index("sms.campaigns") < hub.index("sms.approvals") < hub.index("sms.messages_report")
+    assert hub.index("sms.approvals") < hub.index("sms.campaigns") < hub.index("manager.engagement") < hub.index("sms.messages_report")
     assert 'aria-current="page"' in hub
     campaigns = template("sms/campaigns.html")
     assert 'class="card campaign-composer"' in campaigns
@@ -95,6 +109,36 @@ def test_message_hub_follows_compose_approve_deliver_order_and_one_delivery_repo
     report = template("sms/messages.html")
     assert 'class="message-report-summary"' in report
     assert 'class="card message-filters"' in report
+
+
+def test_settings_keep_existing_server_contract_but_use_progressive_sections():
+    page = template("manager/settings.html")
+    assert '{% extends "automation_base.html" %}' in page
+    for section in (
+        "settings-network", "settings-sms", "settings-costs",
+        "settings-card", "settings-prescription",
+    ):
+        assert f'id="{section}"' in page
+    for field in (
+        "sms_provider", "kavenegar_api_key", "mediana_api_key",
+        "sms_cost_per_part_kavenegar_toman", "reminder_template",
+        "patient_card_enabled", "public_base_url", "clinic_name",
+        "prescriber_name", "rx_disclaimer",
+    ):
+        assert f'name="{field}"' in page
+    assert page.count("ذخیره تنظیمات") == 1
+    assert "data-sensitive-clear" in page
+    assert "تنظیمات طولانی" not in page
+
+
+def test_finance_review_is_exception_first_and_only_reversal_confirms():
+    page = template("finance_review/index.html")
+    assert '{% extends "automation_base.html" %}' in page
+    assert "نیازمند بازبینی" in page
+    assert "تکمیل بازبینی" in page
+    assert "جزئیات فنی برای پشتیبانی" in page
+    assert page.count("confirm(") == 1
+    assert "برگشت داده شود" in page
 
 
 def test_control_room_messages_are_approval_gated_not_sent_directly():

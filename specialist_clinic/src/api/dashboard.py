@@ -119,7 +119,7 @@ def index():
         )
 
     return render_template(
-        "dashboard.html",
+        "dashboard_v1.html",
         active_page="dashboard",
         stats=stats,
         today_followups=today_followups,
