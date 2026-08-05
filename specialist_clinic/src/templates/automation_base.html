@@ -8,4 +8,15 @@
 {% if request.endpoint == 'doctor_queue.visit' %}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/queue-encounter-automation-v2.css') }}">
 {% endif %}
+{% if request.endpoint == 'unified_followups.index' %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/work-center-actions-v2.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/work-center-drawer-v2.css') }}">
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+{% if request.endpoint == 'unified_followups.index' %}
+<script src="{{ url_for('static', filename='js/work-center-drawer-v2.js') }}"></script>
+{% endif %}
 {% endblock %}
