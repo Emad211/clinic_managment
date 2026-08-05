@@ -1,0 +1,149 @@
+<section class="workspace-clinical-toolbar" aria-label="ابزارهای داده بالینی">
+    <a class="btn" href="{{ url_for('clinical_reconciliation.workspace', pid=patient.id) }}"><svg class="icon icon-sm"><use href="#i-refresh"></use></svg> بررسی اختلاف داده‌ها</a>
+    <a class="btn btn-ghost" href="{{ legacy_url }}#record">ویرایش پیشرفتهٔ سابقه و پرچم‌ها</a>
+</section>
+
+<div class="workspace-two-column workspace-clinical-columns">
+    <section class="card" aria-labelledby="workspace-conditions-title">
+        <div class="section-title"><svg class="icon"><use href="#i-stethoscope"></use></svg><div><div id="workspace-conditions-title">بیماری‌های مزمن</div><div class="section-sub">افزودن بیماری، شاخص‌های مرتبط را در پرونده فعال می‌کند.</div></div></div>
+        <div class="workspace-entity-list">
+            {% for condition in conditions %}
+            <div class="workspace-entity-row">
+                <span><b>{{ condition.condition_name }}</b>{% if condition.stage %}<small>مرحله: {{ condition.stage }}</small>{% endif %}</span>
+                {% if permissions.get('patient.edit') %}
+                <form method="post" action="{{ url_for('patients.remove_condition', pid=patient.id, pc_id=condition.id) }}"><button class="btn btn-sm btn-danger btn-icon" type="submit" aria-label="حذف بیماری"><svg class="icon icon-sm"><use href="#i-trash"></use></svg></button></form>
+                {% endif %}
+            </div>
+            {% else %}<div class="empty-mini">بیماری مزمنی ثبت نشده است.</div>{% endfor %}
+        </div>
+        {% if permissions.get('patient.edit') %}
+        <form method="post" action="{{ url_for('patients.add_condition', pid=patient.id) }}" class="workspace-inline-form">
+            <div class="fld">
+                <label for="workspace-condition">افزودن بیماری</label>
+                <select id="workspace-condition" name="condition_id" required>
+                    <option value="">انتخاب بیماری</option>
+                    {% for item in condition_catalog %}<option value="{{ item.id }}">{{ item.name }}</option>{% endfor %}
+                </select>
+            </div>
+            <div class="fld"><label for="workspace-stage">مرحله</label><input id="workspace-stage" name="stage" placeholder="اختیاری"></div>
+            <div class="fld"><label for="workspace-onset">تاریخ شروع</label><input id="workspace-onset" class="jdate" name="onset_date" placeholder="اختیاری"></div>
+            <button class="btn" type="submit">افزودن</button>
+        </form>
+        {% endif %}
+    </section>
+
+    <section class="card" aria-labelledby="workspace-allergies-title">
+        <div class="section-title"><svg class="icon"><use href="#i-alert"></use></svg><div><div id="workspace-allergies-title">حساسیت‌ها</div><div class="section-sub">در تمام مسیرهای ویزیت بالای صفحه نمایش داده می‌شوند.</div></div></div>
+        <div class="workspace-entity-list">
+            {% for allergy in allergies %}
+            <div class="workspace-entity-row">
+                <span><b>{{ allergy.substance }}</b>{% if allergy.severity %}<small>شدت: {{ allergy.severity }}</small>{% endif %}</span>
+                {% if permissions.get('patient.edit') %}
+                <form method="post" action="{{ url_for('patients.delete_allergy', pid=patient.id, allergy_id=allergy.id) }}"><button class="btn btn-sm btn-danger btn-icon" type="submit" aria-label="حذف حساسیت"><svg class="icon icon-sm"><use href="#i-trash"></use></svg></button></form>
+                {% endif %}
+            </div>
+            {% else %}<div class="empty-mini">حساسیتی ثبت نشده است.</div>{% endfor %}
+        </div>
+        {% if permissions.get('patient.edit') %}
+        <form method="post" action="{{ url_for('patients.add_allergy', pid=patient.id) }}" class="workspace-inline-form workspace-inline-form--compact">
+            <div class="fld"><label for="workspace-allergy">ماده حساسیت‌زا</label><input id="workspace-allergy" name="substance" required></div>
+            <div class="fld"><label for="workspace-allergy-severity">شدت</label><input id="workspace-allergy-severity" name="severity"></div>
+            <button class="btn" type="submit">افزودن</button>
+        </form>
+        {% endif %}
+    </section>
+</div>
+
+<section class="card" aria-labelledby="workspace-vitals-title">
+    <div class="section-title"><svg class="icon"><use href="#i-activity"></use></svg><div><div id="workspace-vitals-title">اندازه‌گیری‌ها و شاخص‌ها</div><div class="section-sub">آخرین ثبت‌ها با تاریخ و منبع؛ تفسیر در موتور بالینی انجام می‌شود.</div></div></div>
+    {% if recent_vitals %}
+    <div class="workspace-data-table">
+        <table>
+            <thead><tr><th>شاخص</th><th>مقدار</th><th>تاریخ</th><th></th></tr></thead>
+            <tbody>
+            {% for reading in recent_vitals %}
+            <tr>
+                <td>{{ reading.type_label }}</td>
+                <td class="nums"><b>{{ reading.value|fa_num }}</b> {{ reading.unit or '' }}</td>
+                <td>{{ reading.measured_at|jalali }}</td>
+                <td>{% if permissions.get('clinical.data.record') %}<form method="post" action="{{ url_for('vitals.delete_reading', pid=patient.id, reading_id=reading.id) }}"><button class="btn btn-sm btn-danger btn-icon" type="submit" aria-label="حذف اندازه‌گیری"><svg class="icon icon-sm"><use href="#i-trash"></use></svg></button></form>{% endif %}</td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}<div class="empty-mini">اندازه‌گیری ثبت نشده است.</div>{% endif %}
+
+    {% if permissions.get('clinical.data.record') %}
+    <details class="workspace-entry-details">
+        <summary>ثبت اندازه‌گیری جدید</summary>
+        <form method="post" action="{{ url_for('vitals.add_reading', pid=patient.id) }}" class="workspace-vitals-form">
+            <input type="hidden" name="workspace_tab" value="clinical">
+            <div class="workspace-vital-inputs">
+                {% for indicator in entry_indicators %}
+                <div class="fld"><label for="clinical-vital-{{ indicator.key }}">{{ indicator.label }}</label><input id="clinical-vital-{{ indicator.key }}" type="number" step="any" name="{{ indicator.key }}" placeholder="{{ indicator.unit or '' }}"></div>
+                {% endfor %}
+            </div>
+            <div class="workspace-vitals-actions"><div class="fld"><label>تاریخ</label><input class="jdate" name="measured_date" placeholder="خالی = امروز"></div><button class="btn" type="submit">ثبت شاخص‌ها</button></div>
+        </form>
+    </details>
+    {% endif %}
+</section>
+
+<section class="card" aria-labelledby="workspace-labs-title">
+    <div class="section-title"><svg class="icon"><use href="#i-flask"></use></svg><div><div id="workspace-labs-title">آزمایش‌ها</div><div class="section-sub">آخرین نتایج ثبت‌شده در پرونده.</div></div></div>
+    {% if labs %}
+    <div class="workspace-data-table">
+        <table>
+            <thead><tr><th>آزمایش</th><th>مقدار</th><th>محدوده مرجع</th><th>تاریخ</th><th></th></tr></thead>
+            <tbody>
+            {% for lab in labs %}
+            <tr>
+                <td>{{ lab.test_name }}</td>
+                <td class="nums"><b>{{ lab.value|fa_num }}</b> {{ lab.unit or '' }}</td>
+                <td class="nums">{% if lab.ref_low is not none or lab.ref_high is not none %}{{ lab.ref_low|fa_num if lab.ref_low is not none else '—' }} تا {{ lab.ref_high|fa_num if lab.ref_high is not none else '—' }}{% else %}—{% endif %}</td>
+                <td>{{ lab.taken_at|jalali if lab.taken_at else 'بدون تاریخ' }}</td>
+                <td>{% if permissions.get('clinical.data.record') %}<form method="post" action="{{ url_for('vitals.delete_lab', pid=patient.id, lab_id=lab.id) }}"><button class="btn btn-sm btn-danger btn-icon" type="submit" aria-label="حذف آزمایش"><svg class="icon icon-sm"><use href="#i-trash"></use></svg></button></form>{% endif %}</td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}<div class="empty-mini">نتیجه آزمایشی ثبت نشده است.</div>{% endif %}
+
+    {% if permissions.get('clinical.data.record') %}
+    <details class="workspace-entry-details">
+        <summary>ثبت نتیجه آزمایش</summary>
+        <form method="post" action="{{ url_for('vitals.add_lab', pid=patient.id) }}" class="workspace-lab-form">
+            <input type="hidden" name="workspace_tab" value="clinical">
+            <div class="fld"><label for="workspace-lab-name">نام آزمایش</label><input id="workspace-lab-name" name="test_name" required></div>
+            <div class="fld"><label for="workspace-lab-value">مقدار</label><input id="workspace-lab-value" type="number" step="any" name="value" required></div>
+            <div class="fld"><label for="workspace-lab-unit">واحد</label><input id="workspace-lab-unit" name="unit"></div>
+            <div class="fld"><label for="workspace-lab-date">تاریخ</label><input id="workspace-lab-date" class="jdate" name="taken_date" placeholder="خالی = امروز"></div>
+            <button class="btn" type="submit">ثبت آزمایش</button>
+        </form>
+    </details>
+    {% endif %}
+</section>
+
+<div class="workspace-two-column">
+    <section class="card">
+        <div class="section-title"><svg class="icon"><use href="#i-clipboard"></use></svg> سابقه پزشکی و جراحی</div>
+        <div class="workspace-history-list">
+            {% for item in medical_history %}<div><b>{{ item.title }}</b><small>{{ item.since|jalali_date if item.since else '' }}{% if item.note %} · {{ item.note }}{% endif %}</small></div>{% endfor %}
+            {% for item in surgeries %}<div><b>{{ item.title }}</b><small>{{ item.performed_on|jalali_date if item.performed_on else '' }}{% if item.note %} · {{ item.note }}{% endif %}</small></div>{% endfor %}
+            {% if not medical_history and not surgeries %}<div class="empty-mini">سابقه‌ای ثبت نشده است.</div>{% endif %}
+        </div>
+        <a class="btn btn-sm btn-ghost mt-3" href="{{ legacy_url }}#record">ویرایش جزئیات سابقه</a>
+    </section>
+    <section class="card">
+        <div class="section-title"><svg class="icon"><use href="#i-file-text"></use></svg> یادداشت‌های بالینی</div>
+        <div class="workspace-history-list">
+            {% for note in notes_symptom[:3] %}<div><b>علائم</b><small>{{ note.body }}</small></div>{% endfor %}
+            {% for note in notes_exam[:3] %}<div><b>معاینه</b><small>{{ note.body }}</small></div>{% endfor %}
+            {% for note in notes_lifestyle[:3] %}<div><b>سبک زندگی</b><small>{{ note.body }}</small></div>{% endfor %}
+            {% if not notes_symptom and not notes_exam and not notes_lifestyle %}<div class="empty-mini">یادداشتی ثبت نشده است.</div>{% endif %}
+        </div>
+        <a class="btn btn-sm btn-ghost mt-3" href="{{ legacy_url }}#record">ثبت و مدیریت یادداشت‌ها</a>
+    </section>
+</div>
