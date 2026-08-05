@@ -55,9 +55,13 @@ def _next_quarter_hour() -> datetime:
 
 def _form_defaults(source) -> dict:
     suggested = _next_quarter_hour()
+    patient_id = source.get("patient_link_id", type=int)
     requested_type = str(source.get("appt_type") or "visit").strip().lower()
+    return_url = str(source.get("return_url") or "").strip()
+    if not return_url and patient_id:
+        return_url = f"/patients/{int(patient_id)}"
     return {
-        "patient_link_id": source.get("patient_link_id", type=int),
+        "patient_link_id": patient_id,
         "date": str(
             source.get("date")
             or format_jalali_date(suggested.strftime("%Y-%m-%d"))
@@ -66,7 +70,7 @@ def _form_defaults(source) -> dict:
         "appt_type": requested_type if requested_type in APPT_TYPES else "visit",
         "recurrence_months": str(source.get("recurrence_months") or "").strip(),
         "notes": str(source.get("notes") or "").strip(),
-        "return_url": str(source.get("return_url") or "").strip(),
+        "return_url": return_url,
     }
 
 
