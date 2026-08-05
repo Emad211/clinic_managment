@@ -57,7 +57,7 @@
                                 <div class="fld"><label for="cev2-reason-{{ item.recommendation_event_id }}">دلیل <span class="muted">برای رد الزامی</span></label><select id="cev2-reason-{{ item.recommendation_event_id }}" name="reason_code"><option value="">بدون دلیل آماده</option><option value="NOT_APPLICABLE_NOW">اکنون قابل اعمال نیست</option><option value="PATIENT_PREFERENCE">ترجیح بیمار</option><option value="CLINICAL_JUDGMENT">قضاوت بالینی پزشک</option><option value="MORE_DATA_NEEDED">نیاز به داده بیشتر</option><option value="ALREADY_ADDRESSED">قبلاً رسیدگی شده</option><option value="OTHER">سایر</option></select></div>
                             </div>
                             <div class="fld"><label for="cev2-reason-text-{{ item.recommendation_event_id }}">توضیح کوتاه <span class="muted">اختیاری</span></label><textarea id="cev2-reason-text-{{ item.recommendation_event_id }}" name="reason_text" maxlength="500" rows="2"></textarea></div>
-                            <button class="btn btn-sm" type="submit">ثبت تصمیم</button>
+                            <button class="btn btn-sm" type="submit" aria-label="ثبت فقط به‌عنوان تصمیم">ثبت تصمیم</button>
                             <span class="muted text-xs">این کار فقط نظر پزشک را ثبت می‌کند و درمان را خودکار تغییر نمی‌دهد.</span>
                         </form>
                     </details>
