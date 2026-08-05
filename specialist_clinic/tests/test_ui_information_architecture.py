@@ -1,5 +1,6 @@
 """Guard the one-home-per-capability information architecture."""
 from pathlib import Path
+import re
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -171,9 +172,13 @@ def test_component_contract_has_shared_control_sizes_and_accessible_icon_buttons
 
     templates = list((ROOT / "src" / "templates").rglob("*.html"))
     all_markup = "\n".join(path.read_text(encoding="utf-8") for path in templates)
-    icon_buttons = [line for line in all_markup.splitlines() if "btn-icon" in line and "<button" in line]
+    icon_buttons = re.findall(
+        r'<button\b(?=[^>]*class="[^"]*btn-icon[^"]*")[^>]*>',
+        all_markup,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
     assert icon_buttons
-    assert all('aria-label="' in line for line in icon_buttons)
+    assert all('aria-label="' in tag for tag in icon_buttons)
     assert "btn-secondary" not in all_markup
     assert not any("style=" in line for line in all_markup.splitlines() if "class=\"btn" in line)
 
