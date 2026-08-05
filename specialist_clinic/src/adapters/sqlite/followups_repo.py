@@ -25,7 +25,7 @@ class FollowupRepository:
     def active_patient_ids(self) -> list[int]:
         return [
             int(row["id"])
-            for row in get_db().execute(
+            for row in self._db().execute(
                 "SELECT id FROM patient_links "
                 "WHERE is_active=1 ORDER BY id"
             ).fetchall()
@@ -53,7 +53,7 @@ class FollowupRepository:
             fulfillment = (
                 "remote" if reason == "refill" else "in_person"
             )
-        db = get_db()
+        db = self._db()
         cursor = db.execute(
             """INSERT INTO followup_tasks
                (patient_link_id, reason, detail, due_date, assigned_to,
@@ -91,7 +91,7 @@ class FollowupRepository:
             )
 
     def set_appointment(self, task_id: int, appointment_id):
-        db = get_db()
+        db = self._db()
         self._assert_administrative(db, [int(task_id)])
         db.execute(
             "UPDATE followup_tasks SET appointment_id=? WHERE id=?",
@@ -120,8 +120,49 @@ class FollowupRepository:
         if commit:
             db.commit()
 
+    def defer(
+        self,
+        task_id: int,
+        *,
+        due_at: str,
+        assigned_to: str | None = None,
+    ) -> dict:
+        """Move an administrative task to a future due time.
+
+        Governed clinical and encounter-plan tasks must continue to use their
+        append-only lifecycle services and are rejected here.
+        """
+        db = self._db()
+        normalized_id = int(task_id)
+        self._assert_administrative(db, [normalized_id])
+        row = db.execute(
+            """SELECT id, patient_link_id, status
+               FROM followup_tasks WHERE id=?""",
+            (normalized_id,),
+        ).fetchone()
+        if not row or str(row["status"]) != "open":
+            raise LookupError("administrative follow-up task is not open")
+        cursor = db.execute(
+            """UPDATE followup_tasks
+               SET due_date=?, assigned_to=COALESCE(?, assigned_to)
+               WHERE id=? AND status='open'
+                 AND COALESCE(source_engine,'') NOT IN (
+                     'clinical_v2','encounter_plan'
+                 )""",
+            (str(due_at), assigned_to, normalized_id),
+        )
+        if cursor.rowcount != 1:
+            db.rollback()
+            raise LookupError("administrative follow-up task not found")
+        db.commit()
+        return {
+            "task_id": normalized_id,
+            "patient_link_id": int(row["patient_link_id"]),
+            "due_at": str(due_at),
+        }
+
     def exists_open(self, patient_link_id: int, reason: str) -> bool:
-        if get_db().execute(
+        if self._db().execute(
             """SELECT 1 FROM followup_tasks
                WHERE patient_link_id=? AND reason=? AND status='open'
                  AND COALESCE(source_engine,'') NOT IN ('clinical_v2','encounter_plan')
@@ -133,7 +174,7 @@ class FollowupRepository:
             ClinicalCareLoopRepository,
         )
 
-        if ClinicalCareLoopRepository().list_current(
+        if ClinicalCareLoopRepository(self._db()).list_current(
             patient_link_id=patient_link_id,
             reason=reason,
             include_terminal=False,
@@ -145,14 +186,17 @@ class FollowupRepository:
             EncounterPlanCommitmentRepository,
         )
         return bool(
-            EncounterPlanCommitmentRepository().list_current(
+            EncounterPlanCommitmentRepository(self._db()).list_current(
                 patient_link_id=patient_link_id,
                 include_terminal=False,
             )
         )
 
-    @staticmethod
-    def _admin_open(reason: str | None = None, query: str | None = None) -> list[dict]:
+    def _admin_open(
+        self,
+        reason: str | None = None,
+        query: str | None = None,
+    ) -> list[dict]:
         sql = """SELECT f.*, p.full_name AS patient_name,
                         p.phone_number, p.national_id,
                         f.status AS current_status,
@@ -175,7 +219,7 @@ class FollowupRepository:
             params.extend((like, like, like))
         return [
             dict(row)
-            for row in get_db().execute(sql, params).fetchall()
+            for row in self._db().execute(sql, params).fetchall()
         ]
 
     @staticmethod
@@ -194,10 +238,11 @@ class FollowupRepository:
             ClinicalCareLoopRepository,
         )
 
-        ensure_clinical_care_loop_storage(get_db())
+        db = self._db()
+        ensure_clinical_care_loop_storage(db)
         rows = self._admin_open(reason=reason)
         rows.extend(
-            ClinicalCareLoopRepository().list_current(
+            ClinicalCareLoopRepository(db).list_current(
                 reason=reason,
                 include_terminal=False,
             )
@@ -205,7 +250,7 @@ class FollowupRepository:
         from src.adapters.sqlite.encounter_plan_commitment_repo import (
             EncounterPlanCommitmentRepository,
         )
-        plan_rows = EncounterPlanCommitmentRepository().list_current(
+        plan_rows = EncounterPlanCommitmentRepository(db).list_current(
             include_terminal=False
         )
         if reason:
@@ -218,10 +263,11 @@ class FollowupRepository:
             ClinicalCareLoopRepository,
         )
 
-        ensure_clinical_care_loop_storage(get_db())
+        db = self._db()
+        ensure_clinical_care_loop_storage(db)
         rows = self._admin_open(query=query)
         rows.extend(
-            ClinicalCareLoopRepository().list_current(
+            ClinicalCareLoopRepository(db).list_current(
                 query=query,
                 include_terminal=False,
             )
@@ -230,7 +276,7 @@ class FollowupRepository:
             EncounterPlanCommitmentRepository,
         )
         rows.extend(
-            EncounterPlanCommitmentRepository().list_current(
+            EncounterPlanCommitmentRepository(db).list_current(
                 query=query,
                 include_terminal=False,
             )
@@ -242,7 +288,7 @@ class FollowupRepository:
             ClinicalCareLoopRepository,
         )
 
-        db = get_db()
+        db = self._db()
         ensure_clinical_care_loop_storage(db)
         admin = [
             dict(row)
@@ -256,14 +302,14 @@ class FollowupRepository:
                 (patient_link_id,),
             ).fetchall()
         ]
-        clinical = ClinicalCareLoopRepository().list_current(
+        clinical = ClinicalCareLoopRepository(db).list_current(
             patient_link_id=patient_link_id,
             include_terminal=True,
         )
         from src.adapters.sqlite.encounter_plan_commitment_repo import (
             EncounterPlanCommitmentRepository,
         )
-        plan = EncounterPlanCommitmentRepository().list_current(
+        plan = EncounterPlanCommitmentRepository(db).list_current(
             patient_link_id=patient_link_id,
             include_terminal=True,
         )
@@ -290,7 +336,7 @@ class FollowupRepository:
         status: str,
         call_log: str | None = None,
     ):
-        db = get_db()
+        db = self._db()
         self._assert_administrative(db, [int(task_id)])
         cursor = db.execute(
             """UPDATE followup_tasks
@@ -310,9 +356,10 @@ class FollowupRepository:
         db.commit()
 
     def counts_by_reason(self) -> dict:
+        db = self._db()
         counts = {
             row["reason"]: int(row["count"])
-            for row in get_db().execute(
+            for row in db.execute(
                 """SELECT reason, COUNT(*) AS count
                    FROM followup_tasks
                    WHERE status='open'
@@ -324,7 +371,7 @@ class FollowupRepository:
             ClinicalCareLoopRepository,
         )
 
-        for row in ClinicalCareLoopRepository().list_current(
+        for row in ClinicalCareLoopRepository(db).list_current(
             include_terminal=False
         ):
             reason = row.get("reason")
@@ -332,7 +379,7 @@ class FollowupRepository:
         from src.adapters.sqlite.encounter_plan_commitment_repo import (
             EncounterPlanCommitmentRepository,
         )
-        for row in EncounterPlanCommitmentRepository().list_current(
+        for row in EncounterPlanCommitmentRepository(db).list_current(
             include_terminal=False
         ):
             reason = row.get("reason")
