@@ -79,3 +79,95 @@
     {% endif %}
 </section>
 {% endif %}
+
+{% if item.state_class != 'TERMINAL' and permissions.get('sms.view') %}
+<section class="card work-item-message-action" aria-labelledby="work-message-title">
+    <div class="section-title">
+        <svg class="icon"><use href="#i-megaphone"></use></svg>
+        <div>
+            <div id="work-message-title">دعوت آماده برای بیمار</div>
+            <div class="section-sub">متن آزاد ارسال نمی‌شود؛ Template مجاز فقط وارد صف تأیید پیام خواهد شد.</div>
+        </div>
+    </div>
+    <form method="post" action="{{ url_for('work_center_outcomes.queue_message', episode_id=item.episode_id) }}" class="work-item-message-form">
+        <input type="hidden" name="current_url" value="{{ request.full_path }}">
+        <input type="hidden" name="return_url" value="{{ return_url }}">
+        <input type="hidden" name="next_url" value="{{ next_item_url or '' }}">
+        <span class="muted text-sm">رضایت CARE، شماره معتبر و تکراری‌نبودن پیام در سرور بررسی می‌شود.</span>
+        <button class="btn btn-ghost" type="submit">افزودن به صف پیام و کار بعدی</button>
+    </form>
+</section>
+{% endif %}
+
+{% if item.state_class != 'TERMINAL' and is_clinical_task and permissions.get('clinical.outcome.record') and permissions.get('clinical.task.transition') %}
+<details class="card work-item-evidence-action">
+    <summary class="section-title">
+        <svg class="icon"><use href="#i-check"></use></svg>
+        <div><div>تکمیل پیگیری بالینی با شاهد</div><div class="section-sub">Outcome و Fact واقعی در یک تراکنش ثبت می‌شوند؛ بستن بدون شاهد ممکن نیست.</div></div>
+    </summary>
+    <form method="post" action="{{ url_for('work_center_outcomes.clinical_complete', episode_id=item.episode_id) }}" class="work-item-evidence-form">
+        <input type="hidden" name="current_url" value="{{ request.full_path }}">
+        <input type="hidden" name="return_url" value="{{ return_url }}">
+        <input type="hidden" name="next_url" value="{{ next_item_url or '' }}">
+        <input type="hidden" name="idempotency_key" value="{{ ownership_action_token }}:clinical-complete:{{ item.episode_id }}">
+        <div class="fld">
+            <label for="clinical-outcome-type">نوع شاهد</label>
+            <select id="clinical-outcome-type" name="outcome_type" required>
+                <option value="OBSERVATION">مشاهده یا اندازه‌گیری</option>
+                <option value="PATIENT_REPORTED">گزارش بیمار</option>
+                <option value="ENCOUNTER_COMPLETED">مراجعه انجام شد</option>
+                <option value="PROCEDURE_COMPLETED">اقدام انجام شد</option>
+                <option value="LAB_COMPLETED">آزمایش انجام شد</option>
+                <option value="OTHER">سایر</option>
+            </select>
+        </div>
+        <div class="fld"><label for="clinical-fact-key">Fact key <span class="muted">در صورت الزام کار</span></label><input id="clinical-fact-key" name="fact_key" placeholder="مثلاً lab.hba1c" dir="ltr"></div>
+        <div class="fld"><label for="clinical-value">مقدار</label><input id="clinical-value" name="value" inputmode="decimal"></div>
+        <div class="fld"><label for="clinical-unit">واحد</label><input id="clinical-unit" name="unit" dir="ltr"></div>
+        <div class="fld"><label for="clinical-observed-at">تاریخ مشاهده</label><input id="clinical-observed-at" class="jdate" name="observed_at" placeholder="خالی = اکنون"></div>
+        <div class="fld work-item-evidence-form__note"><label for="clinical-note">توضیح شاهد</label><textarea id="clinical-note" name="note" rows="2" maxlength="1000"></textarea></div>
+        <button class="btn btn-ok" type="submit">ثبت شاهد، تکمیل و کار بعدی</button>
+    </form>
+</details>
+{% endif %}
+
+{% if item.state_class != 'TERMINAL' and is_plan_task and permissions.get('followup.plan.transition') %}
+<details class="card work-item-evidence-action">
+    <summary class="section-title">
+        <svg class="icon"><use href="#i-check"></use></svg>
+        <div><div>تکمیل اقدام برنامه درمان با شاهد</div><div class="section-sub">نوع و شناسه شاهد در lifecycle افزایشی ثبت می‌شود.</div></div>
+    </summary>
+    <form method="post" action="{{ url_for('work_center_outcomes.plan_complete', episode_id=item.episode_id) }}" class="work-item-evidence-form">
+        <input type="hidden" name="current_url" value="{{ request.full_path }}">
+        <input type="hidden" name="return_url" value="{{ return_url }}">
+        <input type="hidden" name="next_url" value="{{ next_item_url or '' }}">
+        <input type="hidden" name="idempotency_key" value="{{ ownership_action_token }}:plan-complete:{{ item.episode_id }}">
+        <div class="fld">
+            <label for="plan-evidence-type">نوع شاهد</label>
+            <select id="plan-evidence-type" name="evidence_type" required>
+                <option value="CONTACT_EVENT">رویداد تماس ثبت‌شده</option>
+                <option value="APPOINTMENT">نوبت ثبت‌شده</option>
+                <option value="ENCOUNTER_DOCUMENT">سند ویزیت امضاشده</option>
+                <option value="LAB_RESULT">نتیجه آزمایش</option>
+                <option value="MEDICATION_EVENT">رویداد دارویی</option>
+                <option value="VITAL_READING">اندازه‌گیری ثبت‌شده</option>
+                <option value="MANUAL_VERIFIED">تأیید مستند دستی</option>
+            </select>
+        </div>
+        <div class="fld"><label for="plan-evidence-ref">شناسه شاهد</label><input id="plan-evidence-ref" name="evidence_ref" required dir="ltr"></div>
+        <div class="fld">
+            <label for="plan-outcome-code">نتیجه</label>
+            <select id="plan-outcome-code" name="outcome_code" required>
+                <option value="COMPLETED_AS_PLANNED">طبق برنامه انجام شد</option>
+                <option value="NO_LONGER_NEEDED">دیگر لازم نیست</option>
+                <option value="PATIENT_DECLINED">بیمار نپذیرفت</option>
+                <option value="UNREACHABLE">دسترسی ممکن نشد</option>
+                <option value="REFERRED_OUT">ارجاع شد</option>
+                <option value="OTHER">سایر</option>
+            </select>
+        </div>
+        <div class="fld work-item-evidence-form__note"><label for="plan-note">توضیح اختیاری</label><textarea id="plan-note" name="note" rows="2" maxlength="1000"></textarea></div>
+        <button class="btn btn-ok" type="submit">ثبت شاهد، تکمیل و کار بعدی</button>
+    </form>
+</details>
+{% endif %}
