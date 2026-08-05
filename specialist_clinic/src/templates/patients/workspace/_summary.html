@@ -18,7 +18,7 @@
     <article class="card workspace-summary-facts">
         <div class="section-title"><svg class="icon"><use href="#i-activity"></use></svg> وضعیت پرونده</div>
         <div class="workspace-fact-grid">
-            <div><span>آخرین ویزیت</span><b>{{ last_visit|jalali if last_visit else 'ثبت نشده' }}</b></div>
+            <div><span>آخرین ویزیت</span><b>{{ last_visit or 'ثبت نشده' }}</b></div>
             <div><span>موعد تجدید نسخه</span><b>{{ refill_due|fa_num }}</b></div>
             <div><span>خدمات متصل</span><b>{{ service_line_summary.total|fa_num }}</b></div>
             <div><span>اعتبار کیف پول</span><b>{{ wallet_balance|fa_num }}</b></div>
