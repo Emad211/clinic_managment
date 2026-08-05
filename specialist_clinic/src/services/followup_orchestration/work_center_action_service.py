@@ -14,10 +14,7 @@ from src.adapters.sqlite.clinical_care_loop_repo import ClinicalCareLoopReposito
 from src.adapters.sqlite.encounter_plan_commitment_repo import (
     EncounterPlanCommitmentRepository,
 )
-from src.adapters.sqlite.followup_episode_repo import (
-    FollowupEpisodeConflict,
-    FollowupEpisodeRepository,
-)
+from src.adapters.sqlite.followup_episode_repo import FollowupEpisodeRepository
 from src.adapters.sqlite.followup_projection_repo import FollowupProjectionRepository
 from src.adapters.sqlite.followups_repo import FollowupRepository
 from src.common.utils import iran_now, today_str
@@ -170,7 +167,7 @@ class WorkCenterActionService:
         request_payload: dict,
         result_payload: dict,
         actor_username: str,
-        actor_user_id: int,
+        actor_user_id: int | None,
     ) -> dict:
         payload = {
             "request_hash": canonical_hash(request_payload),
@@ -180,7 +177,7 @@ class WorkCenterActionService:
             episode_id=str(episode_id),
             event_type=event_type,
             actor_username=actor_username,
-            actor_user_id=int(actor_user_id),
+            actor_user_id=int(actor_user_id) if actor_user_id else None,
             idempotency_key=idempotency_key,
             effective_at=self._now_text(),
             recorded_at=self._now_text(),
@@ -194,7 +191,7 @@ class WorkCenterActionService:
         output = dict(result)
         try:
             self.refresh_projection(episode_id)
-        except Exception as exc:  # Source already committed; do not report false failure.
+        except Exception as exc:
             output["projection_refreshed"] = False
             output["projection_refresh_error"] = type(exc).__name__
         else:
@@ -442,9 +439,9 @@ class WorkCenterActionService:
         episode_id: str,
         *,
         actor_username: str,
-        actor_user_id: int,
         permissions: frozenset[Permission],
-        idempotency_key: str,
+        actor_user_id: int | None = None,
+        idempotency_key: str | None = None,
         note: str | None = None,
     ) -> dict:
         task = self._task(episode_id)
@@ -459,7 +456,10 @@ class WorkCenterActionService:
                 "مجوز تکمیل این کار وجود ندارد.",
             )
         task_id = int(task["id"])
-        key = self._idempotency_key(idempotency_key)
+        key = self._idempotency_key(
+            idempotency_key
+            or f"work-center-admin-complete:{episode_id}:{task_id}"
+        )
         clean_note = str(note or "").strip()
         request_payload = {
             "action": "COMPLETE_ADMINISTRATIVE",
@@ -554,7 +554,7 @@ class WorkCenterActionService:
             "task_id": task_id,
             "outcome_type": str(outcome_type or "").strip().upper(),
             "fact_key": str(fact_key or "").strip() or None,
-            "value": value if value not in ("") else None,
+            "value": value if value not in (None, "") else None,
             "unit": str(unit or "").strip() or None,
             "verification": str(verification or "CONFIRMED").strip().upper(),
             "observed_at": str(observed),
