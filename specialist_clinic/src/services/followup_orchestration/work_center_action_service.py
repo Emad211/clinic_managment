@@ -1,27 +1,33 @@
 """Narrow authoritative actions for one Work Center episode.
 
-This service does not invent a generic workflow. It resolves the task already linked to
-an Episode and delegates to the existing administrative, clinical, plan and booking
-services. The disposable projection is refreshed only after a successful source write.
+This is intentionally not a generic workflow engine. It resolves the task already linked
+to an Episode and delegates to existing domain services. Every automated continuation is
+based on a committed source mutation; the disposable projection is refreshed afterwards.
 """
 from __future__ import annotations
 
 from datetime import datetime, timedelta
+import json
 import sqlite3
 
 from src.adapters.sqlite.clinical_care_loop_repo import ClinicalCareLoopRepository
 from src.adapters.sqlite.encounter_plan_commitment_repo import (
     EncounterPlanCommitmentRepository,
 )
+from src.adapters.sqlite.followup_episode_repo import (
+    FollowupEpisodeConflict,
+    FollowupEpisodeRepository,
+)
 from src.adapters.sqlite.followup_projection_repo import FollowupProjectionRepository
 from src.adapters.sqlite.followups_repo import FollowupRepository
-from src.common.utils import iran_now
+from src.common.utils import iran_now, today_str
 from src.security.permissions import Permission
-from src.services.clinical_care_loop_service import ClinicalCareLoopService
 from src.services.encounter_plan_commitment_service import (
     EncounterPlanCommitmentService,
 )
+from src.services.engagement_service import EngagementService
 from src.services.followup_booking_service import FollowupBookingService
+from src.services.followup_orchestration.identity import canonical_hash
 from src.services.followup_orchestration.projection_service import (
     FollowupProjectionService,
 )
@@ -78,70 +84,24 @@ class WorkCenterActionService:
             return Permission.FOLLOWUP_PLAN_TRANSITION
         return Permission.FOLLOWUP_ADMIN_MANAGE
 
-    def describe(
-        self,
-        episode_id: str,
-        *,
-        permissions: frozenset[Permission],
-    ) -> dict:
-        try:
-            task = self._task(episode_id)
-        except WorkCenterActionError as error:
-            return {
-                "available": False,
-                "reason": error.message,
-                "can_defer": False,
-                "can_book": False,
-                "can_complete": False,
-            }
-        kind = self._kind(task)
-        transition_permission = self._required_transition_permission(kind)
-        current_due = task.get("due_date")
-        expected_event_id = None
-        if kind == "clinical":
-            current = ClinicalCareLoopRepository(self.db).current_task(int(task["id"]))
-            current_due = current.get("current_due_at") or current_due
-            expected_event_id = int(current["current_event_id"])
-        elif kind == "plan":
-            current = EncounterPlanCommitmentRepository(self.db).current_for_task(
-                int(task["id"])
+    @staticmethod
+    def _idempotency_key(value: object) -> str:
+        key = str(value or "").strip()
+        if len(key) < 16:
+            raise WorkCenterActionError(
+                "INVALID_IDEMPOTENCY_KEY",
+                "شناسهٔ یکتای اقدام معتبر نیست؛ صفحه را تازه کنید.",
             )
-            current_due = (current or {}).get("current_due_at") or current_due
-            expected_event_id = (
-                int(current["current_event_id"]) if current else None
-            )
-        now = self._naive_now()
-        return {
-            "available": True,
-            "task_id": int(task["id"]),
-            "patient_link_id": int(task["patient_link_id"]),
-            "kind": kind,
-            "kind_label": {
-                "administrative": "کار اداری",
-                "clinical": "پیگیری بالینی",
-                "plan": "اقدام برنامه درمان",
-            }[kind],
-            "current_due_at": current_due,
-            "expected_task_event_id": expected_event_id,
-            "can_defer": transition_permission in permissions,
-            "can_book": (
-                Permission.FOLLOWUP_BOOK_APPOINTMENT in permissions
-                and transition_permission in permissions
-            ),
-            "can_complete": (
-                kind == "administrative"
-                and Permission.FOLLOWUP_ADMIN_MANAGE in permissions
-            ),
-            "suggested_booking_at": (
-                now + timedelta(days=1)
-            ).replace(hour=9, minute=0, second=0, microsecond=0),
-        }
+        return key
 
     def _naive_now(self) -> datetime:
         value = self.clock()
         if value.tzinfo is not None:
             value = value.replace(tzinfo=None)
         return value.replace(microsecond=0)
+
+    def _now_text(self) -> str:
+        return self._naive_now().isoformat(sep=" ", timespec="seconds")
 
     def _normalize_future(self, value: datetime | str) -> str:
         try:
@@ -163,23 +123,162 @@ class WorkCenterActionService:
             )
         return parsed.isoformat(sep=" ", timespec="seconds")
 
-    def _with_projection_refresh(self, episode_id: str, result: dict) -> dict:
-        """Never turn a committed source mutation into a false failure message.
+    def _existing_episode_action(
+        self,
+        *,
+        episode_id: str,
+        event_type: str,
+        idempotency_key: str,
+        request_payload: dict,
+    ) -> dict | None:
+        row = self.db.execute(
+            """SELECT * FROM followup_episode_events
+               WHERE idempotency_key=?""",
+            (idempotency_key,),
+        ).fetchone()
+        if not row:
+            return None
+        if (
+            str(row["episode_id"]) != str(episode_id)
+            or str(row["event_type"]) != str(event_type)
+        ):
+            raise WorkCenterActionError(
+                "ACTION_IDEMPOTENCY_SCOPE_MISMATCH",
+                "شناسهٔ این اقدام قبلاً برای عملیات دیگری استفاده شده است.",
+            )
+        try:
+            payload = json.loads(str(row["payload_json"] or "{}"))
+        except json.JSONDecodeError as exc:
+            raise WorkCenterActionError(
+                "ACTION_AUDIT_CORRUPTED",
+                "سابقهٔ اقدام قابل اعتبارسنجی نیست.",
+            ) from exc
+        if payload.get("request_hash") != canonical_hash(request_payload):
+            raise WorkCenterActionError(
+                "ACTION_IDEMPOTENCY_CONFLICT",
+                "این شناسه با ورودی متفاوت قبلاً ثبت شده است.",
+            )
+        return payload
 
-        The projection is disposable. If its refresh fails after the authoritative
-        mutation committed, return success plus a PHI-free refresh warning so the UI can
-        ask for a reload without implying that the action itself was rolled back.
-        """
+    def _append_episode_action(
+        self,
+        *,
+        repository: FollowupEpisodeRepository,
+        episode_id: str,
+        event_type: str,
+        idempotency_key: str,
+        request_payload: dict,
+        result_payload: dict,
+        actor_username: str,
+        actor_user_id: int,
+    ) -> dict:
+        payload = {
+            "request_hash": canonical_hash(request_payload),
+            **result_payload,
+        }
+        repository.append_event_once(
+            episode_id=str(episode_id),
+            event_type=event_type,
+            actor_username=actor_username,
+            actor_user_id=int(actor_user_id),
+            idempotency_key=idempotency_key,
+            effective_at=self._now_text(),
+            recorded_at=self._now_text(),
+            payload=payload,
+            commit=False,
+        )
+        return payload
+
+    def _with_projection_refresh(self, episode_id: str, result: dict) -> dict:
+        """Keep a committed source mutation truthful if cache refresh later fails."""
         output = dict(result)
         try:
             self.refresh_projection(episode_id)
-        except Exception as exc:  # Source already committed; preserve truthful outcome.
+        except Exception as exc:  # Source already committed; do not report false failure.
             output["projection_refreshed"] = False
             output["projection_refresh_error"] = type(exc).__name__
         else:
             output["projection_refreshed"] = True
             output["projection_refresh_error"] = None
         return output
+
+    def describe(
+        self,
+        episode_id: str,
+        *,
+        permissions: frozenset[Permission],
+    ) -> dict:
+        try:
+            task = self._task(episode_id)
+        except WorkCenterActionError as error:
+            return {
+                "available": False,
+                "reason": error.message,
+                "can_defer": False,
+                "can_book": False,
+                "can_message": False,
+                "can_complete": False,
+                "can_complete_clinical": False,
+                "can_complete_plan": False,
+            }
+        kind = self._kind(task)
+        transition_permission = self._required_transition_permission(kind)
+        current_due = task.get("due_date")
+        expected_event_id = None
+        task_contract = None
+        plan_context = None
+        if kind == "clinical":
+            current = ClinicalCareLoopRepository(self.db).current_task(int(task["id"]))
+            current_due = current.get("current_due_at") or current_due
+            expected_event_id = int(current["current_event_id"])
+            task_contract = current.get("task_contract")
+        elif kind == "plan":
+            current = EncounterPlanCommitmentRepository(self.db).current_for_task(
+                int(task["id"])
+            )
+            current_due = (current or {}).get("current_due_at") or current_due
+            expected_event_id = (
+                int(current["current_event_id"]) if current else None
+            )
+            plan_context = current
+        now = self._naive_now()
+        return {
+            "available": True,
+            "task_id": int(task["id"]),
+            "patient_link_id": int(task["patient_link_id"]),
+            "kind": kind,
+            "kind_label": {
+                "administrative": "کار اداری",
+                "clinical": "پیگیری بالینی",
+                "plan": "اقدام برنامه درمان",
+            }[kind],
+            "current_due_at": current_due,
+            "expected_task_event_id": expected_event_id,
+            "task_contract": task_contract,
+            "plan_context": plan_context,
+            "can_defer": transition_permission in permissions,
+            "can_book": (
+                Permission.FOLLOWUP_BOOK_APPOINTMENT in permissions
+                and transition_permission in permissions
+            ),
+            "can_message": Permission.SMS_VIEW in permissions,
+            "can_complete": (
+                kind == "administrative"
+                and Permission.FOLLOWUP_ADMIN_MANAGE in permissions
+            ),
+            "can_complete_clinical": (
+                kind == "clinical"
+                and Permission.CLINICAL_OUTCOME_RECORD in permissions
+                and Permission.CLINICAL_TASK_TRANSITION in permissions
+            ),
+            "can_complete_plan": (
+                kind == "plan"
+                and Permission.FOLLOWUP_PLAN_TRANSITION in permissions
+            ),
+            "suggested_booking_at": (
+                now + timedelta(days=1)
+            ).replace(hour=9, minute=0, second=0, microsecond=0),
+        }
 
     def defer(
         self,
@@ -202,29 +301,16 @@ class WorkCenterActionService:
             )
         due_text = self._normalize_future(due_at)
         task_id = int(task["id"])
-        if kind == "administrative":
-            result = FollowupRepository(self.db).defer(
-                task_id,
-                due_at=due_text,
-                assigned_to=actor_username,
-            )
-        elif kind == "clinical":
-            repository = ClinicalCareLoopRepository(self.db)
-            current = repository.current_task(task_id)
-            event = ClinicalCareLoopService(
-                repository=repository,
-                clock=self.clock,
-            ).transition(
-                task_id,
-                transition="defer",
-                expected_current_event_id=int(current["current_event_id"]),
-                actor_username=actor_username,
-                actor_user_id=int(actor_user_id),
-                due_at=due_text,
-                note=note or "تعویق از مرکز کارها",
-            )
-            result = {"task_id": task_id, "due_at": event["due_at"]}
-        else:
+        key = self._idempotency_key(idempotency_key)
+        request_payload = {
+            "action": "DEFER",
+            "task_id": task_id,
+            "kind": kind,
+            "due_at": due_text,
+            "note": str(note or "").strip(),
+        }
+
+        if kind == "plan":
             repository = EncounterPlanCommitmentRepository(self.db)
             current = repository.current_for_task(task_id)
             if not current:
@@ -242,12 +328,84 @@ class WorkCenterActionService:
                 expected_current_event_id=int(current["current_event_id"]),
                 actor_username=actor_username,
                 actor_user_id=int(actor_user_id),
-                idempotency_key=str(idempotency_key),
+                idempotency_key=key,
                 due_at=due_text,
                 note=note or "تغییر موعد از مرکز کارها",
             )
-            result = {"task_id": task_id, "due_at": event["due_at"]}
-        return self._with_projection_refresh(episode_id, result)
+            return self._with_projection_refresh(
+                episode_id,
+                {
+                    "task_id": task_id,
+                    "due_at": event["due_at"],
+                    "duplicate": bool(event.get("duplicate")),
+                },
+            )
+
+        episode_repository = FollowupEpisodeRepository(self.db)
+        clinical_repository = (
+            ClinicalCareLoopRepository(self.db) if kind == "clinical" else None
+        )
+        self.db.execute("BEGIN IMMEDIATE")
+        try:
+            prior = self._existing_episode_action(
+                episode_id=episode_id,
+                event_type="ACTION_DUE_CHANGED",
+                idempotency_key=key,
+                request_payload=request_payload,
+            )
+            if prior:
+                self.db.commit()
+                return self._with_projection_refresh(
+                    episode_id,
+                    {
+                        "task_id": task_id,
+                        "due_at": prior["due_at"],
+                        "duplicate": True,
+                    },
+                )
+            if kind == "administrative":
+                result = FollowupRepository(self.db).defer(
+                    task_id,
+                    due_at=due_text,
+                    assigned_to=actor_username,
+                    commit=False,
+                )
+            else:
+                current = clinical_repository.current_task(task_id)
+                event = clinical_repository.append_task_event(
+                    task_id,
+                    event_type="DEFERRED",
+                    expected_current_event_id=int(current["current_event_id"]),
+                    actor_username=actor_username,
+                    actor_user_id=int(actor_user_id),
+                    due_at=due_text,
+                    note=note or "تعویق از مرکز کارها",
+                    recorded_at=self._naive_now(),
+                    commit=False,
+                )
+                result = {"task_id": task_id, "due_at": event["due_at"]}
+            self._append_episode_action(
+                repository=episode_repository,
+                episode_id=episode_id,
+                event_type="ACTION_DUE_CHANGED",
+                idempotency_key=key,
+                request_payload=request_payload,
+                result_payload={
+                    "task_id": task_id,
+                    "due_at": result["due_at"],
+                    "kind": kind,
+                },
+                actor_username=actor_username,
+                actor_user_id=actor_user_id,
+            )
+            self.db.commit()
+        except Exception:
+            self.db.rollback()
+            raise
+        return self._with_projection_refresh(
+            episode_id,
+            {**result, "duplicate": False},
+        )
 
     def book(
         self,
@@ -274,7 +432,7 @@ class WorkCenterActionService:
             scheduled_at=scheduled_text,
             actor_username=actor_username,
             actor_user_id=int(actor_user_id),
-            idempotency_key=str(idempotency_key),
+            idempotency_key=self._idempotency_key(idempotency_key),
             episode_id=str(episode_id),
         )
         return self._with_projection_refresh(episode_id, result)
@@ -284,7 +442,9 @@ class WorkCenterActionService:
         episode_id: str,
         *,
         actor_username: str,
+        actor_user_id: int,
         permissions: frozenset[Permission],
+        idempotency_key: str,
         note: str | None = None,
     ) -> dict:
         task = self._task(episode_id)
@@ -298,17 +458,363 @@ class WorkCenterActionService:
                 "COMPLETE_PERMISSION_REQUIRED",
                 "مجوز تکمیل این کار وجود ندارد.",
             )
-        FollowupRepository(self.db).resolve(
-            int(task["id"]),
-            "done",
-            note or f"تکمیل از مرکز کارها توسط {actor_username}",
+        task_id = int(task["id"])
+        key = self._idempotency_key(idempotency_key)
+        clean_note = str(note or "").strip()
+        request_payload = {
+            "action": "COMPLETE_ADMINISTRATIVE",
+            "task_id": task_id,
+            "note": clean_note,
+        }
+        episode_repository = FollowupEpisodeRepository(self.db)
+        self.db.execute("BEGIN IMMEDIATE")
+        try:
+            prior = self._existing_episode_action(
+                episode_id=episode_id,
+                event_type="ADMINISTRATIVE_GOAL_MET",
+                idempotency_key=key,
+                request_payload=request_payload,
+            )
+            if prior:
+                self.db.commit()
+                return self._with_projection_refresh(
+                    episode_id,
+                    {
+                        "task_id": task_id,
+                        "patient_link_id": int(task["patient_link_id"]),
+                        "status": "done",
+                        "duplicate": True,
+                    },
+                )
+            FollowupRepository(self.db).resolve(
+                task_id,
+                "done",
+                clean_note or f"تکمیل از مرکز کارها توسط {actor_username}",
+                commit=False,
+            )
+            self._append_episode_action(
+                repository=episode_repository,
+                episode_id=episode_id,
+                event_type="ADMINISTRATIVE_GOAL_MET",
+                idempotency_key=key,
+                request_payload=request_payload,
+                result_payload={"task_id": task_id, "status": "done"},
+                actor_username=actor_username,
+                actor_user_id=actor_user_id,
+            )
+            self.db.commit()
+        except Exception:
+            self.db.rollback()
+            raise
+        return self._with_projection_refresh(
+            episode_id,
+            {
+                "task_id": task_id,
+                "patient_link_id": int(task["patient_link_id"]),
+                "status": "done",
+                "duplicate": False,
+            },
+        )
+
+    def complete_clinical(
+        self,
+        episode_id: str,
+        *,
+        actor_username: str,
+        actor_user_id: int,
+        permissions: frozenset[Permission],
+        idempotency_key: str,
+        outcome_type: str,
+        fact_key: str | None = None,
+        value=None,
+        unit: str | None = None,
+        verification: str = "CONFIRMED",
+        observed_at: datetime | str | None = None,
+        note: str | None = None,
+    ) -> dict:
+        task = self._task(episode_id)
+        if self._kind(task) != "clinical":
+            raise WorkCenterActionError(
+                "CLINICAL_TASK_REQUIRED",
+                "این مسیر یک پیگیری بالینی نیست.",
+            )
+        if not {
+            Permission.CLINICAL_OUTCOME_RECORD,
+            Permission.CLINICAL_TASK_TRANSITION,
+        } <= permissions:
+            raise WorkCenterActionError(
+                "CLINICAL_COMPLETION_PERMISSION_REQUIRED",
+                "مجوز ثبت شاهد و تکمیل پیگیری بالینی وجود ندارد.",
+            )
+        key = self._idempotency_key(idempotency_key)
+        task_id = int(task["id"])
+        observed = observed_at or self._now_text()
+        request_payload = {
+            "action": "COMPLETE_CLINICAL",
+            "task_id": task_id,
+            "outcome_type": str(outcome_type or "").strip().upper(),
+            "fact_key": str(fact_key or "").strip() or None,
+            "value": value if value not in ("") else None,
+            "unit": str(unit or "").strip() or None,
+            "verification": str(verification or "CONFIRMED").strip().upper(),
+            "observed_at": str(observed),
+            "note": str(note or "").strip(),
+        }
+        episode_repository = FollowupEpisodeRepository(self.db)
+        clinical_repository = ClinicalCareLoopRepository(self.db)
+        self.db.execute("BEGIN IMMEDIATE")
+        try:
+            prior = self._existing_episode_action(
+                episode_id=episode_id,
+                event_type="EPISODE_CLOSED",
+                idempotency_key=key,
+                request_payload=request_payload,
+            )
+            if prior:
+                self.db.commit()
+                return self._with_projection_refresh(
+                    episode_id,
+                    {
+                        "task_id": task_id,
+                        "outcome_event_id": int(prior["outcome_event_id"]),
+                        "task_event_id": int(prior["task_event_id"]),
+                        "status": "COMPLETED",
+                        "duplicate": True,
+                    },
+                )
+            current = clinical_repository.current_task(task_id)
+            source_record_id = (
+                "work-center:" + canonical_hash(
+                    {"episode_id": str(episode_id), "idempotency_key": key}
+                )[:48]
+            )
+            outcome = clinical_repository.record_outcome(
+                task_id,
+                outcome_type=request_payload["outcome_type"],
+                fact_key=request_payload["fact_key"],
+                value=request_payload["value"],
+                unit=request_payload["unit"],
+                verification=request_payload["verification"],
+                observed_at=request_payload["observed_at"],
+                source_system="work_center",
+                source_record_id=source_record_id,
+                note=request_payload["note"] or None,
+                actor_username=actor_username,
+                actor_user_id=int(actor_user_id),
+                recorded_at=self._naive_now(),
+                commit=False,
+            )
+            task_event = clinical_repository.append_task_event(
+                task_id,
+                event_type="COMPLETED",
+                expected_current_event_id=int(current["current_event_id"]),
+                actor_username=actor_username,
+                actor_user_id=int(actor_user_id),
+                outcome_event_id=int(outcome["id"]),
+                note=request_payload["note"] or "تکمیل با شاهد از مرکز کارها",
+                recorded_at=self._naive_now(),
+                commit=False,
+            )
+            episode_repository.link_source_once(
+                episode_id=str(episode_id),
+                patient_link_id=int(task["patient_link_id"]),
+                source_type="CLINICAL_OUTCOME",
+                source_id=str(outcome["id"]),
+                source_revision=canonical_hash(
+                    {
+                        "id": int(outcome["id"]),
+                        "task_id": task_id,
+                        "content_hash": str(outcome["content_hash"]),
+                    }
+                ),
+                relation_type="OUTCOME",
+                actor_username=actor_username,
+                linked_at=self._now_text(),
+                recorded_at=self._now_text(),
+                commit=False,
+            )
+            self._append_episode_action(
+                repository=episode_repository,
+                episode_id=episode_id,
+                event_type="EPISODE_CLOSED",
+                idempotency_key=key,
+                request_payload=request_payload,
+                result_payload={
+                    "task_id": task_id,
+                    "outcome_event_id": int(outcome["id"]),
+                    "task_event_id": int(task_event["id"]),
+                    "status": "COMPLETED",
+                },
+                actor_username=actor_username,
+                actor_user_id=actor_user_id,
+            )
+            self.db.commit()
+        except Exception:
+            self.db.rollback()
+            raise
+        return self._with_projection_refresh(
+            episode_id,
+            {
+                "task_id": task_id,
+                "outcome_event_id": int(outcome["id"]),
+                "task_event_id": int(task_event["id"]),
+                "status": "COMPLETED",
+                "duplicate": False,
+            },
+        )
+
+    def complete_plan(
+        self,
+        episode_id: str,
+        *,
+        actor_username: str,
+        actor_user_id: int,
+        permissions: frozenset[Permission],
+        idempotency_key: str,
+        evidence_type: str,
+        evidence_ref: str,
+        outcome_code: str,
+        note: str | None = None,
+    ) -> dict:
+        task = self._task(episode_id)
+        if self._kind(task) != "plan":
+            raise WorkCenterActionError(
+                "PLAN_TASK_REQUIRED",
+                "این مسیر اقدام برنامه درمان نیست.",
+            )
+        if Permission.FOLLOWUP_PLAN_TRANSITION not in permissions:
+            raise WorkCenterActionError(
+                "PLAN_COMPLETION_PERMISSION_REQUIRED",
+                "مجوز تکمیل اقدام برنامه درمان وجود ندارد.",
+            )
+        task_id = int(task["id"])
+        repository = EncounterPlanCommitmentRepository(self.db)
+        current = repository.current_for_task(task_id)
+        if not current:
+            raise WorkCenterActionError(
+                "PLAN_TASK_UNAVAILABLE",
+                "اقدام برنامه درمان پیدا نشد.",
+            )
+        event = EncounterPlanCommitmentService(
+            db=self.db,
+            repository=repository,
+            clock=self.clock,
+        ).transition(
+            task_id=task_id,
+            transition="complete",
+            expected_current_event_id=int(current["current_event_id"]),
+            actor_username=actor_username,
+            actor_user_id=int(actor_user_id),
+            idempotency_key=self._idempotency_key(idempotency_key),
+            evidence_type=evidence_type,
+            evidence_ref=evidence_ref,
+            outcome_code=outcome_code,
+            note=note,
         )
         return self._with_projection_refresh(
             episode_id,
             {
+                "task_id": task_id,
+                "status": str(event["status"]),
+                "event_id": int(event["id"]),
+                "duplicate": bool(event.get("duplicate")),
+            },
+        )
+
+    def queue_visit_invite(
+        self,
+        episode_id: str,
+        *,
+        actor_username: str,
+        actor_user_id: int,
+        permissions: frozenset[Permission],
+    ) -> dict:
+        task = self._task(episode_id)
+        if Permission.SMS_VIEW not in permissions:
+            raise WorkCenterActionError(
+                "MESSAGE_PERMISSION_REQUIRED",
+                "مجوز افزودن پیام به صف وجود ندارد.",
+            )
+        patient_id = int(task["patient_link_id"])
+        approval_id = EngagementService().enqueue_invite(patient_id)
+        period_key = f"invite:{today_str()}"
+        if approval_id is None:
+            row = self.db.execute(
+                """SELECT * FROM engagement_approvals
+                   WHERE patient_link_id=? AND event_key='visit_invite'
+                     AND period_key=?""",
+                (patient_id, period_key),
+            ).fetchone()
+            if not row:
+                raise WorkCenterActionError(
+                    "MESSAGE_NOT_ELIGIBLE",
+                    "شماره، رضایت پیام یا تنظیمات ارسال برای این بیمار آماده نیست.",
+                )
+            approval = dict(row)
+            if approval["status"] not in {"pending", "submitting", "approved"}:
+                raise WorkCenterActionError(
+                    "MESSAGE_ALREADY_DECIDED",
+                    "پیام امروز قبلاً بررسی شده و قابل افزودن دوباره نیست.",
+                )
+            approval_id = int(approval["id"])
+            duplicate = True
+        else:
+            approval = dict(
+                self.db.execute(
+                    "SELECT * FROM engagement_approvals WHERE id=?",
+                    (int(approval_id),),
+                ).fetchone()
+            )
+            duplicate = False
+
+        episode_repository = FollowupEpisodeRepository(self.db)
+        linked = True
+        try:
+            self.db.execute("BEGIN IMMEDIATE")
+            episode_repository.link_source_once(
+                episode_id=str(episode_id),
+                patient_link_id=patient_id,
+                source_type="ENGAGEMENT_APPROVAL",
+                source_id=str(approval_id),
+                source_revision=canonical_hash(
+                    {
+                        "id": int(approval["id"]),
+                        "patient_link_id": int(approval["patient_link_id"]),
+                        "event_key": str(approval["event_key"]),
+                        "period_key": str(approval["period_key"]),
+                    }
+                ),
+                relation_type="COMMUNICATION",
+                actor_username=actor_username,
+                linked_at=self._now_text(),
+                recorded_at=self._now_text(),
+                commit=False,
+            )
+            episode_repository.append_event_once(
+                episode_id=str(episode_id),
+                event_type="SMS_QUEUED",
+                actor_username=actor_username,
+                actor_user_id=int(actor_user_id),
+                idempotency_key=(
+                    f"work-center-sms-queued:{episode_id}:{int(approval_id)}"
+                ),
+                effective_at=self._now_text(),
+                recorded_at=self._now_text(),
+                payload={"approval_id": int(approval_id), "event_key": "visit_invite"},
+                commit=False,
+            )
+            self.db.commit()
+        except Exception:
+            self.db.rollback()
+            linked = False
+        return self._with_projection_refresh(
+            episode_id,
+            {
                 "task_id": int(task["id"]),
-                "patient_link_id": int(task["patient_link_id"]),
-                "status": "done",
+                "approval_id": int(approval_id),
+                "queued": True,
+                "duplicate": duplicate,
+                "episode_linked": linked,
             },
         )
 
