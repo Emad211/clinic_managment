@@ -1,0 +1,80 @@
+{% extends "automation_base.html" %}
+{% block title %}{{ patient.full_name }}{% endblock %}
+{% block head %}
+{{ super() }}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/clinical-engine-v2.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/patient-workspace-v2.css') }}">
+{% endblock %}
+{% block content %}
+<section class="patient-workspace" data-patient-workspace>
+    <header class="patient-workspace-header" aria-labelledby="patient-workspace-name">
+        <div class="patient-workspace-identity">
+            <a class="muted text-sm" href="{{ url_for('patients.list_patients') }}">بیماران / بازگشت</a>
+            <div class="patient-workspace-title-row">
+                <span class="patient-workspace-avatar"><svg class="icon"><use href="#i-user"></use></svg></span>
+                <div>
+                    <h1 id="patient-workspace-name">{{ patient.full_name }}</h1>
+                    <div class="patient-workspace-meta nums">
+                        <span>کد ملی: {{ patient.national_id or 'ثبت نشده' }}</span>
+                        <span>موبایل: {{ patient.phone_number or 'ثبت نشده' }}</span>
+                        {% if patient.accounting_patient_id %}<span class="badge badge-info">متصل به حسابداری</span>{% endif %}
+                    </div>
+                </div>
+            </div>
+            <div class="patient-workspace-conditions" aria-label="بیماری‌های ثبت‌شده">
+                {% for condition in conditions %}<span class="chip">{{ condition.condition_name }}</span>{% else %}<span class="muted text-xs">بیماری مزمنی ثبت نشده است</span>{% endfor %}
+            </div>
+        </div>
+        <div class="patient-workspace-header-actions">
+            <a class="btn btn-ghost" href="{{ url_for('appointments.new_appointment', patient_link_id=patient.id, return_url=request.full_path) }}"><svg class="icon icon-sm"><use href="#i-calendar"></use></svg> ثبت نوبت</a>
+            <a class="btn btn-ghost" href="{{ url_for('clinical_reconciliation.workspace', pid=patient.id) }}"><svg class="icon icon-sm"><use href="#i-refresh"></use></svg> بررسی اختلاف</a>
+            <a class="btn" href="{{ url_for('unified_followups.index', view='all', q=patient.national_id or patient.full_name) if config.get('FOLLOWUP_UNIFIED_WORKLIST_READONLY') else url_for('followups.worklist', q=patient.national_id or patient.full_name) }}"><svg class="icon icon-sm"><use href="#i-list-checks"></use></svg> کارهای بیمار</a>
+        </div>
+        <div class="patient-workspace-status" aria-label="خلاصه پرونده">
+            <div><span>پیگیری باز</span><strong>{{ followups|length|fa_num }}</strong></div>
+            <div><span>داروی فعال</span><strong>{{ medications|selectattr('is_active')|list|length|fa_num }}</strong></div>
+            <div><span>نوبت پیش‌رو</span><strong>{{ appt_summary.upcoming|length|fa_num }}</strong></div>
+            <div><span>سند ویزیت</span><strong>{{ encounter_documents|length|fa_num }}</strong></div>
+        </div>
+    </header>
+
+    {% if allergies %}
+    <div class="alert-banner alert-warn patient-workspace-allergy"><svg class="icon"><use href="#i-alert"></use></svg><span><b>حساسیت:</b> {% for allergy in allergies %}{{ allergy.substance }}{% if allergy.severity %} ({{ allergy.severity }}){% endif %}{% if not loop.last %}، {% endif %}{% endfor %}</span></div>
+    {% endif %}
+
+    <nav class="patient-workspace-tabs" aria-label="بخش‌های پرونده بیمار">
+        {% set tab_icons = {'summary':'i-home','actions':'i-zap','clinical':'i-activity','meds':'i-pill','encounters':'i-clipboard'} %}
+        {% for key, label in workspace_tabs.items() %}
+        <a class="patient-workspace-tab{% if active_tab==key %} active{% endif %}"
+           href="{{ url_for('patient_workspace.detail', pid=patient.id, tab=key) }}"
+           {% if active_tab==key %}aria-current="page"{% endif %}>
+            <svg class="icon icon-sm"><use href="#{{ tab_icons[key] }}"></use></svg>
+            <span>{{ label }}</span>
+            {% if key=='actions' and followups %}<b class="pill pill-danger">{{ followups|length|fa_num }}</b>{% endif %}
+        </a>
+        {% endfor %}
+    </nav>
+
+    <main class="patient-workspace-pane" id="patient-workspace-pane" tabindex="-1">
+        {% if active_tab == 'summary' %}
+            {% include "patients/workspace/_summary.html" %}
+        {% elif active_tab == 'actions' %}
+            {% include "patients/workspace/_actions.html" %}
+        {% elif active_tab == 'clinical' %}
+            {% include "patients/workspace/_clinical.html" %}
+        {% elif active_tab == 'meds' %}
+            {% include "patients/workspace/_meds.html" %}
+        {% elif active_tab == 'encounters' %}
+            {% include "patients/workspace/_encounters.html" %}
+        {% endif %}
+    </main>
+
+    <details class="auto-technical patient-workspace-legacy" data-technical-details>
+        <summary>جزئیات پیشرفته و مسیر سازگاری</summary>
+        <div class="auto-technical__body">
+            <p class="muted text-sm">صفحهٔ قدیمی فقط برای قابلیت‌های کم‌استفاده‌ای که هنوز به Workspace منتقل نشده‌اند نگه داشته شده است.</p>
+            <a class="btn btn-ghost" href="{{ legacy_url }}">بازکردن پروندهٔ فنی قدیمی</a>
+        </div>
+    </details>
+</section>
+{% endblock %}
