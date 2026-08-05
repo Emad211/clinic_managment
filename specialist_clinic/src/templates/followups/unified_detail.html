@@ -108,7 +108,9 @@
                         {% for user in assignable_users %}<option value="{{ user.id }}">{{ user.label }}</option>{% endfor %}
                     </select>
                 </div>
-                <div style="align-self:end;"><button class="btn btn-ghost" type="submit">ثبت مسئول</button></div>
+                <div style="align-self:end;">
+                    <button class="btn btn-ghost" type="submit">ثبت مسئول</button>
+                </div>
             </form>
             {% endif %}
 
@@ -123,7 +125,9 @@
                         {% for key, label in ownership_role_labels.items() %}<option value="{{ key }}" {% if ownership.owner_role == key %}selected{% endif %}>{{ label }}</option>{% endfor %}
                     </select>
                 </div>
-                <div style="align-self:end;"><button class="btn btn-ghost" type="submit">تغییر صف</button></div>
+                <div style="align-self:end;">
+                    <button class="btn btn-ghost" type="submit">تغییر صف</button>
+                </div>
             </form>
             {% endif %}
         </div>
