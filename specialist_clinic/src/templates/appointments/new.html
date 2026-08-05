@@ -1,48 +1,44 @@
-{% extends "base.html" %}
-{% block title %}نوبت جدید{% endblock %}
+{% extends "automation_base.html" %}
+{% block title %}ثبت نوبت{% endblock %}
 {% block content %}
-<div class="topbar"><h1>ثبت نوبت جدید</h1></div>
-<div class="card" style="max-width:560px;">
-    <div class="section-title">
-        <svg class="icon"><use href="#i-calendar"></use></svg>
-        <div>
-            مشخصات نوبت
-            <div class="section-sub">انتخاب بیمار، تاریخ و تنظیمات تکرار دوره‌ای</div>
-        </div>
+<header class="auto-page-header">
+    <div class="auto-page-header__copy">
+        <a class="muted text-sm" href="{{ url_for('appointments.list_appointments') }}">نوبت‌ها / بازگشت</a>
+        <h1><svg class="icon"><use href="#i-calendar"></use></svg> ثبت نوبت</h1>
+        <p class="muted">اطلاعات اصلی را ثبت کنید؛ تنظیمات کم‌استفاده در بخش اختیاری قرار دارند.</p>
     </div>
-    <form method="post">
-        <div class="fld">
-            <label>بیمار <span class="req">*</span></label>
-            <select name="patient_link_id" required>
+</header>
+
+<section class="card appointment-create-card">
+    <form method="post" class="appointment-create-form">
+        <div class="fld appointment-patient-field">
+            <label for="appointment-patient">بیمار <span class="req">*</span></label>
+            <select id="appointment-patient" name="patient_link_id" required autofocus>
                 <option value="">انتخاب بیمار...</option>
                 {% for p in patients %}<option value="{{ p.id }}" {% if pre_pid==p.id %}selected{% endif %}>{{ p.full_name }} {% if p.national_id %}({{ p.national_id }}){% endif %}</option>{% endfor %}
             </select>
+            {% if pre_pid %}<p class="help">بیمار از مسیر قبلی انتخاب شده است؛ در صورت نیاز می‌توانید تغییر دهید.</p>{% endif %}
         </div>
-        <div class="row">
-            <div class="fld" style="flex:1;"><label>تاریخ <span class="req">*</span></label><input type="text" class="jdate" name="date" placeholder="انتخاب تاریخ" required></div>
-            <div class="fld" style="flex:1;"><label>ساعت</label><input type="time" class="time-input" name="time" value="12:00" step="900" lang="fa-IR" required></div>
+
+        <div class="appointment-date-grid">
+            <div class="fld"><label for="appointment-date">تاریخ <span class="req">*</span></label><input id="appointment-date" type="text" class="jdate" name="date" placeholder="انتخاب تاریخ" required></div>
+            <div class="fld"><label for="appointment-time">ساعت <span class="req">*</span></label><input id="appointment-time" type="time" class="time-input" name="time" value="12:00" step="900" lang="fa-IR" required></div>
+            <div class="fld"><label for="appointment-type">نوع نوبت</label><select id="appointment-type" name="appt_type">{% for k,v in appt_types.items() %}<option value="{{ k }}">{{ v }}</option>{% endfor %}</select></div>
         </div>
-        <div class="row">
-            <div class="fld" style="flex:1;"><label>نوع نوبت</label>
-                <select name="appt_type">{% for k,v in appt_types.items() %}<option value="{{ k }}">{{ v }}</option>{% endfor %}</select>
+
+        <details class="appointment-optional">
+            <summary>تنظیمات اختیاری</summary>
+            <div class="appointment-optional__body">
+                <div class="fld"><label for="appointment-recurrence">تکرار دوره‌ای</label><select id="appointment-recurrence" name="recurrence_months"><option value="">بدون تکرار</option><option value="1">هر ۱ ماه</option><option value="3">هر ۳ ماه</option><option value="6">هر ۶ ماه</option><option value="12">هر ۱۲ ماه</option></select></div>
+                <div class="fld"><label for="appointment-notes">یادداشت</label><textarea id="appointment-notes" name="notes" rows="2" placeholder="در صورت نیاز"></textarea></div>
             </div>
-            <div class="fld" style="flex:1;"><label>تکرار دوره‌ای (ماه)</label>
-                <select name="recurrence_months">
-                    <option value="">بدون تکرار</option>
-                    <option value="1">هر ۱ ماه</option><option value="3">هر ۳ ماه</option>
-                    <option value="6">هر ۶ ماه</option><option value="12">هر ۱۲ ماه</option>
-                </select>
-            </div>
+        </details>
+
+        <div class="appointment-create-actions">
+            <a class="btn btn-ghost" href="{{ url_for('appointments.list_appointments') }}">انصراف</a>
+            <button class="btn" type="submit"><svg class="icon"><use href="#i-calendar"></use></svg> ثبت نوبت</button>
         </div>
-        <div class="fld">
-            <label>یادداشت</label>
-            <textarea name="notes" rows="2"></textarea>
-        </div>
-        <button class="btn mt-4" type="submit"><svg class="icon"><use href="#i-calendar"></use></svg> ثبت نوبت</button>
     </form>
-    <p class="help flex items-center gap-2" style="margin-top:var(--s4);">
-        <svg class="icon icon-sm c-info"><use href="#i-info"></use></svg>
-        <span>یادآوری پیامکی به‌صورت خودکار تا ۲۴ ساعت قبل از نوبت ارسال می‌شود (در صورت تنظیم پنل پیامک).</span>
-    </p>
-</div>
+    <p class="help flex items-center gap-2 appointment-reminder-note"><svg class="icon icon-sm c-info"><use href="#i-info"></use></svg><span>در صورت فعال‌بودن پیامک، یادآوری نوبت در مسیر خودکار قرار می‌گیرد.</span></p>
+</section>
 {% endblock %}
