@@ -3,6 +3,7 @@
 {% block title %}خانه{% endblock %}
 {% block head %}{{ super() }}<link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard-automation-v1.css') }}">{% endblock %}
 {% block content %}
+{% set work_actions_ready = config.get('FOLLOWUP_UNIFIED_WORKLIST_READONLY') and config.get('FOLLOWUP_UNIFIED_WORKLIST_ACTIONS') %}
 <header class="auto-page-header">
     <div class="auto-page-header__copy">
         <h1><svg class="icon icon-lg"><use href="#i-dashboard"></use></svg> خانه</h1>
@@ -10,18 +11,36 @@
     </div>
     <div class="auto-page-header__actions">
         <a class="btn btn-ghost" href="{{ url_for('patients.enroll') }}"><svg class="icon"><use href="#i-plus"></use></svg> ثبت بیمار</a>
-        <a class="btn" href="{% if config.get('FOLLOWUP_UNIFIED_WORKLIST_READONLY') %}{{ url_for('unified_followups.index', focus='first') }}{% else %}{{ url_for('followups.worklist') }}{% endif %}"><svg class="icon"><use href="#i-list-checks"></use></svg> شروع کارهای امروز</a>
+        {% if work_actions_ready %}
+        <form method="post" action="{{ url_for('work_center_outcomes.start_next') }}" class="m-0">
+            <input type="hidden" name="work_view" value="mine">
+            <button class="btn" type="submit"><svg class="icon"><use href="#i-list-checks"></use></svg> شروع کارهای امروز</button>
+        </form>
+        {% else %}
+        <a class="btn" href="{% if config.get('FOLLOWUP_UNIFIED_WORKLIST_READONLY') %}{{ url_for('unified_followups.index') }}{% else %}{{ url_for('followups.worklist') }}{% endif %}"><svg class="icon"><use href="#i-list-checks"></use></svg> مشاهده کارهای امروز</a>
+        {% endif %}
     </div>
 </header>
 
 <section class="home-next-actions" aria-labelledby="home-actions-title">
     <div class="section-title" id="home-actions-title"><svg class="icon"><use href="#i-zap"></use></svg> الان چه کاری لازم است؟</div>
     <div class="home-action-grid">
-        <a class="home-action-card is-primary" href="{% if config.get('FOLLOWUP_UNIFIED_WORKLIST_READONLY') %}{{ url_for('unified_followups.index', focus='first') }}{% else %}{{ url_for('followups.worklist') }}{% endif %}">
+        {% if work_actions_ready %}
+        <form method="post" action="{{ url_for('work_center_outcomes.start_next') }}" class="home-action-form">
+            <input type="hidden" name="work_view" value="mine">
+            <button class="home-action-card is-primary" type="submit">
+                <span class="home-action-icon"><svg class="icon"><use href="#i-list-checks"></use></svg></span>
+                <span><b>{{ stats.followups_today|fa_num }} کار سررسیده</b><small>شروع مستقیم رسیدگی پیوسته</small></span>
+                <svg class="icon icon-sm"><use href="#i-chevron-left"></use></svg>
+            </button>
+        </form>
+        {% else %}
+        <a class="home-action-card is-primary" href="{% if config.get('FOLLOWUP_UNIFIED_WORKLIST_READONLY') %}{{ url_for('unified_followups.index') }}{% else %}{{ url_for('followups.worklist') }}{% endif %}">
             <span class="home-action-icon"><svg class="icon"><use href="#i-list-checks"></use></svg></span>
             <span><b>{{ stats.followups_today|fa_num }} کار سررسیده</b><small>مرکز کارها · رسیدگی پیوسته</small></span>
             <svg class="icon icon-sm"><use href="#i-chevron-left"></use></svg>
         </a>
+        {% endif %}
         <a class="home-action-card" href="{{ url_for('doctor_queue.index') }}">
             <span class="home-action-icon"><svg class="icon"><use href="#i-stethoscope"></use></svg></span>
             <span><b>صف پزشک</b><small>شروع یا ادامه ویزیت</small></span>
@@ -93,7 +112,11 @@
         <div class="flex gap-2 wrap">
             {% if permissions.get('financial.review.view') %}<a class="btn btn-ghost" href="{{ url_for('finance_review.index') }}">امور مالی</a>{% endif %}
             {% if can_reconcile_finance %}<form method="post" action="{{ url_for('dashboard.reconcile_finance') }}"><button class="btn btn-ghost" type="submit"><svg class="icon icon-sm"><use href="#i-refresh"></use></svg> همگام‌سازی مالی</button></form>{% endif %}
+            {% if config.get('FOLLOWUP_UNIFIED_WORKLIST_READONLY') %}
+            <a class="btn btn-ghost" href="{{ url_for('unified_followups.index', view='manager' if permissions.get('followup.admin.manage') else 'all') }}">نمای مدیریتی عملیات</a>
+            {% else %}
             <a class="btn btn-ghost" href="{{ url_for('control_room.index') }}">نمای مدیریتی عملیات</a>
+            {% endif %}
         </div>
     </div>
 </details>
