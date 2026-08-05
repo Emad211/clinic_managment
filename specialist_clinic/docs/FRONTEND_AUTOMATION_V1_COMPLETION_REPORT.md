@@ -1,61 +1,28 @@
-# Frontend Automation V1 — Completion Report
+# Frontend Automation V1 — Previous Completion Report (Withdrawn)
 
-**Baseline:** `FRONTEND_AUTOMATION_V1_IMPLEMENTATION_PLAN.md`  
-**Scope:** `specialist_clinic` frontend and template orchestration  
-**Backend rule changes:** none
+**Status:** withdrawn on 2026-08-05 after real-browser verification  
+**Replacement audit:** `FRONTEND_AUTOMATION_V1_REALITY_GAP_AUDIT.md`  
+**Original baseline:** `main@4d0fe69c23cfbe5fd7ca0607a4f10a967e3a7356`
 
-## Implemented surfaces
+The earlier version of this document described Frontend Automation V1 as completed. That claim was not supported by the actual browser experience and is no longer valid.
 
-### Core workflows
+Real-browser verification exposed at least two immediate failures:
 
-- Work Center replacing the fragmented unified follow-up presentation.
-- One-click structured contact outcomes through existing guarded endpoints.
-- Doctor Queue centred on the next patient and one-click visit start.
-- Encounter workspace reduced to history/exam, assessment/plan and follow-up.
-- Appointments redesigned around one primary row action and contextual creation.
-- Patient workspace simplified with sticky context, collapsed consent and human clinical suggestions.
+- the Doctor Queue primary navigation path returned a 404 in the user's clean preview runtime;
+- the global sidebar still rendered the legacy information architecture, including Dashboard, Control Room and old management labels.
 
-### Completion surfaces
+A code audit then proved broader gaps:
 
-- Home replaced by an action-first dashboard.
-- Message Center reduced to Needs approval, Campaigns, Automations and Delivery.
-- Settings replaced by progressive Network, Messaging, Costs, Patient card and Prescription sections while preserving all existing POST field contracts.
-- Finance review changed to exception-first review with one primary completion action; only reversal confirms.
-- Management landing page separates daily management from advanced/Shadow tools.
+- navigation labels were being rewritten after load by JavaScript only on templates extending `automation_base.html`;
+- error pages and many existing pages therefore retained the legacy shell;
+- role-aware native navigation and mobile bottom navigation had not been implemented;
+- Work Center, Patient Workspace, Queue/Encounter, Message Center and Management were only partially delivered;
+- the required browser and 360px acceptance evidence did not exist before merge.
 
-## Automation behaviours
+The prior successful CI runs prove that the changed contracts did not break the automated test suite. They do **not** prove that the approved UX plan was fully implemented or that all primary pages worked in a real browser.
 
-- Debounced automatic filtering in Work Center.
-- One-click contact outcomes.
-- Smart contextual defaults where already provided by server context.
-- Automatic opening of follow-up requirements from encounter outcomes.
-- Keyboard draft save in Encounter.
-- Progressive disclosure for technical IDs, policy metadata, provider secrets and audit evidence.
-- Mobile card layouts and sticky primary actions.
+The authoritative status, gap percentages, corrective phases and exact continuation point are now documented in:
 
-## Deliberate constraints
+`docs/FRONTEND_AUTOMATION_V1_REALITY_GAP_AUDIT.md`
 
-- Encounter autosave is not enabled because the current endpoint requires a new idempotency request and expected event version for every draft. The UI does not fake persistence.
-- No automatic clinical decision, medication change, accounting write or unapproved SMS path was added.
-- FO-6 Auto Guard remains in its separate PR and is not included while its own CI is failing.
-- Clinical Engine activation/rollback and low-level workflow controls remain functionally unchanged; technical patient-facing evidence is hidden by default.
-
-## Confirmation policy after V1
-
-Confirmation remains for:
-
-- finalising an encounter;
-- changing patient messaging consent;
-- reversing a financial adjustment;
-- clearing an SMS provider secret;
-- existing activation/rollback or other irreversible backend-governed operations.
-
-Routine filters, contact outcomes, queue start, appointment status, ordinary settings save and finance review completion do not add a second confirmation.
-
-## Verification gates
-
-- Specialist Clinic full test suite.
-- Accounting suite and read-only boundary.
-- UI information architecture contracts.
-- Frontend Automation V1 contracts.
-- Merge only after both required GitHub Actions jobs pass on the final head.
+No future completion report may be marked complete without route smoke tests and explicit browser acceptance for the primary navigation surfaces.

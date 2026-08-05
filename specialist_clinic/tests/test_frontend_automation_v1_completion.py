@@ -1,4 +1,4 @@
-"""Contracts for the automation-first completion surfaces."""
+"""Contracts for the delivered automation surfaces and honest status reporting."""
 from pathlib import Path
 
 
@@ -9,17 +9,15 @@ def read(path: str) -> str:
     return (ROOT / path).read_text(encoding="utf-8")
 
 
-def test_completion_report_records_deliberate_frontend_boundaries():
+def test_previous_completion_claim_is_withdrawn_and_replaced_by_gap_audit():
     report = read("docs/FRONTEND_AUTOMATION_V1_COMPLETION_REPORT.md")
-    for value in (
-        "Home replaced by an action-first dashboard",
-        "Message Center reduced",
-        "Settings replaced by progressive",
-        "Finance review changed to exception-first",
-        "does not fake persistence",
-        "FO-6 Auto Guard remains in its separate PR",
-    ):
-        assert value in report
+    audit = read("docs/FRONTEND_AUTOMATION_V1_REALITY_GAP_AUDIT.md")
+    assert "Previous Completion Report (Withdrawn)" in report
+    assert "not supported by the actual browser experience" in report
+    assert "REALITY_GAP_AUDIT" in report
+    assert "about 31%" in audit
+    assert "Repair 1 — Global shell and route reliability" in audit
+    assert "Doctor Queue" in audit and "404" in audit
 
 
 def test_home_is_action_first_and_uses_existing_workflows():
@@ -73,12 +71,13 @@ def test_finance_review_keeps_readonly_accounting_and_confirms_only_reversal():
     assert "accounting" not in page.lower() or "فاکتور" in page
 
 
-def test_completion_styles_have_mobile_breakpoints():
+def test_completion_surface_styles_have_mobile_breakpoints():
     for css_path in (
         "src/static/css/dashboard-automation-v1.css",
         "src/static/css/settings-automation-v1.css",
         "src/static/css/message-center-automation-v1.css",
         "src/static/css/finance-automation-v1.css",
+        "src/static/css/shell-automation-v2.css",
     ):
         css = read(css_path)
         assert "@media(max-width:" in css

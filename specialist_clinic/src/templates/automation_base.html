@@ -2,13 +2,7 @@
 
 {% block head %}
 {{ super() }}
-<link rel="stylesheet" href="{{ url_for('static', filename='css/automation-v1.css') }}">
 {% if request.endpoint == 'manager.settings' %}
 <meta name="clinic-kavenegar-api-key-source" content="CLINIC_KAVENEGAR_API_KEY">
 {% endif %}
-{% endblock %}
-
-{% block scripts %}
-{{ super() }}
-<script src="{{ url_for('static', filename='js/automation-v1.js') }}"></script>
 {% endblock %}

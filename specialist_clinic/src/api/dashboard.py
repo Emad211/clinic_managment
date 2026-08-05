@@ -32,6 +32,20 @@ REASON_FA = {
 }
 
 
+@bp.get("/doctor-queue")
+@login_required
+def doctor_queue_without_trailing_slash():
+    """Stable entry for browsers/bookmarks that omit the canonical slash."""
+    return redirect(url_for("doctor_queue.index"))
+
+
+@bp.get("/doctor_queue")
+@login_required
+def doctor_queue_legacy_alias():
+    """Compatibility redirect for the historical underscore-shaped path."""
+    return redirect(url_for("doctor_queue.index"))
+
+
 @bp.post("/finance/reconcile")
 @permission_required(Permission.OPERATIONAL_HEALTH_VIEW)
 def reconcile_finance():

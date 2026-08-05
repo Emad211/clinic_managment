@@ -1,5 +1,6 @@
 """Guard the one-home-per-capability information architecture."""
 from pathlib import Path
+import re
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -9,11 +10,20 @@ def template(name):
     return (ROOT / "src" / "templates" / name).read_text(encoding="utf-8")
 
 
-def test_followups_have_one_primary_work_center_and_not_message_tabs():
+def test_shell_has_one_native_work_center_and_no_legacy_primary_destinations():
     base = template("base.html")
-    assert "url_for('followups.worklist')" not in base
+    automation = (ROOT / "src" / "static" / "js" / "automation-v1.js").read_text(encoding="utf-8")
+    assert "مرکز کارها" in base
+    assert "url_for('unified_followups.index')" in base
+    assert "url_for('control_room.index')" not in base
+    assert "اتاقِ کنترل" not in base
+    assert "هاب پیام" not in base
+    assert "بازبینی وصول" not in base
+    assert "humanizePrimaryNavigation" not in automation
+
+
+def test_message_center_does_not_duplicate_followup_navigation():
     hub = template("sms/_hub_tabs.html")
-    assert hub.count("url_for('followups.worklist')") == 1
     assert "مرکز کارها" in hub
     assert "هشدارهای بالینی" not in hub
     assert "ورک‌لیستِ تماس" not in hub
@@ -76,14 +86,16 @@ def test_disease_page_is_the_visible_home_for_indicator_management():
     assert "افزودن شاخص به" in detail
 
 
-def test_control_room_has_a_balanced_three_level_layout():
+def test_control_room_has_a_balanced_three_level_layout_but_is_not_primary_nav():
     page = template("control_room.html")
+    base = template("base.html")
     assert 'class="control-summary"' in page
     assert 'class="control-cohorts"' in page
     assert 'class="card control-patient-list"' in page
     assert "grid grid-4" not in page
     assert "🔴" not in page and "💰" not in page and "📋" not in page
     assert page.count('class="card kpi') == 3
+    assert "url_for('control_room.index')" not in base
 
 
 def test_message_center_has_four_clear_destinations_and_responsive_controls():
@@ -160,25 +172,34 @@ def test_component_contract_has_shared_control_sizes_and_accessible_icon_buttons
 
     templates = list((ROOT / "src" / "templates").rglob("*.html"))
     all_markup = "\n".join(path.read_text(encoding="utf-8") for path in templates)
-    icon_buttons = [line for line in all_markup.splitlines() if "btn-icon" in line and "<button" in line]
+    icon_buttons = re.findall(
+        r'<button\b(?=[^>]*class="[^"]*btn-icon[^"]*")[^>]*>',
+        all_markup,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
     assert icon_buttons
-    assert all('aria-label="' in line for line in icon_buttons)
+    assert all('aria-label="' in tag for tag in icon_buttons)
     assert "btn-secondary" not in all_markup
     assert not any("style=" in line for line in all_markup.splitlines() if "class=\"btn" in line)
 
 
-def test_global_shell_supports_mobile_navigation_loading_and_error_states():
+def test_global_shell_supports_native_role_navigation_mobile_bottom_nav_and_errors():
     base = template("base.html")
-    css = (ROOT / "src" / "static" / "css" / "app.css").read_text(encoding="utf-8")
+    app_css = (ROOT / "src" / "static" / "css" / "app.css").read_text(encoding="utf-8")
+    shell_css = (ROOT / "src" / "static" / "css" / "shell-automation-v2.css").read_text(encoding="utf-8")
+    shell_js = (ROOT / "src" / "static" / "js" / "shell-automation-v2.js").read_text(encoding="utf-8")
     app = (ROOT / "src" / "app.py").read_text(encoding="utf-8")
     assert 'class="skip-link"' in base
     assert 'class="mobile-shell-header"' in base
+    assert 'class="mobile-bottom-nav"' in base
     assert 'aria-controls="clinic-sidebar"' in base
-    assert "document.body.classList.toggle('nav-open'" in base
-    assert "e.submitter" in base and "btn.classList.add('is-loading')" in base
-    assert "if(btn.name)" in base
-    assert "markScrollableTables" in base
-    assert "@media(max-width:900px)" in css and ".sidebar.is-open" in css
+    assert "permissions.get('clinical.task.view')" in base
+    assert "permissions.get('financial.review.view')" in base
+    assert "document.body.classList.toggle('nav-open'" in shell_js
+    assert "event.submitter" in shell_js and "button.classList.add('is-loading')" in shell_js
+    assert "markScrollableTables" in shell_js
+    assert "@media(max-width:900px)" in app_css and ".sidebar.is-open" in app_css
+    assert "@media(max-width:900px)" in shell_css and ".mobile-bottom-nav" in shell_css
     assert "@app.errorhandler(404)" in app and "@app.errorhandler(500)" in app
     assert 'class="error-state"' in template("errors/error.html")
 
