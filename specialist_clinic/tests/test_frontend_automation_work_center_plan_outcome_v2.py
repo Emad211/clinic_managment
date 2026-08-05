@@ -46,7 +46,10 @@ def test_plan_completion_route_records_real_evidence_and_is_idempotent(a10_app):
         note="اقدام با بیمار تأیید شد",
     )
     FollowupEpisodeBackfillService(db).run(apply=True)
-    FollowupProjectionService(db).run(apply=True)
+    FollowupProjectionService(db).run(
+        as_of_at=ctx["now"].strftime("%Y-%m-%d %H:%M:%S"),
+        apply=True,
+    )
     episode = db.execute(
         """SELECT episode_id FROM followup_episode_links
            WHERE source_type='ENCOUNTER_COMMITMENT'
