@@ -1,5 +1,6 @@
 {% extends "automation_base.html" %}
 {% block title %}امور مالی{% endblock %}
+{% block head %}{{ super() }}<link rel="stylesheet" href="{{ url_for('static', filename='css/finance-automation-v1.css') }}">{% endblock %}
 {% block content %}
 {% set status_labels = {'READY':'بازبینی‌شده','FINANCIAL_REVIEW_REQUIRED':'نیازمند بازبینی','FINANCIAL_REVIEW_STALE':'بازبینی قدیمی','PAYER_BREAKDOWN_MISSING':'تفکیک پرداخت ناقص'} %}
 <header class="auto-page-header">
