@@ -56,7 +56,7 @@ def _next_quarter_hour() -> datetime:
 def _form_defaults(source) -> dict:
     suggested = _next_quarter_hour()
     patient_id = source.get("patient_link_id", type=int)
-    requested_type = str(source.get("appt_type") or "visit").strip().lower()
+    requested_type = str(source.get("appt_type") or "visit").strip().lower() or "visit"
     return_url = str(source.get("return_url") or "").strip()
     if not return_url and patient_id:
         return_url = f"/patients/{int(patient_id)}"
@@ -67,7 +67,7 @@ def _form_defaults(source) -> dict:
             or format_jalali_date(suggested.strftime("%Y-%m-%d"))
         ).strip(),
         "time": str(source.get("time") or suggested.strftime("%H:%M")).strip(),
-        "appt_type": requested_type if requested_type in APPT_TYPES else "visit",
+        "appt_type": requested_type,
         "recurrence_months": str(source.get("recurrence_months") or "").strip(),
         "notes": str(source.get("notes") or "").strip(),
         "return_url": return_url,
@@ -81,6 +81,7 @@ def _render_new(*, values: dict, errors: list[str] | None = None, status: int = 
         if values.get("patient_link_id")
         else None
     )
+    list_fallback = url_for("appointments.list_appointments", view="today")
     return (
         render_template(
             "appointments/new.html",
@@ -89,6 +90,7 @@ def _render_new(*, values: dict, errors: list[str] | None = None, status: int = 
             recurrence_options=sorted(RECURRENCE_OPTIONS),
             form_values=values,
             selected_patient=selected_patient,
+            cancel_url=_safe_return_url(values.get("return_url"), list_fallback),
             errors=errors or [],
             active_page="appointments",
         ),
