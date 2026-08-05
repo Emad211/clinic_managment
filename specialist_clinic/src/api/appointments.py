@@ -58,7 +58,10 @@ def _form_defaults(source) -> dict:
     requested_type = str(source.get("appt_type") or "visit").strip().lower()
     return {
         "patient_link_id": source.get("patient_link_id", type=int),
-        "date": str(source.get("date") or format_jalali_date(suggested.date())).strip(),
+        "date": str(
+            source.get("date")
+            or format_jalali_date(suggested.strftime("%Y-%m-%d"))
+        ).strip(),
         "time": str(source.get("time") or suggested.strftime("%H:%M")).strip(),
         "appt_type": requested_type if requested_type in APPT_TYPES else "visit",
         "recurrence_months": str(source.get("recurrence_months") or "").strip(),
