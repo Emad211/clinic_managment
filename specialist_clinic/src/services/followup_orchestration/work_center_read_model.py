@@ -75,7 +75,13 @@ class WorkCenterReadModelService:
 
     def counts(self, *, actor_user_id: int) -> dict[str, int]:
         readiness = self.base.readiness()
-        empty = {"mine": 0, "unassigned": 0, "all": 0, "completed": 0, "manager": 0}
+        empty = {
+            "mine": 0,
+            "unassigned": 0,
+            "all": 0,
+            "completed": 0,
+            "manager": 0,
+        }
         if not readiness["ready"]:
             return empty
         try:
@@ -149,10 +155,12 @@ class WorkCenterReadModelService:
             role=role,
             sla_state=sla_state,
         )
-        # The view owns terminal/open separation. Conflicting raw status filters are
-        # discarded so a tab can never silently render an impossible combination.
+        # Tabs own open/completed separation. The completed view deliberately keeps
+        # only text search; active-state, queue and SLA filters do not apply there.
         if view == "completed":
             filters["state"] = ""
+            filters["role"] = ""
+            filters["sla"] = ""
         elif filters["state"] == "TERMINAL":
             filters["state"] = ""
         filters["view"] = view
