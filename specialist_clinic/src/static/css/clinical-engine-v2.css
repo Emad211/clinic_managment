@@ -1,3 +1,5 @@
+@import url("patient-automation-v1.css");
+
 .cev2{border-color:var(--line-strong)}
 .cev2-head{display:flex;align-items:flex-start;justify-content:space-between;gap:var(--s4);margin-bottom:var(--s4)}
 .cev2-head .section-title{margin-bottom:var(--s2);flex-wrap:wrap}
