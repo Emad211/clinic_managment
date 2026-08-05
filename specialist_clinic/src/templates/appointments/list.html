@@ -1,5 +1,6 @@
 {% extends "automation_base.html" %}
 {% block title %}نوبت‌ها{% endblock %}
+{% block head %}{{ super() }}<link rel="stylesheet" href="{{ url_for('static', filename='css/appointments-automation-v1.css') }}">{% endblock %}
 {% block content %}
 <header class="auto-page-header">
     <div class="auto-page-header__copy">
