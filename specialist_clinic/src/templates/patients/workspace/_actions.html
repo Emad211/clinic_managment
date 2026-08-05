@@ -1,0 +1,72 @@
+<section class="workspace-action-grid" aria-label="اقدامات بیمار">
+    <a class="workspace-action-card is-primary" href="{{ url_for('appointments.new_appointment', patient_link_id=patient.id, return_url=request.full_path) }}">
+        <span class="workspace-action-icon"><svg class="icon"><use href="#i-calendar"></use></svg></span>
+        <span><b>ثبت نوبت</b><small>بیمار از قبل انتخاب است و پس از ثبت به همین پرونده برمی‌گردید.</small></span>
+        <svg class="icon icon-sm"><use href="#i-chevron-left"></use></svg>
+    </a>
+    <a class="workspace-action-card" href="{{ url_for('unified_followups.index', view='all', q=patient.national_id or patient.full_name) if config.get('FOLLOWUP_UNIFIED_WORKLIST_READONLY') else url_for('followups.worklist', q=patient.national_id or patient.full_name) }}">
+        <span class="workspace-action-icon"><svg class="icon"><use href="#i-list-checks"></use></svg></span>
+        <span><b>مرکز کارها</b><small>پیگیری‌های بیمار را در مسیر یکپارچه رسیدگی کنید.</small></span>
+        <svg class="icon icon-sm"><use href="#i-chevron-left"></use></svg>
+    </a>
+    <a class="workspace-action-card" href="{{ url_for('patients.card_admin', pid=patient.id) }}">
+        <span class="workspace-action-icon"><svg class="icon"><use href="#i-bell"></use></svg></span>
+        <span><b>کارت و یادآوری بیمار</b><small>تنظیمات ارتباط و دسترسی کارت بیمار.</small></span>
+        <svg class="icon icon-sm"><use href="#i-chevron-left"></use></svg>
+    </a>
+    <a class="workspace-action-card" href="{{ url_for('clinical_reconciliation.workspace', pid=patient.id) }}">
+        <span class="workspace-action-icon"><svg class="icon"><use href="#i-refresh"></use></svg></span>
+        <span><b>بررسی اختلاف داده</b><small>شرایط، داروها و حساسیت‌ها را با منبع اصلی تطبیق دهید.</small></span>
+        <svg class="icon icon-sm"><use href="#i-chevron-left"></use></svg>
+    </a>
+</section>
+
+{% include "patients/_sms_consent.html" %}
+
+<section class="card" aria-labelledby="workspace-quick-vitals-title">
+    <div class="section-title"><svg class="icon"><use href="#i-zap"></use></svg><div><div id="workspace-quick-vitals-title">ثبت سریع شاخص‌ها</div><div class="section-sub">فقط مقادیر موجود را وارد کنید؛ فیلد خالی ثبت نمی‌شود.</div></div></div>
+    <form method="post" action="{{ url_for('vitals.add_reading', pid=patient.id) }}" class="workspace-vitals-form">
+        <input type="hidden" name="workspace_tab" value="actions">
+        <div class="workspace-vital-inputs">
+            {% for indicator in entry_indicators %}
+            <div class="fld">
+                <label for="action-vital-{{ indicator.key }}">{{ indicator.label }}</label>
+                <input id="action-vital-{{ indicator.key }}" type="number" step="any" name="{{ indicator.key }}" placeholder="{{ indicator.unit or '' }}">
+            </div>
+            {% else %}<div class="empty-mini">برای این بیمار شاخص تخصصی فعالی تعریف نشده است.</div>{% endfor %}
+        </div>
+        <div class="workspace-vitals-actions">
+            <div class="fld"><label for="action-measured-date">تاریخ اندازه‌گیری</label><input id="action-measured-date" class="jdate" name="measured_date" placeholder="خالی = امروز"></div>
+            <button class="btn" type="submit"><svg class="icon icon-sm"><use href="#i-save"></use></svg> ثبت شاخص‌ها</button>
+        </div>
+    </form>
+</section>
+
+<div class="workspace-two-column">
+    <section class="card" aria-labelledby="workspace-open-work-title">
+        <div class="section-title"><svg class="icon"><use href="#i-list-checks"></use></svg><div><div id="workspace-open-work-title">کارهای باز بیمار</div><div class="section-sub">کارهای بالینی و اداری از یک منبع خوانده می‌شوند.</div></div></div>
+        {% if followups %}
+        <div class="workspace-compact-list">
+            {% for item in followups %}
+            <div>
+                <span><b>{{ item.reason }}</b><small>{{ item.detail or 'بدون توضیح' }}</small></span>
+                <time>{{ (item.current_due_at or item.due_date)|jalali if (item.current_due_at or item.due_date) else 'بدون موعد' }}</time>
+            </div>
+            {% endfor %}
+        </div>
+        <a class="btn btn-sm btn-ghost mt-3" href="{{ url_for('unified_followups.index', view='all', q=patient.national_id or patient.full_name) if config.get('FOLLOWUP_UNIFIED_WORKLIST_READONLY') else url_for('followups.worklist', q=patient.national_id or patient.full_name) }}">رسیدگی در مرکز کارها</a>
+        {% else %}<div class="empty-mini">کار بازی برای بیمار وجود ندارد.</div>{% endif %}
+    </section>
+
+    {% if permissions.get('followup.admin.manage') %}
+    <section class="card" aria-labelledby="workspace-manual-work-title">
+        <div class="section-title"><svg class="icon"><use href="#i-plus"></use></svg><div><div id="workspace-manual-work-title">افزودن کار اداری</div><div class="section-sub">برای کار بالینی از موتور و مسیرهای حاکمیت‌شده استفاده کنید.</div></div></div>
+        <form method="post" action="{{ url_for('followups.add_manual') }}" class="stack">
+            <input type="hidden" name="patient_link_id" value="{{ patient.id }}">
+            <div class="fld"><label for="manual-work-detail">کار موردنیاز</label><textarea id="manual-work-detail" name="detail" rows="3" required placeholder="مثلاً تماس برای تکمیل مدارک"></textarea></div>
+            <div class="fld"><label for="manual-work-due">موعد</label><input id="manual-work-due" class="jdate" name="due_date" placeholder="اختیاری"></div>
+            <button class="btn" type="submit">ثبت کار</button>
+        </form>
+    </section>
+    {% endif %}
+</div>
