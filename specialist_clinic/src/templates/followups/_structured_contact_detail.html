@@ -80,7 +80,7 @@
 </section>
 {% endif %}
 
-{% if item.state_class != 'TERMINAL' and permissions.get('sms.view') %}
+{% if actions_enabled and item.state_class != 'TERMINAL' and permissions.get('sms.view') %}
 <section class="card work-item-message-action" aria-labelledby="work-message-title">
     <div class="section-title">
         <svg class="icon"><use href="#i-megaphone"></use></svg>
@@ -99,7 +99,7 @@
 </section>
 {% endif %}
 
-{% if item.state_class != 'TERMINAL' and is_clinical_task and permissions.get('clinical.outcome.record') and permissions.get('clinical.task.transition') %}
+{% if actions_enabled and item.state_class != 'TERMINAL' and is_clinical_task and permissions.get('clinical.outcome.record') and permissions.get('clinical.task.transition') %}
 <details class="card work-item-evidence-action">
     <summary class="section-title">
         <svg class="icon"><use href="#i-check"></use></svg>
@@ -124,14 +124,14 @@
         <div class="fld"><label for="clinical-fact-key">Fact key <span class="muted">در صورت الزام کار</span></label><input id="clinical-fact-key" name="fact_key" placeholder="مثلاً lab.hba1c" dir="ltr"></div>
         <div class="fld"><label for="clinical-value">مقدار</label><input id="clinical-value" name="value" inputmode="decimal"></div>
         <div class="fld"><label for="clinical-unit">واحد</label><input id="clinical-unit" name="unit" dir="ltr"></div>
-        <div class="fld"><label for="clinical-observed-at">تاریخ مشاهده</label><input id="clinical-observed-at" class="jdate" name="observed_at" placeholder="خالی = اکنون"></div>
+        <div class="fld"><label for="clinical-observed-at">تاریخ مشاهده</label><input id="clinical-observed-at" class="jdate" name="observed_at" placeholder="خالی = امروز"></div>
         <div class="fld work-item-evidence-form__note"><label for="clinical-note">توضیح شاهد</label><textarea id="clinical-note" name="note" rows="2" maxlength="1000"></textarea></div>
         <button class="btn btn-ok" type="submit">ثبت شاهد، تکمیل و کار بعدی</button>
     </form>
 </details>
 {% endif %}
 
-{% if item.state_class != 'TERMINAL' and is_plan_task and permissions.get('followup.plan.transition') %}
+{% if actions_enabled and item.state_class != 'TERMINAL' and is_plan_task and permissions.get('followup.plan.transition') %}
 <details class="card work-item-evidence-action">
     <summary class="section-title">
         <svg class="icon"><use href="#i-check"></use></svg>
