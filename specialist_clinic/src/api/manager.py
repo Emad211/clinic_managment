@@ -39,9 +39,16 @@ def clinical_engine():
     from src.services.clinical_engine.validation_service import ClinicalValidationService
     projection["validation"] = ClinicalValidationService().dashboard()
     requested_step = request.args.get("step", type=int)
+    advanced_view = request.args.get("view") == "advanced" or requested_step is not None
     return render_template(
-        "manager/clinical_engine.html", engine=projection,
-        requested_step=requested_step, active_page="clinical_engine",
+        (
+            "manager/clinical_engine.html"
+            if advanced_view
+            else "manager/clinical_engine_landing.html"
+        ),
+        engine=projection,
+        requested_step=requested_step,
+        active_page="clinical_engine",
     )
 
 
@@ -64,7 +71,10 @@ def clinical_engine_action(action):
         required = Permission.RULE_REVIEW_CLINICAL
     if not has_permission(required):
         flash("مجوز governشدهٔ لازم برای این عملیات ثبت نشده است.", "error")
-        return redirect(url_for("manager.clinical_engine") + "#engine-actions")
+        return redirect(
+            url_for("manager.clinical_engine", view="advanced")
+            + "#engine-actions"
+        )
     service = ClinicalEngineActivationService()
     actor = str(g.user["username"] or "manager")
     reviewer = (request.form.get("reviewer") or g.user["full_name"] or actor).strip()
@@ -194,7 +204,10 @@ def clinical_engine_action(action):
             raise ActivationGateError("عملیات ناشناخته است")
     except (ActivationGateError, ValueError, LookupError) as exc:
         flash(f"عملیات انجام نشد: {exc}", "error")
-    return redirect(url_for("manager.clinical_engine") + "#engine-actions")
+    return redirect(
+        url_for("manager.clinical_engine", view="advanced")
+        + "#engine-actions"
+    )
 
 
 @bp.get("/clinical-engine/validation")
@@ -275,6 +288,16 @@ def clinical_validation_action(action):
 def settings():
     repo = SmsRepository()
     if request.method == "POST":
+        settings_context = str(request.form.get("settings_context") or "").strip()
+
+        def settings_redirect():
+            if settings_context == "messages":
+                return redirect(
+                    url_for("manager.settings", section="messages")
+                    + "#settings-sms"
+                )
+            return redirect(url_for("manager.settings"))
+
         def _update_sms_secret(setting_key: str, form_key: str) -> None:
             clear = request.form.get(f"clear_{form_key}") == "1"
             supplied = str(request.form.get(form_key) or "").strip()
@@ -307,7 +330,7 @@ def settings():
                 amount = -1
             if amount < 0:
                 flash('هزینه هر بخش پیامک باید عدد صحیح نامنفی باشد.', 'error')
-                return redirect(url_for('manager.settings'))
+                return settings_redirect()
             repo.set_setting(field, str(amount))
         repo.set_setting('reminder_template', request.form.get('reminder_template', '').strip())
         # Free-prescription header / stamp settings (printed on app-issued non-insurance scripts).
@@ -323,7 +346,7 @@ def settings():
         # internet path lands). Empty -> fall back to the request host. Shared seam for path 2.
         repo.set_setting('public_base_url', request.form.get('public_base_url', '').strip())
         flash("تنظیمات ذخیره شد", "success")
-        return redirect(url_for("manager.settings"))
+        return settings_redirect()
     from src.services.sms.secret_resolver import masked_secret
     data = {
         'sms_provider': repo.get_setting('sms_provider', 'kavenegar'),
@@ -361,8 +384,13 @@ def settings():
         request_port = Config.PORT
     network_info = get_network_info(request_port)
     network_info['accounting_bridge_available'] = accounting_bridge.is_available()
+    message_settings_context = request.args.get("section") == "messages"
     return render_template(
-        "manager/settings.html", data=data, network_info=network_info, active_page='manager'
+        "manager/settings.html",
+        data=data,
+        network_info=network_info,
+        message_settings_context=message_settings_context,
+        active_page='sms' if message_settings_context else 'manager',
     )
 
 
