@@ -34,5 +34,5 @@ def test_persian_datepicker_dark_theme_covers_base_and_selected_days():
 
 
 def test_datepicker_hides_the_english_calendar_switch_button():
-    base = _read("src/templates/base.html")
-    assert "calendarSwitch:{enabled:false}" in base
+    shell_script = _read("src/static/js/shell-automation-v2.js")
+    assert "calendarSwitch: { enabled: false }" in shell_script
