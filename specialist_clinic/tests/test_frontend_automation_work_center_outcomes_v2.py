@@ -362,5 +362,6 @@ def test_work_center_detail_exposes_only_safe_message_and_evidence_forms(outcome
     assert "ثبت شاهد، تکمیل و کار بعدی" in clinical
     assert "متن آزاد" in clinical
     assert "افزودن به صف تأیید و کار بعدی" in administrative
-    assert "ارسال مستقیم" not in administrative
+    assert 'action="/sms/send' not in administrative
+    assert ">ارسال اکنون<" not in administrative
     assert "work_center_outcomes.queue_message" not in administrative
