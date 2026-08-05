@@ -1,197 +1,183 @@
 {% extends "automation_base.html" %}
 {% block title %}رسیدگی به کار{% endblock %}
+{% block head %}
+{{ super() }}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/work-center-automation-v2.css') }}">
+{% endblock %}
 {% block content %}
 
-<header class="auto-page-header">
-    <div class="auto-page-header__copy">
-        <a class="muted text-sm" href="{{ url_for('unified_followups.index') }}">مرکز کارها / بازگشت</a>
-        <h1><svg class="icon"><use href="#i-list-checks"></use></svg> رسیدگی به {{ item.patient_name }}</h1>
-        {% if actions_enabled %}
-        <p class="muted">علت، وضعیت و اقدام بعدی را ببینید و همان‌جا کار را جلو ببرید.</p>
-        {% else %}
-        <p class="muted">این نما فقط اطلاعات را نشان می‌دهد و هیچ تغییری در پرونده یا تسک ایجاد نمی‌کند.</p>
-        {% endif %}
-    </div>
-    <div class="auto-page-header__actions">
-        <a class="btn btn-ghost" href="{{ url_for('patients.detail', pid=item.patient_link_id) }}">پرونده بیمار</a>
-        {% if actions_enabled and item.state_class != 'TERMINAL' and ownership_capabilities.can_claim and not ownership.assigned %}
-        <form method="post" action="{{ url_for('unified_followups.claim', episode_id=item.episode_id) }}">
-            <input type="hidden" name="expected_event_id" value="{{ ownership.expected_event_id }}">
-            <input type="hidden" name="idempotency_key" value="{{ ownership_action_token }}:claim:{{ item.episode_id }}">
-            <button class="btn" type="submit">دریافت برای رسیدگی</button>
-        </form>
-        {% endif %}
-    </div>
-</header>
+{% macro context_fields() -%}
+<input type="hidden" name="work_view" value="{{ work_context.view }}">
+<input type="hidden" name="q" value="{{ work_context.q }}">
+<input type="hidden" name="state" value="{{ work_context.state }}">
+<input type="hidden" name="role" value="{{ work_context.role }}">
+<input type="hidden" name="sla" value="{{ work_context.sla }}">
+<input type="hidden" name="page" value="{{ work_context.page }}">
+<input type="hidden" name="per_page" value="{{ work_context.per_page }}">
+{%- endmacro %}
 
-{% if item.is_stale %}
-<div class="card card-soft" role="alert">
-    <div class="section-title">
+<section class="work-item-drawer" aria-labelledby="work-item-title">
+    <header class="work-item-drawer__header">
+        <div>
+            <a class="work-item-back" href="{{ return_url }}"><svg class="icon icon-sm"><use href="#i-arrow-left"></use></svg> بازگشت به مرکز کارها</a>
+            <h1 id="work-item-title"><svg class="icon"><use href="#i-list-checks"></use></svg> رسیدگی به {{ item.patient_name }}</h1>
+            <p class="muted">علت، اقدام فعلی و نتیجهٔ تماس در یک Workspace؛ جزئیات مدیریتی و ممیزی فقط هنگام نیاز باز می‌شوند.</p>
+        </div>
+        <div class="work-item-drawer__header-actions">
+            <a class="btn btn-ghost" href="{{ url_for('patients.detail', pid=item.patient_link_id) }}">پرونده بیمار</a>
+            {% if next_item_url %}<a class="btn btn-ghost" href="{{ next_item_url }}">کار بعدی</a>{% endif %}
+        </div>
+    </header>
+
+    {% if item.is_stale %}
+    <div class="alert-banner alert-warn" role="alert">
         <svg class="icon"><use href="#i-alert"></use></svg>
-        <div>
-            <div>اطلاعات این نما قدیمی است یا زمان بازسازی معتبری ندارد</div>
-            <div class="section-sub">قبل از تصمیم، وضعیت بیمار را در پرونده بررسی کنید.</div>
-        </div>
+        <span>اطلاعات این نما نیازمند بازخوانی است؛ پیش از تصمیم درمانی، پرونده بیمار را بررسی کنید.</span>
     </div>
-</div>
-{% endif %}
-
-<section class="card" aria-labelledby="work-summary-title">
-    <div class="section-title">
-        <svg class="icon"><use href="#i-zap"></use></svg>
-        <div>
-            <div id="work-summary-title">کاری که اکنون باید انجام شود</div>
-            <div class="section-sub">فقط اطلاعات لازم برای تصمیم فعلی نمایش داده شده است.</div>
-        </div>
-    </div>
-    <div class="grid grid-3">
-        <div>
-            <span class="muted text-sm">علت</span>
-            <p><span class="badge badge-info">{{ item.reason_label }}</span></p>
-            <p class="text-sm">{{ item.why_created }}</p>
-        </div>
-        <div>
-            <span class="muted text-sm">وضعیت</span>
-            <p>
-                <span class="badge {% if item.state_class == 'BLOCKED' %}badge-danger{% elif item.state_class == 'ACTION_REQUIRED' %}badge-warn{% elif item.state_class == 'WAITING' %}badge-info{% else %}badge-muted{% endif %}">{{ item.state_label }}</span>
-                {% if item.is_overdue %}<span class="badge badge-danger">موعد گذشته</span>{% endif %}
-            </p>
-            <p class="text-sm"><b>{{ item.primary_explanation }}</b></p>
-        </div>
-        <div>
-            <span class="muted text-sm">صف و مسئول</span>
-            <p><b>{{ ownership.owner_role_label }}</b></p>
-            <p>
-                <span class="muted text-xs">مسئول فعلی</span><br>
-                {% if ownership.assigned %}<span class="badge badge-ok">{{ ownership.owner_name }}</span>{% else %}<span class="badge badge-muted">بدون مسئول</span>{% endif %}
-            </p>
-        </div>
-    </div>
-</section>
-
-{% include "followups/_structured_contact_detail.html" %}
-
-{% if actions_enabled and item.state_class != 'TERMINAL' %}
-<section class="card" id="ownership-actions" aria-labelledby="ownership-actions-title">
-    <div class="section-title">
-        <svg class="icon"><use href="#i-user"></use></svg>
-        <div>
-            <div id="ownership-actions-title">رسیدگی و واگذاری</div>
-            <div class="section-sub">اقدام اصلی بالا قرار دارد؛ واگذاری و تغییر صف فقط در صورت نیاز باز می‌شوند.</div>
-        </div>
-    </div>
-
-    <div class="flex gap-2 wrap">
-        {% if ownership_capabilities.can_release and ownership.assigned %}
-        <form method="post" action="{{ url_for('unified_followups.release', episode_id=item.episode_id) }}">
-            <input type="hidden" name="expected_event_id" value="{{ ownership.expected_event_id }}">
-            <input type="hidden" name="idempotency_key" value="{{ ownership_action_token }}:release:{{ item.episode_id }}">
-            <input type="hidden" name="reason_code" value="OWNER_RELEASE">
-            <button class="btn btn-ghost" type="submit">آزادکردن و بازگرداندن به صف</button>
-        </form>
-        {% endif %}
-    </div>
-
-    {% if ownership_capabilities.can_assign or (routing_enabled and ownership_capabilities.can_route) %}
-    <details class="auto-technical" style="margin-top:var(--s3);">
-        <summary>واگذاری یا تغییر صف</summary>
-        <div class="auto-technical__body">
-            {% if ownership_capabilities.can_assign %}
-            <form method="post" action="{{ url_for('unified_followups.assign', episode_id=item.episode_id) }}" class="grid grid-2">
-                <input type="hidden" name="expected_event_id" value="{{ ownership.expected_event_id }}">
-                <input type="hidden" name="idempotency_key" value="{{ ownership_action_token }}:assign:{{ item.episode_id }}">
-                <input type="hidden" name="reason_code" value="MANAGER_ASSIGN">
-                <div class="fld">
-                    <label for="owner-user">مسئول جدید</label>
-                    <select id="owner-user" name="owner_user_id" required>
-                        <option value="">انتخاب کاربر</option>
-                        {% for user in assignable_users %}<option value="{{ user.id }}">{{ user.label }}</option>{% endfor %}
-                    </select>
-                </div>
-                <div style="align-self:end;">
-                    <button class="btn btn-ghost" type="submit">ثبت مسئول</button>
-                </div>
-            </form>
-            {% endif %}
-
-            {% if routing_enabled and ownership_capabilities.can_route %}
-            <form method="post" action="{{ url_for('unified_followups.route', episode_id=item.episode_id) }}" class="grid grid-2" style="margin-top:var(--s3);">
-                <input type="hidden" name="expected_event_id" value="{{ ownership.expected_event_id }}">
-                <input type="hidden" name="idempotency_key" value="{{ ownership_action_token }}:route:{{ item.episode_id }}">
-                <input type="hidden" name="reason_code" value="MANAGER_ROUTE">
-                <div class="fld">
-                    <label for="owner-role">صف جدید</label>
-                    <select id="owner-role" name="owner_role" required>
-                        {% for key, label in ownership_role_labels.items() %}<option value="{{ key }}" {% if ownership.owner_role == key %}selected{% endif %}>{{ label }}</option>{% endfor %}
-                    </select>
-                </div>
-                <div style="align-self:end;">
-                    <button class="btn btn-ghost" type="submit">تغییر صف</button>
-                </div>
-            </form>
-            {% endif %}
-        </div>
-    </details>
     {% endif %}
-</section>
-{% endif %}
 
-<section class="card" aria-labelledby="timing-title">
-    <div class="section-title">
-        <svg class="icon"><use href="#i-calendar"></use></svg>
-        <div><div id="timing-title">زمان‌بندی</div><div class="section-sub">موعد اقدام برای تصمیم روزانه؛ زمان هدف برای پایان مسیر.</div></div>
+    {% if actions_enabled and ownership_capabilities.can_claim and not ownership.assigned %}
+    <div class="alert-banner alert-info">
+        <svg class="icon"><use href="#i-info"></use></svg>
+        <span>این مورد هنوز مسئول ندارد. در مسیر عادی، دکمهٔ «رسیدگی» مرکز کارها آن را خودکار به کاربر مجاز واگذار می‌کند.</span>
     </div>
-    <div class="grid grid-3 nums">
-        <div><span class="muted text-sm">موعد اقدام</span><div><b>{{ item.action_due_at|jalali if item.action_due_at else 'بدون موعد' }}</b></div></div>
-        <div><span class="muted text-sm">زمان هدف</span><div><b>{{ item.target_at|jalali if item.target_at else '—' }}</b></div></div>
-        <div><span class="muted text-sm">آخرین بازسازی نما</span><div><b>{% if item.projection_age_minutes is not none %}{{ item.projection_age_minutes|fa_num }} دقیقه پیش{% else %}نامشخص{% endif %}</b></div></div>
-    </div>
-</section>
-
-<section class="card" id="timeline" aria-labelledby="timeline-title">
-    <div class="section-title">
-        <svg class="icon"><use href="#i-activity"></use></svg>
-        <div><div id="timeline-title">تاریخچه کار</div><div class="section-sub">رویدادهای مهم به‌ترتیب زمان؛ جزئیات فنی فقط در صورت نیاز.</div></div>
-    </div>
-    {% if timeline.errors %}
-    <div class="card card-soft" role="alert"><b>بخشی از تاریخچه نیازمند بررسی است.</b></div>
     {% endif %}
-    {% if timeline['items'] %}
-    <ol class="care-timeline">
-        {% for event in timeline['items'] %}
-        <li class="card card-soft">
-            <div class="flex items-center gap-2 wrap">
-                <span class="badge {% if event.warning %}badge-danger{% elif event.kind == 'SOURCE_STATE' %}badge-info{% else %}badge-muted{% endif %}">{{ event.source_label }}</span>
-                {% if event.status_label %}<span class="badge badge-muted">{{ event.status_label }}</span>{% endif %}
-                <span class="muted text-xs nums">{{ event.occurred_at|jalali if event.occurred_at else 'زمان نامشخص' }}</span>
-            </div>
-            <h3>{{ event.title }}</h3>
-            <p class="muted text-sm">{{ event.subtitle }}</p>
-            {% if event.audit %}
-            <details class="auto-technical" data-technical-details>
-                <summary>جزئیات فنی برای پشتیبانی</summary>
-                <div class="auto-technical__body">
-                    <dl class="text-xs nums">
-                        {% for key, value in event.audit.items() %}{% if value is not none %}<dt>{{ key }}</dt><dd><code dir="ltr">{{ value }}</code></dd>{% endif %}{% endfor %}
-                    </dl>
+
+    <div class="work-item-drawer__layout">
+        <main class="work-item-drawer__primary">
+            <section class="card work-item-summary" aria-labelledby="work-summary-title">
+                <div class="section-title">
+                    <svg class="icon"><use href="#i-zap"></use></svg>
+                    <div>
+                        <div id="work-summary-title">کاری که اکنون باید انجام شود</div>
+                        <div class="section-sub">فقط اطلاعات لازم برای تصمیم فعلی.</div>
+                    </div>
+                </div>
+                <div class="work-item-summary__grid">
+                    <div>
+                        <span class="muted text-sm">علت</span>
+                        <p><span class="badge badge-info">{{ item.reason_label }}</span></p>
+                        <p class="text-sm">{{ item.why_created }}</p>
+                    </div>
+                    <div>
+                        <span class="muted text-sm">وضعیت</span>
+                        <p>
+                            <span class="badge {% if item.state_class == 'BLOCKED' %}badge-danger{% elif item.state_class == 'ACTION_REQUIRED' %}badge-warn{% elif item.state_class == 'WAITING' %}badge-info{% else %}badge-muted{% endif %}">{{ item.state_label }}</span>
+                            {% if item.is_overdue %}<span class="badge badge-danger">موعد گذشته</span>{% endif %}
+                        </p>
+                        <p class="text-sm"><b>{{ item.primary_explanation }}</b></p>
+                    </div>
+                    <div>
+                        <span class="muted text-sm">صف و مسئول</span>
+                        <p><b>{{ ownership.owner_role_label }}</b></p>
+                        <p><span class="muted text-xs">مسئول فعلی</span><br>{% if ownership.assigned %}<span class="badge badge-ok">{{ ownership.owner_name }}</span>{% else %}<span class="badge badge-muted">بدون مسئول</span>{% endif %}</p>
+                    </div>
+                </div>
+            </section>
+
+            {% include "followups/_structured_contact_detail.html" %}
+        </main>
+
+        <aside class="work-item-drawer__secondary" aria-label="اطلاعات تکمیلی کار">
+            <section class="card work-item-side-card">
+                <div class="section-title"><svg class="icon"><use href="#i-calendar"></use></svg> زمان‌بندی</div>
+                <dl class="work-item-facts nums">
+                    <div><dt>موعد اقدام</dt><dd>{{ item.action_due_at|jalali if item.action_due_at else 'بدون موعد' }}</dd></div>
+                    <div><dt>زمان هدف</dt><dd>{{ item.target_at|jalali if item.target_at else '—' }}</dd></div>
+                    <div><dt>آخرین بازسازی</dt><dd>{% if item.projection_age_minutes is not none %}{{ item.projection_age_minutes|fa_num }} دقیقه پیش{% else %}نامشخص{% endif %}</dd></div>
+                </dl>
+            </section>
+
+            {% if actions_enabled and item.state_class != 'TERMINAL' %}
+            <details class="card work-item-side-card work-item-management">
+                <summary><svg class="icon icon-sm"><use href="#i-user"></use></svg> رسیدگی و واگذاری</summary>
+                <div class="work-item-management__body">
+                    {% if ownership_capabilities.can_release and ownership.assigned %}
+                    <form method="post" action="{{ url_for('unified_followups.release', episode_id=item.episode_id) }}">
+                        {{ context_fields() }}
+                        <input type="hidden" name="expected_event_id" value="{{ ownership.expected_event_id }}">
+                        <input type="hidden" name="idempotency_key" value="{{ ownership_action_token }}:release:{{ item.episode_id }}">
+                        <input type="hidden" name="reason_code" value="OWNER_RELEASE">
+                        <button class="btn btn-ghost" type="submit">آزادکردن و بازگرداندن به صف</button>
+                    </form>
+                    {% endif %}
+
+                    {% if ownership_capabilities.can_assign %}
+                    <form method="post" action="{{ url_for('unified_followups.assign', episode_id=item.episode_id) }}" class="work-item-management__form">
+                        {{ context_fields() }}
+                        <input type="hidden" name="expected_event_id" value="{{ ownership.expected_event_id }}">
+                        <input type="hidden" name="idempotency_key" value="{{ ownership_action_token }}:assign:{{ item.episode_id }}">
+                        <input type="hidden" name="reason_code" value="MANAGER_ASSIGN">
+                        <div class="fld">
+                            <label for="owner-user">مسئول جدید</label>
+                            <select id="owner-user" name="owner_user_id" required>
+                                <option value="">انتخاب کاربر</option>
+                                {% for user in assignable_users %}<option value="{{ user.id }}">{{ user.label }}</option>{% endfor %}
+                            </select>
+                        </div>
+                        <button class="btn btn-ghost" type="submit">ثبت مسئول</button>
+                    </form>
+                    {% endif %}
+
+                    {% if routing_enabled and ownership_capabilities.can_route %}
+                    <form method="post" action="{{ url_for('unified_followups.route', episode_id=item.episode_id) }}" class="work-item-management__form">
+                        {{ context_fields() }}
+                        <input type="hidden" name="expected_event_id" value="{{ ownership.expected_event_id }}">
+                        <input type="hidden" name="idempotency_key" value="{{ ownership_action_token }}:route:{{ item.episode_id }}">
+                        <input type="hidden" name="reason_code" value="MANAGER_ROUTE">
+                        <div class="fld">
+                            <label for="owner-role">صف جدید</label>
+                            <select id="owner-role" name="owner_role" required>
+                                {% for key, label in ownership_role_labels.items() %}<option value="{{ key }}" {% if ownership.owner_role == key %}selected{% endif %}>{{ label }}</option>{% endfor %}
+                            </select>
+                        </div>
+                        <button class="btn btn-ghost" type="submit">تغییر صف</button>
+                    </form>
+                    {% endif %}
                 </div>
             </details>
             {% endif %}
-        </li>
-        {% endfor %}
-    </ol>
-    {% else %}
-    <div class="auto-empty" role="status"><h2>هنوز رویدادی ثبت نشده است</h2><p>با انجام اولین اقدام، تاریخچه اینجا شکل می‌گیرد.</p></div>
-    {% endif %}
-</section>
-
-<details class="auto-technical" data-technical-details>
-    <summary>جزئیات فنی مسیر</summary>
-    <div class="auto-technical__body grid grid-3 text-xs nums">
-        <div><span class="muted">Episode</span><br><code dir="ltr">{{ item.episode_id }}</code></div>
-        <div><span class="muted">Ownership event</span><br><code dir="ltr">{{ ownership.ownership_event_id or 'none' }}</code></div>
-        <div><span class="muted">Projection version</span><br><code dir="ltr">{{ item.projection_version }}</code></div>
-        <div><span class="muted">Policy version</span><br><code dir="ltr">{{ item.policy_version }}</code></div>
+        </aside>
     </div>
-</details>
+
+    <details class="card work-item-timeline" id="timeline">
+        <summary><svg class="icon"><use href="#i-activity"></use></svg> تاریخچه کار</summary>
+        <div class="work-item-timeline__body">
+            {% if timeline.errors %}<div class="alert-banner alert-warn"><span>بخشی از تاریخچه نیازمند بررسی است.</span></div>{% endif %}
+            {% if timeline['items'] %}
+            <ol class="care-timeline">
+                {% for event in timeline['items'] %}
+                <li class="card card-soft">
+                    <div class="flex items-center gap-2 wrap">
+                        <span class="badge {% if event.warning %}badge-danger{% elif event.kind == 'SOURCE_STATE' %}badge-info{% else %}badge-muted{% endif %}">{{ event.source_label }}</span>
+                        {% if event.status_label %}<span class="badge badge-muted">{{ event.status_label }}</span>{% endif %}
+                        <span class="muted text-xs nums">{{ event.occurred_at|jalali if event.occurred_at else 'زمان نامشخص' }}</span>
+                    </div>
+                    <h3>{{ event.title }}</h3>
+                    <p class="muted text-sm">{{ event.subtitle }}</p>
+                    {% if event.audit %}
+                    <details class="auto-technical" data-technical-details>
+                        <summary>جزئیات فنی برای پشتیبانی</summary>
+                        <div class="auto-technical__body">
+                            <dl class="text-xs nums">{% for key, value in event.audit.items() %}{% if value is not none %}<dt>{{ key }}</dt><dd><code dir="ltr">{{ value }}</code></dd>{% endif %}{% endfor %}</dl>
+                        </div>
+                    </details>
+                    {% endif %}
+                </li>
+                {% endfor %}
+            </ol>
+            {% else %}<div class="auto-empty" role="status"><h2>هنوز رویدادی ثبت نشده است</h2><p>با انجام اولین اقدام، تاریخچه اینجا شکل می‌گیرد.</p></div>{% endif %}
+        </div>
+    </details>
+
+    <details class="auto-technical" data-technical-details>
+        <summary>جزئیات فنی مسیر</summary>
+        <div class="auto-technical__body grid grid-3 text-xs nums">
+            <div><span class="muted">Episode</span><br><code dir="ltr">{{ item.episode_id }}</code></div>
+            <div><span class="muted">Ownership event</span><br><code dir="ltr">{{ ownership.ownership_event_id or 'none' }}</code></div>
+            <div><span class="muted">Projection version</span><br><code dir="ltr">{{ item.projection_version }}</code></div>
+            <div><span class="muted">Policy version</span><br><code dir="ltr">{{ item.policy_version }}</code></div>
+        </div>
+    </details>
+</section>
 {% endblock %}
