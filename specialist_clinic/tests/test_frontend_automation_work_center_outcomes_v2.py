@@ -9,6 +9,9 @@ import pytest
 def outcome_app(tmp_path):
     from src.adapters.sqlite import core
     from src.adapters.sqlite.clinical_care_loop_repo import ClinicalCareLoopRepository
+    from src.adapters.sqlite.clinical_task_contract_schema import (
+        ensure_clinical_task_contract_storage,
+    )
     from src.adapters.sqlite.core import get_db
     from src.app import create_app
     from src.services.followup_orchestration.backfill import (
@@ -94,6 +97,11 @@ def outcome_app(tmp_path):
         recorded_at=datetime(2026, 8, 5, 8, 7, 0),
     )
     db.commit()
+    # The application installed contract storage before this fixture inserted its
+    # task. Re-running the additive installer applies the same conservative legacy
+    # contract used for copied pre-contract databases.
+    ensure_clinical_task_contract_storage(db)
+    db.commit()
 
     FollowupEpisodeBackfillService(db).run(apply=True)
     FollowupProjectionService(db).run(
@@ -158,6 +166,20 @@ def test_outcome_blueprint_is_registered_during_app_setup(outcome_app):
     } <= endpoints
 
 
+def test_outcome_routes_are_hidden_when_work_center_actions_are_off(outcome_app):
+    client = client_for(outcome_app)
+    episode_id = outcome_app["message_episode"]
+    outcome_app["app"].config["FOLLOWUP_UNIFIED_WORKLIST_ACTIONS"] = False
+    try:
+        response = client.post(
+            f"/followups/work-center-outcomes/{episode_id}/queue-message",
+            data={"current_url": f"/followups/unified/{episode_id}?view=all"},
+        )
+    finally:
+        outcome_app["app"].config["FOLLOWUP_UNIFIED_WORKLIST_ACTIONS"] = True
+    assert response.status_code == 404
+
+
 def test_administrative_defer_retry_writes_one_source_change_and_one_audit_event(
     outcome_app,
 ):
@@ -198,13 +220,47 @@ def test_administrative_defer_retry_writes_one_source_change_and_one_audit_event
     assert event_count == 1
 
 
+def test_administrative_completion_retry_is_one_authoritative_event(outcome_app):
+    client = client_for(outcome_app)
+    episode_id = outcome_app["admin_episode"]
+    payload = {
+        **action_context(episode_id, "work-center-admin-complete-0001"),
+        "note": "کار اداری واقعاً انجام شد",
+    }
+    first = client.post(
+        f"/followups/work-center/{episode_id}/complete",
+        data=payload,
+        follow_redirects=False,
+    )
+    second = client.post(
+        f"/followups/work-center/{episode_id}/complete",
+        data=payload,
+        follow_redirects=False,
+    )
+
+    assert first.status_code in {302, 303}
+    assert second.status_code in {302, 303}
+    task = outcome_app["db"].execute(
+        "SELECT status,call_log FROM followup_tasks WHERE id=?",
+        (outcome_app["admin_task"],),
+    ).fetchone()
+    assert task["status"] == "done"
+    assert task["call_log"] == "کار اداری واقعاً انجام شد"
+    assert outcome_app["db"].execute(
+        """SELECT COUNT(*) FROM followup_episode_events
+           WHERE episode_id=? AND event_type='ADMINISTRATIVE_GOAL_MET'
+             AND idempotency_key='work-center-admin-complete-0001'""",
+        (episode_id,),
+    ).fetchone()[0] == 1
+
+
 def test_clinical_completion_is_atomic_idempotent_and_terminal(outcome_app):
     client = client_for(outcome_app)
     episode_id = outcome_app["clinical_episode"]
     payload = {
         **action_context(episode_id, "work-center-clinical-complete-0001"),
         "outcome_type": "OTHER",
-        "observed_at": "۱۴۰۵/۰۵/۱۴",
+        # Blank observed_at exercises the stable date-level server default.
         "note": "شاهد بالینی بررسی شد",
     }
     first = client.post(
