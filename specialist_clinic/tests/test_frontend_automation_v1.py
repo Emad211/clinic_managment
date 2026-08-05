@@ -132,6 +132,32 @@ def test_encounter_has_three_human_steps_and_one_final_action():
     assert 'data-autosave="server"' not in page
 
 
+def test_appointments_use_one_primary_row_action_and_optional_creation_fields():
+    listing = read("src/templates/appointments/list.html")
+    create = read("src/templates/appointments/new.html")
+    styles = read("src/static/css/appointments-automation-v1.css")
+
+    assert '{% extends "automation_base.html" %}' in listing
+    assert "appointments-automation-v1.css" in listing
+    assert "appointment-card-list" in listing
+    assert "appointment-card__actions" in listing
+    assert "data-action-menu" in listing
+    assert "انجام شد" in listing
+    assert "ثبت غیبت" in listing
+    assert "لغو نوبت" in listing
+
+    assert '{% extends "automation_base.html" %}' in create
+    assert "appointments-automation-v1.css" in create
+    assert "appointment-date-grid" in create
+    assert "تنظیمات اختیاری" in create
+    assert 'name="patient_link_id"' in create
+    assert 'name="date"' in create
+    assert 'name="time"' in create
+    assert 'name="appt_type"' in create
+    assert "یادآوری نوبت در مسیر خودکار" in create
+    assert "@media(max-width:700px)" in styles
+
+
 def test_autosave_is_explicit_opt_in_and_never_local_only():
     script = read("src/static/js/automation-v1.js")
     assert 'form[data-autosave="server"]' in script
