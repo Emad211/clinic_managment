@@ -21,7 +21,7 @@
         </a>
         <a class="card card-soft nav-tile" href="{{ url_for('manager.clinical_engine') }}">
             <div class="nt-ic t-violet"><svg class="icon"><use href="#i-shield"></use></svg></div>
-            <div><b>موتور بالینی</b><small>وضعیت، اعتبارسنجی و انتشار</small></div>
+            <div><b>موتور بالینی v2</b><small>وضعیت، اعتبارسنجی و انتشار</small></div>
         </a>
     </div>
 </section>
@@ -31,11 +31,11 @@
     <summary>ابزارهای پیشرفته و Shadow</summary>
     <div class="auto-technical__body grid grid-3">
         {% if permissions.get('operational.health.view') %}
-        <a class="card card-soft nav-tile" href="{{ url_for('hypoglycemia_shadow_monitor.index') }}"><div class="nt-ic t-ok"><svg class="icon"><use href="#i-activity"></use></svg></div><div><b>پایش Shadow</b><small>سلامت داخلی، backlog و خطاهای یکپارچگی</small></div></a>
+        <a class="card card-soft nav-tile" href="{{ url_for('hypoglycemia_shadow_monitor.index') }}"><div class="nt-ic t-ok"><svg class="icon"><use href="#i-activity"></use></svg></div><div><b>پایش هیپوگلیسمی Shadow</b><small>سلامت داخلی، backlog و خطاهای یکپارچگی</small></div></a>
         {% endif %}
         {% if permissions.get('clinical.decision.record') and permissions.get('patient.view') %}
         <a class="card card-soft nav-tile" href="{{ url_for('hypoglycemia_shadow_monitor.candidates') }}"><div class="nt-ic t-warn"><svg class="icon"><use href="#i-clipboard"></use></svg></div><div><b>بررسی موارد پیشنهادی</b><small>تأیید، رد یا ثبت تعارض</small></div></a>
-        <a class="card card-soft nav-tile" href="{{ url_for('hypoglycemia_shadow_monitor.reviews') }}"><div class="nt-ic t-ok"><svg class="icon"><use href="#i-check"></use></svg></div><div><b>بررسی‌های داخلی</b><small>بازکردن Review بدون ایجاد اقدام درمانی</small></div></a>
+        <a class="card card-soft nav-tile" href="{{ url_for('hypoglycemia_shadow_monitor.reviews') }}"><div class="nt-ic t-ok"><svg class="icon"><use href="#i-check"></use></svg></div><div><b>بازکردن Reviewهای Shadow</b><small>بازکردن Review بدون ایجاد اقدام درمانی</small></div></a>
         {% endif %}
     </div>
 </details>
