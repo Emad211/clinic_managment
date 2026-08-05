@@ -149,8 +149,12 @@ def captured():
 
 
 @bp.record_once
-def register_work_center_outcomes(state):
-    """Register focused Work Center routes and its detail-page context."""
+def register_automation_surfaces(state):
+    """Register focused automation routes and compatibility hooks during setup."""
+    from src.api.patient_workspace import (
+        bp as patient_workspace_bp,
+        install_compatibility,
+    )
     from src.api.work_center_outcomes import (
         bp as work_center_outcomes_bp,
         template_context,
@@ -159,3 +163,7 @@ def register_work_center_outcomes(state):
     if work_center_outcomes_bp.name not in state.app.blueprints:
         state.app.register_blueprint(work_center_outcomes_bp)
     state.app.context_processor(template_context)
+
+    if patient_workspace_bp.name not in state.app.blueprints:
+        state.app.register_blueprint(patient_workspace_bp)
+    install_compatibility(state.app)
