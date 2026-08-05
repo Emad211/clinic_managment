@@ -76,6 +76,7 @@ def pending():
 
     db = get_db()
     from src.services.followup_projection_service import FollowupProjectionService
+
     rows = [
         task for task in FollowupProjectionService().open_tasks()
         if task.get("fulfillment") == "remote"
@@ -149,8 +150,12 @@ def captured():
 
 @bp.record_once
 def register_work_center_outcomes(state):
-    """Register the focused Work Center mutations during application setup."""
-    from src.api.work_center_outcomes import bp as work_center_outcomes_bp
+    """Register focused Work Center routes and its detail-page context."""
+    from src.api.work_center_outcomes import (
+        bp as work_center_outcomes_bp,
+        template_context,
+    )
 
     if work_center_outcomes_bp.name not in state.app.blueprints:
         state.app.register_blueprint(work_center_outcomes_bp)
+    state.app.context_processor(template_context)
