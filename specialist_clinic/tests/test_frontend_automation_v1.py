@@ -100,6 +100,38 @@ def test_doctor_queue_is_next_patient_first_and_keeps_safe_linking():
     assert "فاکتور حسابداری" not in page
 
 
+def test_encounter_has_three_human_steps_and_one_final_action():
+    page = read("src/templates/doctor_queue/visit_quick.html")
+    assert '{% extends "automation_base.html" %}' in page
+    for section in (
+        "شرح حال و معاینه",
+        "ارزیابی و برنامه",
+        "پیگیری بعد از ویزیت",
+    ):
+        assert section in page
+    assert 'name="action" value="draft"' in page
+    assert 'name="action" value="sign"' in page
+    assert "ذخیره پیش‌نویس" in page
+    assert "پایان ویزیت" in page
+    assert "Ctrl/⌘ + S" in page
+    assert "تعهدهای اجرایی طرح درمان" not in page
+    assert "امضا، ساخت Worklist و پایان ویزیت" not in page
+    # Existing backend contract is preserved behind simpler wording.
+    for field in (
+        "commitment_client_key",
+        "commitment_type",
+        "commitment_instruction",
+        "commitment_due_date",
+        "commitment_fulfillment",
+    ):
+        assert f'name="{field}"' in page
+    assert "FOLLOWUP_REQUIRED" in page
+    assert "REFERRED" in page
+    assert "URGENT_ESCALATION" in page
+    # The current redirect/idempotency endpoint is not safe for repeated autosave.
+    assert 'data-autosave="server"' not in page
+
+
 def test_autosave_is_explicit_opt_in_and_never_local_only():
     script = read("src/static/js/automation-v1.js")
     assert 'form[data-autosave="server"]' in script
@@ -117,3 +149,5 @@ def test_automation_styles_cover_mobile_focus_and_reduced_motion():
     assert ".task-card__actions>.btn" in css
     assert "min-height:var(--touch-target,44px)" in css
     assert ".doctor-queue-card" in css
+    assert ".encounter-layout" in css
+    assert ".encounter-actions-sticky" in css
