@@ -1,46 +1,25 @@
 <section class="cev2 card" id="clinical-engine-v2" aria-labelledby="cev2-title">
     <header class="cev2-head">
         <div>
-            <div class="section-title" id="cev2-title">
-                <svg class="icon" aria-hidden="true"><use href="#i-activity"></use></svg>
-                موتور بالینی نسخهٔ ۲
-                <span class="badge badge-info">پیش‌نمایش منتخب</span>
-            </div>
-            <p class="cev2-disclaimer">
-                پیشنهاد برای مرور پزشک است؛ هیچ دارو، تشخیص، هدف یا اقدام درمانی اعمال نشده است.
-            </p>
+            <div class="section-title" id="cev2-title"><svg class="icon" aria-hidden="true"><use href="#i-activity"></use></svg> پیشنهادهای بالینی</div>
+            <p class="cev2-disclaimer">پیشنهاد برای مرور پزشک است؛ هیچ موردی بدون تصمیم پزشک اعمال نشده است.</p>
         </div>
         {% if clinical_v2.run_id %}
-        <div class="cev2-run" aria-label="مشخصات اجرای موتور">
-            <span>وضعیت: {{ clinical_v2.run_status }}</span>
-            <span>نسخه: {{ clinical_v2.engine_version }}</span>
-        </div>
+        <details class="auto-technical cev2-technical" data-technical-details>
+            <summary>جزئیات فنی موتور بالینی نسخهٔ ۲</summary>
+            <div class="auto-technical__body"><div>وضعیت: {{ clinical_v2.run_status }}</div><div>نسخه: <code dir="ltr">{{ clinical_v2.engine_version }}</code></div><div>اجرا: <code dir="ltr">{{ clinical_v2.run_id }}</code></div></div>
+        </details>
         {% endif %}
     </header>
 
-    {% if clinical_v2.empty %}
-    <p class="empty-mini" role="status">{{ clinical_v2.message_fa }}</p>
-    {% endif %}
+    {% if clinical_v2.empty %}<p class="empty-mini" role="status">{{ clinical_v2.message_fa }}</p>{% endif %}
 
     {% if clinical_v2.notices %}
-    <div class="cev2-notices" aria-label="موارد متوقف‌شده و نقص داده">
+    <div class="cev2-notices" aria-label="موارد نیازمند اطلاعات بیشتر">
         {% for notice in clinical_v2.notices %}
         <div class="cev2-notice" role="status">
             <svg class="icon icon-sm" aria-hidden="true"><use href="#i-alert"></use></svg>
-            <div>
-                <strong>{{ notice.title }}</strong>
-                <span>{{ notice.message }}</span>
-                {% if notice.data_issues %}
-                <details>
-                    <summary>داده‌های لازم برای بررسی</summary>
-                    <ul>
-                        {% for issue in notice.data_issues %}
-                        <li>{{ issue.message_fa or issue.fact_key }}</li>
-                        {% endfor %}
-                    </ul>
-                </details>
-                {% endif %}
-            </div>
+            <div><strong>{{ notice.title }}</strong><span>{{ notice.message }}</span>{% if notice.data_issues %}<details><summary>چه اطلاعاتی کم است؟</summary><ul>{% for issue in notice.data_issues %}<li>{{ issue.message_fa or issue.fact_key }}</li>{% endfor %}</ul></details>{% endif %}</div>
         </div>
         {% endfor %}
     </div>
@@ -51,87 +30,45 @@
         <article class="cev2-group tone-{{ group.tone }}" aria-labelledby="cev2-group-{{ loop.index }}">
             <div class="cev2-group-head">
                 <h3 id="cev2-group-{{ loop.index }}">{{ group.label }}</h3>
-                <span class="badge badge-muted">{{ group['items']|length|fa_num }} پیشنهاد · اعمال نشده</span>
+                <span class="badge badge-muted">{{ group['items']|length|fa_num }} مورد</span>
             </div>
             <div class="cev2-items">
                 {% for item in group['items'] %}
                 <section class="cev2-item" aria-labelledby="cev2-item-{{ loop.index }}-{{ item.rule_code }}">
                     <h4 id="cev2-item-{{ loop.index }}-{{ item.rule_code }}">{{ item.title }}</h4>
-                    <p>{{ item.text }}</p>
-                    <div class="cev2-state">
-                        <span class="badge badge-info">پیشنهاد</span>
+                    <div class="cev2-quick-state">
                         {% if item.current_decision %}
-                            {% if item.current_decision.decision == 'ACCEPTED' %}
-                            <span class="badge badge-ok">پذیرفته‌شده · هنوز اعمال نشده</span>
-                            {% elif item.current_decision.decision == 'DISMISSED' %}
-                            <span class="badge badge-muted">رد‌شده</span>
-                            {% elif item.current_decision.decision == 'DEFERRED' %}
-                            <span class="badge badge-warn">به تعویق افتاده</span>
-                            {% endif %}
-                        {% else %}
-                        <span class="badge badge-muted">بررسی‌نشده · اعمال نشده</span>
-                        {% endif %}
-                        {% if item.requires_confirmation %}
-                        <span class="muted text-xs">نیازمند تأیید پزشک پیش از هر اقدام</span>
-                        {% endif %}
+                            {% if item.current_decision.decision == 'ACCEPTED' %}<span class="badge badge-ok">پذیرفته‌شده</span>
+                            {% elif item.current_decision.decision == 'DISMISSED' %}<span class="badge badge-muted">رد شده</span>
+                            {% elif item.current_decision.decision == 'DEFERRED' %}<span class="badge badge-warn">بعداً بررسی می‌شود</span>{% endif %}
+                        {% else %}<span class="badge badge-info">نیازمند بررسی</span>{% endif %}
                     </div>
-                    {% if item.current_decision %}
-                    <div class="cev2-decision-meta" role="status">
-                        ثبت توسط {{ item.current_decision.actor_username }} در {{ item.current_decision.occurred_at|jalali }}
-                        {% if item.current_decision.reason_text %}<span>· {{ item.current_decision.reason_text }}</span>{% endif %}
-                    </div>
-                    {% endif %}
+                    <p>{{ item.text }}</p>
+                    {% if item.current_decision %}<div class="cev2-decision-meta" role="status">ثبت توسط {{ item.current_decision.actor_username }} در {{ item.current_decision.occurred_at|jalali }}{% if item.current_decision.reason_text %} · {{ item.current_decision.reason_text }}{% endif %}</div>{% endif %}
+
                     {% if item.action_type != 'redflag' %}
                     <details class="cev2-decision">
-                        <summary>{% if item.current_decision %}اصلاح تصمیم با ثبت رویداد جدید{% else %}ثبت تصمیم پزشک{% endif %}</summary>
+                        <summary>{% if item.current_decision %}تغییر تصمیم{% else %}ثبت تصمیم پزشک{% endif %}</summary>
                         <form method="post" action="{{ url_for('patients.clinical_v2_decision', pid=patient.id) }}">
                             <input type="hidden" name="recommendation_event_id" value="{{ item.recommendation_event_id }}">
                             <input type="hidden" name="expected_current_event_id" value="{{ item.current_decision.id if item.current_decision else '' }}">
                             <div class="grid grid-2">
-                                <div class="fld">
-                                    <label for="cev2-decision-{{ item.recommendation_event_id }}">تصمیم</label>
-                                    <select id="cev2-decision-{{ item.recommendation_event_id }}" name="decision" required>
-                                        <option value="">— انتخاب —</option>
-                                        <option value="ACCEPTED">پذیرفته‌شده؛ بدون اعمال خودکار</option>
-                                        <option value="DISMISSED">رد‌شده</option>
-                                        <option value="DEFERRED">تعویق برای بررسی بیشتر</option>
-                                    </select>
-                                </div>
-                                <div class="fld">
-                                    <label for="cev2-reason-{{ item.recommendation_event_id }}">دلیل <span class="muted">(برای رد الزامی)</span></label>
-                                    <select id="cev2-reason-{{ item.recommendation_event_id }}" name="reason_code">
-                                        <option value="">— بدون کد دلیل —</option>
-                                        <option value="NOT_APPLICABLE_NOW">اکنون قابل اعمال نیست</option>
-                                        <option value="PATIENT_PREFERENCE">ترجیح بیمار</option>
-                                        <option value="CLINICAL_JUDGMENT">قضاوت بالینی پزشک</option>
-                                        <option value="MORE_DATA_NEEDED">نیاز به دادهٔ بیشتر</option>
-                                        <option value="ALREADY_ADDRESSED">قبلاً رسیدگی شده</option>
-                                        <option value="OTHER">سایر</option>
-                                    </select>
-                                </div>
+                                <div class="fld"><label for="cev2-decision-{{ item.recommendation_event_id }}">تصمیم</label><select id="cev2-decision-{{ item.recommendation_event_id }}" name="decision" required><option value="">انتخاب کنید</option><option value="ACCEPTED">پذیرفتن پیشنهاد</option><option value="DISMISSED">رد پیشنهاد</option><option value="DEFERRED">بررسی در زمان دیگر</option></select></div>
+                                <div class="fld"><label for="cev2-reason-{{ item.recommendation_event_id }}">دلیل <span class="muted">برای رد الزامی</span></label><select id="cev2-reason-{{ item.recommendation_event_id }}" name="reason_code"><option value="">بدون دلیل آماده</option><option value="NOT_APPLICABLE_NOW">اکنون قابل اعمال نیست</option><option value="PATIENT_PREFERENCE">ترجیح بیمار</option><option value="CLINICAL_JUDGMENT">قضاوت بالینی پزشک</option><option value="MORE_DATA_NEEDED">نیاز به داده بیشتر</option><option value="ALREADY_ADDRESSED">قبلاً رسیدگی شده</option><option value="OTHER">سایر</option></select></div>
                             </div>
-                            <div class="fld">
-                                <label for="cev2-reason-text-{{ item.recommendation_event_id }}">توضیح کوتاه</label>
-                                <textarea id="cev2-reason-text-{{ item.recommendation_event_id }}" name="reason_text" maxlength="500" rows="2"></textarea>
-                            </div>
-                            <button class="btn btn-sm" type="submit">ثبت فقط به‌عنوان تصمیم</button>
-                            <span class="muted text-xs">این ثبت، دارو، نسخه، تشخیص یا ارجاع را تغییر نمی‌دهد.</span>
+                            <div class="fld"><label for="cev2-reason-text-{{ item.recommendation_event_id }}">توضیح کوتاه <span class="muted">اختیاری</span></label><textarea id="cev2-reason-text-{{ item.recommendation_event_id }}" name="reason_text" maxlength="500" rows="2"></textarea></div>
+                            <button class="btn btn-sm" type="submit">ثبت تصمیم</button>
+                            <span class="muted text-xs">این کار فقط نظر پزشک را ثبت می‌کند و درمان را خودکار تغییر نمی‌دهد.</span>
                         </form>
                     </details>
                     {% endif %}
+
                     <details class="cev2-reason">
                         <summary>چرا این پیشنهاد نمایش داده شده؟</summary>
                         <div class="cev2-reason-body">
-                            <strong>قواعد مؤثر</strong>
-                            <ul>{% for reason in item.reasons %}<li>{{ reason }}</li>{% endfor %}</ul>
-                            {% if item.fact_ids %}
-                            <strong>منابع دادهٔ همین اجرا</strong>
-                            <ul>{% for fact_id in item.fact_ids %}<li><code>{{ fact_id }}</code></li>{% endfor %}</ul>
-                            {% endif %}
-                            {% if item.data_issues %}
-                            <strong>محدودیت داده</strong>
-                            <ul>{% for issue in item.data_issues %}<li>{{ issue.message_fa or issue.fact_key }}</li>{% endfor %}</ul>
-                            {% endif %}
+                            <strong>دلیل‌های بالینی</strong><ul>{% for reason in item.reasons %}<li>{{ reason }}</li>{% endfor %}</ul>
+                            {% if item.data_issues %}<strong>محدودیت داده</strong><ul>{% for issue in item.data_issues %}<li>{{ issue.message_fa or issue.fact_key }}</li>{% endfor %}</ul>{% endif %}
+                            {% if item.fact_ids %}<details class="auto-technical" data-technical-details><summary>شناسه‌های فنی داده</summary><div class="auto-technical__body"><ul>{% for fact_id in item.fact_ids %}<li><code>{{ fact_id }}</code></li>{% endfor %}</ul></div></details>{% endif %}
                         </div>
                     </details>
                 </section>
