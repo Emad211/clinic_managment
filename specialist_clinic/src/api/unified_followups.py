@@ -1,4 +1,4 @@
-"""Unified Follow-up Worklist with feature-gated FO-4 and FO-5 actions."""
+"""Automation-first Work Center over the governed follow-up orchestration seams."""
 from __future__ import annotations
 
 from datetime import datetime
@@ -20,11 +20,17 @@ from flask import (
 from src.adapters.sqlite.core import get_db
 from src.adapters.sqlite.followup_episode_repo import FollowupEpisodeRepository
 from src.common.utils import iran_now, jalali_to_gregorian_str
-from src.security.permissions import Permission, has_permission, permission_required
+from src.security.permissions import (
+    Permission,
+    has_permission,
+    permission_required,
+    resolved_permissions,
+)
 from src.services.followup_orchestration.ownership_service import (
     FollowupOwnershipError,
     FollowupOwnershipService,
     ROLE_LABELS as OWNER_ROLE_LABELS,
+    ROLE_PERMISSIONS,
 )
 from src.services.followup_orchestration.read_model_service import (
     FollowupUnifiedReadModelService,
@@ -40,6 +46,10 @@ from src.services.followup_orchestration.structured_contact_service import (
 )
 from src.services.followup_orchestration.timeline_service import (
     FollowupTimelineService,
+)
+from src.services.followup_orchestration.work_center_read_model import (
+    WORK_VIEW_LABELS,
+    WorkCenterReadModelService,
 )
 
 
@@ -105,40 +115,116 @@ def _read_failure() -> dict:
     }
 
 
+def _can_manage_work() -> bool:
+    return has_permission(Permission.FOLLOWUP_ADMIN_MANAGE)
+
+
+def _positive_int(value: object, default: int, maximum: int) -> int:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return default
+    return min(max(parsed, 1), maximum)
+
+
+def _work_context(source) -> dict:
+    allow_manager = _can_manage_work()
+    raw_view = source.get("work_view") or source.get("view") or "mine"
+    view = WorkCenterReadModelService.normalize_view(
+        raw_view,
+        allow_manager=allow_manager,
+    )
+    state = str(source.get("state") or "").strip().upper()
+    role = str(source.get("role") or "").strip().upper()
+    sla = str(source.get("sla") or "").strip().upper()
+    return {
+        "view": view,
+        "q": str(source.get("q") or "").strip()[:120],
+        "state": state if state in STATE_LABELS else "",
+        "role": role if role in ROLE_LABELS else "",
+        "sla": sla if sla in SLA_LABELS else "",
+        "page": _positive_int(source.get("page"), 1, 1_000_000),
+        "per_page": _positive_int(source.get("per_page"), 20, 50),
+    }
+
+
+def _context_params(context: dict) -> dict:
+    return {
+        "view": context["view"],
+        "q": context["q"],
+        "state": context["state"],
+        "role": context["role"],
+        "sla": context["sla"],
+        "page": context["page"],
+        "per_page": context["per_page"],
+    }
+
+
+def _index_url(context: dict) -> str:
+    return url_for("unified_followups.index", **_context_params(context))
+
+
+def _detail_url(episode_id: str, context: dict) -> str:
+    return url_for(
+        "unified_followups.detail",
+        episode_id=episode_id,
+        **_context_params(context),
+    )
+
+
+def _redirect_detail(episode_id: str, context: dict | None = None):
+    return redirect(_detail_url(episode_id, context or _work_context({})))
+
+
+def _next_item_url(context: dict, *, exclude_episode_id: str) -> str | None:
+    next_item = WorkCenterReadModelService(get_db()).next_item(
+        actor_user_id=int(g.user["id"]),
+        allow_manager_view=_can_manage_work(),
+        work_view=context["view"],
+        query=context["q"],
+        state_class=context["state"],
+        role=context["role"],
+        sla_state=context["sla"],
+        exclude_episode_id=exclude_episode_id,
+        now=iran_now().replace(tzinfo=None, microsecond=0),
+    )
+    if not next_item:
+        return None
+    return _detail_url(str(next_item["episode_id"]), context)
+
+
 def _render_unavailable(readiness: dict):
     return render_template(
         "followups/unified_unavailable.html",
         readiness=readiness,
-        hub_tab="unified",
-        hub_pending=0,
-        alert_pending=0,
-        active_page="sms",
+        active_page="work_center",
     )
 
 
-def _redirect_detail(episode_id: str):
-    return redirect(url_for("unified_followups.detail", episode_id=episode_id))
-
-
-def _handle_ownership_error(error: FollowupOwnershipError, episode_id: str):
+def _handle_ownership_error(
+    error: FollowupOwnershipError,
+    episode_id: str,
+    context: dict,
+):
     category = "warning" if error.code in {
         "STALE_OWNERSHIP_FORM",
         "ALREADY_CLAIMED",
     } else "error"
     flash(error.message, category)
-    return _redirect_detail(episode_id)
+    return _redirect_detail(episode_id, context)
 
 
 def _handle_contact_error(
     error: FollowupStructuredContactError,
     episode_id: str,
+    context: dict,
 ):
     category = "warning" if error.code in {
         "STALE_CONTACT_FORM",
         "CONTACT_IDEMPOTENCY_CONFLICT",
     } else "error"
     flash(error.message, category)
-    return _redirect_detail(episode_id)
+    return _redirect_detail(episode_id, context)
 
 
 @bp.after_request
@@ -153,7 +239,12 @@ def disable_shared_caching(response):
 def index():
     _require_flag()
     db = get_db()
-    model = FollowupUnifiedReadModelService(db).list_items(
+    allow_manager_view = _can_manage_work()
+    read_model = WorkCenterReadModelService(db)
+    model = read_model.list_items(
+        actor_user_id=int(g.user["id"]),
+        allow_manager_view=allow_manager_view,
+        work_view=request.args.get("view", "mine"),
         page=request.args.get("page", 1),
         per_page=request.args.get("per_page", 20),
         query=request.args.get("q"),
@@ -174,21 +265,53 @@ def index():
         and current_app.config.get("FOLLOWUP_STRUCTURED_CONTACT", False)
     )
     if model.get("projection_ready"):
-        FollowupOwnershipService(db).decorate_items(model["items"])
+        ownership_service = FollowupOwnershipService(db)
+        ownership_service.decorate_items(model["items"])
+        effective_permissions = resolved_permissions(g.user)
+        for item in model["items"]:
+            ownership = item["ownership"]
+            owner_role = ownership.get("owner_role")
+            item["ownership_capabilities"] = {
+                "can_claim": bool(
+                    actions_enabled
+                    and owner_role in ROLE_PERMISSIONS
+                    and not ownership["assigned"]
+                    and ROLE_PERMISSIONS[owner_role] in effective_permissions
+                ),
+                "can_release": bool(
+                    actions_enabled
+                    and ownership["assigned"]
+                    and (
+                        ownership.get("owner_user_id") == int(g.user["id"])
+                        or Permission.FOLLOWUP_ADMIN_MANAGE in effective_permissions
+                    )
+                ),
+                "can_assign": bool(
+                    actions_enabled
+                    and Permission.FOLLOWUP_ADMIN_MANAGE in effective_permissions
+                ),
+                "can_route": bool(
+                    routing_enabled
+                    and Permission.FOLLOWUP_ADMIN_MANAGE in effective_permissions
+                ),
+            }
+            item["ownership_action_token"] = secrets.token_hex(16)
         if structured_contact_enabled:
             FollowupStructuredContactService(db).decorate_items(model["items"])
+
+    work_counts = read_model.counts(actor_user_id=int(g.user["id"]))
     return render_template(
         "followups/unified_worklist.html",
         model=model,
+        work_counts=work_counts,
+        work_view_labels=WORK_VIEW_LABELS,
         state_labels=STATE_LABELS,
         role_labels=ROLE_LABELS,
         sla_labels=SLA_LABELS,
         actions_enabled=actions_enabled,
         structured_contact_enabled=structured_contact_enabled,
-        hub_tab="unified",
-        hub_pending=0,
-        alert_pending=0,
-        active_page="sms",
+        can_manage_work=allow_manager_view,
+        active_page="work_center",
     )
 
 
@@ -197,6 +320,7 @@ def index():
 def detail(episode_id: str):
     _require_flag()
     db = get_db()
+    context = _work_context(request.args)
     read_model = FollowupUnifiedReadModelService(db)
     result = read_model.get_item_result(
         episode_id,
@@ -263,46 +387,10 @@ def detail(episode_id: str):
             int(current_event["id"]) if current_event else 0
         )
 
-    deep_links = [
-        {
-            "label": "بازکردن ورک‌لیست فعلی",
-            "href": url_for(
-                "followups.worklist",
-                q=item.get("patient_name") or "",
-            ),
-            "primary": True,
-        },
-        {
-            "label": "بازکردن پروندهٔ بیمار",
-            "href": url_for(
-                "patients.detail",
-                pid=item["patient_link_id"],
-            ),
-            "primary": False,
-        },
-    ]
-    if has_permission(Permission.SMS_APPROVAL_REVIEW):
-        deep_links.append(
-            {
-                "label": "بازکردن صف تأیید پیام",
-                "href": url_for("sms.approvals"),
-                "primary": False,
-            }
-        )
-    if has_permission(Permission.SMS_VIEW):
-        deep_links.append(
-            {
-                "label": "بازکردن گزارش تحویل پیام",
-                "href": url_for("sms.messages_report"),
-                "primary": False,
-            }
-        )
-
     return render_template(
         "followups/unified_detail.html",
         item=item,
         timeline=timeline,
-        deep_links=deep_links,
         ownership=ownership,
         ownership_capabilities=capabilities,
         assignable_users=assignable_users,
@@ -316,10 +404,10 @@ def detail(episode_id: str):
         contact_outcome_labels=CONTACT_OUTCOME_LABELS,
         contact_expected_event_id=contact_expected_event_id,
         contact_action_token=secrets.token_hex(16),
-        hub_tab="unified",
-        hub_pending=0,
-        alert_pending=0,
-        active_page="sms",
+        work_context=context,
+        return_url=_index_url(context),
+        next_item_url=_next_item_url(context, exclude_episode_id=episode_id),
+        active_page="work_center",
     )
 
 
@@ -327,6 +415,7 @@ def detail(episode_id: str):
 @permission_required(Permission.CLINICAL_TASK_VIEW)
 def claim(episode_id: str):
     _require_actions_flag()
+    context = _work_context(request.form)
     try:
         FollowupOwnershipService(get_db()).claim(
             episode_id=episode_id,
@@ -335,15 +424,16 @@ def claim(episode_id: str):
             idempotency_key=request.form.get("idempotency_key", ""),
         )
     except FollowupOwnershipError as error:
-        return _handle_ownership_error(error, episode_id)
-    flash("این مورد برای رسیدگی شما ثبت شد.", "success")
-    return _redirect_detail(episode_id)
+        return _handle_ownership_error(error, episode_id, context)
+    flash("رسیدگی این مورد برای شما شروع شد.", "success")
+    return _redirect_detail(episode_id, context)
 
 
 @bp.post("/<episode_id>/release")
 @permission_required(Permission.CLINICAL_TASK_VIEW)
 def release(episode_id: str):
     _require_actions_flag()
+    context = _work_context(request.form)
     try:
         FollowupOwnershipService(get_db()).release(
             episode_id=episode_id,
@@ -356,15 +446,16 @@ def release(episode_id: str):
             ),
         )
     except FollowupOwnershipError as error:
-        return _handle_ownership_error(error, episode_id)
+        return _handle_ownership_error(error, episode_id, context)
     flash("مسئول این مورد آزاد شد و به صف مربوط بازگشت.", "success")
-    return _redirect_detail(episode_id)
+    return _redirect_detail(episode_id, context)
 
 
 @bp.post("/<episode_id>/assign")
 @permission_required(Permission.FOLLOWUP_ADMIN_MANAGE)
 def assign(episode_id: str):
     _require_actions_flag()
+    context = _work_context(request.form)
     try:
         FollowupOwnershipService(get_db()).assign(
             episode_id=episode_id,
@@ -379,17 +470,18 @@ def assign(episode_id: str):
         )
     except (FollowupOwnershipError, TypeError, ValueError) as error:
         if isinstance(error, FollowupOwnershipError):
-            return _handle_ownership_error(error, episode_id)
+            return _handle_ownership_error(error, episode_id, context)
         flash("کاربر انتخاب‌شده معتبر نیست.", "error")
-        return _redirect_detail(episode_id)
+        return _redirect_detail(episode_id, context)
     flash("مسئول این مورد ثبت شد.", "success")
-    return _redirect_detail(episode_id)
+    return _redirect_detail(episode_id, context)
 
 
 @bp.post("/<episode_id>/route")
 @permission_required(Permission.FOLLOWUP_ADMIN_MANAGE)
 def route(episode_id: str):
     _require_routing_flag()
+    context = _work_context(request.form)
     try:
         FollowupOwnershipService(get_db()).route(
             episode_id=episode_id,
@@ -403,18 +495,19 @@ def route(episode_id: str):
             ),
         )
     except FollowupOwnershipError as error:
-        return _handle_ownership_error(error, episode_id)
+        return _handle_ownership_error(error, episode_id, context)
     flash(
         "صف مسئول تغییر کرد؛ مورد اکنون بدون مسئول فردی در صف جدید است.",
         "success",
     )
-    return _redirect_detail(episode_id)
+    return _redirect_detail(episode_id, context)
 
 
 @bp.post("/<episode_id>/contact")
 @permission_required(Permission.CLINICAL_TASK_VIEW)
 def record_contact(episode_id: str):
     _require_structured_contact_flag()
+    context = _work_context(request.form)
     try:
         summary = FollowupStructuredContactService(get_db()).record(
             episode_id=episode_id,
@@ -427,17 +520,25 @@ def record_contact(episode_id: str):
             now=iran_now(),
         )
     except FollowupStructuredContactError as error:
-        return _handle_contact_error(error, episode_id)
+        return _handle_contact_error(error, episode_id, context)
+
     if summary.get("callback_at"):
-        flash("نتیجهٔ تماس و زمان تماس مجدد ثبت شد.", "success")
+        message = "نتیجهٔ تماس و زمان تماس مجدد ثبت شد."
     elif summary.get("escalated"):
-        flash(
-            "نتیجهٔ تماس ثبت و مسیر برای بررسی بالاتر ارجاع شد.",
-            "success",
-        )
+        message = "نتیجهٔ تماس ثبت و مسیر برای بررسی بالاتر ارجاع شد."
     else:
-        flash("نتیجهٔ تماس ثبت شد.", "success")
-    return _redirect_detail(episode_id)
+        message = "نتیجهٔ تماس ثبت شد."
+
+    if request.form.get("auto_next") == "1":
+        next_url = _next_item_url(context, exclude_episode_id=episode_id)
+        if next_url:
+            flash(message + " کار بعدی باز شد.", "success")
+            return redirect(next_url)
+        flash(message + " در این نما کار دیگری باقی نمانده است.", "success")
+        return redirect(_index_url(context))
+
+    flash(message, "success")
+    return _redirect_detail(episode_id, context)
 
 
 __all__ = ["bp"]
