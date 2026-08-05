@@ -1,76 +1,136 @@
-"""Patient Control Room — prioritized cohort targeting with one-click recall.
+"""Legacy cohort Control Room with Unified Work Center compatibility.
 
-Visible to all logged-in users; the revenue/value dimension is computed only for
-managers (`g.user.role == 'manager'`). Cohort recipient lists are always
-recomputed server-side from the cohort key (posted ids are never trusted)."""
-from flask import Blueprint, render_template, request, redirect, url_for, flash, g
-from src.api.auth import login_required
-from src.services.control_room_service import ControlRoomService
+When the Unified Work Center is enabled, it is the only operational destination. The
+legacy cohort page remains available only for deployments that have not enabled the
+unified read model yet.
+"""
+from flask import (
+    Blueprint,
+    abort,
+    current_app,
+    flash,
+    g,
+    redirect,
+    render_template,
+    request,
+    url_for,
+)
+
 from src.adapters.sqlite.followups_repo import FollowupRepository
+from src.api.auth import login_required
 from src.services.activity_logger import log_activity
+from src.services.control_room_service import ControlRoomService
+
 
 bp = Blueprint("control_room", __name__, url_prefix="/control-room")
 
 
 def _show_value() -> bool:
-    return bool(g.user and g.user['role'] == 'manager')
+    return bool(g.user and g.user["role"] == "manager")
+
+
+def _unified_enabled() -> bool:
+    return bool(current_app.config.get("FOLLOWUP_UNIFIED_WORKLIST_READONLY", False))
+
+
+def _unified_target():
+    return redirect(
+        url_for(
+            "unified_followups.index",
+            view="manager" if _show_value() else "all",
+        )
+    )
 
 
 @bp.route("/")
 @login_required
 def index():
-    svc = ControlRoomService()
-    data = svc.panel(show_value=_show_value())
-    conversion = svc.conversion()
-    return render_template("control_room.html", active_page='control_room',
-                           conversion=conversion, **data)
+    if _unified_enabled():
+        return _unified_target()
+    service = ControlRoomService()
+    data = service.panel(show_value=_show_value())
+    conversion = service.conversion()
+    return render_template(
+        "control_room.html",
+        active_page="control_room",
+        conversion=conversion,
+        **data,
+    )
 
 
 @bp.route("/recall", methods=["POST"])
 @login_required
 def recall():
-    """Open a 'recall' worklist call-task for everyone in the chosen cohort."""
+    """Create recall tasks, then continue in the active operational destination."""
     cohort = request.form.get("cohort", "")
     ids = ControlRoomService().cohort_ids(cohort, show_value=_show_value())
     repo = FollowupRepository()
     created = 0
-    for pid in ids:
-        if not repo.exists_open(pid, 'recall'):
-            repo.create(pid, reason='recall', detail='دعوتِ بازگشت — از اتاقِ کنترل',
-                        source_event='control_room')
+    for patient_id in ids:
+        if not repo.exists_open(patient_id, "recall"):
+            repo.create(
+                patient_id,
+                reason="recall",
+                detail="دعوت بازگشت — از مسیر سازگاری گروه‌ها",
+                source_event="control_room",
+            )
             created += 1
-    log_activity("control_room_recall", f"ساخت {created} تسکِ تماس از اتاقِ کنترل ({cohort})")
-    flash(f"{created} تسکِ تماس برای این گروه در ورک‌لیست ساخته شد", "success")
+    log_activity(
+        "control_room_recall",
+        f"ساخت {created} کار تماس از مسیر سازگاری گروه ({cohort})",
+    )
+    flash(f"{created} کار تماس برای این گروه ساخته شد", "success")
+    if _unified_enabled():
+        return _unified_target()
     return redirect(url_for("control_room.index"))
 
 
 @bp.route("/sms", methods=["POST"])
 @login_required
 def sms():
-    """Queue cohort invitations for physician approval; never send directly."""
+    """Legacy free-text cohort queue; unavailable after Unified rollout."""
+    if _unified_enabled():
+        # Unified messaging accepts only governed templates through Message Center or
+        # Work Center. Keeping this old free-text mutation reachable would recreate a
+        # second operational path and bypass the Stage-1 policy boundary.
+        abort(404)
+
     from src.services.engagement_service import EngagementService
     from src.services.sms.compliance import sanitize
+
     cohort = request.form.get("cohort", "")
     body = sanitize((request.form.get("body", "") or "").strip())
     if not body:
         flash("متن پیام الزامی است")
         return redirect(url_for("control_room.index"))
     data = ControlRoomService().panel(show_value=_show_value())
-    by_id = {p['id']: p for p in data['patients']}
-    ids = next((c['ids'] for c in data['cohorts'] if c['key'] == cohort), [])
+    by_id = {patient["id"]: patient for patient in data["patients"]}
+    ids = next(
+        (item["ids"] for item in data["cohorts"] if item["key"] == cohort),
+        [],
+    )
     queued = skipped = 0
     engagement = EngagementService()
-    for pid in ids:
-        p = by_id.get(pid)
-        if not p or not p['phone'] or p['opt_out']:
+    for patient_id in ids:
+        patient = by_id.get(patient_id)
+        if not patient or not patient["phone"] or patient["opt_out"]:
             skipped += 1
             continue
-        if engagement.enqueue_control_room_invite(pid, body):
+        if engagement.enqueue_control_room_invite(patient_id, body):
             queued += 1
         else:
             skipped += 1
-    log_activity("control_room_sms_queue", f"افزودن {queued} پیام به صف تأیید ({cohort})")
-    flash(f"{queued} پیام به صف تأیید پزشک افزوده شد" +
-          (f" · {skipped} مورد تکراری/انصراف/بدون موبایل" if skipped else ""),
-          "success")
+    log_activity(
+        "control_room_sms_queue",
+        f"افزودن {queued} پیام به صف تأیید ({cohort})",
+    )
+    flash(
+        f"{queued} پیام به صف تأیید پزشک افزوده شد"
+        + (
+            f" · {skipped} مورد تکراری/انصراف/بدون موبایل"
+            if skipped
+            else ""
+        ),
+        "success",
+    )
     return redirect(url_for("control_room.index"))
