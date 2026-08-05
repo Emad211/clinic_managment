@@ -1,6 +1,6 @@
 # Frontend Automation V2 — Execution Roadmap
 
-**Status:** active execution plan  
+**Status:** Stage 1 checkpoint 2 proven; critical closure in progress  
 **Scope:** finish the remaining logical gaps in the specialist-clinic frontend  
 **Parent baseline:** `fix/frontend-automation-v1-browser-acceptance`  
 **Primary objective:** routine work should be automatic, frequent work should be one click, and only sensitive or irreversible work should require confirmation.
@@ -30,6 +30,19 @@
 - Absorb the remaining operational Control Room destination into manager Work Center context.
 
 **Exit:** one task can be handled from start to definitive outcome without manually returning to the list or visiting unrelated pages.
+
+### Stage 1 proof to date
+
+Checkpoint 2 at `afc13184da7bda31ec66c85031e6019789f0fbd1` passed:
+
+- Specialist Clinic: `868 passed`
+- Accounting: passed
+
+The proven implementation includes authoritative deferral, appointment booking, administrative completion, clinical Outcome completion, plan-evidence completion, safe approval-queue creation, retry protection, scoped projection refresh and successful-mutation auto-next.
+
+The remaining Stage 1 gaps and their evidence are recorded in:
+
+`docs/FRONTEND_AUTOMATION_V2_GAP_AUDIT_2026-08-05.md`
 
 ## Stage 2 — Appointment automation and task continuity
 
@@ -86,6 +99,16 @@
 
 ## Current continuation point
 
-Start with **Stage 1 — Complete Work Center end to end** on branch:
+Continue **Stage 1 — Checkpoint 3: critical closure** on branch:
 
 `feat/frontend-automation-v2-work-center`
+
+Exact order:
+
+1. Replace the no-op `focus=first` links with a real server-authoritative Start Next action that reuses Handle/claim.
+2. Correct Work Center message permission and require an active configured CARE event.
+3. Coordinate approval creation, Episode link and `SMS_QUEUED` as one truthful workflow; do not auto-next after a partial link failure.
+4. Render clinical Outcome choices from the immutable task contract.
+5. Render plan evidence choices from the current commitment type.
+
+After focused tests pass, continue to Checkpoint 4 for Control Room absorption, progressive drawer behavior and browser smoke. Do not merge Stage 1 before both checkpoints are complete.
