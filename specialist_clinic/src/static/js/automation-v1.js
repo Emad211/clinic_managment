@@ -9,11 +9,20 @@
   function setupPatientWorkspaceModule() {
     if (!qs('.patient-hero') || !qs('.tabbar[role="tablist"]')) return;
     if (qs('script[data-patient-workspace-v2]')) return;
-    const script = document.createElement('script');
-    script.src = '/static/js/patient-workspace-automation-v2.js';
-    script.async = false;
-    script.dataset.patientWorkspaceV2 = 'true';
-    document.body.appendChild(script);
+
+    const module = document.createElement('script');
+    module.src = '/static/js/patient-workspace-automation-v2.js';
+    module.async = false;
+    module.dataset.patientWorkspaceV2 = 'true';
+    module.addEventListener('load', () => {
+      if (qs('script[data-patient-workspace-context-v2]')) return;
+      const context = document.createElement('script');
+      context.src = '/static/js/patient-workspace-context-v2.js';
+      context.async = false;
+      context.dataset.patientWorkspaceContextV2 = 'true';
+      document.body.appendChild(context);
+    });
+    document.body.appendChild(module);
   }
 
   function closeSiblingMenus(opened) {
