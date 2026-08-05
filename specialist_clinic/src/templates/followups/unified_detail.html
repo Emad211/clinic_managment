@@ -3,6 +3,7 @@
 {% block head %}
 {{ super() }}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/work-center-automation-v2.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/work-center-actions-v2.css') }}">
 {% endblock %}
 {% block content %}
 
@@ -16,12 +17,25 @@
 <input type="hidden" name="per_page" value="{{ work_context.per_page }}">
 {%- endmacro %}
 
+{% macro action_return_fields() -%}
+<input type="hidden" name="current_url" value="{{ request.full_path }}">
+<input type="hidden" name="return_url" value="{{ return_url }}">
+<input type="hidden" name="next_url" value="{{ next_item_url or '' }}">
+{%- endmacro %}
+
+{% set is_clinical_task = 'CLINICAL_TASK' in item.source_types %}
+{% set is_plan_task = 'ENCOUNTER_COMMITMENT' in item.source_types %}
+{% set is_admin_task = 'ADMIN_TASK' in item.source_types and not is_clinical_task and not is_plan_task %}
+{% set can_defer_work = actions_enabled and item.state_class != 'TERMINAL' and ((is_clinical_task and permissions.get('clinical.task.transition')) or (is_plan_task and permissions.get('followup.plan.transition')) or (is_admin_task and permissions.get('followup.admin.manage'))) %}
+{% set can_book_work = actions_enabled and item.state_class != 'TERMINAL' and permissions.get('followup.book.appointment') and ((is_clinical_task and permissions.get('clinical.task.transition')) or (is_plan_task and permissions.get('followup.plan.transition')) or (is_admin_task and permissions.get('followup.admin.manage'))) %}
+{% set can_complete_work = actions_enabled and item.state_class != 'TERMINAL' and is_admin_task and permissions.get('followup.admin.manage') %}
+
 <section class="work-item-drawer" aria-labelledby="work-item-title">
     <header class="work-item-drawer__header">
         <div>
             <a class="work-item-back" href="{{ return_url }}"><svg class="icon icon-sm"><use href="#i-arrow-left"></use></svg> بازگشت به مرکز کارها</a>
             <h1 id="work-item-title"><svg class="icon"><use href="#i-list-checks"></use></svg> رسیدگی به {{ item.patient_name }}</h1>
-            <p class="muted">علت، اقدام فعلی و نتیجهٔ تماس در یک Workspace؛ جزئیات مدیریتی و ممیزی فقط هنگام نیاز باز می‌شوند.</p>
+            <p class="muted">اقدام لازم را همین‌جا انجام دهید؛ پس از ثبت موفق، کار بعدی باز می‌شود.</p>
         </div>
         <div class="work-item-drawer__header-actions">
             <a class="btn btn-ghost" href="{{ url_for('patients.detail', pid=item.patient_link_id) }}">پرونده بیمار</a>
@@ -74,6 +88,75 @@
                     </div>
                 </div>
             </section>
+
+            {% if can_defer_work or can_book_work or can_complete_work %}
+            <section class="card work-item-actions" aria-labelledby="work-actions-title">
+                <div class="section-title">
+                    <svg class="icon"><use href="#i-zap"></use></svg>
+                    <div>
+                        <div id="work-actions-title">اقدام بعدی</div>
+                        <div class="section-sub">اقدام قطعی را ثبت کنید؛ بازگشت دستی به فهرست لازم نیست.</div>
+                    </div>
+                </div>
+
+                {% if can_defer_work %}
+                <div class="work-item-action-group">
+                    <div class="work-item-action-group__copy">
+                        <b>بعداً رسیدگی شود</b>
+                        <span class="muted text-sm">موعد منبع اصلی ثبت و نمای کار فوراً تازه می‌شود.</span>
+                    </div>
+                    <div class="work-item-action-quick" aria-label="تعویق سریع">
+                        {% for days, label in ((1,'فردا'),(3,'سه روز بعد'),(7,'یک هفته بعد')) %}
+                        <form method="post" action="{{ url_for('followups.work_center_defer', episode_id=item.episode_id) }}">
+                            {{ action_return_fields() }}
+                            <input type="hidden" name="defer_days" value="{{ days }}">
+                            <input type="hidden" name="idempotency_key" value="{{ ownership_action_token }}:defer:{{ days }}:{{ item.episode_id }}">
+                            <button class="btn btn-ghost" type="submit">{{ label }}</button>
+                        </form>
+                        {% endfor %}
+                    </div>
+                    <details class="work-item-action-details">
+                        <summary>زمان دلخواه</summary>
+                        <form method="post" action="{{ url_for('followups.work_center_defer', episode_id=item.episode_id) }}" class="work-item-action-form">
+                            {{ action_return_fields() }}
+                            <input type="hidden" name="idempotency_key" value="{{ ownership_action_token }}:defer:custom:{{ item.episode_id }}">
+                            <div class="fld"><label for="defer-date">تاریخ</label><input id="defer-date" class="jdate" name="defer_date" required></div>
+                            <div class="fld"><label for="defer-time">ساعت</label><input id="defer-time" type="time" name="defer_time" value="09:00" required></div>
+                            <div class="fld work-item-action-form__note"><label for="defer-note">توضیح اختیاری</label><input id="defer-note" name="note" maxlength="500"></div>
+                            <button class="btn" type="submit">ثبت موعد و رفتن به کار بعدی</button>
+                        </form>
+                    </details>
+                </div>
+                {% endif %}
+
+                {% if can_book_work %}
+                <details class="work-item-action-group work-item-action-details">
+                    <summary><span><b>ثبت نوبت ویزیت</b><small>نوبت واقعی به همین کار متصل می‌شود.</small></span></summary>
+                    <form method="post" action="{{ url_for('followups.work_center_book', episode_id=item.episode_id) }}" class="work-item-action-form">
+                        {{ action_return_fields() }}
+                        <input type="hidden" name="idempotency_key" value="{{ ownership_action_token }}:book:{{ item.episode_id }}">
+                        <div class="fld"><label for="booking-date">تاریخ نوبت</label><input id="booking-date" class="jdate" name="booking_date" required></div>
+                        <div class="fld"><label for="booking-time">ساعت</label><input id="booking-time" type="time" name="booking_time" value="09:00" step="900" required></div>
+                        <button class="btn" type="submit">ثبت نوبت و رفتن به کار بعدی</button>
+                    </form>
+                </details>
+                {% endif %}
+
+                {% if can_complete_work %}
+                <div class="work-item-action-group is-complete">
+                    <div class="work-item-action-group__copy">
+                        <b>کار انجام شده است</b>
+                        <span class="muted text-sm">فقط برای کار اداری؛ پیگیری بالینی همچنان به شاهد معتبر نیاز دارد.</span>
+                    </div>
+                    <form method="post" action="{{ url_for('followups.work_center_complete', episode_id=item.episode_id) }}" class="work-item-complete-form">
+                        {{ action_return_fields() }}
+                        <input type="text" name="note" maxlength="500" placeholder="توضیح اختیاری">
+                        <button class="btn btn-ok" type="submit">تکمیل و رفتن به کار بعدی</button>
+                    </form>
+                </div>
+                {% endif %}
+            </section>
+            {% endif %}
 
             {% include "followups/_structured_contact_detail.html" %}
         </main>

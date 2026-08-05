@@ -100,6 +100,28 @@ class FollowupProjectionRepository:
             "projection_set_hash": self.set_hash(),
         }
 
+    def upsert_one(self, row: dict) -> dict:
+        """Refresh one disposable projection row after an authoritative action."""
+        db = self._db()
+        placeholders = ",".join("?" for _ in _COLUMNS)
+        columns = ",".join(_COLUMNS)
+        updates = ",".join(
+            f"{column}=excluded.{column}"
+            for column in _COLUMNS
+            if column != "episode_id"
+        )
+        db.execute(
+            f"""INSERT INTO followup_work_item_projection ({columns})
+                VALUES ({placeholders})
+                ON CONFLICT(episode_id) DO UPDATE SET {updates}""",
+            self._values(row),
+        )
+        db.commit()
+        return {
+            "episode_id": str(row["episode_id"]),
+            "projection_hash": str(row["projection_hash"]),
+        }
+
     def get(self, episode_id: str) -> dict | None:
         row = self._db().execute(
             "SELECT * FROM followup_work_item_projection WHERE episode_id=?",

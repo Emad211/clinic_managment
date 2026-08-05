@@ -23,9 +23,19 @@
     </div>
     {% if model.projection_ready and model['items'] %}
     <div class="auto-page-header__actions">
-        <a class="btn" href="{{ url_for('unified_followups.index', view=model.filters.view, q=model.filters.q, state=model.filters.state, role=model.filters.role, sla=model.filters.sla, page=model.page, per_page=model.per_page, focus='first') }}">
-            شروع رسیدگی
+        {% if actions_enabled %}
+        <form method="post" action="{{ url_for('work_center_outcomes.start_next') }}" class="m-0">
+            {{ context_fields() }}
+            <button class="btn" type="submit">
+                <svg class="icon icon-sm"><use href="#i-zap"></use></svg>
+                شروع رسیدگی
+            </button>
+        </form>
+        {% else %}
+        <a class="btn" href="{{ url_for('unified_followups.detail', episode_id=model['items'][0].episode_id, view=model.filters.view, q=model.filters.q, state=model.filters.state, role=model.filters.role, sla=model.filters.sla, page=model.page, per_page=model.per_page) }}">
+            مشاهده اولین کار
         </a>
+        {% endif %}
     </div>
     {% endif %}
 </header>

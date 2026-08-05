@@ -79,3 +79,107 @@
     {% endif %}
 </section>
 {% endif %}
+
+{% if actions_enabled and item.state_class != 'TERMINAL' and work_action and work_action.can_message %}
+<section class="card work-item-message-action" aria-labelledby="work-message-title">
+    <div class="section-title">
+        <svg class="icon"><use href="#i-megaphone"></use></svg>
+        <div>
+            <div id="work-message-title">دعوت مصوب برای بیمار</div>
+            <div class="section-sub">فقط Template فعال دعوت ویزیت در یک تراکنش وارد صف تأیید می‌شود؛ متن آزاد و ارسال مستقیم وجود ندارد.</div>
+        </div>
+    </div>
+    <form method="post" action="{{ url_for('work_center_outcomes.queue_message', episode_id=item.episode_id) }}" class="work-item-message-form">
+        <input type="hidden" name="current_url" value="{{ request.full_path }}">
+        <input type="hidden" name="return_url" value="{{ return_url }}">
+        <input type="hidden" name="next_url" value="{{ next_item_url or '' }}">
+        <span class="muted text-sm">فعال‌بودن Event، کانال SMS، رضایت CARE، شماره و Cooldown در سرور دوباره بررسی می‌شوند.</span>
+        <button class="btn btn-ghost" type="submit">افزودن به صف تأیید و کار بعدی</button>
+    </form>
+</section>
+{% endif %}
+
+{% set clinical_contract = work_action.clinical_contract if work_action else none %}
+{% if actions_enabled and item.state_class != 'TERMINAL' and is_clinical_task and work_action and work_action.can_complete_clinical and clinical_contract %}
+<details class="card work-item-evidence-action">
+    <summary class="section-title">
+        <svg class="icon"><use href="#i-check"></use></svg>
+        <div>
+            <div>تکمیل پیگیری بالینی با شاهد</div>
+            <div class="section-sub">فقط Outcome و Factهای مجاز در قرارداد تغییرناپذیر همین Task نمایش داده می‌شوند.</div>
+        </div>
+    </summary>
+    <form method="post" action="{{ url_for('work_center_outcomes.clinical_complete', episode_id=item.episode_id) }}" class="work-item-evidence-form">
+        <input type="hidden" name="current_url" value="{{ request.full_path }}">
+        <input type="hidden" name="return_url" value="{{ return_url }}">
+        <input type="hidden" name="next_url" value="{{ next_item_url or '' }}">
+        <input type="hidden" name="idempotency_key" value="{{ ownership_action_token }}:clinical-complete:{{ item.episode_id }}">
+        <div class="fld">
+            <label for="clinical-outcome-type">نوع شاهد</label>
+            <select id="clinical-outcome-type" name="outcome_type" required>
+                {% for option in clinical_contract.allowed_outcomes %}
+                <option value="{{ option.code }}">{{ option.label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+
+        {% if clinical_contract.requires_fact %}
+        <div class="fld">
+            <label for="clinical-fact-key">شاخص مورد انتظار</label>
+            {% if clinical_contract.required_fact_keys|length == 1 %}
+            <input type="hidden" name="fact_key" value="{{ clinical_contract.required_fact_keys[0] }}">
+            <input id="clinical-fact-key" value="{{ clinical_contract.required_fact_keys[0] }}" readonly dir="ltr" aria-describedby="clinical-contract-help">
+            {% else %}
+            <select id="clinical-fact-key" name="fact_key" required dir="ltr">
+                {% for key in clinical_contract.required_fact_keys %}<option value="{{ key }}">{{ key }}</option>{% endfor %}
+            </select>
+            {% endif %}
+        </div>
+        <div class="fld">
+            <label for="clinical-value">مقدار{% if clinical_contract.requires_value %} <span class="req">*</span>{% endif %}</label>
+            <input id="clinical-value" name="value" inputmode="decimal" {% if clinical_contract.requires_value %}required{% endif %}>
+        </div>
+        <div class="fld"><label for="clinical-unit">واحد</label><input id="clinical-unit" name="unit" dir="ltr"></div>
+        {% endif %}
+
+        <div class="fld"><label for="clinical-observed-at">تاریخ مشاهده</label><input id="clinical-observed-at" class="jdate" name="observed_at" placeholder="خالی = امروز"></div>
+        <div class="fld work-item-evidence-form__note"><label for="clinical-note">توضیح شاهد</label><textarea id="clinical-note" name="note" rows="2" maxlength="1000"></textarea></div>
+        <p id="clinical-contract-help" class="muted text-xs work-item-evidence-form__note">حداقل اعتبار: {{ clinical_contract.minimum_verification }} · ورود به پرونده: {{ clinical_contract.canonical_ingestion }} · فوریت: {{ clinical_contract.urgency }}</p>
+        <button class="btn btn-ok" type="submit">ثبت شاهد، تکمیل و کار بعدی</button>
+    </form>
+</details>
+{% endif %}
+
+{% set plan_contract = work_action.plan_contract if work_action else none %}
+{% if actions_enabled and item.state_class != 'TERMINAL' and is_plan_task and work_action and work_action.can_complete_plan and plan_contract %}
+<details class="card work-item-evidence-action">
+    <summary class="section-title">
+        <svg class="icon"><use href="#i-check"></use></svg>
+        <div>
+            <div>تکمیل اقدام برنامه درمان با شاهد</div>
+            <div class="section-sub">نوع شاهد فقط از مجموعهٔ معتبر برای «{{ plan_contract.commitment_label }}» انتخاب می‌شود.</div>
+        </div>
+    </summary>
+    <form method="post" action="{{ url_for('work_center_outcomes.plan_complete', episode_id=item.episode_id) }}" class="work-item-evidence-form">
+        <input type="hidden" name="current_url" value="{{ request.full_path }}">
+        <input type="hidden" name="return_url" value="{{ return_url }}">
+        <input type="hidden" name="next_url" value="{{ next_item_url or '' }}">
+        <input type="hidden" name="idempotency_key" value="{{ ownership_action_token }}:plan-complete:{{ item.episode_id }}">
+        <div class="fld">
+            <label for="plan-evidence-type">نوع شاهد</label>
+            <select id="plan-evidence-type" name="evidence_type" required>
+                {% for option in plan_contract.allowed_evidence %}<option value="{{ option.code }}">{{ option.label }}</option>{% endfor %}
+            </select>
+        </div>
+        <div class="fld"><label for="plan-evidence-ref">شناسه شاهد</label><input id="plan-evidence-ref" name="evidence_ref" required dir="ltr"></div>
+        <div class="fld">
+            <label for="plan-outcome-code">نتیجه</label>
+            <select id="plan-outcome-code" name="outcome_code" required>
+                {% for option in plan_contract.allowed_outcomes %}<option value="{{ option.code }}">{{ option.label }}</option>{% endfor %}
+            </select>
+        </div>
+        <div class="fld work-item-evidence-form__note"><label for="plan-note">توضیح اختیاری</label><textarea id="plan-note" name="note" rows="2" maxlength="1000"></textarea></div>
+        <button class="btn btn-ok" type="submit">ثبت شاهد، تکمیل و کار بعدی</button>
+    </form>
+</details>
+{% endif %}

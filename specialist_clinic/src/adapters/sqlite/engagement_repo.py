@@ -110,10 +110,9 @@ class EngagementRepository:
 
     # ---- approval queue (physician confirms before SMS goes out) ----
     def enqueue_approval(self, patient_link_id: int, event_key: str, channel: str,
-                         due_date, message: str, period_key: str, offer=None) -> int | None:
-        """Queue a candidate message for the physician to approve. Idempotent via
-        INSERT OR IGNORE on UNIQUE(patient_link_id, event_key, period_key) — re-queuing
-        the same patient/event/period is a no-op (returns None)."""
+                         due_date, message: str, period_key: str, offer=None,
+                         *, commit: bool = True) -> int | None:
+        """Queue one candidate; ``commit=False`` joins a caller-owned transaction."""
         db = get_db()
         cur = db.execute(
             """INSERT OR IGNORE INTO engagement_approvals
@@ -121,8 +120,18 @@ class EngagementRepository:
                VALUES (?, ?, ?, ?, ?, ?, ?)""",
             (patient_link_id, event_key, channel, due_date, message, offer, period_key),
         )
-        db.commit()
+        if commit:
+            db.commit()
         return cur.lastrowid if cur.rowcount else None
+
+    def find_approval(self, *, patient_link_id: int, event_key: str,
+                      period_key: str) -> dict | None:
+        row = get_db().execute(
+            """SELECT * FROM engagement_approvals
+               WHERE patient_link_id=? AND event_key=? AND period_key=?""",
+            (int(patient_link_id), str(event_key), str(period_key)),
+        ).fetchone()
+        return dict(row) if row else None
 
     def list_pending(self) -> list[dict]:
         db = get_db()

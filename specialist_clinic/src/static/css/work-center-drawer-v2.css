@@ -1,0 +1,82 @@
+/* Progressive Work Center drawer. Full-page detail remains the no-JS fallback. */
+
+body.work-drawer-open{overflow:hidden}
+.work-drawer-overlay{
+  position:fixed;
+  inset:0;
+  z-index:1200;
+  display:grid;
+  grid-template-columns:minmax(0,1fr) minmax(720px,66vw);
+}
+.work-drawer-overlay[hidden]{display:none}
+.work-drawer-backdrop{
+  grid-column:1/-1;
+  grid-row:1;
+  border:0;
+  background:rgba(3,7,18,.68);
+  backdrop-filter:blur(3px);
+  cursor:default;
+}
+.work-drawer-panel{
+  position:relative;
+  grid-column:2;
+  grid-row:1;
+  display:grid;
+  grid-template-rows:auto minmax(0,1fr);
+  min-width:0;
+  height:100dvh;
+  background:var(--bg,#080d18);
+  border-inline-start:1px solid var(--auto-border);
+  box-shadow:-20px 0 56px rgba(0,0,0,.38);
+  outline:none;
+}
+.work-drawer-panel__bar{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:var(--s3,12px);
+  min-height:58px;
+  padding:var(--s2,8px) var(--s4,16px);
+  border-block-end:1px solid var(--auto-border);
+  background:var(--auto-panel);
+}
+.work-drawer-panel__bar>span{color:var(--muted);font-size:.8rem}
+.work-drawer-panel__body{min-height:0;overflow:auto;padding:var(--s4,16px)}
+.work-drawer-panel__body>.work-item-drawer{
+  width:100%;
+  margin:0;
+  padding:0;
+  border:0;
+  border-radius:0;
+  background:transparent;
+  box-shadow:none;
+}
+.work-drawer-loading{
+  display:grid;
+  place-items:center;
+  min-height:40vh;
+  color:var(--muted);
+}
+.work-drawer-overlay[data-busy] .work-drawer-panel__body{cursor:progress}
+.work-drawer-overlay[data-busy] .work-drawer-panel__body::after{
+  content:"";
+  position:absolute;
+  inset:58px 0 0;
+  pointer-events:none;
+  background:linear-gradient(90deg,transparent,rgba(255,255,255,.025),transparent);
+  animation:work-drawer-pulse 1.2s linear infinite;
+}
+@keyframes work-drawer-pulse{from{transform:translateX(-100%)}to{transform:translateX(100%)}}
+
+@media(max-width:1100px){
+  .work-drawer-overlay{grid-template-columns:minmax(0,1fr) minmax(620px,78vw)}
+}
+@media(max-width:760px){
+  .work-drawer-overlay{grid-template-columns:1fr}
+  .work-drawer-panel{grid-column:1;width:100vw}
+  .work-drawer-backdrop{display:none}
+  .work-drawer-panel__body{padding:var(--s3,12px);padding-bottom:calc(var(--s5,20px) + env(safe-area-inset-bottom))}
+}
+@media(prefers-reduced-motion:reduce){
+  .work-drawer-overlay[data-busy] .work-drawer-panel__body::after{animation:none}
+}

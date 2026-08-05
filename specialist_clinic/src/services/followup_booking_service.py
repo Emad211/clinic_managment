@@ -11,6 +11,7 @@ from src.adapters.sqlite.clinical_care_loop_repo import (
     ClinicalCareLoopRepository,
 )
 from src.adapters.sqlite.core import get_db
+from src.adapters.sqlite.followup_episode_repo import FollowupEpisodeRepository
 from src.adapters.sqlite.followup_operations_repo import (
     FollowupOperationsRepository,
 )
@@ -53,6 +54,55 @@ class FollowupBookingService:
     def _db(self) -> sqlite3.Connection:
         return self._connection or get_db()
 
+    def _link_appointment_to_episode(
+        self,
+        *,
+        repository: FollowupEpisodeRepository,
+        episode_id: str,
+        appointment_id: int,
+        patient_link_id: int,
+        actor_username: str,
+        actor_user_id: int | None,
+        recorded_at: datetime | str,
+    ) -> None:
+        appointment = AppointmentRepository(self._db()).get(int(appointment_id))
+        if not appointment:
+            raise FollowupBookingError("نوبت ساخته شد اما برای اتصال به مسیر پیدا نشد")
+        # Must match FO-1 backfill `_revision_for('APPOINTMENT')` exactly so a later
+        # deterministic backfill sees this runtime link as the same immutable source.
+        revision_payload = {
+            "id": int(appointment["id"]),
+            "patient_link_id": int(appointment["patient_link_id"]),
+        }
+        repository.link_source_once(
+            episode_id=str(episode_id),
+            patient_link_id=int(patient_link_id),
+            source_type="APPOINTMENT",
+            source_id=str(appointment_id),
+            source_revision=_hash(revision_payload),
+            relation_type="SCHEDULE",
+            actor_username=actor_username,
+            linked_at=recorded_at,
+            recorded_at=recorded_at,
+            commit=False,
+        )
+        repository.append_event_once(
+            episode_id=str(episode_id),
+            event_type="APPOINTMENT_BOOKED",
+            actor_username=actor_username,
+            actor_user_id=actor_user_id,
+            idempotency_key=(
+                f"episode-appointment-booked:{episode_id}:{int(appointment_id)}"
+            ),
+            effective_at=recorded_at,
+            recorded_at=recorded_at,
+            payload={
+                "appointment_id": int(appointment_id),
+                "scheduled_at": str(appointment["scheduled_at"]),
+            },
+            commit=False,
+        )
+
     def book(
         self,
         *,
@@ -62,11 +112,13 @@ class FollowupBookingService:
         actor_username: str,
         actor_user_id: int | None,
         idempotency_key: str,
+        episode_id: str | None = None,
     ) -> dict:
         patient_id = int(patient_link_id)
         normalized_ids = sorted({int(value) for value in task_ids if value})
         key = str(idempotency_key or "").strip()
         actor = str(actor_username or "").strip()
+        episode = str(episode_id or "").strip() or None
         if not normalized_ids:
             raise FollowupBookingError("حداقل یک پیگیری الزامی است")
         if len(key) < 12:
@@ -79,6 +131,9 @@ class FollowupBookingService:
             raise FollowupBookingError("زمان نوبت نامعتبر است") from exc
 
         db = self._db()
+        # Schema preparation must happen before BEGIN IMMEDIATE. Link writes below use
+        # commit=False and therefore participate in the same booking transaction.
+        episode_repository = FollowupEpisodeRepository(db) if episode else None
         db.execute("BEGIN IMMEDIATE")
         try:
             prior = db.execute(
@@ -95,6 +150,16 @@ class FollowupBookingService:
                     raise FollowupBookingError(
                         "شناسهٔ رزرو قبلاً برای درخواست دیگری مصرف شده است"
                     )
+                if episode_repository:
+                    self._link_appointment_to_episode(
+                        repository=episode_repository,
+                        episode_id=episode,
+                        appointment_id=int(prior["appointment_id"]),
+                        patient_link_id=patient_id,
+                        actor_username=actor,
+                        actor_user_id=actor_user_id,
+                        recorded_at=self.clock(),
+                    )
                 db.commit()
                 return {
                     "appointment_id": int(prior["appointment_id"]),
@@ -110,6 +175,7 @@ class FollowupBookingService:
                         1 for task_id in normalized_ids
                         if self._task_kind(db, task_id) == "encounter_plan"
                     ),
+                    "episode_linked": bool(episode_repository),
                     "duplicate": True,
                 }
 
@@ -214,6 +280,16 @@ class FollowupBookingService:
             if created_at.tzinfo is not None:
                 created_at = created_at.replace(tzinfo=None)
             created_text = created_at.isoformat(sep=" ", timespec="seconds")
+            if episode_repository:
+                self._link_appointment_to_episode(
+                    repository=episode_repository,
+                    episode_id=episode,
+                    appointment_id=appointment_id,
+                    patient_link_id=patient_id,
+                    actor_username=actor,
+                    actor_user_id=actor_user_id,
+                    recorded_at=created_text,
+                )
             payload = {
                 "idempotency_key": key,
                 "patient_link_id": patient_id,
@@ -222,6 +298,7 @@ class FollowupBookingService:
                 "task_ids": normalized_ids,
                 "actor_user_id": int(actor_user_id) if actor_user_id else None,
                 "actor_username": actor,
+                "episode_id": episode,
                 "created_at": created_text,
             }
             db.execute(
@@ -248,6 +325,7 @@ class FollowupBookingService:
                 "admin_booked": len(admin_ids),
                 "clinical_scheduled": len(clinical_heads),
                 "plan_scheduled": len(plan_heads),
+                "episode_linked": bool(episode_repository),
                 "duplicate": False,
             }
         except Exception:

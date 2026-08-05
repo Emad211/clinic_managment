@@ -1,6 +1,8 @@
 .home-next-actions{margin-block-end:var(--s4,16px)}
 .home-action-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:var(--s3,12px)}
+.home-action-form{margin:0;min-width:0}
 .home-action-card{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:var(--s3,12px);padding:var(--s4,16px);border:1px solid var(--auto-border);border-radius:var(--radius-lg,14px);background:var(--auto-panel);color:var(--text,#e9eef9);text-decoration:none;transition:transform .15s ease,border-color .15s ease,box-shadow .15s ease}
+button.home-action-card{width:100%;font:inherit;text-align:start;cursor:pointer}
 .home-action-card:hover{transform:translateY(-2px);border-color:color-mix(in srgb,var(--primary,#3b82f6) 58%,var(--auto-border));box-shadow:var(--auto-shadow)}
 .home-action-card.is-primary{background:linear-gradient(135deg,color-mix(in srgb,var(--primary,#3b82f6) 22%,var(--auto-panel)),var(--auto-panel));border-color:color-mix(in srgb,var(--primary,#3b82f6) 70%,var(--auto-border))}
 .home-action-card span{min-width:0}.home-action-card b,.home-action-card small{display:block}.home-action-card b{font-size:.95rem}.home-action-card small{margin-top:.25rem;color:var(--muted,#9aa8c6);font-size:.76rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
