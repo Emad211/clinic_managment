@@ -33,7 +33,7 @@
 <nav class="work-center-tabs" aria-label="نماهای مرکز کارها">
     {% for key in ('mine', 'unassigned', 'all', 'completed') %}
     <a class="work-center-tab{% if model.filters.view == key %} active{% endif %}"
-       href="{{ url_for('unified_followups.index', view=key, q=model.filters.q, sla=model.filters.sla) }}"
+       href="{{ url_for('unified_followups.index', view=key, q=model.filters.q, sla='' if key == 'completed' else model.filters.sla) }}"
        {% if model.filters.view == key %}aria-current="page"{% endif %}>
         <span>{{ work_view_labels[key] }}</span>
         <b class="nums">{{ work_counts[key]|fa_num }}</b>
@@ -92,15 +92,17 @@
             </select>
         </div>
         {% endif %}
+        {% if model.filters.view != 'completed' %}
         <div class="fld">
             <label for="unified-sla">موعد</label>
             <select id="unified-sla" name="sla" data-auto-submit>
                 <option value="">همه موعدها</option>
                 {% for key, label in sla_labels.items() %}
-                {% if model.filters.view == 'completed' or key != 'TERMINAL' %}<option value="{{ key }}" {% if model.filters.sla == key %}selected{% endif %}>{{ label }}</option>{% endif %}
+                {% if key != 'TERMINAL' %}<option value="{{ key }}" {% if model.filters.sla == key %}selected{% endif %}>{{ label }}</option>{% endif %}
                 {% endfor %}
             </select>
         </div>
+        {% endif %}
         <div class="auto-filter-actions">
             <button class="btn" type="submit"><svg class="icon icon-sm"><use href="#i-search"></use></svg> جست‌وجو</button>
             <a class="btn btn-ghost" href="{{ url_for('unified_followups.index', view=model.filters.view) }}">پاک‌کردن فیلترها</a>
