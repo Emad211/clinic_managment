@@ -216,9 +216,17 @@
   }
 
   function setupAutoNextFocus() {
-    const firstTask = qs('[data-work-item] [data-primary-action]');
     const requested = new URLSearchParams(window.location.search).get('focus');
-    if (requested === 'first' && firstTask) firstTask.focus();
+    if (requested === 'first') {
+      qs('[data-work-item] [data-primary-action]')?.focus();
+      return;
+    }
+    if (requested !== 'next') return;
+    const next = qs('[data-queue-next]');
+    if (!next) return;
+    next.classList.add('queue-next-focus');
+    next.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    next.focus({ preventScroll: true });
   }
 
   function setupTechnicalDetails() {

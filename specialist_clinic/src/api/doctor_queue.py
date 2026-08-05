@@ -114,9 +114,19 @@ def _queue_error(exc: Exception) -> None:
 @bp.route("/")
 @login_required
 def index():
-    data = DoctorQueueService().queue()
+    try:
+        data = DoctorQueueService().queue()
+        queue_unavailable = False
+    except Exception:
+        # Queue reads operational identity from the accounting bridge. A read failure
+        # must render an explicit unavailable state and never invent patient rows.
+        data = {"waiting": [], "done": [], "work_date": today_str()}
+        queue_unavailable = True
     return render_template(
-        "doctor_queue/queue.html", active_page="doctor_queue", **data
+        "doctor_queue/queue.html",
+        active_page="doctor_queue",
+        queue_unavailable=queue_unavailable,
+        **data,
     )
 
 
@@ -350,7 +360,7 @@ def save(invoice_id):
                 and current and current["event_type"] == "COMPLETED"
             ):
                 flash("این درخواست قبلاً با موفقیت امضا و تکمیل شده است.", "success")
-                return redirect(url_for("doctor_queue.index"))
+                return redirect(url_for("doctor_queue.index", focus="next"))
         _queue_error(exc)
         return redirect(url_for("doctor_queue.index"))
 
@@ -415,8 +425,8 @@ def save(invoice_id):
                 f"signed document={result['document']['id']} encounter={snapshot['encounter_id']}",
                 patient_link_id=snapshot["patient_link_id"],
             )
-            flash("سند Encounter امضا و ویزیت تکمیل شد.", "success")
-            return redirect(url_for("doctor_queue.index"))
+            flash("ویزیت نهایی شد؛ بیمار بعدی در صف آماده است.", "success")
+            return redirect(url_for("doctor_queue.index", focus="next"))
         result = service.save_draft_with_vitals(
             visit_snapshot=snapshot,
             document=document,

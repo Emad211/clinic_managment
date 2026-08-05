@@ -1,44 +1,92 @@
 {% extends "automation_base.html" %}
 {% block title %}صف پزشک{% endblock %}
+{% block head %}
+{{ super() }}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/queue-encounter-automation-v2.css') }}">
+{% endblock %}
 {% block content %}
-{% set queue_ns = namespace(in_progress=0) %}
-{% for p in waiting %}{% if p.status == 'in_progress' %}{% set queue_ns.in_progress = queue_ns.in_progress + 1 %}{% endif %}{% endfor %}
+{% set active_visits = waiting|selectattr('status', 'equalto', 'in_progress')|list %}
+{% set queued_visits = waiting|rejectattr('status', 'equalto', 'in_progress')|list %}
 
-<header class="auto-page-header">
+<header class="auto-page-header doctor-queue-header">
     <div class="auto-page-header__copy">
         <h1><svg class="icon icon-lg"><use href="#i-stethoscope"></use></svg> صف پزشک</h1>
-        <p class="muted">{{ work_date|jalali_date }} · بیمار بعدی را شروع کنید؛ اطلاعات تکمیلی فقط در صورت نیاز باز می‌شود.</p>
+        <p class="muted">{{ work_date|jalali_date }} · ویزیت فعال را ادامه دهید یا بیمار بعدی را با یک اقدام صریح شروع کنید.</p>
     </div>
     <div class="auto-page-header__actions">
-        <a class="btn btn-ghost" href="{{ url_for('doctor_queue.index') }}">تازه‌سازی</a>
+        <a class="btn btn-ghost" href="{{ url_for('doctor_queue.index') }}"><svg class="icon icon-sm"><use href="#i-activity"></use></svg> تازه‌سازی</a>
     </div>
 </header>
 
-<section class="work-center-summary" aria-label="خلاصه صف پزشک">
-    <div class="work-center-kpi"><b>{{ waiting|length|fa_num }}</b><span>منتظر رسیدگی</span></div>
-    <div class="work-center-kpi"><b>{{ queue_ns.in_progress|fa_num }}</b><span>در حال ویزیت</span></div>
+{% if queue_unavailable %}
+<section class="auto-empty doctor-queue-unavailable" role="alert" aria-live="polite">
+    <svg class="icon"><use href="#i-alert"></use></svg>
+    <h2>صف پزشک موقتاً در دسترس نیست</h2>
+    <p>اتصال فقط‌خواندنی حسابداری کامل نشد. هیچ بیمار یا وضعیت ویزیتی حدس زده نشده است.</p>
+    <a class="btn" href="{{ url_for('doctor_queue.index') }}">تلاش دوباره</a>
+</section>
+{% else %}
+<section class="work-center-summary doctor-queue-summary" aria-label="خلاصه صف پزشک">
+    <div class="work-center-kpi"><b>{{ active_visits|length|fa_num }}</b><span>در حال ویزیت</span></div>
+    <div class="work-center-kpi"><b>{{ queued_visits|length|fa_num }}</b><span>منتظر</span></div>
     <div class="work-center-kpi"><b>{{ done|length|fa_num }}</b><span>تکمیل‌شده امروز</span></div>
-    <div class="work-center-kpi"><b>{% if waiting %}{{ waiting[0].full_name }}{% else %}—{% endif %}</b><span>بیمار بعدی</span></div>
+    <div class="work-center-kpi doctor-queue-next-kpi"><b>{% if queued_visits %}{{ queued_visits[0].full_name }}{% else %}—{% endif %}</b><span>بیمار بعدی</span></div>
 </section>
 
-<section class="card" aria-labelledby="waiting-title">
+<section class="card doctor-queue-section doctor-queue-current" aria-labelledby="current-visit-title">
     <div class="section-title">
-        <svg class="icon"><use href="#i-list-checks"></use></svg>
-        <div><div id="waiting-title">منتظر ویزیت</div><div class="section-sub">برای شروع، فقط اقدام اصلی را بزنید؛ اتصال نوبت و کمپین اختیاری است.</div></div>
+        <svg class="icon"><use href="#i-activity"></use></svg>
+        <div><div id="current-visit-title">در حال ویزیت</div><div class="section-sub">ویزیت شروع‌شده باید پیش از شروع بیمار بعدی مستند و نهایی شود.</div></div>
     </div>
-
-    {% if waiting %}
+    {% if active_visits %}
     <div class="doctor-queue-list">
-        {% for p in waiting %}
-        <article class="doctor-queue-card {% if p.status == 'in_progress' %}is-current{% endif %}">
+        {% for p in active_visits %}
+        <article class="doctor-queue-card is-current" data-doctor-queue-current>
             <div class="doctor-queue-card__patient">
                 <div class="patient-avatar" aria-hidden="true"><svg class="icon"><use href="#i-user"></use></svg></div>
                 <div>
                     <h2>{{ p.full_name }}</h2>
                     <div class="muted text-xs nums">{{ p.national_id|fa_num }} · پذیرش {{ p.opened_at|jalali }}</div>
-                    <div class="flex gap-2 wrap" style="margin-top:var(--s2);">
+                    <div class="doctor-queue-badges">
+                        <span class="badge badge-violet">در حال ویزیت</span>
+                        {% if p.linked_appointment_id %}<span class="badge badge-ok">نوبت #{{ p.linked_appointment_id|fa_num }}</span>{% endif %}
+                        {% if p.enrolled %}<span class="badge badge-info">عضو برنامه تخصصی</span>{% endif %}
+                    </div>
+                </div>
+            </div>
+            <div class="doctor-queue-card__context">
+                <span class="muted text-sm">سند ویزیت و برنامه پیگیری همین بیمار را ادامه دهید.</span>
+            </div>
+            <div class="doctor-queue-card__action">
+                <a class="btn" href="{{ url_for('doctor_queue.visit', invoice_id=p.invoice_id) }}" data-queue-current-action>
+                    <svg class="icon icon-sm"><use href="#i-edit"></use></svg> ادامه مستندسازی
+                </a>
+            </div>
+        </article>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty-mini">ویزیت فعالی وجود ندارد.</div>
+    {% endif %}
+</section>
+
+<section class="card doctor-queue-section" aria-labelledby="waiting-title">
+    <div class="section-title">
+        <svg class="icon"><use href="#i-list-checks"></use></svg>
+        <div><div id="waiting-title">منتظر</div><div class="section-sub">شروع ویزیت فقط با دکمه اصلی انجام می‌شود؛ اتصال نوبت یا کمپین اختیاری است.</div></div>
+    </div>
+
+    {% if queued_visits %}
+    <div class="doctor-queue-list">
+        {% for p in queued_visits %}
+        <article class="doctor-queue-card{% if loop.first %} is-next{% endif %}" data-doctor-queue-item>
+            <div class="doctor-queue-card__patient">
+                <div class="patient-avatar" aria-hidden="true"><svg class="icon"><use href="#i-user"></use></svg></div>
+                <div>
+                    <h2>{{ p.full_name }}{% if loop.first %} <span class="badge badge-info">بیمار بعدی</span>{% endif %}</h2>
+                    <div class="muted text-xs nums">{{ p.national_id|fa_num }} · پذیرش {{ p.opened_at|jalali }}</div>
+                    <div class="doctor-queue-badges">
                         {% if p.enrolled %}<span class="badge badge-info">عضو برنامه تخصصی</span>{% else %}<span class="badge badge-muted">نیازمند ثبت در برنامه</span>{% endif %}
-                        {% if p.status == 'in_progress' %}<span class="badge badge-violet">در حال ویزیت</span>{% endif %}
                         {% if p.linked_appointment_id %}<span class="badge badge-ok">نوبت #{{ p.linked_appointment_id|fa_num }}</span>{% endif %}
                     </div>
                 </div>
@@ -57,9 +105,7 @@
 
             <div class="doctor-queue-card__action">
                 {% if not p.enrolled %}
-                <span class="muted text-sm">ابتدا بیمار را وارد برنامه تخصصی کنید.</span>
-                {% elif p.status == 'in_progress' %}
-                <a class="btn" href="{{ url_for('doctor_queue.visit', invoice_id=p.invoice_id) }}"><svg class="icon icon-sm"><use href="#i-edit"></use></svg> ادامه مستندسازی</a>
+                <a class="btn btn-ghost" href="{{ url_for('patients.enroll') }}">ثبت در برنامه تخصصی</a>
                 {% else %}
                 <form method="post" action="{{ url_for('doctor_queue.start', invoice_id=p.invoice_id) }}" class="doctor-queue-start-form">
                     {% if (not p.linked_appointment_id and p.appointment_options) or (p.campaign_response_options and permissions.get('sms.campaign.attribution.record')) %}
@@ -87,7 +133,9 @@
                         </div>
                     </details>
                     {% endif %}
-                    <button class="btn btn-ok" type="submit"><svg class="icon icon-sm"><use href="#i-stethoscope"></use></svg> شروع ویزیت</button>
+                    <button class="btn btn-ok" type="submit" data-queue-start {% if loop.first %}data-queue-next{% endif %}>
+                        <svg class="icon icon-sm"><use href="#i-stethoscope"></use></svg> شروع ویزیت
+                    </button>
                 </form>
                 {% endif %}
             </div>
@@ -95,12 +143,12 @@
         {% endfor %}
     </div>
     {% else %}
-    <div class="auto-empty"><svg class="icon"><use href="#i-check"></use></svg><h2>صف خالی است</h2><p>در حال حاضر بیمار منتظر ویزیتی وجود ندارد.</p></div>
+    <div class="auto-empty"><svg class="icon"><use href="#i-check"></use></svg><h2>بیماری در انتظار نیست</h2><p>پس از پایان ویزیت فعال، بیمار بعدی اینجا نمایش داده می‌شود.</p></div>
     {% endif %}
 </section>
 
-<section class="card" aria-labelledby="done-title">
-    <div class="section-title"><svg class="icon"><use href="#i-check"></use></svg><div><div id="done-title">انجام‌شده امروز</div><div class="section-sub">اسناد نهایی‌شده ویزیت‌های امروز.</div></div></div>
+<section class="card doctor-queue-section" aria-labelledby="done-title">
+    <div class="section-title"><svg class="icon"><use href="#i-check"></use></svg><div><div id="done-title">تکمیل‌شده امروز</div><div class="section-sub">اسناد نهایی‌شده ویزیت‌های امروز.</div></div></div>
     {% if done %}
     <div class="compact-result-list">
         {% for p in done %}
@@ -113,4 +161,5 @@
     </div>
     {% else %}<div class="empty-mini">هنوز ویزیتی تکمیل نشده است.</div>{% endif %}
 </section>
+{% endif %}
 {% endblock %}
