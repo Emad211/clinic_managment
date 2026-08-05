@@ -4,7 +4,7 @@
 {% block content %}
 <header class="auto-page-header">
     <div class="auto-page-header__copy">
-        <a class="muted text-sm" href="{{ url_for('appointments.list_appointments', view='today') }}">نوبت‌ها / بازگشت</a>
+        <a class="muted text-sm" href="{{ cancel_url }}">بازگشت</a>
         <h1><svg class="icon"><use href="#i-calendar"></use></svg> ثبت نوبت</h1>
         <p class="muted">زمان پیشنهادی از نزدیک‌ترین ربع ساعت آینده پر شده است؛ معمولاً فقط تأیید بیمار و زمان لازم است.</p>
     </div>
@@ -79,7 +79,7 @@
         </details>
 
         <div class="appointment-create-actions">
-            <a class="btn btn-ghost" href="{{ url_for('appointments.list_appointments', view='today') }}">انصراف</a>
+            <a class="btn btn-ghost" href="{{ cancel_url }}">انصراف</a>
             <button class="btn" type="submit"><svg class="icon"><use href="#i-calendar"></use></svg> ثبت نوبت</button>
         </div>
     </form>
