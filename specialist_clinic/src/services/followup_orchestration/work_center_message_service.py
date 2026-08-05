@@ -35,7 +35,7 @@ class WorkCenterMessageService:
         self.db = db
         self.db.row_factory = sqlite3.Row
         self.clock = clock or iran_now
-        self.repo = EngagementRepository(db)
+        self.repo = EngagementRepository()
 
     def _now_text(self) -> str:
         value = self.clock()
@@ -147,11 +147,13 @@ class WorkCenterMessageService:
                 "مجوز افزودن پیام به صف تأیید ثبت نشده است.",
             )
         task = self._task(episode_id)
-        candidate = self._candidate(int(task["patient_link_id"]))
         episode_repo = FollowupEpisodeRepository(self.db)
 
         self.db.execute("BEGIN IMMEDIATE")
         try:
+            # Policy/config checks and writes share the same SQLite write lock. A
+            # concurrent manager edit cannot slip between validation and enqueue.
+            candidate = self._candidate(int(task["patient_link_id"]))
             existing = self.repo.find_approval(
                 patient_link_id=candidate["patient_link_id"],
                 event_key=self.EVENT_KEY,
