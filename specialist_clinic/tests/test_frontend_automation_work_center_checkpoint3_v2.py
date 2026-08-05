@@ -170,7 +170,9 @@ def test_message_queue_is_atomic_idempotent_and_projection_aware(outcome_app):
     ).fetchone()[0] == 1
 
 
-def test_contract_service_filters_clinical_outcomes_and_plan_evidence(monkeypatch):
+def test_contract_service_filters_clinical_outcomes_and_plan_evidence(
+    outcome_app, monkeypatch
+):
     from src.security.permissions import Permission
     from src.services.followup_orchestration.work_center_action_service import (
         WorkCenterActionService,
@@ -197,7 +199,7 @@ def test_contract_service_filters_clinical_outcomes_and_plan_evidence(monkeypatc
         "describe",
         lambda self, episode_id, permissions: dict(clinical_description),
     )
-    clinical = WorkCenterContractService(object()).build(
+    clinical = WorkCenterContractService(outcome_app["db"]).build(
         "episode-clinical",
         permissions=frozenset({
             Permission.CLINICAL_OUTCOME_RECORD,
@@ -227,7 +229,7 @@ def test_contract_service_filters_clinical_outcomes_and_plan_evidence(monkeypatc
         "describe",
         lambda self, episode_id, permissions: dict(plan_description),
     )
-    plan = WorkCenterContractService(object()).build(
+    plan = WorkCenterContractService(outcome_app["db"]).build(
         "episode-plan",
         permissions=frozenset({Permission.FOLLOWUP_PLAN_TRANSITION}),
     )
