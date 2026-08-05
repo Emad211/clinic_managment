@@ -87,6 +87,19 @@ def test_contact_outcomes_are_one_click_but_use_the_existing_server_form():
     assert "data-contact-form" in partial
 
 
+def test_doctor_queue_is_next_patient_first_and_keeps_safe_linking():
+    page = read("src/templates/doctor_queue/queue.html")
+    assert '{% extends "automation_base.html" %}' in page
+    assert "بیمار بعدی" in page
+    assert "شروع ویزیت" in page
+    assert "ادامه مستندسازی" in page
+    assert "اتصال اختیاری نوبت یا کمپین" in page
+    assert 'name="appointment_id"' in page
+    assert 'name="campaign_response_event_id"' in page
+    assert "/done" not in page
+    assert "فاکتور حسابداری" not in page
+
+
 def test_autosave_is_explicit_opt_in_and_never_local_only():
     script = read("src/static/js/automation-v1.js")
     assert 'form[data-autosave="server"]' in script
@@ -103,3 +116,4 @@ def test_automation_styles_cover_mobile_focus_and_reduced_motion():
     assert ":focus-visible" in css
     assert ".task-card__actions>.btn" in css
     assert "min-height:var(--touch-target,44px)" in css
+    assert ".doctor-queue-card" in css
