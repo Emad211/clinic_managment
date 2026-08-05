@@ -16,6 +16,9 @@
 .patient-consent-card form{margin-top:var(--s3)}
 .patient-consent-card .consent-change{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:var(--s2);align-items:end}
 .patient-consent-card .consent-change .fld{margin:0}
+.patient-consent .auto-technical,.cev2 .auto-technical{margin-top:var(--s3);font-size:.8rem;color:var(--muted)}
+.patient-consent .auto-technical>summary,.cev2 .auto-technical>summary{display:inline-flex;align-items:center;gap:.35rem;cursor:pointer;padding:.35rem 0;color:var(--primary);font-weight:600}
+.patient-consent .auto-technical__body,.cev2 .auto-technical__body{margin-top:.5rem;padding:var(--s3);border:1px solid var(--line-soft);border-radius:var(--r-sm);background:var(--bg2);overflow:auto;color:var(--muted)}
 .cev2{scroll-margin-top:190px}
 .cev2-grid{grid-template-columns:1fr!important}
 .cev2-item{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:var(--s3);align-items:start}
