@@ -1,17 +1,46 @@
-"""Evidence-governed completion and safe message actions for Work Center."""
+"""Focused Work Center start, evidence and communication mutations."""
 from __future__ import annotations
 
+import secrets
 from urllib.parse import urlsplit
 
-from flask import Blueprint, abort, current_app, flash, g, redirect, request, url_for
+from flask import (
+    Blueprint,
+    abort,
+    current_app,
+    flash,
+    g,
+    redirect,
+    request,
+    url_for,
+)
 
 from src.adapters.sqlite.core import get_db
 from src.common.utils import iran_now, jalali_to_gregorian_str
 from src.security.permissions import Permission, permission_required, resolved_permissions
 from src.services.activity_logger import log_activity
+from src.services.followup_orchestration.ownership_service import (
+    FollowupOwnershipError,
+    FollowupOwnershipService,
+)
+from src.services.followup_orchestration.read_model_service import (
+    ROLE_LABELS,
+    SLA_LABELS,
+    STATE_LABELS,
+)
 from src.services.followup_orchestration.work_center_action_service import (
     WorkCenterActionError,
     WorkCenterActionService,
+)
+from src.services.followup_orchestration.work_center_contract_service import (
+    WorkCenterContractService,
+)
+from src.services.followup_orchestration.work_center_message_service import (
+    WorkCenterMessageError,
+    WorkCenterMessageService,
+)
+from src.services.followup_orchestration.work_center_read_model import (
+    WorkCenterReadModelService,
 )
 
 
@@ -43,23 +72,67 @@ def _safe_work_url(value: object, fallback: str) -> str:
     return rendered
 
 
-def _detail_url(episode_id: str) -> str:
-    return url_for("unified_followups.detail", episode_id=episode_id)
+def _positive_int(value: object, default: int, maximum: int) -> int:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return default
+    return min(max(parsed, 1), maximum)
+
+
+def _work_context(source) -> dict:
+    permissions = resolved_permissions(g.user)
+    allow_manager = Permission.FOLLOWUP_ADMIN_MANAGE in permissions
+    view = WorkCenterReadModelService.normalize_view(
+        source.get("work_view") or source.get("view") or "mine",
+        allow_manager=allow_manager,
+    )
+    state = str(source.get("state") or "").strip().upper()
+    role = str(source.get("role") or "").strip().upper()
+    sla = str(source.get("sla") or "").strip().upper()
+    return {
+        "view": view,
+        "q": str(source.get("q") or "").strip()[:120],
+        "state": state if state in STATE_LABELS else "",
+        "role": role if role in ROLE_LABELS else "",
+        "sla": sla if sla in SLA_LABELS else "",
+        "page": _positive_int(source.get("page"), 1, 1_000_000),
+        "per_page": _positive_int(source.get("per_page"), 20, 50),
+        "allow_manager": allow_manager,
+    }
+
+
+def _detail_url(episode_id: str, context: dict | None = None) -> str:
+    values = context or {}
+    return url_for(
+        "unified_followups.detail",
+        episode_id=episode_id,
+        view=values.get("view", "mine"),
+        q=values.get("q", ""),
+        state=values.get("state", ""),
+        role=values.get("role", ""),
+        sla=values.get("sla", ""),
+        page=values.get("page", 1),
+        per_page=values.get("per_page", 20),
+    )
 
 
 def _failure(episode_id: str, error: Exception):
-    if isinstance(error, WorkCenterActionError):
+    if isinstance(
+        error,
+        (WorkCenterActionError, WorkCenterMessageError, FollowupOwnershipError),
+    ):
         message = error.message
     elif isinstance(error, (ValueError, LookupError)):
         current_app.logger.info(
-            "Rejected Work Center outcome for episode=%s: %s",
+            "Rejected Work Center action for episode=%s: %s",
             episode_id,
             type(error).__name__,
         )
-        message = "اطلاعات شاهد یا وضعیت کار با قرارداد فعلی سازگار نیست."
+        message = "اطلاعات اقدام با قرارداد فعلی سازگار نیست."
     else:
         current_app.logger.exception(
-            "Unexpected Work Center outcome failure for episode=%s",
+            "Unexpected Work Center action failure for episode=%s",
             episode_id,
         )
         message = "خطای غیرمنتظره رخ داد؛ دوباره تلاش کنید."
@@ -71,15 +144,7 @@ def _failure(episode_id: str, error: Exception):
 
 def _success(episode_id: str, result: dict, message: str):
     if not result.get("projection_refreshed", True):
-        flash(
-            message + " نمای کار نیازمند تازه‌سازی است.",
-            "warning",
-        )
-    elif result.get("episode_linked") is False:
-        flash(
-            message + " ارتباط نمای کار در بازخوانی بعدی تکمیل می‌شود.",
-            "warning",
-        )
+        flash(message + " نمای کار نیازمند تازه‌سازی است.", "warning")
     else:
         flash(message, "success")
     next_url = _safe_work_url(request.form.get("next_url"), "")
@@ -98,8 +163,6 @@ def _observed_at(value: object) -> str:
     if raw:
         converted = jalali_to_gregorian_str(raw)
         return f"{converted} 12:00:00" if converted else raw
-    # A date-level default is stable across a browser retry and is more truthful than
-    # generating a new second-level timestamp for each repeated POST.
     return iran_now().replace(
         hour=12,
         minute=0,
@@ -107,6 +170,90 @@ def _observed_at(value: object) -> str:
         microsecond=0,
         tzinfo=None,
     ).isoformat(sep=" ", timespec="seconds")
+
+
+def template_context() -> dict:
+    """Inject only the action contract needed by the unified detail template."""
+    if (
+        request.endpoint != "unified_followups.detail"
+        or not getattr(g, "user", None)
+        or not current_app.config.get("FOLLOWUP_UNIFIED_WORKLIST_ACTIONS", False)
+    ):
+        return {"work_action": None}
+    episode_id = str((request.view_args or {}).get("episode_id") or "").strip()
+    if not episode_id:
+        return {"work_action": None}
+    try:
+        action = WorkCenterContractService(get_db()).build(
+            episode_id,
+            permissions=resolved_permissions(g.user),
+        )
+    except Exception:
+        current_app.logger.exception(
+            "Unable to build Work Center action contract for episode=%s",
+            episode_id,
+        )
+        action = None
+    return {"work_action": action}
+
+
+@bp.post("/start-next")
+@permission_required(Permission.CLINICAL_TASK_VIEW)
+def start_next():
+    """Open and, when allowed, claim the first eligible work item."""
+    context = _work_context(request.form)
+    db = get_db()
+    reader = WorkCenterReadModelService(db)
+
+    def find(view: str):
+        return reader.next_item(
+            actor_user_id=int(g.user["id"]),
+            allow_manager_view=context["allow_manager"],
+            work_view=view,
+            query=context["q"],
+            state_class=context["state"],
+            role=context["role"],
+            sla_state=context["sla"],
+            now=iran_now().replace(tzinfo=None, microsecond=0),
+        )
+
+    item = find(context["view"])
+    if item is None and context["view"] == "mine":
+        item = find("unassigned")
+        if item is not None:
+            context["view"] = "unassigned"
+    if item is None:
+        flash("در این نما کار واجدشرایطی باقی نمانده است.", "success")
+        return redirect(
+            url_for(
+                "unified_followups.index",
+                view=context["view"],
+                q=context["q"],
+                state=context["state"],
+                role=context["role"],
+                sla=context["sla"],
+            )
+        )
+
+    episode_id = str(item["episode_id"])
+    ownership = FollowupOwnershipService(db)
+    try:
+        state = ownership.state(episode_id)
+        capabilities = ownership.capabilities(episode_id=episode_id, actor=g.user)
+        if item.get("state_class") != "TERMINAL" and capabilities["can_claim"]:
+            ownership.claim(
+                episode_id=episode_id,
+                actor=g.user,
+                expected_event_id=state.expected_event_id,
+                idempotency_key=(
+                    f"work-center-start:{g.user['id']}:{episode_id}:"
+                    f"{secrets.token_hex(8)}"
+                ),
+            )
+            flash("رسیدگی اولین کار واجدشرایط برای شما شروع شد.", "success")
+    except FollowupOwnershipError as error:
+        return _failure(episode_id, error)
+    return redirect(_detail_url(episode_id, context))
 
 
 @bp.post("/<episode_id>/clinical-complete")
@@ -175,7 +322,7 @@ def plan_complete(episode_id: str):
 @permission_required(Permission.CLINICAL_TASK_VIEW)
 def queue_message(episode_id: str):
     try:
-        result = WorkCenterActionService(get_db()).queue_visit_invite(
+        result = WorkCenterMessageService(get_db()).queue(
             episode_id,
             actor_username=str(g.user["username"]),
             actor_user_id=int(g.user["id"]),
@@ -190,8 +337,8 @@ def queue_message(episode_id: str):
     return _success(
         episode_id,
         result,
-        "دعوت آماده به صف تأیید پیام افزوده شد؛ کار بعدی باز می‌شود.",
+        "دعوت مصوب به صف تأیید پیام افزوده شد؛ کار بعدی باز می‌شود.",
     )
 
 
-__all__ = ["bp"]
+__all__ = ["bp", "template_context"]
