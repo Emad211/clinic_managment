@@ -107,6 +107,7 @@
                 {% if item.patient_national_id_masked %}<span class="muted text-xs nums">{{ item.patient_national_id_masked }}</span>{% endif %}
             </div>
             <p class="task-card__why">{{ item.why_created }}</p>
+            {% include "followups/_structured_contact_list.html" %}
         </div>
 
         <div class="task-card__state">
