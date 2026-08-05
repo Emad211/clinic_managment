@@ -19,7 +19,8 @@ def test_fo4_runtime_is_flagged_and_does_not_write_operational_sources():
     assert "FOLLOWUP_AUTO_ROUTING" in api
     assert "_require_actions_flag()" in api
     assert "_require_routing_flag()" in api
-    assert api.count("@bp.post") == 5
+    assert api.count("@bp.post") == 6
+    assert "def handle" in api
     assert "def record_contact" in api
     assert "_require_structured_contact_flag()" in api
     assert "FOLLOWUP_STRUCTURED_CONTACT" in api
@@ -65,7 +66,7 @@ def test_fo5_contact_repository_supports_explicit_monotonic_recorded_time():
     assert "recorded_at=current_time" in service
 
 
-def test_fo4_ui_distinguishes_queue_from_personal_owner():
+def test_fo4_ui_distinguishes_queue_from_personal_owner_without_claim_ceremony():
     list_page = (
         SPECIALIST_ROOT / "src" / "templates" / "followups" /
         "unified_worklist.html"
@@ -78,8 +79,9 @@ def test_fo4_ui_distinguishes_queue_from_personal_owner():
     assert "صف مسئول" in list_page
     assert "مسئول فعلی" in list_page
     assert "بدون مسئول" in list_page
+    assert "unified_followups.handle" in list_page
     assert "رسیدگی و واگذاری" in detail_page
-    assert "دریافت برای رسیدگی" in detail_page
+    assert "دریافت برای رسیدگی" not in detail_page
     assert "آزادکردن و بازگرداندن به صف" in detail_page
     assert "ثبت مسئول" in detail_page
     assert "actions_enabled" in detail_page

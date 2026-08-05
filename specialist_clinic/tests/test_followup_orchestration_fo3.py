@@ -17,7 +17,7 @@ from src.adapters.sqlite.followup_projection_schema import (
 )
 from src.api import unified_followups
 from src.security import permissions as permission_module
-from src.security.permissions import PermissionDecision
+from src.security.permissions import Permission, PermissionDecision
 from src.services.followup_orchestration.projection_service import (
     FollowupProjectionService,
 )
@@ -277,6 +277,9 @@ def _minimal_route_app(db: sqlite3.Connection, *, enabled: bool) -> Flask:
         TESTING=True,
         SECRET_KEY="test",
         FOLLOWUP_UNIFIED_WORKLIST_READONLY=enabled,
+        FOLLOWUP_UNIFIED_WORKLIST_ACTIONS=False,
+        FOLLOWUP_AUTO_ROUTING=False,
+        FOLLOWUP_STRUCTURED_CONTACT=False,
     )
 
     @app.before_request
@@ -296,6 +299,11 @@ def _allow_permissions(monkeypatch) -> None:
             allowed=True,
             source="test",
         ),
+    )
+    monkeypatch.setattr(
+        unified_followups,
+        "resolved_permissions",
+        lambda _user: frozenset(Permission),
     )
 
 
@@ -370,21 +378,21 @@ def test_templates_and_registration_preserve_read_only_boundary():
 
     assert "unified_followups_bp" in app_source
     assert "@bp.get" in route_source
-    assert route_source.count("@bp.post") == 5
+    assert route_source.count("@bp.post") == 6
+    assert "def handle" in route_source
     assert "_require_actions_flag()" in route_source
     assert "_require_routing_flag()" in route_source
     assert "_require_structured_contact_flag()" in route_source
     assert "FOLLOWUP_STRUCTURED_CONTACT" in route_source
     assert "def record_contact" in route_source
-    assert "methods=[\"POST\"]" not in route_source
     assert "FOLLOWUP_UNIFIED_WORKLIST_READONLY" in route_source
-    assert 'method="post"' not in list_page.lower()
+    assert 'method="post"' in list_page.lower()
+    assert "unified_followups.handle" in list_page
     assert 'method="post"' in detail_page.lower()
     assert "actions_enabled" in detail_page
     assert 'method="post"' not in unavailable_page.lower()
     assert "انجام شد" not in list_page
-    assert "دریافت برای رسیدگی" in detail_page
-    assert "هیچ تغییری در پرونده یا تسک ایجاد نمی‌کند" in detail_page
+    assert "دریافت برای رسیدگی" not in detail_page
     assert "هیچ داده، رابطه یا وضعیت بالینی حدس زده نشده است" in unavailable_page
     assert "config.get('FOLLOWUP_UNIFIED_WORKLIST_READONLY')" in hub
     assert "url_for('unified_followups.index')" in hub

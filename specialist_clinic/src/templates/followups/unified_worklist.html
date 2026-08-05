@@ -1,49 +1,87 @@
 {% extends "automation_base.html" %}
 {% block title %}مرکز کارها{% endblock %}
+{% block head %}
+{{ super() }}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/work-center-automation-v2.css') }}">
+{% endblock %}
 {% block content %}
+
+{% macro context_fields() -%}
+<input type="hidden" name="work_view" value="{{ model.filters.view }}">
+<input type="hidden" name="q" value="{{ model.filters.q }}">
+<input type="hidden" name="state" value="{{ model.filters.state }}">
+<input type="hidden" name="role" value="{{ model.filters.role }}">
+<input type="hidden" name="sla" value="{{ model.filters.sla }}">
+<input type="hidden" name="page" value="{{ model.page }}">
+<input type="hidden" name="per_page" value="{{ model.per_page }}">
+{%- endmacro %}
 
 <header class="auto-page-header">
     <div class="auto-page-header__copy">
         <h1><svg class="icon"><use href="#i-list-checks"></use></svg> مرکز کارها</h1>
-        <p class="muted">کارهای نیازمند تصمیم شما اینجا هستند؛ کارهای عادی در مسیر خودکار باقی می‌مانند.</p>
+        <p class="muted">فقط کارهای نیازمند تصمیم دیده می‌شوند؛ وضعیت، مسئول و اقدام بعدی در یک مسیر واحد قرار دارند.</p>
     </div>
+    {% if model.projection_ready and model['items'] %}
     <div class="auto-page-header__actions">
-        <a class="btn btn-ghost" href="{{ url_for('unified_followups.index', focus='first', q=model.filters.q, state=model.filters.state, role=model.filters.role, sla=model.filters.sla) }}">
-            رفتن به اولین کار
+        <a class="btn" href="{{ url_for('unified_followups.index', view=model.filters.view, q=model.filters.q, state=model.filters.state, role=model.filters.role, sla=model.filters.sla, page=model.page, per_page=model.per_page, focus='first') }}">
+            شروع رسیدگی
         </a>
     </div>
+    {% endif %}
 </header>
 
+<nav class="work-center-tabs" aria-label="نماهای مرکز کارها">
+    {% for key in ('mine', 'unassigned', 'all', 'completed') %}
+    <a class="work-center-tab{% if model.filters.view == key %} active{% endif %}"
+       href="{{ url_for('unified_followups.index', view=key, q=model.filters.q, sla='' if key == 'completed' else model.filters.sla) }}"
+       {% if model.filters.view == key %}aria-current="page"{% endif %}>
+        <span>{{ work_view_labels[key] }}</span>
+        <b class="nums">{{ work_counts[key]|fa_num }}</b>
+    </a>
+    {% endfor %}
+    {% if can_manage_work %}
+    <a class="work-center-tab{% if model.filters.view == 'manager' %} active{% endif %}"
+       href="{{ url_for('unified_followups.index', view='manager', q=model.filters.q, role=model.filters.role, sla=model.filters.sla) }}"
+       {% if model.filters.view == 'manager' %}aria-current="page"{% endif %}>
+        <span>{{ work_view_labels.manager }}</span>
+        <b class="nums">{{ work_counts.manager|fa_num }}</b>
+    </a>
+    {% endif %}
+</nav>
+
 {% if model.projection_ready %}
-{% set ns = namespace(unassigned=0, urgent=0, stale=0) %}
+{% set ns = namespace(urgent=0, stale=0) %}
 {% for item in model['items'] %}
-    {% if not item.ownership.assigned %}{% set ns.unassigned = ns.unassigned + 1 %}{% endif %}
     {% if item.sla_tone in ('danger', 'warn') %}{% set ns.urgent = ns.urgent + 1 %}{% endif %}
     {% if item.is_stale %}{% set ns.stale = ns.stale + 1 %}{% endif %}
 {% endfor %}
-<section class="work-center-summary" aria-label="خلاصه مرکز کارها">
-    <div class="work-center-kpi"><b class="nums">{{ model.total|fa_num }}</b><span>کل کارهای مطابق فیلتر</span></div>
+<section class="work-center-summary" aria-label="خلاصه نمای جاری">
+    <div class="work-center-kpi"><b class="nums">{{ model.total|fa_num }}</b><span>کار در نمای جاری</span></div>
     <div class="work-center-kpi"><b class="nums">{{ ns.urgent|fa_num }}</b><span>فوری یا نزدیک موعد در این صفحه</span></div>
-    <div class="work-center-kpi"><b class="nums">{{ ns.unassigned|fa_num }}</b><span>بدون مسئول در این صفحه</span></div>
-    <div class="work-center-kpi"><b class="nums">{{ ns.stale|fa_num }}</b><span>نیازمند بازخوانی اطلاعات</span></div>
+    <div class="work-center-kpi"><b class="nums">{{ work_counts.unassigned|fa_num }}</b><span>بدون مسئول در کل مرکز</span></div>
+    <div class="work-center-kpi"><b class="nums">{{ ns.stale|fa_num }}</b><span>نیازمند بازخوانی در این صفحه</span></div>
 </section>
 {% endif %}
 
 <section class="auto-filter-bar" aria-label="فیلتر مرکز کارها">
-    <form method="get" action="{{ url_for('unified_followups.index') }}" class="auto-filter-grid" data-auto-filter>
-        <div class="fld">
+    <form method="get" action="{{ url_for('unified_followups.index') }}" class="auto-filter-grid work-center-filter" data-auto-filter>
+        <input type="hidden" name="view" value="{{ model.filters.view }}">
+        <div class="fld work-center-filter__search">
             <label for="unified-q">جست‌وجوی بیمار یا دلیل پیگیری</label>
             <input id="unified-q" name="q" value="{{ model.filters.q }}" placeholder="نام، کد ملی، موبایل یا دلیل" autocomplete="off" data-auto-submit="debounced">
         </div>
+        {% if model.filters.view != 'completed' %}
         <div class="fld">
             <label for="unified-state">وضعیت کار</label>
             <select id="unified-state" name="state" data-auto-submit>
-                <option value="">همه وضعیت‌ها</option>
+                <option value="">همه وضعیت‌های باز</option>
                 {% for key, label in state_labels.items() %}
-                <option value="{{ key }}" {% if model.filters.state == key %}selected{% endif %}>{{ label }}</option>
+                {% if key != 'TERMINAL' %}<option value="{{ key }}" {% if model.filters.state == key %}selected{% endif %}>{{ label }}</option>{% endif %}
                 {% endfor %}
             </select>
         </div>
+        {% endif %}
+        {% if model.filters.view == 'manager' %}
         <div class="fld">
             <label for="unified-role">صف مسئول</label>
             <select id="unified-role" name="role" data-auto-submit>
@@ -53,18 +91,21 @@
                 {% endfor %}
             </select>
         </div>
+        {% endif %}
+        {% if model.filters.view != 'completed' %}
         <div class="fld">
             <label for="unified-sla">موعد</label>
             <select id="unified-sla" name="sla" data-auto-submit>
                 <option value="">همه موعدها</option>
                 {% for key, label in sla_labels.items() %}
-                <option value="{{ key }}" {% if model.filters.sla == key %}selected{% endif %}>{{ label }}</option>
+                {% if key != 'TERMINAL' %}<option value="{{ key }}" {% if model.filters.sla == key %}selected{% endif %}>{{ label }}</option>{% endif %}
                 {% endfor %}
             </select>
         </div>
+        {% endif %}
         <div class="auto-filter-actions">
             <button class="btn" type="submit"><svg class="icon icon-sm"><use href="#i-search"></use></svg> جست‌وجو</button>
-            <a class="btn btn-ghost" href="{{ url_for('unified_followups.index') }}">پاک‌کردن فیلترها</a>
+            <a class="btn btn-ghost" href="{{ url_for('unified_followups.index', view=model.filters.view) }}">پاک‌کردن فیلترها</a>
             <span class="auto-filter-status" data-filter-status aria-live="polite"></span>
         </div>
     </form>
@@ -75,30 +116,28 @@
     <svg class="icon"><use href="#i-alert"></use></svg>
     <h2>{{ model.read_error_label or 'مرکز کارها موقتاً آماده نیست' }}</h2>
     <p>{{ model.read_error_help or 'هیچ داده‌ای حدس زده نشده است. چند لحظه دیگر دوباره تلاش کنید.' }}</p>
-    <div class="flex gap-2 wrap">
-        <a class="btn" href="{{ url_for('unified_followups.index') }}">تلاش دوباره</a>
-        <a class="btn btn-ghost" href="{{ url_for('followups.worklist') }}">مسیر قدیمی پیگیری</a>
-    </div>
-    {% if model.read_error_code %}
+    <a class="btn" href="{{ url_for('unified_followups.index', view=model.filters.view) }}">تلاش دوباره</a>
     <details class="auto-technical" data-technical-details>
-        <summary>جزئیات فنی برای پشتیبانی</summary>
-        <div class="auto-technical__body"><code dir="ltr">{{ model.read_error_code }}</code></div>
+        <summary>مسیر جایگزین و جزئیات پشتیبانی</summary>
+        <div class="auto-technical__body">
+            <a class="btn btn-ghost" href="{{ url_for('followups.worklist') }}">بازکردن پیگیری قدیمی</a>
+            {% if model.read_error_code %}<code dir="ltr">{{ model.read_error_code }}</code>{% endif %}
+        </div>
     </details>
-    {% endif %}
 </section>
 {% elif not model['items'] %}
 <section class="auto-empty" role="status">
     <svg class="icon"><use href="#i-check"></use></svg>
-    <h2>کاری مطابق این فیلتر باقی نمانده است</h2>
-    <p>فیلترها را پاک کنید یا به کارهای دیگر ادامه دهید.</p>
-    <a class="btn" href="{{ url_for('unified_followups.index') }}">نمایش همه کارها</a>
+    <h2>کاری در این نما باقی نمانده است</h2>
+    <p>نمای دیگری را انتخاب کنید یا فیلترهای همین نما را پاک کنید.</p>
+    <a class="btn" href="{{ url_for('unified_followups.index', view=model.filters.view) }}">پاک‌کردن فیلترها</a>
 </section>
 {% else %}
-<section class="work-center-list" aria-label="فهرست کارها">
+<section class="work-center-list" id="work-center-list" aria-label="فهرست کارها">
     {% for item in model['items'] %}
-    <article class="task-card" data-work-item>
+    <article class="task-card{% if item.ownership.owner_user_id == g.user['id'] %} is-mine{% endif %}" data-work-item>
         <div class="task-card__identity">
-            <a class="task-card__patient" href="{{ url_for('unified_followups.detail', episode_id=item.episode_id) }}">
+            <a class="task-card__patient" href="{{ url_for('patients.detail', pid=item.patient_link_id) }}">
                 <svg class="icon icon-sm"><use href="#i-user"></use></svg>
                 {{ item.patient_name }}
             </a>
@@ -113,7 +152,7 @@
         <div class="task-card__state">
             <span class="badge {% if item.state_class == 'BLOCKED' %}badge-danger{% elif item.state_class == 'ACTION_REQUIRED' %}badge-warn{% elif item.state_class == 'WAITING' %}badge-info{% else %}badge-muted{% endif %}">{{ item.state_label }}</span>
             <span class="badge badge-{{ item.sla_tone }}">{{ item.sla_label }}</span>
-            {% if item.is_stale %}<span class="badge badge-warn">اطلاعات نیازمند بازخوانی</span>{% endif %}
+            {% if item.is_stale %}<span class="badge badge-warn">نیازمند بازخوانی</span>{% endif %}
         </div>
 
         <div class="task-card__owner">
@@ -131,13 +170,19 @@
         </div>
 
         <div class="task-card__actions">
-            <a class="btn btn-sm" data-primary-action href="{{ url_for('unified_followups.detail', episode_id=item.episode_id) }}">رسیدگی</a>
+            <form method="post" action="{{ url_for('unified_followups.handle', episode_id=item.episode_id) }}">
+                {{ context_fields() }}
+                <input type="hidden" name="expected_event_id" value="{{ item.ownership.expected_event_id }}">
+                <input type="hidden" name="idempotency_key" value="{{ item.ownership_action_token }}:handle:{{ item.episode_id }}">
+                <button class="btn btn-sm" type="submit" data-primary-action>
+                    {% if item.state_class == 'TERMINAL' %}مشاهده نتیجه{% else %}رسیدگی{% endif %}
+                </button>
+            </form>
             <details class="task-card__more" data-action-menu>
                 <summary class="btn btn-sm btn-ghost" aria-label="اقدامات بیشتر برای {{ item.patient_name }}">•••</summary>
                 <div class="task-card__menu">
                     <a href="{{ url_for('patients.detail', pid=item.patient_link_id) }}">پرونده بیمار</a>
-                    <a href="{{ url_for('followups.worklist', q=item.patient_name) }}">مسیر قدیمی پیگیری</a>
-                    <a href="{{ url_for('unified_followups.detail', episode_id=item.episode_id) }}#timeline">تاریخچه کار</a>
+                    <a href="{{ url_for('unified_followups.detail', episode_id=item.episode_id, view=model.filters.view, q=model.filters.q, state=model.filters.state, role=model.filters.role, sla=model.filters.sla, page=model.page, per_page=model.per_page) }}#timeline">تاریخچه کار</a>
                 </div>
             </details>
         </div>
@@ -145,13 +190,13 @@
     {% endfor %}
 </section>
 
-<nav class="flex items-center gap-2 wrap" aria-label="صفحه‌بندی مرکز کارها" style="margin-top:var(--s4);">
+<nav class="work-center-pagination" aria-label="صفحه‌بندی مرکز کارها">
     {% if model.has_previous %}
-    <a class="btn btn-ghost" rel="prev" href="{{ url_for('unified_followups.index', page=model.page-1, per_page=model.per_page, q=model.filters.q, state=model.filters.state, role=model.filters.role, sla=model.filters.sla) }}">صفحه قبل</a>
+    <a class="btn btn-ghost" rel="prev" href="{{ url_for('unified_followups.index', view=model.filters.view, page=model.page-1, per_page=model.per_page, q=model.filters.q, state=model.filters.state, role=model.filters.role, sla=model.filters.sla) }}">صفحه قبل</a>
     {% endif %}
     <span class="muted">صفحه {{ model.page|fa_num }} از {{ model.pages|fa_num }}</span>
     {% if model.has_next %}
-    <a class="btn btn-ghost" rel="next" href="{{ url_for('unified_followups.index', page=model.page+1, per_page=model.per_page, q=model.filters.q, state=model.filters.state, role=model.filters.role, sla=model.filters.sla) }}">صفحه بعد</a>
+    <a class="btn btn-ghost" rel="next" href="{{ url_for('unified_followups.index', view=model.filters.view, page=model.page+1, per_page=model.per_page, q=model.filters.q, state=model.filters.state, role=model.filters.role, sla=model.filters.sla) }}">صفحه بعد</a>
     {% endif %}
 </nav>
 {% endif %}
