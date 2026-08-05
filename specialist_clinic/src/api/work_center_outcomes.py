@@ -6,7 +6,7 @@ from urllib.parse import urlsplit
 from flask import Blueprint, current_app, flash, g, redirect, request, url_for
 
 from src.adapters.sqlite.core import get_db
-from src.common.utils import jalali_to_gregorian_str
+from src.common.utils import iran_now, jalali_to_gregorian_str
 from src.security.permissions import Permission, permission_required, resolved_permissions
 from src.services.activity_logger import log_activity
 from src.services.followup_orchestration.work_center_action_service import (
@@ -42,7 +42,12 @@ def _failure(episode_id: str, error: Exception):
     if isinstance(error, WorkCenterActionError):
         message = error.message
     elif isinstance(error, (ValueError, LookupError)):
-        message = str(error)
+        current_app.logger.info(
+            "Rejected Work Center outcome for episode=%s: %s",
+            episode_id,
+            type(error).__name__,
+        )
+        message = "اطلاعات شاهد یا وضعیت کار با قرارداد فعلی سازگار نیست."
     else:
         current_app.logger.exception(
             "Unexpected Work Center outcome failure for episode=%s",
@@ -79,12 +84,20 @@ def _success(episode_id: str, result: dict, message: str):
     )
 
 
-def _observed_at(value: object) -> str | None:
+def _observed_at(value: object) -> str:
     raw = str(value or "").strip()
-    if not raw:
-        return None
-    converted = jalali_to_gregorian_str(raw)
-    return f"{converted} 12:00:00" if converted else raw
+    if raw:
+        converted = jalali_to_gregorian_str(raw)
+        return f"{converted} 12:00:00" if converted else raw
+    # A date-level default is stable across a browser retry and is more truthful than
+    # generating a new second-level timestamp for each repeated POST.
+    return iran_now().replace(
+        hour=12,
+        minute=0,
+        second=0,
+        microsecond=0,
+        tzinfo=None,
+    ).isoformat(sep=" ", timespec="seconds")
 
 
 @bp.post("/<episode_id>/clinical-complete")
