@@ -7,6 +7,9 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 from flask import Blueprint, flash, redirect, render_template, request, url_for
 
 from src.adapters.sqlite.core import get_db
+from src.adapters.sqlite.patient_acquisition_schema import (
+    ensure_patient_acquisition_storage,
+)
 from src.api.auth import login_required
 from src.services.lead_pipeline_service import LEAD_SOURCES
 from src.services.patient_data_quality_service import PatientDataQualityService
@@ -58,8 +61,23 @@ def _normalize_tab(value: object) -> str:
     return tab if tab in WORKSPACE_TABS else "summary"
 
 
-def _lead_enrollment_summary(pid: int, fallback: dict) -> dict:
-    row = get_db().execute(
+def _active_referrer_patients(exclude_pid: int) -> list[dict]:
+    return [
+        dict(row)
+        for row in get_db().execute(
+            """SELECT id,full_name,phone_number,national_id
+               FROM patient_links
+               WHERE is_active=1 AND id<>?
+               ORDER BY full_name,id LIMIT 1000""",
+            (int(exclude_pid),),
+        ).fetchall()
+    ]
+
+
+def _enrollment_summary(pid: int, fallback: dict) -> dict:
+    db = get_db()
+    ensure_patient_acquisition_storage(db)
+    lead_row = db.execute(
         """SELECT source_code,source_detail,referrer_name,
                   referrer_patient_link_id,owner_username,created_at,converted_at
            FROM growth_leads
@@ -67,21 +85,50 @@ def _lead_enrollment_summary(pid: int, fallback: dict) -> dict:
            ORDER BY converted_at DESC,id DESC LIMIT 1""",
         (int(pid),),
     ).fetchone()
-    if not row:
-        return fallback
-    lead = dict(row)
-    source = str(lead.get("source_code") or "OTHER")
-    referrer = str(lead.get("referrer_name") or "").strip() or None
-    return {
-        "source_code": source,
-        "source_label": LEAD_SOURCES.get(source, source),
-        "source_detail": lead.get("source_detail"),
-        "enrolled_by": lead.get("owner_username") or fallback.get("enrolled_by"),
-        "enrolled_at": lead.get("converted_at") or lead.get("created_at"),
-        "referrer": referrer,
-        "referrer_patient_link_id": lead.get("referrer_patient_link_id"),
-        "referrer_label": referrer or "ثبت نشده",
-    }
+    if lead_row:
+        lead = dict(lead_row)
+        source = str(lead.get("source_code") or "OTHER")
+        referrer = str(lead.get("referrer_name") or "").strip() or None
+        return {
+            "source_code": source,
+            "source_label": LEAD_SOURCES.get(source, source),
+            "source_detail": lead.get("source_detail"),
+            "enrolled_by": lead.get("owner_username") or fallback.get("enrolled_by"),
+            "enrolled_at": lead.get("converted_at") or lead.get("created_at"),
+            "referrer": referrer,
+            "referrer_patient_link_id": lead.get("referrer_patient_link_id"),
+            "referrer_label": referrer or "ثبت نشده",
+            "attribution_source": "LEAD_CONVERSION",
+        }
+
+    acquisition_row = db.execute(
+        """SELECT acquisition.*,referrer.full_name AS referrer_patient_name
+           FROM growth_patient_acquisition acquisition
+           LEFT JOIN patient_links referrer
+             ON referrer.id=acquisition.referrer_patient_link_id
+           WHERE acquisition.patient_link_id=?""",
+        (int(pid),),
+    ).fetchone()
+    if acquisition_row:
+        acquisition = dict(acquisition_row)
+        source = str(acquisition.get("source_code") or "OTHER")
+        referrer = (
+            str(acquisition.get("referrer_patient_name") or "").strip()
+            or str(acquisition.get("referrer_name") or "").strip()
+            or None
+        )
+        return {
+            "source_code": source,
+            "source_label": LEAD_SOURCES.get(source, source),
+            "source_detail": acquisition.get("source_detail"),
+            "enrolled_by": acquisition.get("recorded_by") or fallback.get("enrolled_by"),
+            "enrolled_at": acquisition.get("recorded_at") or fallback.get("enrolled_at"),
+            "referrer": referrer,
+            "referrer_patient_link_id": acquisition.get("referrer_patient_link_id"),
+            "referrer_label": referrer or "ثبت نشده",
+            "attribution_source": "EXPLICIT_PATIENT_ATTRIBUTION",
+        }
+    return {**fallback, "attribution_source": "ENROLLMENT_FALLBACK"}
 
 
 @bp.get("/<int:pid>/workspace")
@@ -91,7 +138,7 @@ def detail(pid: int):
     if workspace is None:
         flash("بیمار یافت نشد", "error")
         return redirect(url_for("patients.list_patients"))
-    workspace["enrollment_summary"] = _lead_enrollment_summary(
+    workspace["enrollment_summary"] = _enrollment_summary(
         pid,
         workspace.get("enrollment_summary") or {},
     )
@@ -103,6 +150,8 @@ def detail(pid: int):
         active_tab=active_tab,
         workspace_tabs=WORKSPACE_TABS,
         legacy_url=url_for("patients.detail", pid=pid, legacy=1),
+        acquisition_sources=LEAD_SOURCES,
+        acquisition_patients=_active_referrer_patients(pid),
         **workspace,
     )
 
