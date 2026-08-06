@@ -78,6 +78,7 @@
 
     <main class="patient-workspace-pane" id="patient-workspace-pane" tabindex="-1">
         {% if active_tab == 'summary' %}
+            {% include "patients/workspace/_summary_editors.html" %}
             {% include "patients/workspace/_summary.html" %}
         {% elif active_tab == 'actions' %}
             {% include "patients/workspace/_actions.html" %}
