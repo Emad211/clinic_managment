@@ -42,7 +42,7 @@ WORKSPACE_TABS = {
     "actions": "اقدامات",
     "clinical": "داده‌های بالینی",
     "meds": "دارو و نسخه",
-    "encounters": "ویزیت‌ها و اسناد",
+    "encounters": "ویزیت و خدمات",
 }
 
 _CONTACT_CHANNEL_LABELS = {
