@@ -1,11 +1,14 @@
 """Manager-facing growth, revenue and low-risk automation surfaces."""
-from flask import Blueprint, flash, redirect, render_template, request, url_for
+from flask import Blueprint, flash, g, redirect, render_template, request, url_for
 
 from src.adapters.sqlite.core import get_db
 from src.security.permissions import Permission, permission_required
 from src.services.activity_logger import log_activity
 from src.services.growth_automation_service import GrowthAutomationService
 from src.services.growth_closed_loop_service import GrowthClosedLoopService
+from src.services.growth_messaging_playbook_service import (
+    GrowthMessagingPlaybookService,
+)
 from src.services.growth_revenue_cockpit_service import (
     GrowthRevenueCockpitService,
 )
@@ -46,6 +49,7 @@ def automation():
             inactive_days=inactive_days
         ),
         closed_loop_preview=GrowthClosedLoopService(db).preview(),
+        messaging_preview=GrowthMessagingPlaybookService(db).preview(),
         inactive_days=max(inactive_days, 30),
         users=_active_users(),
     )
@@ -112,6 +116,32 @@ def reconcile_closed_loop():
         )
     else:
         flash("تغییر تازه‌ای در شواهد نوبت یا وصول نبود.", "info")
+    return redirect(url_for("growth.automation"))
+
+
+@bp.post("/automation/messages")
+@permission_required(Permission.SMS_APPROVAL_REVIEW)
+def run_messaging_playbooks():
+    result = GrowthMessagingPlaybookService(get_db()).run(
+        actor_username=str(g.user["username"]),
+    )
+    log_activity(
+        "growth_messaging_playbooks",
+        (
+            f"queued={result['queued']} existing={result['existing']} "
+            f"skipped={result['skipped']} stopped={result['stopped_pending']}"
+        ),
+    )
+    if result["queued"] or result["stopped_pending"]:
+        flash(
+            (
+                f"{result['queued']} پیام معتبر وارد صف شد و "
+                f"{result['stopped_pending']} پیام منقضی متوقف شد."
+            ),
+            "success",
+        )
+    else:
+        flash("پیام معتبر تازه‌ای برای صف وجود نداشت.", "info")
     return redirect(url_for("growth.automation"))
 
 
