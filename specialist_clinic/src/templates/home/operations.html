@@ -1,0 +1,100 @@
+{% extends "automation_base.html" %}
+{% block title %}خانه عملیات کلینیک{% endblock %}
+{% block head %}
+{{ super() }}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/operations-home-v1.css') }}">
+{% endblock %}
+{% block content %}
+<header class="auto-page-header operations-home-header">
+    <div class="auto-page-header__copy">
+        <h1><svg class="icon"><use href="#i-home"></use></svg> امروز در کلینیک</h1>
+        <p class="muted">کار بعدی، فرصت بازگشت بیمار و استثناهای مهم؛ بدون جست‌وجو میان صفحات مختلف.</p>
+    </div>
+    <div class="auto-page-header__actions">
+        <a class="btn" href="{{ url_for('leads.index') }}"><svg class="icon icon-sm"><use href="#i-plus"></use></svg> سرنخ جدید</a>
+        <a class="btn btn-ghost" href="{{ url_for('appointments.new_appointment') }}"><svg class="icon icon-sm"><use href="#i-calendar"></use></svg> ثبت نوبت</a>
+    </div>
+</header>
+
+{% if priority_actions %}
+{% set primary = priority_actions[0] %}
+<section class="card operations-primary-action tone-{{ primary.tone }}" aria-labelledby="operations-primary-title">
+    <div class="operations-primary-action__icon"><svg class="icon"><use href="#i-zap"></use></svg></div>
+    <div class="operations-primary-action__copy"><span>مهم‌ترین اقدام اکنون</span><h2 id="operations-primary-title">{{ primary.title }}</h2><p>{{ primary.detail }}</p></div>
+    <a class="btn" href="{{ url_for(primary.endpoint, **primary.query) }}">{{ primary.label }}</a>
+</section>
+{% else %}
+<section class="alert-banner alert-success operations-all-clear"><svg class="icon"><use href="#i-check"></use></svg><span>کار یا استثنای فوری ثبت‌شده‌ای باقی نمانده است.</span></section>
+{% endif %}
+
+<section class="operations-quick-grid" aria-label="مسیرهای اصلی عملیات">
+    <a class="card operations-quick-card" href="{{ url_for('unified_followups.index') if config.get('FOLLOWUP_UNIFIED_WORKLIST_READONLY') else url_for('followups.worklist') }}"><span class="operations-quick-card__icon"><svg class="icon"><use href="#i-list-checks"></use></svg></span><span><b>مرکز کارها</b><small>{{ work.open|fa_num }} باز · {{ work.due|fa_num }} سررسیدشده</small></span><strong>{{ work.due|fa_num }}</strong></a>
+    <a class="card operations-quick-card" href="{{ url_for('leads.index') }}"><span class="operations-quick-card__icon"><svg class="icon"><use href="#i-users"></use></svg></span><span><b>سرنخ‌ها</b><small>{{ leads.counts.OPEN|fa_num }} باز · {{ leads.due|fa_num }} نیازمند اقدام</small></span><strong>{{ leads.due|fa_num }}</strong></a>
+    <a class="card operations-quick-card" href="{{ url_for('appointments.list_appointments') }}"><span class="operations-quick-card__icon"><svg class="icon"><use href="#i-calendar"></use></svg></span><span><b>نوبت‌های امروز</b><small>{{ appointments.done|fa_num }} انجام‌شده · {{ appointments.no_show|fa_num }} عدم حضور</small></span><strong>{{ appointments.scheduled|fa_num }}</strong></a>
+    <a class="card operations-quick-card" href="{{ url_for('growth_waitlist.index') }}"><span class="operations-quick-card__icon"><svg class="icon"><use href="#i-clock"></use></svg></span><span><b>صف انتظار</b><small>{{ waitlist.counts.WAITING|fa_num }} منتظر · {{ waitlist.counts.OFFERED|fa_num }} پیشنهاد</small></span><strong>{{ waitlist.open_slots|fa_num }}</strong></a>
+</section>
+
+<div class="operations-two-column">
+    <section class="card operations-action-list-card">
+        <div class="section-title"><svg class="icon"><use href="#i-list-checks"></use></svg><div><div>اقدامات امروز</div><div class="section-sub">به‌ترتیب اثر و فوریت.</div></div></div>
+        {% if priority_actions %}
+        <div class="operations-action-list">
+            {% for action in priority_actions %}
+            <a class="operations-action-item tone-{{ action.tone }}" href="{{ url_for(action.endpoint, **action.query) }}"><span class="operations-action-item__rank">{{ loop.index|fa_num }}</span><span><b>{{ action.title }}</b><small>{{ action.detail }}</small></span><span class="btn btn-sm btn-ghost">{{ action.label }}</span></a>
+            {% endfor %}
+        </div>
+        {% else %}<div class="empty-mini">اقدام فوری وجود ندارد.</div>{% endif %}
+    </section>
+
+    <section class="card operations-next-card">
+        <div class="section-title"><svg class="icon"><use href="#i-clock"></use></svg><div><div>بعدی‌ها</div><div class="section-sub">نزدیک‌ترین بیمار، کار و سرنخ.</div></div></div>
+        <div class="operations-next-list">
+            <div><span><b>نوبت بعدی</b><small>{% if appointments.next %}{{ appointments.next.patient_name }}{% else %}ثبت نشده{% endif %}</small></span><time>{{ appointments.next.scheduled_at|jalali if appointments.next else '—' }}</time></div>
+            <div><span><b>کار بعدی</b><small>{% if work.next %}{{ work.next.patient_name }} · {{ work.next.reason }}{% else %}کار بازی نیست{% endif %}</small></span><time>{{ work.next.due_date|jalali if work.next and work.next.due_date else 'بدون موعد' }}</time></div>
+            <div><span><b>سرنخ بعدی</b><small>{% if leads.next %}{{ leads.next.full_name }} · {{ leads.next.phone_number }}{% else %}سرنخ سررسیدشده نیست{% endif %}</small></span><time>{{ leads.next.next_action_at|jalali if leads.next else '—' }}</time></div>
+        </div>
+    </section>
+</div>
+
+{% if permissions.get('financial.review.view') %}
+<section class="card operations-revenue-card">
+    <div class="section-title"><svg class="icon"><use href="#i-banknote"></use></svg><div><div>رشد و درآمد قابل‌انتساب</div><div class="section-sub">فقط داده‌های دارای اتصال روشن به خدمت و فاکتور تخصصی.</div></div></div>
+    <div class="operations-revenue-grid">
+        <div><span>وصول امروز</span><b class="nums">{{ revenue.today.collected|fa_num }}</b><small>{{ revenue.today.invoices|fa_num }} فاکتور</small></div>
+        <div><span>وصول ماه</span><b class="nums">{{ revenue.month.collected|fa_num }}</b><small>صورتحساب: {{ revenue.month.total|fa_num }}</small></div>
+        <div><span>مانده ماه</span><b class="nums">{{ revenue.month.outstanding|fa_num }}</b><small>نیازمند پیگیری</small></div>
+        <div><span>تبدیل سرنخ</span><b>{{ revenue.lead_funnel.conversion_rate|fa_num }}٪</b><small>{{ revenue.lead_funnel.counts.CONVERTED|fa_num }} بیمار</small></div>
+        <div><span>وصول معرفی‌ها</span><b class="nums">{{ revenue.referral_summary.collected|fa_num }}</b><small>{{ revenue.referral_summary.converted|fa_num }} تبدیل</small></div>
+    </div>
+    <div class="flex justify-end gap-2 wrap mt-3"><a class="btn btn-ghost" href="{{ url_for('growth.automation') }}">اتوماسیون رشد</a><a class="btn" href="{{ url_for('growth.cockpit') }}">داشبورد کامل</a></div>
+</section>
+{% endif %}
+
+<div class="operations-two-column">
+    <section class="card">
+        <div class="section-title"><svg class="icon"><use href="#i-refresh"></use></svg><div><div>اتوماسیون و حلقه نتیجه</div><div class="section-sub">مواردی که هنوز به نتیجه نهایی نرسیده‌اند.</div></div></div>
+        <div class="operations-exception-grid">
+            <a href="{{ url_for('growth.automation') }}"><span>فرصت بازیابی</span><b>{{ (automation.no_show + automation.cancelled + automation.inactive)|fa_num }}</b></a>
+            <a href="{{ url_for('growth.automation') }}"><span>مشاهده مالی مفقود</span><b>{{ closed_loop.missing_financial_observations|fa_num }}</b></a>
+            <a href="{{ url_for('growth.automation') }}"><span>وصول ناقص</span><b>{{ closed_loop.incomplete_collection|fa_num }}</b></a>
+            <a href="{{ url_for('growth.automation') }}"><span>پیام معتبر آماده</span><b>{{ messaging.total_candidates|fa_num }}</b></a>
+        </div>
+    </section>
+
+    <section class="card">
+        <div class="section-title"><svg class="icon"><use href="#i-alert"></use></svg><div><div>کیفیت داده</div><div class="section-sub">مشکلاتی که دقت پیگیری و گزارش را کاهش می‌دهند.</div></div></div>
+        <div class="operations-exception-grid">
+            <a href="{{ url_for('patients.list_patients') }}"><span>بدون موبایل</span><b>{{ quality.missing_phone|fa_num }}</b></a>
+            <a href="{{ url_for('patients.list_patients') }}"><span>داروی Free-text</span><b>{{ quality.legacy_medications|fa_num }}</b></a>
+            <a href="{{ url_for('patients.list_patients') }}"><span>آزمایش بدون کد</span><b>{{ quality.legacy_labs|fa_num }}</b></a>
+            <a href="{{ url_for('appointments.list_appointments') }}"><span>نوبت گذشته باز</span><b>{{ quality.stale_appointments|fa_num }}</b></a>
+            <a href="{{ url_for('patients.list_patients') }}"><span>منبع جذب نامشخص</span><b>{{ quality.missing_source|fa_num }}</b></a>
+        </div>
+    </section>
+</div>
+
+<details class="auto-technical operations-legacy-home">
+    <summary>خانه قدیمی و جزئیات فنی</summary>
+    <div class="auto-technical__body"><p class="muted">برای سازگاری موقت نگه داشته شده است و مسیر اصلی عملیات نیست.</p><a class="btn btn-ghost" href="{{ url_for('dashboard.index', legacy=1) }}">بازکردن خانه قدیمی</a></div>
+</details>
+{% endblock %}
