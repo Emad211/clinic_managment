@@ -11,7 +11,7 @@
     <div class="patient-quality-list">
         {% for issue in data_quality.issues %}
         <article class="patient-quality-item tone-{{ issue.severity }}">
-            <span class="patient-quality-item__icon"><svg class="icon icon-sm"><use href="#i-{% if issue.severity=='danger' %}alert{% elif issue.severity=='warn' %}info{% else %}circle-info{% endif %}"></use></svg></span>
+            <span class="patient-quality-item__icon"><svg class="icon icon-sm"><use href="#i-{% if issue.severity=='danger' %}alert{% else %}info{% endif %}"></use></svg></span>
             <div class="patient-quality-item__copy"><b>{{ issue.title }}</b><p>{{ issue.detail }}</p></div>
             {% if issue.action_kind == 'reconciliation' %}
             <a class="btn btn-sm btn-ghost" href="{{ url_for('clinical_reconciliation.workspace', pid=patient.id) }}">{{ issue.action_label }}</a>
