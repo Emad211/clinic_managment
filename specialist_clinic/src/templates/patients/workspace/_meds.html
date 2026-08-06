@@ -1,3 +1,4 @@
+{% set med_state = (workspace_form_state or {}).get('medication', {}) %}
 <section class="card" aria-labelledby="workspace-medications-title">
     <div class="section-title"><svg class="icon"><use href="#i-pill"></use></svg><div><div id="workspace-medications-title">داروهای بیمار</div><div class="section-sub">داروهای فعال در بالا؛ تاریخچه قطع‌شده پایین‌تر باقی می‌ماند.</div></div></div>
     <div class="workspace-medication-list">
@@ -11,6 +12,7 @@
                         {% if medication.drug_class %}<span class="badge badge-muted">{{ drug_class_map.get(medication.drug_class, medication.drug_class) }}</span>{% endif %}
                         {% if medication.schedule %}<span class="chip">{{ medication.schedule }}</span>{% endif %}
                         <span class="badge {% if medication.is_active %}badge-ok{% else %}badge-muted{% endif %}">{{ 'فعال' if medication.is_active else 'قطع‌شده' }}</span>
+                        {% if medication.drug_catalog_id %}<span class="badge badge-ok">کاتالوگی</span>{% else %}<span class="badge badge-warn">نیازمند تطبیق</span>{% endif %}
                     </div>
                     <small class="muted">شروع: {{ medication.start_date|jalali_date if medication.start_date else 'ثبت نشده' }}{% if medication.refill_due_date %} · تجدید: {{ medication.refill_due_date|jalali_date }}{% endif %}{% if medication.end_date %} · پایان: {{ medication.end_date|jalali_date }}{% endif %}</small>
                 </div>
@@ -38,17 +40,43 @@
     </div>
 
     {% if permissions.get('patient.edit') %}
-    <details class="workspace-entry-details">
-        <summary>افزودن داروی جدید</summary>
-        <form method="post" action="{{ url_for('patients.add_medication', pid=patient.id) }}" class="workspace-medication-add-form">
-            <input type="hidden" name="workspace_tab" value="meds">
-            <div class="fld"><label for="workspace-drug-name">نام دارو</label><input id="workspace-drug-name" name="drug_name" required placeholder="نام ژنریک یا تجاری"></div>
-            <div class="fld"><label for="workspace-drug-class">کلاس دارویی</label><select id="workspace-drug-class" name="drug_class"><option value="">انتخاب‌نشده</option>{% for item in drug_class_options %}<option value="{{ item.class_key }}">{{ item.label }}</option>{% endfor %}</select></div>
-            <div class="fld"><label for="workspace-drug-dose">دوز</label><input id="workspace-drug-dose" name="dose"></div>
-            <div class="fld"><label for="workspace-drug-schedule">برنامه مصرف</label><input id="workspace-drug-schedule" name="schedule" placeholder="مثلاً روزی دو بار"></div>
-            <div class="fld"><label for="workspace-refill-interval">فاصله تجدید</label><select id="workspace-refill-interval" name="refill_interval"><option value="">بدون یادآوری</option><option value="15">۱۵ روز</option><option value="30">۱ ماه</option><option value="60">۲ ماه</option><option value="90">۳ ماه</option></select></div>
-            <button class="btn" type="submit">افزودن دارو</button>
+    <details class="workspace-entry-details" {% if med_state %}open{% endif %}>
+        <summary>افزودن داروی استاندارد</summary>
+        {% if drug_catalog %}
+        <form method="post" action="{{ url_for('patient_workspace_mutations.add_medication', pid=patient.id) }}" class="workspace-medication-add-form" data-catalog-medication-form>
+            <script type="application/json" data-drug-catalog-json>{{ drug_catalog|tojson }}</script>
+            <div class="fld workspace-medication-add-form__drug">
+                <label for="workspace-drug-catalog">دارو</label>
+                <select id="workspace-drug-catalog" name="drug_catalog_id" required data-drug-catalog-select>
+                    <option value="">انتخاب داروی ژنریک</option>
+                    {% for group in drug_catalog|groupby('drug_class_key') %}
+                    <optgroup label="{{ drug_class_map.get(group.grouper, group.grouper) }}">
+                        {% for item in group.list %}
+                        <option value="{{ item.id }}" {% if med_state.get('drug_catalog_id') == item.id|string %}selected{% endif %}>{{ item.generic_fa }}</option>
+                        {% endfor %}
+                    </optgroup>
+                    {% endfor %}
+                </select>
+                <small class="muted" data-drug-class-help>نام و کلاس دارو از فهرست رسمی ثبت می‌شود.</small>
+            </div>
+            <div class="fld">
+                <label for="workspace-drug-dose-choice">دوز</label>
+                <select id="workspace-drug-dose-choice" name="dose_choice" data-drug-dose-select data-restore-value="{{ med_state.get('dose_choice','') }}" required>
+                    <option value="">ابتدا دارو را انتخاب کنید</option>
+                </select>
+            </div>
+            <div class="fld" data-custom-dose-field hidden>
+                <label for="workspace-drug-dose-custom">دوز سفارشی</label>
+                <input id="workspace-drug-dose-custom" name="dose_custom" value="{{ med_state.get('dose_custom','') }}" data-custom-dose-input placeholder="مثلاً ۷۵۰ mg">
+            </div>
+            <div class="fld"><label for="workspace-drug-schedule">برنامه مصرف</label><input id="workspace-drug-schedule" name="schedule" value="{{ med_state.get('schedule','') }}" placeholder="مثلاً روزی دو بار"></div>
+            <div class="fld"><label for="workspace-refill-interval">فاصله تجدید</label><select id="workspace-refill-interval" name="refill_interval"><option value="">بدون یادآوری</option>{% for value,label in [('15','۱۵ روز'),('30','۱ ماه'),('60','۲ ماه'),('90','۳ ماه')] %}<option value="{{ value }}" {% if med_state.get('refill_interval')==value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></div>
+            <div class="fld workspace-medication-add-form__notes"><label for="workspace-drug-notes">یادداشت اختیاری</label><input id="workspace-drug-notes" name="notes" value="{{ med_state.get('notes','') }}"></div>
+            <button class="btn" type="submit">افزودن داروی استاندارد</button>
         </form>
+        {% else %}
+        <div class="alert-banner alert-warn"><svg class="icon"><use href="#i-alert"></use></svg><span>فهرست دارویی فعال خالی است؛ ابتدا کاتالوگ دارو را تکمیل کنید.</span></div>
+        {% endif %}
     </details>
     {% endif %}
 </section>
