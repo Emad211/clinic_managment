@@ -7,7 +7,7 @@ from flask import Blueprint, flash, g, redirect, render_template, request, url_f
 
 from src.adapters.sqlite.core import get_db
 from src.adapters.sqlite.leads_repo import LeadRepository
-from src.common.utils import jalali_to_gregorian_str
+from src.common.utils import iran_now, jalali_to_gregorian_str
 from src.security.permissions import Permission, permission_required
 from src.services.activity_logger import log_activity
 from src.services.lead_pipeline_service import (
@@ -210,13 +210,23 @@ def lead_context() -> dict:
     if not getattr(g, "user", None):
         return {"lead_open_count": 0, "lead_due_count": 0}
     try:
-        service = LeadPipelineService(get_db())
-        data = service.dashboard()
+        repository = LeadRepository(get_db())
+        counts = repository.counts()
+        current = iran_now()
+        if current.tzinfo is not None:
+            current = current.replace(tzinfo=None)
+        due_count = len(
+            repository.due(
+                current.replace(microsecond=0).isoformat(
+                    sep=" ", timespec="seconds"
+                )
+            )
+        )
     except Exception:
         return {"lead_open_count": 0, "lead_due_count": 0}
     return {
-        "lead_open_count": int(data["counts"].get("OPEN", 0)),
-        "lead_due_count": int(data["due_count"]),
+        "lead_open_count": int(counts.get("OPEN", 0)),
+        "lead_due_count": int(due_count),
     }
 
 
