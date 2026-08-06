@@ -1,0 +1,29 @@
+{% if data_quality and data_quality.counts.total %}
+<details class="card patient-quality-panel{% if data_quality.counts.danger %} has-danger{% endif %}" {% if data_quality.counts.danger %}open{% endif %}>
+    <summary class="patient-quality-panel__summary">
+        <span class="patient-quality-panel__title"><svg class="icon"><use href="#i-alert"></use></svg><span><b>دقت و کامل‌بودن داده</b><small>فقط مواردی که روی پیگیری، اتوماسیون، گزارش یا تصمیم‌گیری اثر می‌گذارند.</small></span></span>
+        <span class="patient-quality-panel__counts">
+            {% if data_quality.counts.danger %}<span class="badge badge-danger">{{ data_quality.counts.danger|fa_num }} ضروری</span>{% endif %}
+            {% if data_quality.counts.warn %}<span class="badge badge-warn">{{ data_quality.counts.warn|fa_num }} نیازمند مرور</span>{% endif %}
+            {% if data_quality.counts.info %}<span class="badge badge-info">{{ data_quality.counts.info|fa_num }} تکمیلی</span>{% endif %}
+        </span>
+    </summary>
+    <div class="patient-quality-list">
+        {% for issue in data_quality.issues %}
+        <article class="patient-quality-item tone-{{ issue.severity }}">
+            <span class="patient-quality-item__icon"><svg class="icon icon-sm"><use href="#i-{% if issue.severity=='danger' %}alert{% elif issue.severity=='warn' %}info{% else %}circle-info{% endif %}"></use></svg></span>
+            <div class="patient-quality-item__copy"><b>{{ issue.title }}</b><p>{{ issue.detail }}</p></div>
+            {% if issue.action_kind == 'reconciliation' %}
+            <a class="btn btn-sm btn-ghost" href="{{ url_for('clinical_reconciliation.workspace', pid=patient.id) }}">{{ issue.action_label }}</a>
+            {% elif issue.action_kind == 'acquisition' %}
+            <a class="btn btn-sm btn-ghost" href="{{ url_for('patient_workspace.detail', pid=patient.id, tab='summary') }}#workspace-acquisition-editor">{{ issue.action_label }}</a>
+            {% else %}
+            <a class="btn btn-sm btn-ghost" href="{{ url_for('patient_workspace.detail', pid=patient.id, tab=issue.tab) }}{% if issue.anchor %}#{{ issue.anchor }}{% endif %}">{{ issue.action_label }}</a>
+            {% endif %}
+        </article>
+        {% endfor %}
+    </div>
+</details>
+{% elif data_quality %}
+<div class="alert-banner alert-success patient-quality-ok"><svg class="icon"><use href="#i-check"></use></svg><span>مشکل ساختاری مؤثری در داده‌های این بیمار پیدا نشد.</span></div>
+{% endif %}
