@@ -67,6 +67,11 @@ def _client(fixture):
     return client
 
 
+def _url(fixture, endpoint: str, **values) -> str:
+    with fixture["app"].test_request_context():
+        return url_for(endpoint, **values)
+
+
 def _future_jalali(days: int = 7) -> str:
     from src.common.utils import gregorian_to_jalali, iran_now
 
@@ -83,7 +88,7 @@ def test_legacy_patient_detail_redirects_to_native_workspace(workspace_app):
     client = _client(workspace_app)
     patient_id = workspace_app["patient_id"]
     response = client.get(
-        url_for("patients.detail", pid=patient_id),
+        _url(workspace_app, "patients.detail", pid=patient_id),
         follow_redirects=False,
     )
 
@@ -96,7 +101,9 @@ def test_legacy_patient_detail_redirects_to_native_workspace(workspace_app):
 def test_explicit_legacy_fallback_stays_available(workspace_app):
     client = _client(workspace_app)
     patient_id = workspace_app["patient_id"]
-    response = client.get(url_for("patients.detail", pid=patient_id, legacy=1))
+    response = client.get(
+        _url(workspace_app, "patients.detail", pid=patient_id, legacy=1)
+    )
 
     assert response.status_code == 200
     assert "patient-hero" in response.get_data(as_text=True)
@@ -109,14 +116,14 @@ def test_explicit_legacy_fallback_stays_available(workspace_app):
         ("actions", "ثبت سریع شاخص‌ها"),
         ("clinical", "بیماری‌های مزمن"),
         ("meds", "داروهای بیمار"),
-        ("encounters", "اسناد امضاشده ویزیت"),
+        ("encounters", "گزارش‌های نهایی ویزیت"),
     ],
 )
 def test_all_five_tabs_render_server_side(workspace_app, tab, expected):
     client = _client(workspace_app)
     patient_id = workspace_app["patient_id"]
     response = client.get(
-        url_for("patient_workspace.detail", pid=patient_id, tab=tab)
+        _url(workspace_app, "patient_workspace.detail", pid=patient_id, tab=tab)
     )
     html = response.get_data(as_text=True)
 
@@ -131,7 +138,8 @@ def test_all_five_tabs_render_server_side(workspace_app, tab, expected):
 def test_unknown_tab_falls_back_to_summary(workspace_app):
     client = _client(workspace_app)
     response = client.get(
-        url_for(
+        _url(
+            workspace_app,
             "patient_workspace.detail",
             pid=workspace_app["patient_id"],
             tab="unknown",
@@ -146,7 +154,7 @@ def test_allergy_mutation_returns_to_clinical_tab(workspace_app):
     client = _client(workspace_app)
     patient_id = workspace_app["patient_id"]
     response = client.post(
-        url_for("patients.add_allergy", pid=patient_id),
+        _url(workspace_app, "patients.add_allergy", pid=patient_id),
         data={
             "substance": "پنی‌سیلین",
             "severity": "شدید",
@@ -165,7 +173,7 @@ def test_medication_mutation_returns_to_meds_tab(workspace_app):
     client = _client(workspace_app)
     patient_id = workspace_app["patient_id"]
     response = client.post(
-        url_for("patients.add_medication", pid=patient_id),
+        _url(workspace_app, "patients.add_medication", pid=patient_id),
         data={
             "drug_name": "آتورواستاتین",
             "dose": "20 mg",
@@ -192,7 +200,7 @@ def test_patient_context_appointment_returns_to_encounters_tab(workspace_app):
     client = _client(workspace_app)
     patient_id = workspace_app["patient_id"]
     response = client.post(
-        url_for("appointments.new_appointment"),
+        _url(workspace_app, "appointments.new_appointment"),
         data={
             "patient_link_id": str(patient_id),
             "date": _future_jalali(),
