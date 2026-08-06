@@ -1,7 +1,8 @@
 """Additive storage for prospect/lead lifecycle tracking.
 
 Leads are deliberately separate from enrolled patients. A patient_link_id is populated
-only after an explicit conversion action.
+only after an explicit conversion action. Patient-to-patient referrals keep an exact
+referrer_patient_link_id so conversion and revenue are attributable to a real patient.
 """
 from __future__ import annotations
 
@@ -18,6 +19,10 @@ LEAD_STATUSES = (
 )
 
 
+def _columns(db: sqlite3.Connection, table: str) -> set[str]:
+    return {str(row["name"]) for row in db.execute(f"PRAGMA table_info({table})")}
+
+
 def ensure_lead_pipeline_storage(db: sqlite3.Connection) -> None:
     db.executescript(
         """
@@ -29,6 +34,7 @@ def ensure_lead_pipeline_storage(db: sqlite3.Connection) -> None:
             source_code TEXT NOT NULL,
             source_detail TEXT,
             referrer_name TEXT,
+            referrer_patient_link_id INTEGER,
             interest_code TEXT,
             owner_username TEXT,
             status TEXT NOT NULL DEFAULT 'NEW'
@@ -45,6 +51,7 @@ def ensure_lead_pipeline_storage(db: sqlite3.Connection) -> None:
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL,
             converted_at TEXT,
+            FOREIGN KEY(referrer_patient_link_id) REFERENCES patient_links(id),
             FOREIGN KEY(patient_link_id) REFERENCES patient_links(id),
             FOREIGN KEY(appointment_id) REFERENCES appointments(id)
         );
@@ -74,6 +81,14 @@ def ensure_lead_pipeline_storage(db: sqlite3.Connection) -> None:
         CREATE INDEX IF NOT EXISTS idx_growth_lead_events_lead
             ON growth_lead_events(lead_id, occurred_at DESC, id DESC);
         """
+    )
+    if "referrer_patient_link_id" not in _columns(db, "growth_leads"):
+        db.execute(
+            "ALTER TABLE growth_leads ADD COLUMN referrer_patient_link_id INTEGER"
+        )
+    db.execute(
+        """CREATE INDEX IF NOT EXISTS idx_growth_leads_referrer
+           ON growth_leads(referrer_patient_link_id,status)"""
     )
     db.commit()
 
