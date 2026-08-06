@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 from flask import url_for
 
@@ -81,10 +83,16 @@ def _client(fixture):
     return client
 
 
+def _url(fixture, endpoint: str, **values) -> str:
+    with fixture["app"].test_request_context():
+        return url_for(endpoint, **values)
+
+
 def test_meds_tab_uses_catalog_identity_not_free_text(catalog_workspace_app):
     client = _client(catalog_workspace_app)
     response = client.get(
-        url_for(
+        _url(
+            catalog_workspace_app,
             "patient_workspace.detail",
             pid=catalog_workspace_app["patient_id"],
             tab="meds",
@@ -107,7 +115,11 @@ def test_valid_catalog_medication_uses_canonical_name_class_and_dose(
     client = _client(catalog_workspace_app)
     patient_id = catalog_workspace_app["patient_id"]
     response = client.post(
-        url_for("patient_workspace_mutations.add_medication", pid=patient_id),
+        _url(
+            catalog_workspace_app,
+            "patient_workspace_mutations.add_medication",
+            pid=patient_id,
+        ),
         data={
             "drug_catalog_id": str(catalog_workspace_app["drug_id"]),
             "dose_choice": "500 mg",
@@ -138,7 +150,11 @@ def test_invalid_standard_dose_returns_422_without_creating_medication(
     client = _client(catalog_workspace_app)
     patient_id = catalog_workspace_app["patient_id"]
     response = client.post(
-        url_for("patient_workspace_mutations.add_medication", pid=patient_id),
+        _url(
+            catalog_workspace_app,
+            "patient_workspace_mutations.add_medication",
+            pid=patient_id,
+        ),
         data={
             "drug_catalog_id": str(catalog_workspace_app["drug_id"]),
             "dose_choice": "250 mg",
@@ -162,7 +178,11 @@ def test_valid_catalog_lab_overrides_name_unit_and_reference_range(
     client = _client(catalog_workspace_app)
     patient_id = catalog_workspace_app["patient_id"]
     response = client.post(
-        url_for("patient_workspace_mutations.add_lab", pid=patient_id),
+        _url(
+            catalog_workspace_app,
+            "patient_workspace_mutations.add_lab",
+            pid=patient_id,
+        ),
         data={
             "test_key": "hba1c_growth_test",
             "value": "6.8",
@@ -194,7 +214,11 @@ def test_invalid_lab_keeps_submitted_value_and_creates_nothing(
     client = _client(catalog_workspace_app)
     patient_id = catalog_workspace_app["patient_id"]
     response = client.post(
-        url_for("patient_workspace_mutations.add_lab", pid=patient_id),
+        _url(
+            catalog_workspace_app,
+            "patient_workspace_mutations.add_lab",
+            pid=patient_id,
+        ),
         data={
             "test_key": "missing-test",
             "value": "7.1",
@@ -214,8 +238,6 @@ def test_invalid_lab_keeps_submitted_value_and_creates_nothing(
 
 
 def test_catalog_javascript_has_no_persistence_or_network_mutation():
-    from pathlib import Path
-
     root = Path(__file__).resolve().parents[1]
     source = (
         root / "src/static/js/patient-workspace-catalogs.js"
