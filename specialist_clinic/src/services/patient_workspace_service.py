@@ -1,14 +1,17 @@
 """Read-only context builder for the native five-tab Patient Workspace.
 
-The service reuses the existing repositories and Clinical Engine v2 facade. It does not
-interpret clinical values, create recommendations or add a second mutation path.
+The service reuses existing repositories and source-backed projections. It does not
+interpret clinical values, invent lead/referral data or count un-attributed accounting
+activity as specialist-clinic revenue.
 """
 from __future__ import annotations
 
+from datetime import datetime
 import json
 
 from src.adapters.sqlite.appointments_repo import AppointmentRepository
 from src.adapters.sqlite.clinical_rules_repo import ClinicalRulesRepository
+from src.adapters.sqlite.core import get_db
 from src.adapters.sqlite.drug_catalog_repo import DrugCatalogRepository
 from src.adapters.sqlite.encounter_documentation_repo import (
     EncounterDocumentationRepository,
@@ -18,11 +21,15 @@ from src.adapters.sqlite.followups_repo import FollowupRepository
 from src.adapters.sqlite.lab_catalog_repo import LabCatalogRepository
 from src.adapters.sqlite.patients_repo import PatientRepository
 from src.adapters.sqlite.record_repo import RecordRepository
+from src.adapters.sqlite.specialist_financial_funnel_repo import (
+    SpecialistFinancialFunnelRepository,
+)
 from src.adapters.sqlite.specialist_service_lineage_repo import (
     SpecialistServiceLineageRepository,
 )
 from src.adapters.sqlite.vitals_repo import VITAL_TYPES, VitalsRepository
 from src.adapters.sqlite.wallet_repo import WalletRepository
+from src.common.utils import iran_now
 from src.services.analytics_service import AnalyticsService
 from src.services.clinical_engine.facade import ClinicalEngineReadOnlyFacade
 from src.services.patient_cockpit_service import PatientCockpitService
@@ -38,8 +45,178 @@ WORKSPACE_TABS = {
     "encounters": "ویزیت‌ها و اسناد",
 }
 
+_CONTACT_CHANNEL_LABELS = {
+    "PHONE": "تماس تلفنی",
+    "SMS": "پیامک",
+    "IN_PERSON": "حضوری",
+    "SYSTEM": "سیستمی",
+    "OTHER": "سایر",
+}
+_CONTACT_OUTCOME_LABELS = {
+    "REACHED": "تماس موفق",
+    "NO_ANSWER": "پاسخ نداد",
+    "BUSY": "خط مشغول",
+    "CALLBACK_REQUESTED": "درخواست تماس مجدد",
+    "PHONE_INVALID": "شماره نامعتبر",
+    "APPOINTMENT_BOOKED": "نوبت ثبت شده",
+    "ESCALATED_TO_PHYSICIAN": "ارجاع به پزشک",
+    "BOOKED": "نوبت ثبت شده",
+    "OTHER": "سایر",
+}
+_MESSAGE_STATUS_LABELS = {
+    "Delivered": "تحویل‌شده",
+    "Queued": "در صف",
+    "Submitting": "در حال ارسال",
+    "PendingApproval": "منتظر تأیید",
+    "RetryableFailure": "نیازمند تلاش مجدد",
+    "Failed": "ناموفق",
+    "Undelivered": "تحویل‌نشده",
+    "SubmissionUnknown": "وضعیت ارسال نامشخص",
+    "StatusUnknown": "وضعیت تحویل نامشخص",
+}
+
 
 class PatientWorkspaceService:
+    @staticmethod
+    def _naive_now() -> datetime:
+        current = iran_now()
+        if current.tzinfo is not None:
+            current = current.replace(tzinfo=None)
+        return current
+
+    def _contact_summary(self, patient_link_id: int) -> dict:
+        rows = get_db().execute(
+            """SELECT event.*
+               FROM followup_contact_events event
+               WHERE event.patient_link_id=?
+               ORDER BY event.occurred_at DESC, event.id DESC LIMIT 5""",
+            (int(patient_link_id),),
+        ).fetchall()
+        contacts = []
+        for row in rows:
+            item = dict(row)
+            item["channel_label"] = _CONTACT_CHANNEL_LABELS.get(
+                str(item.get("channel") or "").upper(),
+                item.get("channel") or "نامشخص",
+            )
+            item["outcome_label"] = _CONTACT_OUTCOME_LABELS.get(
+                str(item.get("outcome") or "").upper(),
+                item.get("outcome") or "نامشخص",
+            )
+            contacts.append(item)
+        return {
+            "last": contacts[0] if contacts else None,
+            "recent": contacts,
+            "count": int(
+                get_db().execute(
+                    """SELECT COUNT(*) AS count FROM followup_contact_events
+                       WHERE patient_link_id=?""",
+                    (int(patient_link_id),),
+                ).fetchone()["count"]
+                or 0
+            ),
+        }
+
+    def _message_summary(self, patient_link_id: int) -> dict:
+        rows = get_db().execute(
+            """SELECT message.id, message.status, message.delivery_status,
+                      message.source_type, message.source_ref,
+                      message.created_at, message.sent_at, message.delivered_at,
+                      campaign.name AS campaign_name
+               FROM sms_messages message
+               LEFT JOIN sms_campaigns campaign ON campaign.id=message.campaign_id
+               WHERE message.patient_link_id=?
+               ORDER BY message.id DESC LIMIT 5""",
+            (int(patient_link_id),),
+        ).fetchall()
+        messages = []
+        for row in rows:
+            item = dict(row)
+            status = item.get("delivery_status") or item.get("status") or "نامشخص"
+            item["status_label"] = _MESSAGE_STATUS_LABELS.get(str(status), str(status))
+            item["display_at"] = (
+                item.get("delivered_at")
+                or item.get("sent_at")
+                or item.get("created_at")
+            )
+            messages.append(item)
+        return {
+            "last": messages[0] if messages else None,
+            "recent": messages,
+            "count": int(
+                get_db().execute(
+                    """SELECT COUNT(*) AS count FROM sms_messages
+                       WHERE patient_link_id=?""",
+                    (int(patient_link_id),),
+                ).fetchone()["count"]
+                or 0
+            ),
+        }
+
+    def _appointment_lifecycle(self, appointments: list[dict]) -> dict:
+        current = self._naive_now()
+        scheduled = []
+        counts = {
+            "scheduled": 0,
+            "done": 0,
+            "no_show": 0,
+            "cancelled": 0,
+        }
+        for appointment in appointments:
+            status = str(appointment.get("status") or "").lower()
+            if status in counts:
+                counts[status] += 1
+            if status != "scheduled":
+                continue
+            try:
+                when = datetime.fromisoformat(str(appointment["scheduled_at"]))
+            except (KeyError, TypeError, ValueError):
+                continue
+            if when.tzinfo is not None:
+                when = when.replace(tzinfo=None)
+            if when >= current:
+                scheduled.append((when, appointment))
+        scheduled.sort(key=lambda pair: pair[0])
+        return {
+            **counts,
+            "next": scheduled[0][1] if scheduled else None,
+        }
+
+    @staticmethod
+    def _financial_summary(patient_link_id: int) -> dict:
+        observations = [
+            row
+            for row in SpecialistFinancialFunnelRepository().latest_observations()
+            if int(row.get("patient_link_id") or 0) == int(patient_link_id)
+            and str(row.get("invoice_status") or "") == "closed"
+        ]
+        billed = sum(int(row.get("billed_amount") or 0) for row in observations)
+        collected = sum(int(row.get("collected_amount") or 0) for row in observations)
+        return {
+            "available": bool(observations),
+            "invoice_count": len(observations),
+            "billed": billed,
+            "collected": collected,
+            "outstanding": max(billed - collected, 0),
+            "latest_observed_at": max(
+                (str(row.get("observed_at")) for row in observations if row.get("observed_at")),
+                default=None,
+            ),
+            "evidence_label": "فقط فاکتورهای دارای Encounter و انتساب صریح",
+        }
+
+    @staticmethod
+    def _enrollment_summary(patient: dict) -> dict:
+        accounting_id = patient.get("accounting_patient_id")
+        return {
+            "source_code": "ACCOUNTING" if accounting_id else "MANUAL",
+            "source_label": "ثبت از حسابداری" if accounting_id else "ثبت دستی",
+            "enrolled_by": patient.get("enrolled_by"),
+            "enrolled_at": patient.get("enrolled_at"),
+            "referrer": None,
+            "referrer_label": "ثبت نشده",
+        }
+
     def build(self, patient_link_id: int) -> dict | None:
         pid = int(patient_link_id)
         profile = PatientService().get_full_profile(pid)
@@ -135,6 +312,12 @@ class PatientWorkspaceService:
             encounter_documents=encounter_documents,
         )
 
+        contact_summary = self._contact_summary(pid)
+        message_summary = self._message_summary(pid)
+        appointment_lifecycle = self._appointment_lifecycle(appointments)
+        financial_summary = self._financial_summary(pid)
+        enrollment_summary = self._enrollment_summary(profile["patient"])
+
         wallet_repo = WalletRepository()
         return {
             "patient": profile["patient"],
@@ -149,6 +332,7 @@ class PatientWorkspaceService:
             "recent_vitals": recent_vitals,
             "labs": labs,
             "appointments": appointments,
+            "appointment_lifecycle": appointment_lifecycle,
             "all_followups": all_followups,
             "followups": open_followups,
             "condition_catalog": patient_repo.list_condition_catalog(),
@@ -176,6 +360,10 @@ class PatientWorkspaceService:
             "encounter_documents": encounter_documents,
             "service_lines": service_lines,
             "service_line_summary": service_line_summary,
+            "contact_summary": contact_summary,
+            "message_summary": message_summary,
+            "financial_summary": financial_summary,
+            "enrollment_summary": enrollment_summary,
             "sms_consent": SmsGovernanceService().summary(pid),
             "wallet_balance": wallet_repo.get_balance(pid),
             "wallet_tx": wallet_repo.transactions(pid, limit=20),
