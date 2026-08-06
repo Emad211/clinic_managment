@@ -1,0 +1,45 @@
+{% extends "automation_base.html" %}
+{% block title %}اتوماسیون رشد و بازیابی{% endblock %}
+{% block head %}
+{{ super() }}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/growth-cockpit-v1.css') }}">
+{% endblock %}
+{% block content %}
+<header class="auto-page-header">
+    <div class="auto-page-header__copy">
+        <h1><svg class="icon"><use href="#i-zap"></use></svg> اتوماسیون رشد و بازیابی</h1>
+        <p class="muted">No-show، نوبت لغوشده و بیمار غیرفعال به کارهای قابل‌رسیدگی تبدیل می‌شوند؛ پیام خودکار در این مرحله ارسال نمی‌شود.</p>
+    </div>
+    <div class="auto-page-header__actions">
+        <a class="btn btn-ghost" href="{{ url_for('growth.cockpit') }}">داشبورد رشد</a>
+        <a class="btn" href="{{ url_for('unified_followups.index') if config.get('FOLLOWUP_UNIFIED_WORKLIST_READONLY') else url_for('followups.worklist') }}">مرکز کارها</a>
+    </div>
+</header>
+
+<section class="growth-kpi-grid growth-automation-preview" aria-label="پیش‌نمایش اتوماسیون">
+    <article class="card growth-kpi"><span>عدم حضور بدون پیگیری</span><b>{{ preview.no_show|fa_num }}</b><small>هر نوبت فقط یک کار باز می‌سازد</small></article>
+    <article class="card growth-kpi"><span>لغو بدون نوبت جایگزین</span><b>{{ preview.cancelled|fa_num }}</b><small>بیمار دارای نوبت آینده حذف می‌شود</small></article>
+    <article class="card growth-kpi"><span>بیمار غیرفعال</span><b>{{ preview.inactive|fa_num }}</b><small>بدون نوبت آینده و بیش از {{ inactive_days|fa_num }} روز</small></article>
+</section>
+
+<section class="card growth-automation-run-card">
+    <div class="section-title"><svg class="icon"><use href="#i-list-checks"></use></svg><div><div>ساخت کارهای بازیابی</div><div class="section-sub">عملیات idempotent است؛ اجرای دوباره کار تکراری نمی‌سازد.</div></div></div>
+    <form method="post" action="{{ url_for('growth.run_automation') }}" class="growth-automation-form">
+        <div class="fld"><label for="growth-inactive-days">آستانه غیرفعال‌بودن</label><select id="growth-inactive-days" name="inactive_days"><option value="90" {% if inactive_days==90 %}selected{% endif %}>۹۰ روز</option><option value="180" {% if inactive_days==180 %}selected{% endif %}>۱۸۰ روز</option><option value="270" {% if inactive_days==270 %}selected{% endif %}>۲۷۰ روز</option><option value="365" {% if inactive_days==365 %}selected{% endif %}>یک سال</option></select></div>
+        <div class="fld"><label for="growth-assignee">مسئول کارها</label><select id="growth-assignee" name="assigned_to"><option value="">بدون مسئول فردی</option>{% for user in users %}<option value="{{ user.username }}">{{ user.full_name or user.username }}</option>{% endfor %}</select></div>
+        <div class="growth-automation-form__copy"><b>{{ (preview.no_show + preview.cancelled + preview.inactive)|fa_num }} فرصت</b><span class="muted text-sm">فقط مواردی که کار باز مشابه ندارند ساخته می‌شوند.</span></div>
+        <button class="btn btn-ok" type="submit">ساخت کارها و ارسال به مرکز کارها</button>
+    </form>
+</section>
+
+<section class="growth-two-column">
+    <article class="card">
+        <div class="section-title"><svg class="icon"><use href="#i-user"></use></svg> بازیابی عدم حضور</div>
+        <p>برای هر نوبت No-show یک کار مشخص با لینک همان نوبت ساخته می‌شود. پس از ثبت نوبت جایگزین، همان مسیر Work Center ادامه پیدا می‌کند.</p>
+    </article>
+    <article class="card">
+        <div class="section-title"><svg class="icon"><use href="#i-refresh"></use></svg> Recall بیمار غیرفعال</div>
+        <p>فقط بیمار فعال، بدون نوبت آینده و با آخرین مراجعه/ثبت قدیمی وارد Recall می‌شود. دورهٔ ماهانه مانع تکرار بی‌دلیل می‌شود.</p>
+    </article>
+</section>
+{% endblock %}
