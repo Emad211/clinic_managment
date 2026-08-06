@@ -19,7 +19,7 @@
 
 <section class="lead-detail-summary">
     <article class="card"><span>منبع جذب</span><b>{{ sources.get(lead.source_code, lead.source_code) }}</b><small>{{ lead.source_detail or 'بدون جزئیات' }}</small></article>
-    <article class="card"><span>معرف</span><b>{{ lead.referrer_name or 'ثبت نشده' }}</b><small>{{ interests.get(lead.interest_code, lead.interest_code) if lead.interest_code else 'خدمت نامشخص' }}</small></article>
+    <article class="card"><span>معرف</span>{% if lead.referrer_patient_link_id %}<b><a href="{{ url_for('patient_workspace.detail', pid=lead.referrer_patient_link_id, tab='summary') }}">{{ lead.referrer_patient_name }}</a></b><small>بیمار معرف با شناسه دقیق</small>{% else %}<b>{{ lead.referrer_name or 'ثبت نشده' }}</b><small>{{ interests.get(lead.interest_code, lead.interest_code) if lead.interest_code else 'خدمت نامشخص' }}</small>{% endif %}</article>
     <article class="card"><span>مسئول</span><b>{{ lead.owner_username or 'تعیین نشده' }}</b><small>اقدام بعدی: {{ lead.next_action_at|jalali if lead.next_action_at else 'ندارد' }}</small></article>
     <article class="card"><span>زمان مراجعه</span><b>{{ lead.appointment_at|jalali if lead.appointment_at else 'تعیین نشده' }}</b><small>{% if lead.lost_reason %}علت از دست رفتن: {{ lost_reasons.get(lead.lost_reason, lead.lost_reason) }}{% else %}مرحله: {{ status_labels.get(lead.status, lead.status) }}{% endif %}</small></article>
 </section>
@@ -59,7 +59,7 @@
 
     {% if lead.status == 'ATTENDED' %}
     <form method="post" action="{{ url_for('leads.convert', lead_id=lead.id) }}" class="lead-convert-form">
-        <div><b>تبدیل به بیمار واقعی</b><p class="muted text-sm">در این لحظه پرونده بیمار ساخته یا به بیمار موجود متصل می‌شود. زمان مراجعه آینده نیز به نوبت واقعی تبدیل می‌شود.</p></div>
+        <div><b>تبدیل به بیمار واقعی</b><p class="muted text-sm">در این لحظه پرونده بیمار ساخته یا به بیمار موجود متصل می‌شود. زمان مراجعه نیز به نوبت واقعی منتقل می‌شود.</p></div>
         <button class="btn btn-ok" type="submit">تبدیل و بازکردن پرونده</button>
     </form>
     {% endif %}
