@@ -100,9 +100,33 @@
     sync();
   }
 
+  function setupAcquisitionForm(form) {
+    const source = qs('[data-acquisition-source]', form);
+    const patientField = qs('[data-acquisition-patient-referrer]', form);
+    const patientSelect = qs('[data-acquisition-referrer-select]', form);
+    const freeField = qs('[data-acquisition-free-referrer]', form);
+    const freeInput = freeField?.querySelector('input');
+    if (!source || !patientField || !patientSelect || !freeField || !freeInput) return;
+
+    function sync() {
+      const patientReferral = source.value === 'PATIENT_REFERRAL';
+      const doctorReferral = source.value === 'DOCTOR_REFERRAL';
+      patientField.hidden = !patientReferral;
+      patientSelect.disabled = !patientReferral;
+      patientSelect.required = patientReferral;
+      freeField.hidden = patientReferral || !doctorReferral;
+      freeInput.disabled = patientReferral || !doctorReferral;
+      freeInput.required = doctorReferral;
+    }
+
+    source.addEventListener('change', sync);
+    sync();
+  }
+
   function setup() {
     document.querySelectorAll('[data-catalog-medication-form]').forEach(setupMedicationForm);
     document.querySelectorAll('[data-catalog-lab-form]').forEach(setupLabForm);
+    document.querySelectorAll('[data-acquisition-form]').forEach(setupAcquisitionForm);
   }
 
   if (document.readyState === 'loading') {
