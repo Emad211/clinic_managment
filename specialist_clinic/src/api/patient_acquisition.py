@@ -18,11 +18,61 @@ from src.services.patient_workspace_service import PatientWorkspaceService, WORK
 bp = Blueprint("patient_acquisition", __name__, url_prefix="/patients")
 
 
+def _active_referrers(pid: int) -> list[dict]:
+    return [
+        dict(row)
+        for row in get_db().execute(
+            """SELECT id,full_name,phone_number,national_id
+               FROM patient_links
+               WHERE is_active=1 AND id<>?
+               ORDER BY full_name,id LIMIT 1000""",
+            (int(pid),),
+        ).fetchall()
+    ]
+
+
+def _current_summary(pid: int, fallback: dict) -> dict:
+    db = get_db()
+    ensure_patient_acquisition_storage(db)
+    row = db.execute(
+        """SELECT acquisition.*,referrer.full_name AS referrer_patient_name
+           FROM growth_patient_acquisition acquisition
+           LEFT JOIN patient_links referrer
+             ON referrer.id=acquisition.referrer_patient_link_id
+           WHERE acquisition.patient_link_id=?""",
+        (int(pid),),
+    ).fetchone()
+    if not row:
+        return {**fallback, "attribution_source": "ENROLLMENT_FALLBACK"}
+    item = dict(row)
+    source = str(item.get("source_code") or "OTHER")
+    referrer = (
+        str(item.get("referrer_patient_name") or "").strip()
+        or str(item.get("referrer_name") or "").strip()
+        or None
+    )
+    return {
+        "source_code": source,
+        "source_label": LEAD_SOURCES.get(source, source),
+        "source_detail": item.get("source_detail"),
+        "enrolled_by": item.get("recorded_by") or fallback.get("enrolled_by"),
+        "enrolled_at": item.get("recorded_at") or fallback.get("enrolled_at"),
+        "referrer": referrer,
+        "referrer_patient_link_id": item.get("referrer_patient_link_id"),
+        "referrer_label": referrer or "ثبت نشده",
+        "attribution_source": "EXPLICIT_PATIENT_ATTRIBUTION",
+    }
+
+
 def _render_error(pid: int, errors: list[str], state: dict):
     workspace = PatientWorkspaceService().build(pid)
     if workspace is None:
         flash("بیمار یافت نشد.", "error")
         return redirect(url_for("patients.list_patients"))
+    workspace["enrollment_summary"] = _current_summary(
+        pid,
+        workspace.get("enrollment_summary") or {},
+    )
     workspace["data_quality"] = PatientDataQualityService(get_db()).build(pid)
     return (
         render_template(
@@ -34,6 +84,7 @@ def _render_error(pid: int, errors: list[str], state: dict):
             workspace_form_errors=errors,
             workspace_form_state={"acquisition": state},
             acquisition_sources=LEAD_SOURCES,
+            acquisition_patients=_active_referrers(pid),
             **workspace,
         ),
         422,
