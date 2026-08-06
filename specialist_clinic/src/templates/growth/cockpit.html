@@ -1,0 +1,97 @@
+{% extends "automation_base.html" %}
+{% block title %}رشد و درآمد{% endblock %}
+{% block head %}
+{{ super() }}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/growth-cockpit-v1.css') }}">
+{% endblock %}
+{% block content %}
+<header class="auto-page-header">
+    <div class="auto-page-header__copy">
+        <h1><svg class="icon"><use href="#i-trending-up"></use></svg> رشد و درآمد</h1>
+        <p class="muted">نتیجهٔ قابل‌اثبات سرنخ، نوبت، حضور، خدمت، صورتحساب و وصول؛ بدون شمردن مراجعات تاریخیِ فاقد انتساب.</p>
+    </div>
+    <div class="auto-page-header__actions">
+        <a class="btn" href="{{ url_for('leads.index') }}"><svg class="icon icon-sm"><use href="#i-users"></use></svg> سرنخ‌ها</a>
+        <a class="btn btn-ghost" href="{{ url_for('finance_review.index') }}">استثناهای مالی</a>
+    </div>
+</header>
+
+<div class="alert-banner alert-info growth-evidence-note"><svg class="icon"><use href="#i-info"></use></svg><span>{{ evidence_note }}</span></div>
+
+<section class="growth-kpi-grid" aria-label="خلاصه درآمد و رشد">
+    <article class="card growth-kpi"><span>وصول امروز</span><b class="nums">{{ today.collected|fa_num }}</b><small>{{ today.invoices|fa_num }} فاکتور منتسب</small></article>
+    <article class="card growth-kpi"><span>وصول ماه</span><b class="nums">{{ month.collected|fa_num }}</b><small>صورتحساب: {{ month.total|fa_num }}</small></article>
+    <article class="card growth-kpi"><span>باقی‌مانده ماه</span><b class="nums">{{ month.outstanding|fa_num }}</b><small>فقط فاکتورهای منتسب</small></article>
+    <article class="card growth-kpi"><span>سرنخ باز</span><b>{{ lead_funnel.counts.OPEN|fa_num }}</b><small>تبدیل: {{ lead_funnel.conversion_rate|fa_num }}٪</small></article>
+    <article class="card growth-kpi"><span>نوبت امروز</span><b>{{ appointments.today_scheduled|fa_num }}</b><small>انجام‌شده: {{ appointments.today_done|fa_num }}</small></article>
+    <article class="card growth-kpi"><span>فرصت ازدست‌رفته ماه</span><b>{{ (appointments.month_no_show + appointments.month_cancelled)|fa_num }}</b><small>{{ appointments.month_no_show|fa_num }} عدم حضور · {{ appointments.month_cancelled|fa_num }} لغو</small></article>
+</section>
+
+<section class="growth-two-column">
+    <article class="card growth-funnel-card">
+        <div class="section-title"><svg class="icon"><use href="#i-users"></use></svg><div><div>قیف جذب بیمار</div><div class="section-sub">از سرنخ جدید تا تبدیل واقعی.</div></div></div>
+        <div class="growth-funnel">
+            {% for key,label in [('NEW','جدید'),('CONTACTED','تماس'),('APPOINTMENT_BOOKED','زمان مراجعه'),('ATTENDED','حضور'),('CONVERTED','بیمار')] %}
+            <div class="growth-funnel-step"><b>{{ lead_funnel.counts.get(key,0)|fa_num }}</b><span>{{ label }}</span></div>{% if not loop.last %}<svg class="icon icon-sm"><use href="#i-chevron-left"></use></svg>{% endif %}
+            {% endfor %}
+        </div>
+        <div class="growth-rate-grid"><div><span>نرخ تعیین وقت</span><b>{{ lead_funnel.appointment_rate|fa_num }}٪</b></div><div><span>نرخ تبدیل نهایی</span><b>{{ lead_funnel.conversion_rate|fa_num }}٪</b></div><div><span>از دست رفته</span><b>{{ lead_funnel.counts.LOST|fa_num }}</b></div></div>
+    </article>
+
+    <article class="card growth-funnel-card">
+        <div class="section-title"><svg class="icon"><use href="#i-banknote"></use></svg><div><div>قیف مالی تخصصی</div><div class="section-sub">مراحل دارای lineage صریح.</div></div></div>
+        <div class="growth-rate-grid">
+            <div><span>نوبت متصل</span><b>{{ financial_funnel.booked|fa_num }}</b></div>
+            <div><span>حضور</span><b>{{ financial_funnel.attended|fa_num }}</b></div>
+            <div><span>ویزیت کامل</span><b>{{ financial_funnel.completed|fa_num }}</b></div>
+            <div><span>فاکتور مشاهده‌شده</span><b>{{ reconciliation.observed_invoices|fa_num }}</b></div>
+            <div><span>مشاهدهٔ ناقص</span><b>{{ reconciliation.missing_observations|fa_num }}</b></div>
+            <div><span>نوبت آینده</span><b>{{ appointments.upcoming|fa_num }}</b></div>
+        </div>
+    </article>
+</section>
+
+<section class="card">
+    <div class="section-title"><svg class="icon"><use href="#i-line-chart"></use></svg><div><div>درآمد وصول‌شده به تفکیک منبع جذب</div><div class="section-sub">فقط بیمارانی که از Lead تبدیل شده و فاکتور منتسب دارند.</div></div></div>
+    {% if revenue_by_source %}
+    <div class="growth-source-table">
+        <table>
+            <thead><tr><th>منبع</th><th>بیمار</th><th>فاکتور</th><th>صورتحساب</th><th>وصول</th><th>نرخ وصول</th></tr></thead>
+            <tbody>
+            {% for row in revenue_by_source %}
+            <tr>
+                <td>{{ row.source_label }}</td>
+                <td>{{ row.patients|fa_num }}</td>
+                <td>{{ row.invoices|fa_num }}</td>
+                <td class="nums">{{ row.billed|fa_num }}</td>
+                <td class="nums"><b>{{ row.collected|fa_num }}</b></td>
+                <td>{% if row.billed %}{{ ((row.collected * 100 / row.billed)|round(1))|fa_num }}٪{% else %}—{% endif %}</td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}<div class="auto-empty"><h2>درآمد منتسب به منبع جذب هنوز ثبت نشده است</h2><p>پس از تبدیل Lead، حضور، خدمت و مشاهده مالی، این جدول خودکار تکمیل می‌شود.</p></div>{% endif %}
+</section>
+
+<section class="growth-two-column">
+    <article class="card">
+        <div class="section-title"><svg class="icon"><use href="#i-calendar"></use></svg> فرصت‌های عملیاتی</div>
+        <div class="growth-opportunity-list">
+            <a href="{{ url_for('leads.index', status='NEW') }}"><span>سرنخ جدید</span><b>{{ lead_funnel.counts.NEW|fa_num }}</b></a>
+            <a href="{{ url_for('leads.index', status='CONTACTED') }}"><span>تماس‌شده بدون زمان مراجعه</span><b>{{ lead_funnel.counts.CONTACTED|fa_num }}</b></a>
+            <a href="{{ url_for('appointments.list_appointments', view='list', status='no_show') }}"><span>عدم حضور ماه</span><b>{{ appointments.month_no_show|fa_num }}</b></a>
+            <a href="{{ url_for('appointments.list_appointments', view='list', status='cancelled') }}"><span>لغو ماه</span><b>{{ appointments.month_cancelled|fa_num }}</b></a>
+            <a href="{{ url_for('finance_review.index') }}"><span>فاکتور منتسب بدون مشاهده</span><b>{{ reconciliation.missing_observations|fa_num }}</b></a>
+        </div>
+    </article>
+    <article class="card">
+        <div class="section-title"><svg class="icon"><use href="#i-trending-up"></use></svg> پیش‌بینی درآمد</div>
+        {% if forecast.available %}
+        <div class="growth-forecast-value nums">{{ forecast.value|fa_num }}</div>
+        {% else %}
+        <div class="auto-empty compact"><h2>پیش‌بینی معتبر هنوز ممکن نیست</h2><p>{{ forecast.reason }}</p></div>
+        {% endif %}
+    </article>
+</section>
+{% endblock %}
