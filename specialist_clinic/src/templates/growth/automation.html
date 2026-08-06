@@ -8,10 +8,11 @@
 <header class="auto-page-header">
     <div class="auto-page-header__copy">
         <h1><svg class="icon"><use href="#i-zap"></use></svg> اتوماسیون رشد و بازیابی</h1>
-        <p class="muted">فرصت‌ها وارد مرکز کارها می‌شوند و سپس با Evidence واقعی نوبت، مراجعه و وصول بسته می‌شوند.</p>
+        <p class="muted">فرصت‌ها وارد مرکز کارها می‌شوند، با Evidence واقعی بسته می‌شوند و فقط پیام‌های هنوز معتبر به صف فعلی پیام می‌روند.</p>
     </div>
     <div class="auto-page-header__actions">
         <a class="btn btn-ghost" href="{{ url_for('growth.cockpit') }}">داشبورد رشد</a>
+        <a class="btn btn-ghost" href="{{ url_for('sms.approvals') }}">صف پیام</a>
         <a class="btn" href="{{ url_for('unified_followups.index') if config.get('FOLLOWUP_UNIFIED_WORKLIST_READONLY') else url_for('followups.worklist') }}">مرکز کارها</a>
     </div>
 </header>
@@ -23,6 +24,9 @@
     <article class="card growth-kpi"><span>کار بازیابی باز</span><b>{{ closed_loop_preview.recovery_open|fa_num }}</b><small>منتظر نوبت یا مراجعه واقعی</small></article>
     <article class="card growth-kpi"><span>مشاهده مالی مفقود</span><b>{{ closed_loop_preview.missing_financial_observations|fa_num }}</b><small>فاکتور منتسب بدون Observation</small></article>
     <article class="card growth-kpi"><span>وصول ناقص</span><b>{{ closed_loop_preview.incomplete_collection|fa_num }}</b><small>تسویه‌نشده یا وصول جزئی</small></article>
+    <article class="card growth-kpi"><span>پیام رشد معتبر</span><b>{{ messaging_preview.growth_eligible|fa_num }}</b><small>No-show، Recall و صف انتظار</small></article>
+    <article class="card growth-kpi"><span>یادآوری نوبت</span><b>{{ messaging_preview.appointment_reminders|fa_num }}</b><small>طبق بازه Event فعلی</small></article>
+    <article class="card growth-kpi"><span>شرط متوقف‌شده</span><b>{{ messaging_preview.growth_stopped|fa_num }}</b><small>نوبت، حضور، لغو یا پایان Slot</small></article>
 </section>
 
 <section class="growth-two-column growth-automation-actions">
@@ -46,10 +50,19 @@
     </article>
 </section>
 
+<section class="card growth-automation-run-card growth-message-playbook-card">
+    <div class="section-title"><svg class="icon"><use href="#i-megaphone"></use></svg><div><div>۳. صف‌کردن پیام‌های معتبر</div><div class="section-sub">Templateهای تنظیم‌پذیر فعلی را برای No-show، لغو، Recall، صف انتظار و یادآوری نوبت وارد صف پیام می‌کند.</div></div></div>
+    <form method="post" action="{{ url_for('growth.run_messaging_playbooks') }}" class="growth-automation-form growth-message-playbook-form">
+        <div class="growth-automation-form__copy"><b>{{ messaging_preview.total_candidates|fa_num }} کاندید معتبر</b><span class="muted text-sm">نوبت‌گیری، حضور، پایان Slot، نبود موبایل، انصراف، Cooldown و تکرار، پیام را متوقف می‌کنند.</span></div>
+        <div class="alert-banner alert-info"><svg class="icon"><use href="#i-info"></use></svg><span>این دکمه ارسال مستقیم نمی‌کند؛ پیام معتبر را وارد همان صف تأیید و ارسال موجود می‌کند و Pending منقضی را رد می‌کند.</span></div>
+        <div class="flex gap-2 wrap justify-end"><a class="btn btn-ghost" href="{{ url_for('sms.approvals') }}">دیدن صف فعلی</a><button class="btn" type="submit">به‌روزرسانی صف پیام</button></div>
+    </form>
+</section>
+
 <section class="growth-two-column">
     <article class="card">
         <div class="section-title"><svg class="icon"><use href="#i-user"></use></svg> بازیابی عدم حضور</div>
-        <p>برای هر No-show یک کار مشخص ساخته می‌شود. با ثبت نوبت جایگزین یا مراجعه واقعی، کار بازیابی خودکار تکمیل می‌شود.</p>
+        <p>برای هر No-show یک کار مشخص ساخته می‌شود. با ثبت نوبت جایگزین یا مراجعه واقعی، کار بازیابی تکمیل و پیام Pending منقضی متوقف می‌شود.</p>
     </article>
     <article class="card">
         <div class="section-title"><svg class="icon"><use href="#i-banknote"></use></svg> پیگیری تا وصول</div>
