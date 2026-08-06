@@ -17,7 +17,10 @@
             <div class="patient-workspace-title-row">
                 <span class="patient-workspace-avatar"><svg class="icon"><use href="#i-user"></use></svg></span>
                 <div>
-                    <h1 id="patient-workspace-name">{{ patient.full_name }}</h1>
+                    <div class="flex items-center gap-2 wrap">
+                        <h1 id="patient-workspace-name">{{ patient.full_name }}</h1>
+                        {% if data_quality and data_quality.counts.danger %}<span class="badge badge-danger">{{ data_quality.counts.danger|fa_num }} مشکل ضروری</span>{% elif data_quality and data_quality.counts.warn %}<span class="badge badge-warn">{{ data_quality.counts.warn|fa_num }} نیازمند مرور</span>{% endif %}
+                    </div>
                     <div class="patient-workspace-meta nums">
                         <span>کد ملی: {{ patient.national_id or 'ثبت نشده' }}</span>
                         <span>موبایل: {{ patient.phone_number or 'ثبت نشده' }}</span>
@@ -56,15 +59,19 @@
     </section>
     {% endif %}
 
+    {% include "patients/workspace/_quality.html" %}
+
     <nav class="patient-workspace-tabs" aria-label="بخش‌های پرونده بیمار">
         {% set tab_icons = {'summary':'i-home','actions':'i-zap','clinical':'i-activity','meds':'i-pill','encounters':'i-clipboard'} %}
         {% for key, label in workspace_tabs.items() %}
+        {% set quality_count = data_quality.by_tab.get(key, [])|length if data_quality else 0 %}
         <a class="patient-workspace-tab{% if active_tab==key %} active{% endif %}"
            href="{{ url_for('patient_workspace.detail', pid=patient.id, tab=key) }}"
            {% if active_tab==key %}aria-current="page"{% endif %}>
             <svg class="icon icon-sm"><use href="#{{ tab_icons[key] }}"></use></svg>
             <span>{{ label }}</span>
             {% if key=='actions' and followups %}<b class="pill pill-danger">{{ followups|length|fa_num }}</b>{% endif %}
+            {% if quality_count %}<b class="pill pill-warn" title="موارد دقت داده">{{ quality_count|fa_num }}</b>{% endif %}
         </a>
         {% endfor %}
     </nav>
