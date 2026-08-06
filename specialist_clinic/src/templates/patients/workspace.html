@@ -4,6 +4,7 @@
 {{ super() }}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/clinical-engine-v2.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='css/patient-workspace-v2.css') }}">
+<script defer src="{{ url_for('static', filename='js/patient-workspace-catalogs.js') }}"></script>
 {% endblock %}
 {% block content %}
 <svg aria-hidden="true" focusable="false" width="0" height="0" style="position:absolute;overflow:hidden">
@@ -43,6 +44,16 @@
 
     {% if allergies %}
     <div class="alert-banner alert-warn patient-workspace-allergy"><svg class="icon"><use href="#i-alert"></use></svg><span><b>حساسیت:</b> {% for allergy in allergies %}{{ allergy.substance }}{% if allergy.severity %} ({{ allergy.severity }}){% endif %}{% if not loop.last %}، {% endif %}{% endfor %}</span></div>
+    {% endif %}
+
+    {% if workspace_form_errors %}
+    <section class="alert-banner alert-danger patient-workspace-form-errors" role="alert" aria-live="assertive">
+        <svg class="icon"><use href="#i-alert"></use></svg>
+        <div>
+            <b>اطلاعات ثبت نشد</b>
+            <ul>{% for error in workspace_form_errors %}<li>{{ error }}</li>{% endfor %}</ul>
+        </div>
+    </section>
     {% endif %}
 
     <nav class="patient-workspace-tabs" aria-label="بخش‌های پرونده بیمار">
