@@ -48,6 +48,32 @@ def _active_users() -> list[dict]:
     ]
 
 
+def _active_patients() -> list[dict]:
+    return [
+        dict(row)
+        for row in get_db().execute(
+            """SELECT id,full_name,phone_number,national_id
+               FROM patient_links WHERE is_active=1
+               ORDER BY full_name,id LIMIT 1000"""
+        ).fetchall()
+    ]
+
+
+def _preset_state() -> dict:
+    referrer_id = request.args.get("referrer_patient_id", type=int)
+    source = str(request.args.get("source") or "").strip().upper()
+    if source not in LEAD_SOURCES:
+        source = "PATIENT_REFERRAL" if referrer_id else ""
+    interest = str(request.args.get("interest") or "").strip().upper()
+    if interest not in LEAD_INTERESTS:
+        interest = ""
+    return {
+        "source_code": source,
+        "referrer_patient_link_id": str(referrer_id or ""),
+        "interest_code": interest,
+    }
+
+
 def _index_context(*, form_state=None, errors=None) -> dict:
     status = str(request.args.get("status") or "").strip().upper() or None
     if status and status not in LEAD_STATUS_LABELS:
@@ -59,6 +85,8 @@ def _index_context(*, form_state=None, errors=None) -> dict:
         owner_username=owner,
         query=query,
     )
+    state = dict(_preset_state())
+    state.update(form_state or {})
     return {
         **data,
         "status_filter": status or "",
@@ -69,7 +97,8 @@ def _index_context(*, form_state=None, errors=None) -> dict:
         "status_labels": LEAD_STATUS_LABELS,
         "lost_reasons": LEAD_LOST_REASONS,
         "users": _active_users(),
-        "form_state": form_state or {},
+        "patients": _active_patients(),
+        "form_state": state,
         "form_errors": errors or [],
         "active_page": "leads",
     }
@@ -91,6 +120,9 @@ def create():
         "source_code": str(request.form.get("source_code") or "").strip(),
         "source_detail": str(request.form.get("source_detail") or "").strip(),
         "referrer_name": str(request.form.get("referrer_name") or "").strip(),
+        "referrer_patient_link_id": str(
+            request.form.get("referrer_patient_link_id") or ""
+        ).strip(),
         "interest_code": str(request.form.get("interest_code") or "").strip(),
         "owner_username": str(request.form.get("owner_username") or "").strip(),
         "next_action_date": str(request.form.get("next_action_date") or "").strip(),
@@ -105,13 +137,18 @@ def create():
             source_code=state["source_code"],
             source_detail=state["source_detail"] or None,
             referrer_name=state["referrer_name"] or None,
+            referrer_patient_link_id=(
+                int(state["referrer_patient_link_id"])
+                if state["referrer_patient_link_id"]
+                else None
+            ),
             interest_code=state["interest_code"] or None,
             owner_username=state["owner_username"] or str(g.user["username"]),
             next_action_at=_datetime_from_form("next_action"),
             notes=state["notes"] or None,
             actor_username=str(g.user["username"]),
         )
-    except LeadPipelineError as exc:
+    except (LeadPipelineError, ValueError) as exc:
         return (
             render_template(
                 "leads/index.html",
