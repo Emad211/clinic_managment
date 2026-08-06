@@ -24,10 +24,25 @@ def lead_app(tmp_path):
     context = app.app_context()
     context.push()
     db = get_db()
+    referrer_id = int(
+        db.execute(
+            """INSERT INTO patient_links
+               (national_id,full_name,phone_number,enrolled_by,
+                enrolled_at,updated_at)
+               VALUES ('REFERRER-001','بیمار معرف واقعی','09125550000',
+                       'pytest','2026-08-06 08:00:00','2026-08-06 08:00:00')"""
+        ).lastrowid
+    )
+    db.commit()
     admin = db.execute(
         "SELECT id,username FROM users WHERE username='admin'"
     ).fetchone()
-    yield {"app": app, "db": db, "admin": admin}
+    yield {
+        "app": app,
+        "db": db,
+        "admin": admin,
+        "referrer_id": referrer_id,
+    }
     context.pop()
     core._initialized = False
 
@@ -104,6 +119,31 @@ def test_duplicate_open_phone_reuses_existing_lead(lead_app):
     ).fetchone()[0] == 1
 
 
+def test_patient_referral_requires_exact_active_patient_identity(lead_app):
+    from src.services.lead_pipeline_service import LeadPipelineError, LeadPipelineService
+
+    service = LeadPipelineService(lead_app["db"])
+    with pytest.raises(LeadPipelineError, match="بیمار معرف"):
+        service.create(
+            full_name="سرنخ معرفی بدون شناسه",
+            phone_number="09126666700",
+            source_code="PATIENT_REFERRAL",
+            referrer_name="نام آزاد کافی نیست",
+            actor_username="admin",
+        )
+
+    lead = service.create(
+        full_name="سرنخ معرفی معتبر",
+        phone_number="09126666701",
+        source_code="PATIENT_REFERRAL",
+        referrer_patient_link_id=lead_app["referrer_id"],
+        actor_username="admin",
+    )
+    assert int(lead["referrer_patient_link_id"]) == lead_app["referrer_id"]
+    assert lead["referrer_name"] == "بیمار معرف واقعی"
+    assert lead["referrer_patient_name"] == "بیمار معرف واقعی"
+
+
 def test_lead_lifecycle_requires_appointment_before_attendance(lead_app):
     from src.services.lead_pipeline_service import LeadPipelineError, LeadPipelineService
 
@@ -112,7 +152,7 @@ def test_lead_lifecycle_requires_appointment_before_attendance(lead_app):
         full_name="سرنخ مرحله‌ای",
         phone_number="09126666668",
         source_code="PATIENT_REFERRAL",
-        referrer_name="بیمار معرف",
+        referrer_patient_link_id=lead_app["referrer_id"],
         actor_username="admin",
     )
 
@@ -223,6 +263,25 @@ def test_explicit_conversion_creates_patient_and_real_appointment(lead_app):
     assert result["appointment_status"] == "done"
 
 
+def test_referral_prefill_selects_exact_patient_and_opens_form(lead_app):
+    client = _client(lead_app)
+    response = client.get(
+        _url(
+            lead_app,
+            "leads.index",
+            source="PATIENT_REFERRAL",
+            referrer_patient_id=lead_app["referrer_id"],
+        )
+    )
+    html = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert 'value="PATIENT_REFERRAL" selected' in html
+    assert f'value="{lead_app["referrer_id"]}" selected' in html
+    assert "بیمار معرف واقعی" in html
+    assert "lead-create-card is-collapsed" not in html
+
+
 def test_lead_pages_render_pipeline_and_one_page_actions(lead_app):
     from src.services.lead_pipeline_service import LeadPipelineService
 
@@ -259,6 +318,7 @@ def test_lead_pipeline_has_no_patient_foreign_key_until_conversion():
     ).read_text(encoding="utf-8")
 
     assert "patient_link_id INTEGER" in schema
+    assert "referrer_patient_link_id INTEGER" in schema
     assert "status TEXT NOT NULL DEFAULT 'NEW'" in schema
     assert "PatientService().enroll_manual" in service
     assert "convert" in service
