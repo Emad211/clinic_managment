@@ -9,6 +9,11 @@
         <span><b>مرکز کارها</b><small>پیگیری‌های بیمار را در مسیر یکپارچه رسیدگی کنید.</small></span>
         <svg class="icon icon-sm"><use href="#i-chevron-left"></use></svg>
     </a>
+    <a class="workspace-action-card" href="{{ url_for('leads.index') }}">
+        <span class="workspace-action-icon"><svg class="icon"><use href="#i-users"></use></svg></span>
+        <span><b>سرنخ‌ها و رشد</b><small>{{ lead_open_count|fa_num }} سرنخ باز{% if lead_due_count %} · {{ lead_due_count|fa_num }} اقدام سررسیدشده{% endif %}</small></span>
+        <svg class="icon icon-sm"><use href="#i-chevron-left"></use></svg>
+    </a>
     <a class="workspace-action-card" href="{{ url_for('patients.card_admin', pid=patient.id) }}">
         <span class="workspace-action-icon"><svg class="icon"><use href="#i-bell"></use></svg></span>
         <span><b>کارت و یادآوری بیمار</b><small>تنظیمات ارتباط و دسترسی کارت بیمار.</small></span>
