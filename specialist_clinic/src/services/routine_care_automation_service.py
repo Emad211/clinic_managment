@@ -18,7 +18,7 @@ ROUTINE_CARE_EVENTS = frozenset({
     "lapsed",
 })
 _DEFERRED_REASONS = frozenset({
-    "quiet_hours",
+    "quiet",
     "daily_cap",
     "provider_unconfigured",
     "not_pending",
