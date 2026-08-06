@@ -1,0 +1,74 @@
+{% extends "automation_base.html" %}
+{% block title %}صف انتظار و ظرفیت خالی{% endblock %}
+{% block head %}
+{{ super() }}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/growth-cockpit-v1.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/leads-growth-v1.css') }}">
+{% endblock %}
+{% block content %}
+<header class="auto-page-header">
+    <div class="auto-page-header__copy">
+        <h1><svg class="icon"><use href="#i-calendar"></use></svg> صف انتظار و ظرفیت خالی</h1>
+        <p class="muted">Slot لغوشده به بیمار واجدشرایط می‌رسد؛ رزرو خودکار فقط برای بیمارانی انجام می‌شود که از قبل اجازه داده‌اند.</p>
+    </div>
+    <div class="auto-page-header__actions">
+        <a class="btn btn-ghost" href="{{ url_for('growth.automation') }}">اتوماسیون رشد</a>
+        <a class="btn" href="{{ url_for('appointments.list_appointments') }}">نوبت‌ها</a>
+    </div>
+</header>
+
+<section class="work-center-summary" aria-label="خلاصه صف انتظار">
+    <div class="work-center-kpi"><b>{{ counts.WAITING|fa_num }}</b><span>در انتظار</span></div>
+    <div class="work-center-kpi"><b>{{ counts.OFFERED|fa_num }}</b><span>پیشنهاد فعال</span></div>
+    <div class="work-center-kpi"><b>{{ counts.BOOKED|fa_num }}</b><span>پرشده از صف</span></div>
+    <div class="work-center-kpi"><b>{{ open_slots|fa_num }}</b><span>Slot لغوشده قابل‌پرکردن</span></div>
+</section>
+
+<section class="growth-two-column">
+    <article class="card">
+        <div class="section-title"><svg class="icon"><use href="#i-plus"></use></svg><div><div>افزودن بیمار به صف انتظار</div><div class="section-sub">یک ورودی فعال برای هر بیمار؛ نوبت آینده بیمار به‌طور خودکار از تطبیق حذف می‌شود.</div></div></div>
+        <form method="post" action="{{ url_for('growth_waitlist.create') }}" class="lead-create-form waitlist-create-form">
+            <div class="fld waitlist-create-form__patient"><label for="waitlist-patient">بیمار</label><select id="waitlist-patient" name="patient_link_id" required><option value="">انتخاب بیمار</option>{% for patient in patients %}<option value="{{ patient.id }}" {% if selected_patient_id==patient.id %}selected{% endif %}>{{ patient.full_name }} · {{ patient.phone_number or patient.national_id or patient.id }}</option>{% endfor %}</select></div>
+            <div class="fld"><label for="waitlist-type">نوع نوبت</label><select id="waitlist-type" name="appt_type"><option value="visit">ویزیت</option><option value="followup">پیگیری</option><option value="procedure">خدمت</option></select></div>
+            <div class="fld"><label for="waitlist-from">از تاریخ</label><input id="waitlist-from" class="jdate" name="date_from" placeholder="اختیاری"></div>
+            <div class="fld"><label for="waitlist-to">تا تاریخ</label><input id="waitlist-to" class="jdate" name="date_to" placeholder="اختیاری"></div>
+            <div class="fld"><label for="waitlist-window">بازه زمانی</label><select id="waitlist-window" name="time_window">{% for key,label in time_windows.items() %}<option value="{{ key }}">{{ label }}</option>{% endfor %}</select></div>
+            <div class="fld"><label for="waitlist-priority">اولویت</label><select id="waitlist-priority" name="priority"><option value="50">بالا</option><option value="100" selected>عادی</option><option value="200">پایین</option></select></div>
+            <div class="fld waitlist-create-form__consent"><label class="checkbox-row"><input type="checkbox" name="auto_fill" value="1"><span><b>رزرو خودکار مجاز است</b><small>در اولین Slot منطبق، نوبت بدون تماس قبلی ثبت می‌شود.</small></span></label></div>
+            <div class="fld waitlist-create-form__notes"><label for="waitlist-notes">یادداشت</label><textarea id="waitlist-notes" name="notes" rows="2"></textarea></div>
+            <button class="btn" type="submit">افزودن به صف</button>
+        </form>
+    </article>
+
+    <article class="card">
+        <div class="section-title"><svg class="icon"><use href="#i-zap"></use></svg><div><div>پرکردن Slotهای آزاد</div><div class="section-sub">هر نوبت لغوشده فقط یک‌بار به بهترین ورودی صف تطبیق داده می‌شود.</div></div></div>
+        <form method="post" action="{{ url_for('growth_waitlist.fill_slots') }}" class="stack">
+            <div class="fld"><label for="waitlist-assignee">مسئول پیشنهادهای تماس</label><select id="waitlist-assignee" name="assigned_to"><option value="">بدون مسئول فردی</option>{% for user in users %}<option value="{{ user.username }}">{{ user.full_name or user.username }}</option>{% endfor %}</select></div>
+            <div class="alert-banner alert-info"><svg class="icon"><use href="#i-info"></use></svg><span>رزرو خودکار فقط برای ورودی دارای رضایت انجام می‌شود. سایر موارد به‌صورت Task پیشنهاد Slot وارد Work Center می‌شوند.</span></div>
+            <button class="btn btn-ok" type="submit">تطبیق {{ open_slots|fa_num }} Slot آزاد</button>
+        </form>
+    </article>
+</section>
+
+<nav class="patient-workspace-tabs" aria-label="فیلتر صف انتظار">
+    <a class="patient-workspace-tab{% if not status_filter %} active{% endif %}" href="{{ url_for('growth_waitlist.index') }}">همه</a>
+    {% for key,label in status_labels.items() %}<a class="patient-workspace-tab{% if status_filter==key %} active{% endif %}" href="{{ url_for('growth_waitlist.index', status=key) }}">{{ label }} <b class="pill">{{ counts.get(key,0)|fa_num }}</b></a>{% endfor %}
+</nav>
+
+{% if entries %}
+<section class="lead-board waitlist-board" aria-label="ورودی‌های صف انتظار">
+    {% for entry in entries %}
+    <article class="lead-card status-{{ entry.status|lower }}">
+        <div class="lead-card__identity"><a href="{{ url_for('patient_workspace.detail', pid=entry.patient_link_id, tab='summary') }}"><b>{{ entry.patient_name }}</b></a><span class="nums">{{ entry.phone_number or 'بدون موبایل' }}</span><div class="flex gap-2 wrap"><span class="badge badge-info">{{ entry.appt_type }}</span><span class="badge {% if entry.auto_fill %}badge-ok{% else %}badge-muted{% endif %}">{{ 'رزرو خودکار' if entry.auto_fill else 'نیازمند تأیید' }}</span></div></div>
+        <div class="lead-card__status"><span class="badge {% if entry.status=='BOOKED' %}badge-ok{% elif entry.status=='OFFERED' %}badge-warn{% elif entry.status=='CANCELLED' %}badge-danger{% else %}badge-info{% endif %}">{{ status_labels.get(entry.status,entry.status) }}</span><small>اولویت: {{ entry.priority|fa_num }} · {{ time_windows.get(entry.time_window,entry.time_window) }}</small></div>
+        <div class="lead-card__next"><span>بازه قابل‌قبول</span><b>{% if entry.date_from or entry.date_to %}{{ entry.date_from|jalali_date if entry.date_from else 'از اکنون' }} تا {{ entry.date_to|jalali_date if entry.date_to else 'بدون پایان' }}{% else %}بدون محدودیت تاریخ{% endif %}</b>{% if entry.offered_slot_at %}<small>Slot: {{ entry.offered_slot_at|jalali }}</small>{% endif %}</div>
+        <div class="flex gap-2 wrap">
+            {% if entry.status=='OFFERED' %}<form method="post" action="{{ url_for('growth_waitlist.book_offer', entry_id=entry.id) }}"><button class="btn btn-sm btn-ok" type="submit">قطعی‌کردن Slot</button></form>{% endif %}
+            {% if entry.status in ('WAITING','OFFERED') %}<form method="post" action="{{ url_for('growth_waitlist.cancel', entry_id=entry.id) }}"><button class="btn btn-sm btn-ghost" type="submit">لغو صف</button></form>{% endif %}
+            {% if entry.booked_appointment_id %}<a class="btn btn-sm" href="{{ url_for('patient_workspace.detail', pid=entry.patient_link_id, tab='encounters') }}">دیدن نوبت</a>{% endif %}
+        </div>
+    </article>
+    {% endfor %}
+</section>
+{% else %}<section class="auto-empty"><h2>ورودی‌ای در این نما نیست</h2><p>بیمار مناسب را به صف انتظار اضافه کنید.</p></section>{% endif %}
+{% endblock %}
