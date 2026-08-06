@@ -26,6 +26,58 @@
     </article>
 </section>
 
+<section class="grid grid-4 workspace-360-grid" aria-label="نمای ۳۶۰ درجه بیمار">
+    <article class="card">
+        <div class="section-title"><svg class="icon"><use href="#i-phone"></use></svg> ارتباط و پیگیری</div>
+        <div class="workspace-fact-grid">
+            <div><span>آخرین تماس</span><b>{{ contact_summary.last.outcome_label if contact_summary.last else 'ثبت نشده' }}</b>{% if contact_summary.last %}<small>{{ contact_summary.last.occurred_at|jalali }}</small>{% endif %}</div>
+            <div><span>آخرین پیام</span><b>{{ message_summary.last.status_label if message_summary.last else 'ثبت نشده' }}</b>{% if message_summary.last %}<small>{{ message_summary.last.display_at|jalali if message_summary.last.display_at else 'بدون زمان' }}</small>{% endif %}</div>
+            <div><span>کل تماس‌ها</span><b>{{ contact_summary.count|fa_num }}</b></div>
+            <div><span>کل پیام‌ها</span><b>{{ message_summary.count|fa_num }}</b></div>
+        </div>
+        {% if contact_summary.last and contact_summary.last.next_contact_at %}<p class="muted text-sm mt-3">تماس بعدی: {{ contact_summary.last.next_contact_at|jalali }}</p>{% endif %}
+        <a class="btn btn-sm btn-ghost mt-3" href="{{ url_for('patient_workspace.detail', pid=patient.id, tab='actions') }}">اقدامات بیمار</a>
+    </article>
+
+    <article class="card">
+        <div class="section-title"><svg class="icon"><use href="#i-calendar"></use></svg> حضور و نوبت</div>
+        <div class="workspace-fact-grid">
+            <div><span>نوبت بعدی</span><b>{{ appointment_lifecycle.next.scheduled_at|jalali if appointment_lifecycle.next else 'ثبت نشده' }}</b></div>
+            <div><span>مراجعه انجام‌شده</span><b>{{ appointment_lifecycle.done|fa_num }}</b></div>
+            <div><span>عدم حضور</span><b>{{ appointment_lifecycle.no_show|fa_num }}</b></div>
+            <div><span>لغوشده</span><b>{{ appointment_lifecycle.cancelled|fa_num }}</b></div>
+        </div>
+        {% if appointment_lifecycle.no_show %}<span class="badge badge-warn mt-3">نیازمند بازیابی No-show</span>{% endif %}
+        <a class="btn btn-sm btn-ghost mt-3" href="{{ url_for('appointments.new_appointment', patient_link_id=patient.id, return_url=request.full_path) }}">ثبت نوبت</a>
+    </article>
+
+    <article class="card">
+        <div class="section-title"><svg class="icon"><use href="#i-users"></use></svg> منبع ورود و رشد</div>
+        <div class="workspace-fact-grid">
+            <div><span>منبع ثبت</span><b>{{ enrollment_summary.source_label }}</b></div>
+            <div><span>ثبت‌کننده</span><b>{{ enrollment_summary.enrolled_by or 'ثبت نشده' }}</b></div>
+            <div><span>تاریخ ورود</span><b>{{ enrollment_summary.enrolled_at|jalali if enrollment_summary.enrolled_at else 'ثبت نشده' }}</b></div>
+            <div><span>معرف بیمار</span><b>{{ enrollment_summary.referrer_label }}</b></div>
+        </div>
+        {% if not enrollment_summary.referrer %}<span class="badge badge-warn mt-3">منبع معرفی هنوز ثبت نشده</span>{% endif %}
+    </article>
+
+    <article class="card">
+        <div class="section-title"><svg class="icon"><use href="#i-coins"></use></svg> ارزش قابل‌انتساب</div>
+        {% if financial_summary.available %}
+        <div class="workspace-fact-grid nums">
+            <div><span>صورتحساب</span><b>{{ financial_summary.invoice_count|fa_num }}</b></div>
+            <div><span>مبلغ ثبت‌شده</span><b>{{ financial_summary.billed|fa_num }}</b></div>
+            <div><span>وصول‌شده</span><b>{{ financial_summary.collected|fa_num }}</b></div>
+            <div><span>باقی‌مانده</span><b>{{ financial_summary.outstanding|fa_num }}</b></div>
+        </div>
+        <small class="muted mt-3">{{ financial_summary.evidence_label }}</small>
+        {% else %}
+        <div class="empty-mini">درآمد قابل‌انتسابی برای این بیمار ثبت نشده است. مراجعات تاریخی بدون lineage در این عدد وارد نمی‌شوند.</div>
+        {% endif %}
+    </article>
+</section>
+
 {% if clinical_v2 %}
 <section class="workspace-clinical-engine-summary">
     {% include "patients/_clinical_engine_v2.html" %}
@@ -86,7 +138,7 @@
             <div><span><b>{{ appointment.appt_type or 'ویزیت' }}</b><small>{{ appointment.notes or 'بدون یادداشت' }}</small></span><time>{{ appointment.scheduled_at|jalali }}</time></div>
             {% endfor %}
         </div>
-        <a class="btn btn-sm btn-ghost mt-3" href="{{ url_for('patient_workspace.detail', pid=patient.id, tab='encounters') }}">ویزیت‌ها و اسناد</a>
+        <a class="btn btn-sm btn-ghost mt-3" href="{{ url_for('patient_workspace.detail', pid=patient.id, tab='encounters') }}">ویزیت و خدمات</a>
         {% else %}<div class="empty-mini">نوبت پیش‌رویی ثبت نشده است.</div>{% endif %}
     </section>
 </div>
