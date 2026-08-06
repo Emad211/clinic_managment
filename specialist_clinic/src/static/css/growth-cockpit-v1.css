@@ -1,0 +1,21 @@
+/* Source-backed growth and revenue cockpit. */
+
+.growth-evidence-note{margin-block-end:var(--s4,16px)}
+.growth-kpi-grid{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:var(--s3,12px);margin-block-end:var(--s4,16px)}
+.growth-kpi{margin:0;display:grid;gap:.35rem;min-height:120px}.growth-kpi>span{color:var(--muted);font-size:.78rem}.growth-kpi>b{font-size:clamp(1.3rem,2.2vw,2rem)}.growth-kpi>small{color:var(--muted)}
+.growth-two-column{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--s4,16px);margin-block-end:var(--s4,16px)}
+.growth-funnel-card{margin:0}
+.growth-funnel{display:flex;align-items:center;justify-content:space-between;gap:var(--s2,8px);overflow:auto;padding-block:var(--s2,8px)}
+.growth-funnel-step{display:grid;place-items:center;gap:.25rem;min-width:78px;padding:var(--s3,12px);border:1px solid var(--auto-border);border-radius:12px;background:var(--auto-panel-soft)}
+.growth-funnel-step b{font-size:1.25rem}.growth-funnel-step span{color:var(--muted);font-size:.72rem;white-space:nowrap}
+.growth-rate-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--s2,8px);margin-top:var(--s3,12px)}
+.growth-rate-grid>div{padding:var(--s3,12px);border:1px solid var(--auto-border);border-radius:10px;background:var(--auto-panel-soft)}.growth-rate-grid span,.growth-rate-grid b{display:block}.growth-rate-grid span{color:var(--muted);font-size:.73rem}.growth-rate-grid b{margin-top:.3rem;font-size:1.1rem}
+.growth-source-table{overflow:auto;border:1px solid var(--auto-border);border-radius:12px}.growth-source-table table{width:100%;min-width:720px;margin:0}.growth-source-table th,.growth-source-table td{padding:.75rem .85rem}
+.growth-opportunity-list{display:grid;gap:1px;border:1px solid var(--auto-border);border-radius:12px;overflow:hidden;background:var(--auto-border)}.growth-opportunity-list a{display:flex;align-items:center;justify-content:space-between;gap:var(--s3,12px);padding:var(--s3,12px);background:var(--auto-panel);color:var(--text);text-decoration:none}.growth-opportunity-list a:hover{background:var(--auto-panel-soft)}.growth-opportunity-list b{display:grid;place-items:center;min-width:30px;height:26px;padding-inline:.4rem;border-radius:999px;background:rgba(59,130,246,.14);color:var(--primary)}
+.growth-forecast-value{font-size:clamp(2rem,5vw,4rem);font-weight:900;text-align:center;padding:var(--s6,24px)}
+.auto-empty.compact{min-height:180px;padding:var(--s4,16px)}
+
+@media(max-width:1250px){.growth-kpi-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:900px){.growth-two-column{grid-template-columns:1fr}.growth-rate-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:700px){.growth-kpi-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.growth-funnel{justify-content:flex-start}.growth-rate-grid{grid-template-columns:1fr}}
+@media(max-width:420px){.growth-kpi-grid{grid-template-columns:1fr}}
