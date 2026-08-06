@@ -9,6 +9,7 @@ from flask import Blueprint, flash, redirect, render_template, request, url_for
 from src.adapters.sqlite.core import get_db
 from src.api.auth import login_required
 from src.services.lead_pipeline_service import LEAD_SOURCES
+from src.services.patient_data_quality_service import PatientDataQualityService
 from src.services.patient_workspace_service import (
     PatientWorkspaceService,
     WORKSPACE_TABS,
@@ -59,8 +60,8 @@ def _normalize_tab(value: object) -> str:
 
 def _lead_enrollment_summary(pid: int, fallback: dict) -> dict:
     row = get_db().execute(
-        """SELECT source_code,source_detail,referrer_name,owner_username,
-                  created_at,converted_at
+        """SELECT source_code,source_detail,referrer_name,
+                  referrer_patient_link_id,owner_username,created_at,converted_at
            FROM growth_leads
            WHERE patient_link_id=? AND status='CONVERTED'
            ORDER BY converted_at DESC,id DESC LIMIT 1""",
@@ -78,6 +79,7 @@ def _lead_enrollment_summary(pid: int, fallback: dict) -> dict:
         "enrolled_by": lead.get("owner_username") or fallback.get("enrolled_by"),
         "enrolled_at": lead.get("converted_at") or lead.get("created_at"),
         "referrer": referrer,
+        "referrer_patient_link_id": lead.get("referrer_patient_link_id"),
         "referrer_label": referrer or "ثبت نشده",
     }
 
@@ -93,6 +95,7 @@ def detail(pid: int):
         pid,
         workspace.get("enrollment_summary") or {},
     )
+    workspace["data_quality"] = PatientDataQualityService(get_db()).build(pid)
     active_tab = _normalize_tab(request.args.get("tab"))
     return render_template(
         "patients/workspace.html",
@@ -141,7 +144,11 @@ def install_compatibility(app) -> None:
         if query.get("legacy") == "1":
             return response
         fragment_tab = _FRAGMENT_TO_TAB.get(parsed.fragment.lower())
-        form_tab = _normalize_tab(request.form.get("workspace_tab")) if request.form.get("workspace_tab") else None
+        form_tab = (
+            _normalize_tab(request.form.get("workspace_tab"))
+            if request.form.get("workspace_tab")
+            else None
+        )
         endpoint_tab = _ENDPOINT_TO_TAB.get(request.endpoint or "")
         requested_tab = query.get("tab")
         tab = form_tab or fragment_tab or endpoint_tab or requested_tab or "summary"
