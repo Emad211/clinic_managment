@@ -100,6 +100,7 @@ class LeadPipelineService:
         national_id: str | None = None,
         source_detail: str | None = None,
         referrer_name: str | None = None,
+        referrer_patient_link_id: int | None = None,
         interest_code: str | None = None,
         owner_username: str | None = None,
         next_action_at: datetime | str | None = None,
@@ -109,6 +110,8 @@ class LeadPipelineService:
         phone = self.repo.normalize_phone(phone_number)
         source = str(source_code or "").strip().upper()
         interest = str(interest_code or "").strip().upper() or None
+        referrer_id = int(referrer_patient_link_id) if referrer_patient_link_id else None
+        clean_referrer_name = str(referrer_name or "").strip() or None
         if not name:
             raise LeadPipelineError("نام سرنخ الزامی است.")
         if len(phone) < 10:
@@ -117,6 +120,19 @@ class LeadPipelineService:
             raise LeadPipelineError("منبع جذب معتبر نیست.")
         if interest and interest not in LEAD_INTERESTS:
             raise LeadPipelineError("خدمت موردعلاقه معتبر نیست.")
+        if source == "PATIENT_REFERRAL":
+            if not referrer_id:
+                raise LeadPipelineError("بیمار معرف را از فهرست انتخاب کنید.")
+            referrer = self.repo._db().execute(
+                """SELECT id,full_name FROM patient_links
+                   WHERE id=? AND is_active=1""",
+                (referrer_id,),
+            ).fetchone()
+            if not referrer:
+                raise LeadPipelineError("بیمار معرف فعال پیدا نشد.")
+            clean_referrer_name = str(referrer["full_name"])
+        else:
+            referrer_id = None
         due = _time_text(next_action_at)
         if due is None:
             due = (_now() + timedelta(hours=2)).isoformat(
@@ -128,7 +144,8 @@ class LeadPipelineService:
             national_id=str(national_id or "").strip() or None,
             source_code=source,
             source_detail=str(source_detail or "").strip() or None,
-            referrer_name=str(referrer_name or "").strip() or None,
+            referrer_name=clean_referrer_name,
+            referrer_patient_link_id=referrer_id,
             interest_code=interest,
             owner_username=str(owner_username or "").strip() or actor_username,
             next_action_at=due,
@@ -274,6 +291,7 @@ class LeadPipelineService:
             payload={
                 "created_patient": created_patient,
                 "appointment_status": appointment_status,
+                "referrer_patient_link_id": lead.get("referrer_patient_link_id"),
             },
         )
         return {
