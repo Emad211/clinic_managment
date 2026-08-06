@@ -9,6 +9,10 @@ from collections import Counter
 import sqlite3
 
 from src.adapters.sqlite.core import get_db
+from src.adapters.sqlite.lead_pipeline_schema import ensure_lead_pipeline_storage
+from src.adapters.sqlite.patient_acquisition_schema import (
+    ensure_patient_acquisition_storage,
+)
 from src.services.clinical_reconciliation_service import (
     ClinicalReconciliationService,
 )
@@ -20,6 +24,8 @@ _SEVERITY_ORDER = {"danger": 0, "warn": 1, "info": 2}
 class PatientDataQualityService:
     def __init__(self, db: sqlite3.Connection | None = None):
         self.db = db or get_db()
+        ensure_lead_pipeline_storage(self.db)
+        ensure_patient_acquisition_storage(self.db)
 
     @staticmethod
     def _digits(value: object) -> str:
@@ -372,12 +378,22 @@ class PatientDataQualityService:
             (int(patient_link_id),),
         ).fetchone()
         if not row:
+            row = self.db.execute(
+                """SELECT source_code,referrer_patient_link_id,referrer_name
+                   FROM growth_patient_acquisition
+                   WHERE patient_link_id=?""",
+                (int(patient_link_id),),
+            ).fetchone()
+        if not row:
             return [
                 self._issue(
                     "ACQUISITION_SOURCE_UNKNOWN",
                     severity="info",
                     title="منبع جذب دقیق ثبت نشده است",
-                    detail="این بیمار پیش از Lead Pipeline ثبت شده و کانال جذب قابل‌اندازه‌گیری نیست.",
+                    detail=(
+                        "این بیمار بدون Lead تبدیل‌شده یا Attribution صریح ثبت شده و "
+                        "کانال جذب قابل‌اندازه‌گیری نیست."
+                    ),
                     tab="summary",
                     action_kind="acquisition",
                     action_label="ثبت منبع جذب",
