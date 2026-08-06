@@ -1,0 +1,89 @@
+{% extends "automation_base.html" %}
+{% block title %}{{ lead.full_name }} — سرنخ{% endblock %}
+{% block head %}
+{{ super() }}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/leads-growth-v1.css') }}">
+{% endblock %}
+{% block content %}
+<header class="auto-page-header lead-detail-header">
+    <div class="auto-page-header__copy">
+        <a class="muted text-sm" href="{{ url_for('leads.index') }}">سرنخ‌ها / بازگشت</a>
+        <h1><svg class="icon"><use href="#i-user"></use></svg> {{ lead.full_name }}</h1>
+        <p class="muted nums">{{ lead.phone_number }}{% if lead.national_id %} · {{ lead.national_id }}{% endif %}</p>
+    </div>
+    <div class="auto-page-header__actions">
+        <span class="badge {% if lead.status=='LOST' %}badge-danger{% elif lead.status=='CONVERTED' %}badge-ok{% elif lead.status=='APPOINTMENT_BOOKED' %}badge-info{% else %}badge-warn{% endif %}">{{ status_labels.get(lead.status, lead.status) }}</span>
+        {% if lead.patient_link_id %}<a class="btn" href="{{ url_for('patient_workspace.detail', pid=lead.patient_link_id, tab='summary') }}">پرونده بیمار</a>{% endif %}
+    </div>
+</header>
+
+<section class="lead-detail-summary">
+    <article class="card"><span>منبع جذب</span><b>{{ sources.get(lead.source_code, lead.source_code) }}</b><small>{{ lead.source_detail or 'بدون جزئیات' }}</small></article>
+    <article class="card"><span>معرف</span><b>{{ lead.referrer_name or 'ثبت نشده' }}</b><small>{{ interests.get(lead.interest_code, lead.interest_code) if lead.interest_code else 'خدمت نامشخص' }}</small></article>
+    <article class="card"><span>مسئول</span><b>{{ lead.owner_username or 'تعیین نشده' }}</b><small>اقدام بعدی: {{ lead.next_action_at|jalali if lead.next_action_at else 'ندارد' }}</small></article>
+    <article class="card"><span>زمان مراجعه</span><b>{{ lead.appointment_at|jalali if lead.appointment_at else 'تعیین نشده' }}</b><small>{% if lead.lost_reason %}علت از دست رفتن: {{ lost_reasons.get(lead.lost_reason, lead.lost_reason) }}{% else %}مرحله: {{ status_labels.get(lead.status, lead.status) }}{% endif %}</small></article>
+</section>
+
+{% if lead.status not in ('CONVERTED','LOST') %}
+<section class="card lead-action-workspace" aria-labelledby="lead-next-step-title">
+    <div class="section-title"><svg class="icon"><use href="#i-zap"></use></svg><div><div id="lead-next-step-title">اقدام بعدی</div><div class="section-sub">نتیجه را ثبت کنید؛ مرحله و موعد بعدی همان لحظه به‌روزرسانی می‌شود.</div></div></div>
+
+    {% if lead.status == 'NEW' %}
+    <form method="post" action="{{ url_for('leads.transition', lead_id=lead.id) }}" class="lead-action-form">
+        <input type="hidden" name="to_status" value="CONTACTED">
+        <div class="fld"><label>نتیجه تماس</label><input name="note" placeholder="خلاصه صحبت یا نیاز بیمار"></div>
+        <div class="fld"><label>اقدام بعدی</label><input class="jdate" name="next_action_date" placeholder="خالی = فردا"></div>
+        <div class="fld"><label>ساعت</label><input type="time" name="next_action_time" value="09:00"></div>
+        <button class="btn" type="submit">ثبت تماس موفق</button>
+    </form>
+    {% endif %}
+
+    {% if lead.status in ('NEW','CONTACTED') %}
+    <form method="post" action="{{ url_for('leads.transition', lead_id=lead.id) }}" class="lead-action-form is-booking">
+        <input type="hidden" name="to_status" value="APPOINTMENT_BOOKED">
+        <div class="fld"><label>تاریخ مراجعه</label><input class="jdate" name="appointment_date" required></div>
+        <div class="fld"><label>ساعت مراجعه</label><input type="time" name="appointment_time" value="09:00" required></div>
+        <div class="fld"><label>یادداشت</label><input name="note" placeholder="خدمت یا درخواست خاص"></div>
+        <button class="btn btn-ok" type="submit">تعیین زمان مراجعه</button>
+    </form>
+    {% endif %}
+
+    {% if lead.status == 'APPOINTMENT_BOOKED' %}
+    <form method="post" action="{{ url_for('leads.transition', lead_id=lead.id) }}" class="lead-action-form is-attended">
+        <input type="hidden" name="to_status" value="ATTENDED">
+        <div><b>بیمار مراجعه کرده است؟</b><p class="muted text-sm">با ثبت حضور، تبدیل به بیمار و ساخت نوبت واقعی در مرحله بعد ممکن می‌شود.</p></div>
+        <div class="fld"><label>یادداشت پذیرش</label><input name="note"></div>
+        <button class="btn btn-ok" type="submit">ثبت حضور</button>
+    </form>
+    {% endif %}
+
+    {% if lead.status == 'ATTENDED' %}
+    <form method="post" action="{{ url_for('leads.convert', lead_id=lead.id) }}" class="lead-convert-form">
+        <div><b>تبدیل به بیمار واقعی</b><p class="muted text-sm">در این لحظه پرونده بیمار ساخته یا به بیمار موجود متصل می‌شود. زمان مراجعه آینده نیز به نوبت واقعی تبدیل می‌شود.</p></div>
+        <button class="btn btn-ok" type="submit">تبدیل و بازکردن پرونده</button>
+    </form>
+    {% endif %}
+
+    <details class="lead-lost-action">
+        <summary>این سرنخ از دست رفته است</summary>
+        <form method="post" action="{{ url_for('leads.transition', lead_id=lead.id) }}" class="lead-action-form">
+            <input type="hidden" name="to_status" value="LOST">
+            <div class="fld"><label>علت</label><select name="lost_reason" required><option value="">انتخاب علت</option>{% for key,label in lost_reasons.items() %}<option value="{{ key }}">{{ label }}</option>{% endfor %}</select></div>
+            <div class="fld"><label>توضیح</label><input name="note"></div>
+            <button class="btn btn-danger" type="submit">ثبت از دست رفتن</button>
+        </form>
+    </details>
+</section>
+{% endif %}
+
+<section class="card">
+    <div class="section-title"><svg class="icon"><use href="#i-activity"></use></svg><div><div>تاریخچه سرنخ</div><div class="section-sub">تمام تغییر مرحله‌ها با زمان و کاربر ثبت‌کننده.</div></div></div>
+    {% if events %}
+    <ol class="lead-timeline">
+        {% for event in events %}
+        <li><span class="lead-timeline__dot"></span><div><b>{{ status_labels.get(event.to_status, event.event_type) }}</b><small>{{ event.occurred_at|jalali }} · {{ event.actor_username }}{% if event.note %} · {{ event.note }}{% endif %}</small></div></li>
+        {% endfor %}
+    </ol>
+    {% else %}<div class="empty-mini">رویدادی ثبت نشده است.</div>{% endif %}
+</section>
+{% endblock %}
