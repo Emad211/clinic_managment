@@ -154,6 +154,7 @@ def register_automation_surfaces(state):
     from src.api.growth import bp as growth_bp
     from src.api.growth_waitlist import bp as growth_waitlist_bp
     from src.api.leads import bp as leads_bp, lead_context
+    from src.api.patient_acquisition import bp as patient_acquisition_bp
     from src.api.patient_workspace import (
         bp as patient_workspace_bp,
         install_compatibility,
@@ -174,6 +175,8 @@ def register_automation_surfaces(state):
         state.app.register_blueprint(patient_workspace_bp)
     if patient_workspace_mutations_bp.name not in state.app.blueprints:
         state.app.register_blueprint(patient_workspace_mutations_bp)
+    if patient_acquisition_bp.name not in state.app.blueprints:
+        state.app.register_blueprint(patient_acquisition_bp)
     install_compatibility(state.app)
 
     if leads_bp.name not in state.app.blueprints:
