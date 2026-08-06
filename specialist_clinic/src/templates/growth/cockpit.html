@@ -43,7 +43,7 @@
         <div class="growth-rate-grid">
             <div><span>نوبت متصل</span><b>{{ financial_funnel.booked|fa_num }}</b></div>
             <div><span>حضور</span><b>{{ financial_funnel.attended|fa_num }}</b></div>
-            <div><span>ویزیت کامل</span><b>{{ financial_funnel.completed|fa_num }}</b></div>
+            <div><span>ویزیت کامل</span><b>{{ financial_funnel.service_completed|fa_num }}</b></div>
             <div><span>فاکتور مشاهده‌شده</span><b>{{ reconciliation.observed_invoices|fa_num }}</b></div>
             <div><span>مشاهدهٔ ناقص</span><b>{{ reconciliation.missing_observations|fa_num }}</b></div>
             <div><span>نوبت آینده</span><b>{{ appointments.upcoming|fa_num }}</b></div>
