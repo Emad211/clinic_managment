@@ -1,0 +1,46 @@
+/* Stage 6 — point-of-use Patient Workspace data quality. */
+
+.pill-warn{background:rgba(245,158,11,.16);color:var(--warn,#f59e0b)}
+.patient-quality-panel{margin:0;border-color:color-mix(in srgb,var(--warn,#f59e0b) 30%,var(--auto-border))}
+.patient-quality-panel.has-danger{border-color:color-mix(in srgb,var(--danger,#ef4444) 48%,var(--auto-border))}
+.patient-quality-panel__summary{display:flex;align-items:center;justify-content:space-between;gap:var(--s3,12px);cursor:pointer;list-style:none}
+.patient-quality-panel__summary::-webkit-details-marker{display:none}
+.patient-quality-panel__title{display:flex;align-items:center;gap:var(--s3,12px)}
+.patient-quality-panel__title>span,.patient-quality-panel__title b,.patient-quality-panel__title small{display:block}
+.patient-quality-panel__title small{margin-top:.2rem;color:var(--muted);font-weight:400}
+.patient-quality-panel__counts{display:flex;gap:var(--s2,8px);flex-wrap:wrap;justify-content:flex-end}
+.patient-quality-panel[open] .patient-quality-panel__summary{padding-bottom:var(--s3,12px);border-bottom:1px solid var(--auto-border)}
+.patient-quality-list{display:grid;gap:var(--s2,8px);padding-top:var(--s3,12px)}
+.patient-quality-item{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:var(--s3,12px);padding:var(--s3,12px);border:1px solid var(--auto-border);border-radius:12px;background:var(--auto-panel-soft)}
+.patient-quality-item.tone-danger{border-inline-start:4px solid var(--danger,#ef4444)}
+.patient-quality-item.tone-warn{border-inline-start:4px solid var(--warn,#f59e0b)}
+.patient-quality-item.tone-info{border-inline-start:4px solid var(--primary,#3b82f6)}
+.patient-quality-item__icon{display:grid;place-items:center;inline-size:36px;block-size:36px;border-radius:10px;background:rgba(255,255,255,.04)}
+.patient-quality-item__copy b,.patient-quality-item__copy p{display:block}.patient-quality-item__copy p{margin:.25rem 0 0;color:var(--muted);font-size:.78rem}
+.patient-quality-item>.btn{min-height:var(--touch-target,44px);justify-content:center}
+.patient-quality-ok{margin:0}
+
+.workspace-correction-grid{align-items:start}
+.workspace-correction-card{margin:0;scroll-margin-top:96px}
+.workspace-correction-card>summary{cursor:pointer;list-style:none}.workspace-correction-card>summary::-webkit-details-marker{display:none}.workspace-correction-card[open]>summary{padding-bottom:var(--s3,12px);border-bottom:1px solid var(--auto-border);margin-bottom:var(--s3,12px)}
+.workspace-identity-form,.workspace-acquisition-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--s3,12px);align-items:end}
+.workspace-identity-form__address{grid-column:1/-1}
+.workspace-identity-form>.btn,.workspace-acquisition-form>.btn{grid-column:1/-1;justify-self:end;min-width:210px;min-height:var(--touch-target,44px)}
+.workspace-acquisition-form__evidence{grid-column:1/-1;display:flex;align-items:center;gap:var(--s2,8px);flex-wrap:wrap;padding:var(--s2,8px) var(--s3,12px);border:1px solid var(--auto-border);border-radius:10px;background:var(--auto-panel-soft)}
+.workspace-acquisition-form__evidence small{margin-inline-start:auto}
+#workspace-identity-editor,#workspace-acquisition-editor,#workspace-medications-title,#workspace-labs-title{scroll-margin-top:110px}
+.patient-workspace-form-errors ul{margin:.35rem 0 0;padding-inline-start:1.2rem}
+
+@media(max-width:800px){
+  .patient-quality-panel__summary{align-items:flex-start;flex-direction:column}
+  .patient-quality-panel__counts{justify-content:flex-start}
+  .patient-quality-item{grid-template-columns:auto minmax(0,1fr)}
+  .patient-quality-item>.btn{grid-column:1/-1;width:100%}
+}
+@media(max-width:700px){
+  .workspace-identity-form,.workspace-acquisition-form{grid-template-columns:1fr}
+  .workspace-identity-form__address,.workspace-identity-form>.btn,.workspace-acquisition-form>.btn,.workspace-acquisition-form__evidence{grid-column:auto}
+  .workspace-identity-form>.btn,.workspace-acquisition-form>.btn{width:100%;min-width:0}
+  .workspace-acquisition-form__evidence{display:grid;grid-template-columns:1fr}
+  .workspace-acquisition-form__evidence small{margin:0}
+}
