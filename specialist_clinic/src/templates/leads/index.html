@@ -11,6 +11,7 @@
         <p class="muted">هر تماس ورودی باید مسئول، مرحله و اقدام بعدی داشته باشد تا به نوبت و بیمار واقعی تبدیل شود.</p>
     </div>
     <div class="auto-page-header__actions">
+        <a class="btn btn-ghost" href="{{ url_for('growth.cockpit') }}">داشبورد رشد</a>
         <button class="btn" type="button" data-lead-create-toggle><svg class="icon icon-sm"><use href="#i-plus"></use></svg> سرنخ جدید</button>
     </div>
 </header>
@@ -22,18 +23,20 @@
     <div class="work-center-kpi"><b>{{ conversion_rate|fa_num }}٪</b><span>تبدیل از پرونده‌های تعیین‌تکلیف‌شده</span></div>
 </section>
 
-<section class="card lead-create-card{% if not form_errors and not form_state %} is-collapsed{% endif %}" data-lead-create-card>
+{% set lead_form_open = form_errors or form_state.get('full_name') or form_state.get('phone_number') or form_state.get('source_code') or form_state.get('referrer_patient_link_id') %}
+<section class="card lead-create-card{% if not lead_form_open %} is-collapsed{% endif %}" data-lead-create-card>
     <div class="section-title"><svg class="icon"><use href="#i-plus"></use></svg><div><div>ثبت سریع سرنخ</div><div class="section-sub">حداقل نام، موبایل و منبع جذب؛ موعد پیگیری در صورت خالی‌بودن دو ساعت بعد تنظیم می‌شود.</div></div></div>
     {% if form_errors %}
     <div class="alert-banner alert-danger" role="alert"><svg class="icon"><use href="#i-alert"></use></svg><ul>{% for error in form_errors %}<li>{{ error }}</li>{% endfor %}</ul></div>
     {% endif %}
-    <form method="post" action="{{ url_for('leads.create') }}" class="lead-create-form">
+    <form method="post" action="{{ url_for('leads.create') }}" class="lead-create-form" data-lead-create-form>
         <div class="fld"><label for="lead-full-name">نام و نام خانوادگی</label><input id="lead-full-name" name="full_name" value="{{ form_state.get('full_name','') }}" required autofocus></div>
         <div class="fld"><label for="lead-phone">موبایل</label><input id="lead-phone" name="phone_number" value="{{ form_state.get('phone_number','') }}" inputmode="tel" required></div>
         <div class="fld"><label for="lead-national-id">کد ملی</label><input id="lead-national-id" name="national_id" value="{{ form_state.get('national_id','') }}" inputmode="numeric"></div>
-        <div class="fld"><label for="lead-source">منبع جذب</label><select id="lead-source" name="source_code" required><option value="">انتخاب منبع</option>{% for key,label in sources.items() %}<option value="{{ key }}" {% if form_state.get('source_code')==key %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></div>
+        <div class="fld"><label for="lead-source">منبع جذب</label><select id="lead-source" name="source_code" required data-lead-source-select><option value="">انتخاب منبع</option>{% for key,label in sources.items() %}<option value="{{ key }}" {% if form_state.get('source_code')==key %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></div>
         <div class="fld"><label for="lead-source-detail">جزئیات منبع</label><input id="lead-source-detail" name="source_detail" value="{{ form_state.get('source_detail','') }}" placeholder="مثلاً نام پیج یا کمپین"></div>
-        <div class="fld"><label for="lead-referrer">معرف</label><input id="lead-referrer" name="referrer_name" value="{{ form_state.get('referrer_name','') }}" placeholder="نام بیمار یا پزشک معرف"></div>
+        <div class="fld" data-patient-referrer-field hidden><label for="lead-referrer-patient">بیمار معرف</label><select id="lead-referrer-patient" name="referrer_patient_link_id" data-patient-referrer-select><option value="">انتخاب بیمار معرف</option>{% for patient in patients %}<option value="{{ patient.id }}" {% if form_state.get('referrer_patient_link_id')==patient.id|string %}selected{% endif %}>{{ patient.full_name }} · {{ patient.phone_number or patient.national_id or patient.id }}</option>{% endfor %}</select><small class="muted">برای محاسبه دقیق معرفی و درآمد، بیمار واقعی انتخاب می‌شود.</small></div>
+        <div class="fld" data-free-referrer-field><label for="lead-referrer">نام پزشک یا معرف دیگر</label><input id="lead-referrer" name="referrer_name" value="{{ form_state.get('referrer_name','') }}" placeholder="برای معرفی پزشک یا سایر منابع"></div>
         <div class="fld"><label for="lead-interest">خدمت موردنظر</label><select id="lead-interest" name="interest_code"><option value="">نامشخص</option>{% for key,label in interests.items() %}<option value="{{ key }}" {% if form_state.get('interest_code')==key %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></div>
         <div class="fld"><label for="lead-owner">مسئول پیگیری</label><select id="lead-owner" name="owner_username"><option value="">کاربر جاری</option>{% for user in users %}<option value="{{ user.username }}" {% if form_state.get('owner_username')==user.username %}selected{% endif %}>{{ user.full_name or user.username }}</option>{% endfor %}</select></div>
         <div class="fld"><label for="lead-next-date">تاریخ اقدام بعدی</label><input id="lead-next-date" class="jdate" name="next_action_date" value="{{ form_state.get('next_action_date','') }}" placeholder="خالی = امروز"></div>
@@ -60,6 +63,7 @@
             <a href="{{ url_for('leads.detail', lead_id=lead.id) }}"><b>{{ lead.full_name }}</b></a>
             <span class="nums">{{ lead.phone_number }}</span>
             <div class="flex gap-2 wrap"><span class="badge badge-info">{{ sources.get(lead.source_code, lead.source_code) }}</span>{% if lead.interest_code %}<span class="badge badge-muted">{{ interests.get(lead.interest_code, lead.interest_code) }}</span>{% endif %}</div>
+            {% if lead.referrer_patient_link_id %}<small class="muted">معرف: <a href="{{ url_for('patient_workspace.detail', pid=lead.referrer_patient_link_id, tab='summary') }}">{{ lead.referrer_patient_name }}</a></small>{% elif lead.referrer_name %}<small class="muted">معرف: {{ lead.referrer_name }}</small>{% endif %}
         </div>
         <div class="lead-card__status"><span class="badge {% if lead.status=='LOST' %}badge-danger{% elif lead.status=='CONVERTED' %}badge-ok{% elif lead.status=='APPOINTMENT_BOOKED' %}badge-info{% else %}badge-warn{% endif %}">{{ status_labels.get(lead.status, lead.status) }}</span><small>مسئول: {{ lead.owner_username or 'تعیین نشده' }}</small></div>
         <div class="lead-card__next"><span>اقدام بعدی</span><b>{{ lead.next_action_at|jalali if lead.next_action_at else 'پایان‌یافته' }}</b>{% if lead.appointment_at %}<small>مراجعه: {{ lead.appointment_at|jalali }}</small>{% endif %}</div>
@@ -76,6 +80,27 @@
 <script>
 (() => {
   const card = document.querySelector('[data-lead-create-card]');
+  const form = document.querySelector('[data-lead-create-form]');
+  const source = form?.querySelector('[data-lead-source-select]');
+  const patientField = form?.querySelector('[data-patient-referrer-field]');
+  const patientSelect = form?.querySelector('[data-patient-referrer-select]');
+  const freeField = form?.querySelector('[data-free-referrer-field]');
+  const freeInput = freeField?.querySelector('input');
+
+  function syncReferrerMode() {
+    const patientReferral = source?.value === 'PATIENT_REFERRAL';
+    if (patientField) patientField.hidden = !patientReferral;
+    if (patientSelect) {
+      patientSelect.disabled = !patientReferral;
+      patientSelect.required = patientReferral;
+    }
+    if (freeField) freeField.hidden = patientReferral;
+    if (freeInput) freeInput.disabled = patientReferral;
+  }
+
+  source?.addEventListener('change', syncReferrerMode);
+  syncReferrerMode();
+
   document.querySelectorAll('[data-lead-create-toggle]').forEach((button) => {
     button.addEventListener('click', () => {
       card?.classList.toggle('is-collapsed');
