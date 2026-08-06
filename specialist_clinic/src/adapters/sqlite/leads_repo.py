@@ -41,7 +41,11 @@ class LeadRepository:
 
     def get(self, lead_id: int) -> dict | None:
         row = self._db().execute(
-            "SELECT * FROM growth_leads WHERE id=?",
+            """SELECT lead.*,referrer.full_name AS referrer_patient_name
+               FROM growth_leads lead
+               LEFT JOIN patient_links referrer
+                 ON referrer.id=lead.referrer_patient_link_id
+               WHERE lead.id=?""",
             (int(lead_id),),
         ).fetchone()
         return dict(row) if row else None
@@ -51,11 +55,14 @@ class LeadRepository:
         if not phone:
             return None
         row = self._db().execute(
-            """SELECT * FROM growth_leads
-               WHERE phone_number=? AND status IN (
+            """SELECT lead.*,referrer.full_name AS referrer_patient_name
+               FROM growth_leads lead
+               LEFT JOIN patient_links referrer
+                 ON referrer.id=lead.referrer_patient_link_id
+               WHERE lead.phone_number=? AND lead.status IN (
                    'NEW','CONTACTED','APPOINTMENT_BOOKED','ATTENDED'
                )
-               ORDER BY id DESC LIMIT 1""",
+               ORDER BY lead.id DESC LIMIT 1""",
             (phone,),
         ).fetchone()
         return dict(row) if row else None
@@ -69,6 +76,7 @@ class LeadRepository:
         source_code: str,
         source_detail: str | None,
         referrer_name: str | None,
+        referrer_patient_link_id: int | None,
         interest_code: str | None,
         owner_username: str | None,
         next_action_at: str | None,
@@ -84,9 +92,10 @@ class LeadRepository:
         cursor = db.execute(
             """INSERT INTO growth_leads
                (full_name, phone_number, national_id, source_code,
-                source_detail, referrer_name, interest_code, owner_username,
-                status, next_action_at, notes, created_at, updated_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'NEW', ?, ?, ?, ?)""",
+                source_detail, referrer_name, referrer_patient_link_id,
+                interest_code, owner_username, status, next_action_at,
+                notes, created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'NEW', ?, ?, ?, ?)""",
             (
                 full_name,
                 phone,
@@ -94,6 +103,7 @@ class LeadRepository:
                 source_code,
                 source_detail,
                 referrer_name,
+                referrer_patient_link_id,
                 interest_code,
                 owner_username,
                 next_action_at,
@@ -114,6 +124,7 @@ class LeadRepository:
                 "source_code": source_code,
                 "owner_username": owner_username,
                 "next_action_at": next_action_at,
+                "referrer_patient_link_id": referrer_patient_link_id,
             },
             commit=False,
         )
@@ -243,29 +254,34 @@ class LeadRepository:
         clauses = []
         params: list[Any] = []
         if status:
-            clauses.append("status=?")
+            clauses.append("lead.status=?")
             params.append(status)
         if owner_username:
-            clauses.append("owner_username=?")
+            clauses.append("lead.owner_username=?")
             params.append(owner_username)
         if query:
             like = f"%{query.strip()}%"
             clauses.append(
-                "(full_name LIKE ? OR phone_number LIKE ? OR "
-                "COALESCE(national_id,'') LIKE ? OR "
-                "COALESCE(referrer_name,'') LIKE ?)"
+                "(lead.full_name LIKE ? OR lead.phone_number LIKE ? OR "
+                "COALESCE(lead.national_id,'') LIKE ? OR "
+                "COALESCE(lead.referrer_name,'') LIKE ? OR "
+                "COALESCE(referrer.full_name,'') LIKE ?)"
             )
-            params.extend((like, like, like, like))
+            params.extend((like, like, like, like, like))
         where = " WHERE " + " AND ".join(clauses) if clauses else ""
         params.append(int(limit))
         rows = self._db().execute(
-            "SELECT * FROM growth_leads" + where + " "
-            "ORDER BY CASE status "
-            "WHEN 'NEW' THEN 0 WHEN 'CONTACTED' THEN 1 "
-            "WHEN 'APPOINTMENT_BOOKED' THEN 2 WHEN 'ATTENDED' THEN 3 "
-            "WHEN 'CONVERTED' THEN 4 ELSE 5 END, "
-            "CASE WHEN next_action_at IS NULL THEN 1 ELSE 0 END, "
-            "next_action_at,id DESC LIMIT ?",
+            """SELECT lead.*,referrer.full_name AS referrer_patient_name
+               FROM growth_leads lead
+               LEFT JOIN patient_links referrer
+                 ON referrer.id=lead.referrer_patient_link_id"""
+            + where
+            + " ORDER BY CASE lead.status "
+              "WHEN 'NEW' THEN 0 WHEN 'CONTACTED' THEN 1 "
+              "WHEN 'APPOINTMENT_BOOKED' THEN 2 WHEN 'ATTENDED' THEN 3 "
+              "WHEN 'CONVERTED' THEN 4 ELSE 5 END, "
+              "CASE WHEN lead.next_action_at IS NULL THEN 1 ELSE 0 END, "
+              "lead.next_action_at,lead.id DESC LIMIT ?",
             params,
         ).fetchall()
         return [dict(row) for row in rows]
@@ -282,11 +298,16 @@ class LeadRepository:
 
     def due(self, as_of: str) -> list[dict]:
         rows = self._db().execute(
-            """SELECT * FROM growth_leads
-               WHERE status IN ('NEW','CONTACTED','APPOINTMENT_BOOKED','ATTENDED')
-                 AND next_action_at IS NOT NULL
-                 AND datetime(next_action_at)<=datetime(?)
-               ORDER BY next_action_at,id""",
+            """SELECT lead.*,referrer.full_name AS referrer_patient_name
+               FROM growth_leads lead
+               LEFT JOIN patient_links referrer
+                 ON referrer.id=lead.referrer_patient_link_id
+               WHERE lead.status IN (
+                   'NEW','CONTACTED','APPOINTMENT_BOOKED','ATTENDED'
+               )
+                 AND lead.next_action_at IS NOT NULL
+                 AND datetime(lead.next_action_at)<=datetime(?)
+               ORDER BY lead.next_action_at,lead.id""",
             (str(as_of),),
         ).fetchall()
         return [dict(row) for row in rows]
