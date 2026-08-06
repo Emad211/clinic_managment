@@ -6,7 +6,9 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from flask import Blueprint, flash, redirect, render_template, request, url_for
 
+from src.adapters.sqlite.core import get_db
 from src.api.auth import login_required
+from src.services.lead_pipeline_service import LEAD_SOURCES
 from src.services.patient_workspace_service import (
     PatientWorkspaceService,
     WORKSPACE_TABS,
@@ -55,6 +57,31 @@ def _normalize_tab(value: object) -> str:
     return tab if tab in WORKSPACE_TABS else "summary"
 
 
+def _lead_enrollment_summary(pid: int, fallback: dict) -> dict:
+    row = get_db().execute(
+        """SELECT source_code,source_detail,referrer_name,owner_username,
+                  created_at,converted_at
+           FROM growth_leads
+           WHERE patient_link_id=? AND status='CONVERTED'
+           ORDER BY converted_at DESC,id DESC LIMIT 1""",
+        (int(pid),),
+    ).fetchone()
+    if not row:
+        return fallback
+    lead = dict(row)
+    source = str(lead.get("source_code") or "OTHER")
+    referrer = str(lead.get("referrer_name") or "").strip() or None
+    return {
+        "source_code": source,
+        "source_label": LEAD_SOURCES.get(source, source),
+        "source_detail": lead.get("source_detail"),
+        "enrolled_by": lead.get("owner_username") or fallback.get("enrolled_by"),
+        "enrolled_at": lead.get("converted_at") or lead.get("created_at"),
+        "referrer": referrer,
+        "referrer_label": referrer or "ثبت نشده",
+    }
+
+
 @bp.get("/<int:pid>/workspace")
 @login_required
 def detail(pid: int):
@@ -62,6 +89,10 @@ def detail(pid: int):
     if workspace is None:
         flash("بیمار یافت نشد", "error")
         return redirect(url_for("patients.list_patients"))
+    workspace["enrollment_summary"] = _lead_enrollment_summary(
+        pid,
+        workspace.get("enrollment_summary") or {},
+    )
     active_tab = _normalize_tab(request.args.get("tab"))
     return render_template(
         "patients/workspace.html",
