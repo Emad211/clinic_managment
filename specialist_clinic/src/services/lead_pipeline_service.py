@@ -234,23 +234,30 @@ class LeadPipelineService:
             created_patient = True
 
         appointment_id = None
+        appointment_status = None
         appointment_at = lead.get("appointment_at")
         if appointment_at:
             try:
                 when = datetime.fromisoformat(str(appointment_at))
             except ValueError:
                 when = None
-            if when and when > _now():
-                appointment_id = AppointmentRepository(db).create(
+            if when:
+                appointment_repo = AppointmentRepository(db)
+                appointment_id = appointment_repo.create(
                     patient_id,
                     scheduled_at=appointment_at,
                     appt_type="visit",
                     notes=(
-                        "نوبت انتقال‌یافته از سرنخ؛ منبع: "
+                        "مراجعه منتقل‌شده از سرنخ؛ منبع: "
                         + LEAD_SOURCES.get(lead["source_code"], lead["source_code"])
                     ),
                     created_by=actor_username,
                 )
+                if lead["status"] == "ATTENDED" or when <= _now():
+                    appointment_repo.set_status(appointment_id, "done")
+                    appointment_status = "done"
+                else:
+                    appointment_status = "scheduled"
 
         converted_at = _now().isoformat(sep=" ", timespec="seconds")
         updated = self.repo.update_state(
@@ -264,12 +271,16 @@ class LeadPipelineService:
             patient_link_id=patient_id,
             appointment_id=appointment_id,
             converted_at=converted_at,
-            payload={"created_patient": created_patient},
+            payload={
+                "created_patient": created_patient,
+                "appointment_status": appointment_status,
+            },
         )
         return {
             **updated,
             "patient_link_id": patient_id,
             "appointment_id": appointment_id,
+            "appointment_status": appointment_status,
             "created_patient": created_patient,
             "duplicate": False,
         }
