@@ -151,6 +151,7 @@ def captured():
 @bp.record_once
 def register_automation_surfaces(state):
     """Register focused automation routes and compatibility hooks during setup."""
+    from src.api.leads import bp as leads_bp, lead_context
     from src.api.patient_workspace import (
         bp as patient_workspace_bp,
         install_compatibility,
@@ -172,3 +173,7 @@ def register_automation_surfaces(state):
     if patient_workspace_mutations_bp.name not in state.app.blueprints:
         state.app.register_blueprint(patient_workspace_mutations_bp)
     install_compatibility(state.app)
+
+    if leads_bp.name not in state.app.blueprints:
+        state.app.register_blueprint(leads_bp)
+    state.app.context_processor(lead_context)
