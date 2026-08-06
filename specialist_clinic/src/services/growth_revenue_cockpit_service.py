@@ -7,9 +7,8 @@ available.
 from __future__ import annotations
 
 from collections import defaultdict
-from datetime import date, datetime
+from datetime import date
 
-from src.adapters.sqlite.appointments_repo import AppointmentRepository
 from src.adapters.sqlite.core import get_db
 from src.adapters.sqlite.leads_repo import LeadRepository
 from src.adapters.sqlite.specialist_financial_funnel_repo import (
@@ -89,18 +88,117 @@ class GrowthRevenueCockpitService:
             )
         return sorted(output, key=lambda row: (-row["collected"], row["source_label"]))
 
+    def _referral_leaders(self, observations: list[dict]) -> list[dict]:
+        lifecycle_rows = self.db.execute(
+            """SELECT lead.referrer_patient_link_id AS referrer_id,
+                      referrer.full_name AS referrer_name,
+                      COUNT(*) AS referrals,
+                      SUM(CASE WHEN lead.status='CONVERTED' THEN 1 ELSE 0 END) AS converted,
+                      SUM(CASE WHEN lead.status='LOST' THEN 1 ELSE 0 END) AS lost,
+                      SUM(CASE WHEN lead.status='APPOINTMENT_BOOKED'
+                               THEN 1 ELSE 0 END) AS booked_open,
+                      SUM(CASE WHEN lead.status='ATTENDED'
+                               THEN 1 ELSE 0 END) AS attended_open
+               FROM growth_leads lead
+               JOIN patient_links referrer
+                 ON referrer.id=lead.referrer_patient_link_id
+               WHERE lead.source_code='PATIENT_REFERRAL'
+                 AND lead.referrer_patient_link_id IS NOT NULL
+               GROUP BY lead.referrer_patient_link_id,referrer.full_name"""
+        ).fetchall()
+        if not lifecycle_rows:
+            return []
+
+        referrer_by_referred_patient = {
+            int(row["patient_link_id"]): int(row["referrer_patient_link_id"])
+            for row in self.db.execute(
+                """SELECT patient_link_id,referrer_patient_link_id
+                   FROM growth_leads
+                   WHERE source_code='PATIENT_REFERRAL'
+                     AND status='CONVERTED'
+                     AND patient_link_id IS NOT NULL
+                     AND referrer_patient_link_id IS NOT NULL"""
+            ).fetchall()
+        }
+        financial: dict[int, dict] = defaultdict(
+            lambda: {
+                "referred_patients_with_revenue": set(),
+                "invoices": 0,
+                "billed": 0,
+                "collected": 0,
+            }
+        )
+        for observation in observations:
+            patient_id = int(observation.get("patient_link_id") or 0)
+            referrer_id = referrer_by_referred_patient.get(patient_id)
+            if referrer_id is None:
+                continue
+            bucket = financial[referrer_id]
+            bucket["referred_patients_with_revenue"].add(patient_id)
+            bucket["invoices"] += 1
+            bucket["billed"] += int(observation.get("billed_amount") or 0)
+            bucket["collected"] += int(observation.get("collected_amount") or 0)
+
+        output = []
+        for raw in lifecycle_rows:
+            row = dict(raw)
+            referrer_id = int(row["referrer_id"])
+            values = financial[referrer_id]
+            referrals = int(row["referrals"] or 0)
+            converted = int(row["converted"] or 0)
+            output.append(
+                {
+                    "referrer_id": referrer_id,
+                    "referrer_name": row["referrer_name"],
+                    "referrals": referrals,
+                    "converted": converted,
+                    "lost": int(row["lost"] or 0),
+                    "booked_open": int(row["booked_open"] or 0),
+                    "attended_open": int(row["attended_open"] or 0),
+                    "conversion_rate": (
+                        round(converted * 100 / referrals, 1)
+                        if referrals
+                        else 0.0
+                    ),
+                    "revenue_patients": len(
+                        values["referred_patients_with_revenue"]
+                    ),
+                    "invoices": int(values["invoices"]),
+                    "billed": int(values["billed"]),
+                    "collected": int(values["collected"]),
+                }
+            )
+        return sorted(
+            output,
+            key=lambda row: (
+                -row["collected"],
+                -row["converted"],
+                -row["referrals"],
+                row["referrer_name"],
+            ),
+        )
+
     def _lead_funnel(self) -> dict:
         counts = self.leads.counts()
-        total = sum(counts.get(status, 0) for status in (
-            "NEW", "CONTACTED", "APPOINTMENT_BOOKED", "ATTENDED", "CONVERTED", "LOST"
-        ))
+        total = sum(
+            counts.get(status, 0)
+            for status in (
+                "NEW",
+                "CONTACTED",
+                "APPOINTMENT_BOOKED",
+                "ATTENDED",
+                "CONVERTED",
+                "LOST",
+            )
+        )
         decided = counts.get("CONVERTED", 0) + counts.get("LOST", 0)
         return {
             "counts": counts,
             "total": total,
             "conversion_rate": (
                 round(counts.get("CONVERTED", 0) * 100 / decided, 1)
-                if decided else 0.0
+                if decided
+                else 0.0
             ),
             "appointment_rate": (
                 round(
@@ -113,8 +211,19 @@ class GrowthRevenueCockpitService:
                     / total,
                     1,
                 )
-                if total else 0.0
+                if total
+                else 0.0
             ),
+        }
+
+    @staticmethod
+    def _referral_summary(leaders: list[dict]) -> dict:
+        return {
+            "referrers": len(leaders),
+            "referrals": sum(row["referrals"] for row in leaders),
+            "converted": sum(row["converted"] for row in leaders),
+            "billed": sum(row["billed"] for row in leaders),
+            "collected": sum(row["collected"] for row in leaders),
         }
 
     def build(self) -> dict:
@@ -139,6 +248,7 @@ class GrowthRevenueCockpitService:
         reconciliation = self.finance.reconciliation_scope()
         appointments = self._appointment_counts()
         lead_funnel = self._lead_funnel()
+        referral_leaders = self._referral_leaders(observations)
 
         return {
             "today": today_finance,
@@ -155,6 +265,8 @@ class GrowthRevenueCockpitService:
             "appointments": appointments,
             "lead_funnel": lead_funnel,
             "revenue_by_source": self._revenue_by_lead_source(observations),
+            "referral_leaders": referral_leaders,
+            "referral_summary": self._referral_summary(referral_leaders),
             "forecast": {
                 "available": False,
                 "reason": (
