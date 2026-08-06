@@ -219,7 +219,8 @@ def test_explicit_conversion_creates_patient_and_real_appointment(lead_app):
         (result["appointment_id"],),
     ).fetchone()
     assert int(appointment["patient_link_id"]) == int(result["patient_link_id"])
-    assert appointment["status"] == "scheduled"
+    assert appointment["status"] == "done"
+    assert result["appointment_status"] == "done"
 
 
 def test_lead_pages_render_pipeline_and_one_page_actions(lead_app):
