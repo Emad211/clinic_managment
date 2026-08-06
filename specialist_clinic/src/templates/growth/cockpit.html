@@ -12,6 +12,8 @@
     </div>
     <div class="auto-page-header__actions">
         <a class="btn" href="{{ url_for('leads.index') }}"><svg class="icon icon-sm"><use href="#i-users"></use></svg> سرنخ‌ها</a>
+        <a class="btn btn-ghost" href="{{ url_for('growth_waitlist.index') }}">صف انتظار</a>
+        <a class="btn btn-ghost" href="{{ url_for('growth.automation') }}">اتوماسیون</a>
         <a class="btn btn-ghost" href="{{ url_for('finance_review.index') }}">استثناهای مالی</a>
     </div>
 </header>
@@ -72,6 +74,39 @@
         </table>
     </div>
     {% else %}<div class="auto-empty"><h2>درآمد منتسب به منبع جذب هنوز ثبت نشده است</h2><p>پس از تبدیل Lead، حضور، خدمت و مشاهده مالی، این جدول خودکار تکمیل می‌شود.</p></div>{% endif %}
+</section>
+
+<section class="card">
+    <div class="section-title"><svg class="icon"><use href="#i-users"></use></svg><div><div>بیماران معرف برتر</div><div class="section-sub">تبدیل‌ها مادام‌العمر هستند؛ مبلغ‌ها فقط از Financial Observationهای منتسب ماه جاری محاسبه می‌شوند.</div></div></div>
+    <div class="growth-rate-grid growth-referral-summary">
+        <div><span>بیمار معرف</span><b>{{ referral_summary.referrers|fa_num }}</b></div>
+        <div><span>کل معرفی</span><b>{{ referral_summary.referrals|fa_num }}</b></div>
+        <div><span>تبدیل به بیمار</span><b>{{ referral_summary.converted|fa_num }}</b></div>
+        <div><span>وصول ماه معرفی‌ها</span><b class="nums">{{ referral_summary.collected|fa_num }}</b></div>
+    </div>
+    {% if referral_leaders %}
+    <div class="growth-source-table mt-3">
+        <table>
+            <thead><tr><th>بیمار معرف</th><th>معرفی</th><th>تبدیل</th><th>نرخ تبدیل</th><th>بیمار دارای درآمد ماه</th><th>صورتحساب ماه</th><th>وصول ماه</th><th></th></tr></thead>
+            <tbody>
+            {% for row in referral_leaders %}
+            <tr>
+                <td><a href="{{ url_for('patient_workspace.detail', pid=row.referrer_id, tab='summary') }}"><b>{{ row.referrer_name }}</b></a></td>
+                <td>{{ row.referrals|fa_num }}</td>
+                <td>{{ row.converted|fa_num }}</td>
+                <td>{{ row.conversion_rate|fa_num }}٪</td>
+                <td>{{ row.revenue_patients|fa_num }}</td>
+                <td class="nums">{{ row.billed|fa_num }}</td>
+                <td class="nums"><b>{{ row.collected|fa_num }}</b></td>
+                <td><a class="btn btn-sm btn-ghost" href="{{ url_for('leads.index', source='PATIENT_REFERRAL', referrer_patient_id=row.referrer_id) }}">ثبت معرفی دیگر</a></td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="auto-empty compact"><h2>معرفی بیمار ثبت نشده است</h2><p>از پرونده هر بیمار، «ثبت معرفی جدید» را انتخاب کنید تا تبدیل و درآمد آن قابل‌اندازه‌گیری شود.</p><a class="btn" href="{{ url_for('leads.index', source='PATIENT_REFERRAL') }}">ثبت اولین معرفی</a></div>
+    {% endif %}
 </section>
 
 <section class="growth-two-column">
