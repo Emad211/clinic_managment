@@ -155,6 +155,9 @@ def register_automation_surfaces(state):
         bp as patient_workspace_bp,
         install_compatibility,
     )
+    from src.api.patient_workspace_mutations import (
+        bp as patient_workspace_mutations_bp,
+    )
     from src.api.work_center_outcomes import (
         bp as work_center_outcomes_bp,
         template_context,
@@ -166,4 +169,6 @@ def register_automation_surfaces(state):
 
     if patient_workspace_bp.name not in state.app.blueprints:
         state.app.register_blueprint(patient_workspace_bp)
+    if patient_workspace_mutations_bp.name not in state.app.blueprints:
+        state.app.register_blueprint(patient_workspace_mutations_bp)
     install_compatibility(state.app)
