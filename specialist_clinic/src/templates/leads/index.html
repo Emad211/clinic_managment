@@ -1,0 +1,89 @@
+{% extends "automation_base.html" %}
+{% block title %}سرنخ‌ها و رشد بیمار{% endblock %}
+{% block head %}
+{{ super() }}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/leads-growth-v1.css') }}">
+{% endblock %}
+{% block content %}
+<header class="auto-page-header">
+    <div class="auto-page-header__copy">
+        <h1><svg class="icon"><use href="#i-users"></use></svg> سرنخ‌ها و رشد بیمار</h1>
+        <p class="muted">هر تماس ورودی باید مسئول، مرحله و اقدام بعدی داشته باشد تا به نوبت و بیمار واقعی تبدیل شود.</p>
+    </div>
+    <div class="auto-page-header__actions">
+        <button class="btn" type="button" data-lead-create-toggle><svg class="icon icon-sm"><use href="#i-plus"></use></svg> سرنخ جدید</button>
+    </div>
+</header>
+
+<section class="work-center-summary lead-summary" aria-label="خلاصه سرنخ‌ها">
+    <div class="work-center-kpi"><b>{{ counts.OPEN|fa_num }}</b><span>سرنخ باز</span></div>
+    <div class="work-center-kpi"><b>{{ due_count|fa_num }}</b><span>نیازمند اقدام اکنون</span></div>
+    <div class="work-center-kpi"><b>{{ counts.APPOINTMENT_BOOKED|fa_num }}</b><span>زمان مراجعه تعیین‌شده</span></div>
+    <div class="work-center-kpi"><b>{{ conversion_rate|fa_num }}٪</b><span>تبدیل از پرونده‌های تعیین‌تکلیف‌شده</span></div>
+</section>
+
+<section class="card lead-create-card{% if not form_errors and not form_state %} is-collapsed{% endif %}" data-lead-create-card>
+    <div class="section-title"><svg class="icon"><use href="#i-plus"></use></svg><div><div>ثبت سریع سرنخ</div><div class="section-sub">حداقل نام، موبایل و منبع جذب؛ موعد پیگیری در صورت خالی‌بودن دو ساعت بعد تنظیم می‌شود.</div></div></div>
+    {% if form_errors %}
+    <div class="alert-banner alert-danger" role="alert"><svg class="icon"><use href="#i-alert"></use></svg><ul>{% for error in form_errors %}<li>{{ error }}</li>{% endfor %}</ul></div>
+    {% endif %}
+    <form method="post" action="{{ url_for('leads.create') }}" class="lead-create-form">
+        <div class="fld"><label for="lead-full-name">نام و نام خانوادگی</label><input id="lead-full-name" name="full_name" value="{{ form_state.get('full_name','') }}" required autofocus></div>
+        <div class="fld"><label for="lead-phone">موبایل</label><input id="lead-phone" name="phone_number" value="{{ form_state.get('phone_number','') }}" inputmode="tel" required></div>
+        <div class="fld"><label for="lead-national-id">کد ملی</label><input id="lead-national-id" name="national_id" value="{{ form_state.get('national_id','') }}" inputmode="numeric"></div>
+        <div class="fld"><label for="lead-source">منبع جذب</label><select id="lead-source" name="source_code" required><option value="">انتخاب منبع</option>{% for key,label in sources.items() %}<option value="{{ key }}" {% if form_state.get('source_code')==key %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></div>
+        <div class="fld"><label for="lead-source-detail">جزئیات منبع</label><input id="lead-source-detail" name="source_detail" value="{{ form_state.get('source_detail','') }}" placeholder="مثلاً نام پیج یا کمپین"></div>
+        <div class="fld"><label for="lead-referrer">معرف</label><input id="lead-referrer" name="referrer_name" value="{{ form_state.get('referrer_name','') }}" placeholder="نام بیمار یا پزشک معرف"></div>
+        <div class="fld"><label for="lead-interest">خدمت موردنظر</label><select id="lead-interest" name="interest_code"><option value="">نامشخص</option>{% for key,label in interests.items() %}<option value="{{ key }}" {% if form_state.get('interest_code')==key %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></div>
+        <div class="fld"><label for="lead-owner">مسئول پیگیری</label><select id="lead-owner" name="owner_username"><option value="">کاربر جاری</option>{% for user in users %}<option value="{{ user.username }}" {% if form_state.get('owner_username')==user.username %}selected{% endif %}>{{ user.full_name or user.username }}</option>{% endfor %}</select></div>
+        <div class="fld"><label for="lead-next-date">تاریخ اقدام بعدی</label><input id="lead-next-date" class="jdate" name="next_action_date" value="{{ form_state.get('next_action_date','') }}" placeholder="خالی = امروز"></div>
+        <div class="fld"><label for="lead-next-time">ساعت</label><input id="lead-next-time" type="time" name="next_action_time" value="{{ form_state.get('next_action_time','') or '09:00' }}"></div>
+        <div class="fld lead-create-form__notes"><label for="lead-notes">یادداشت</label><textarea id="lead-notes" name="notes" rows="2">{{ form_state.get('notes','') }}</textarea></div>
+        <div class="lead-create-form__actions"><button class="btn" type="submit">ثبت و شروع پیگیری</button><button class="btn btn-ghost" type="button" data-lead-create-toggle>بستن</button></div>
+    </form>
+</section>
+
+<section class="auto-filter-bar" aria-label="فیلتر سرنخ‌ها">
+    <form method="get" action="{{ url_for('leads.index') }}" class="auto-filter-grid lead-filter-form">
+        <div class="fld lead-filter-form__search"><label for="lead-q">جست‌وجو</label><input id="lead-q" name="q" value="{{ query }}" placeholder="نام، موبایل، کد ملی یا معرف"></div>
+        <div class="fld"><label for="lead-status">مرحله</label><select id="lead-status" name="status"><option value="">همه مراحل</option>{% for key,label in status_labels.items() %}<option value="{{ key }}" {% if status_filter==key %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></div>
+        <div class="fld"><label for="lead-owner-filter">مسئول</label><select id="lead-owner-filter" name="owner"><option value="">همه کاربران</option>{% for user in users %}<option value="{{ user.username }}" {% if owner_filter==user.username %}selected{% endif %}>{{ user.full_name or user.username }}</option>{% endfor %}</select></div>
+        <div class="auto-filter-actions"><button class="btn" type="submit">اعمال فیلتر</button><a class="btn btn-ghost" href="{{ url_for('leads.index') }}">پاک‌کردن</a></div>
+    </form>
+</section>
+
+{% if leads %}
+<section class="lead-board" aria-label="فهرست سرنخ‌ها">
+    {% for lead in leads %}
+    <article class="lead-card status-{{ lead.status|lower }}{% if lead.next_action_at and lead.status not in ('CONVERTED','LOST') %} has-next-action{% endif %}">
+        <div class="lead-card__identity">
+            <a href="{{ url_for('leads.detail', lead_id=lead.id) }}"><b>{{ lead.full_name }}</b></a>
+            <span class="nums">{{ lead.phone_number }}</span>
+            <div class="flex gap-2 wrap"><span class="badge badge-info">{{ sources.get(lead.source_code, lead.source_code) }}</span>{% if lead.interest_code %}<span class="badge badge-muted">{{ interests.get(lead.interest_code, lead.interest_code) }}</span>{% endif %}</div>
+        </div>
+        <div class="lead-card__status"><span class="badge {% if lead.status=='LOST' %}badge-danger{% elif lead.status=='CONVERTED' %}badge-ok{% elif lead.status=='APPOINTMENT_BOOKED' %}badge-info{% else %}badge-warn{% endif %}">{{ status_labels.get(lead.status, lead.status) }}</span><small>مسئول: {{ lead.owner_username or 'تعیین نشده' }}</small></div>
+        <div class="lead-card__next"><span>اقدام بعدی</span><b>{{ lead.next_action_at|jalali if lead.next_action_at else 'پایان‌یافته' }}</b>{% if lead.appointment_at %}<small>مراجعه: {{ lead.appointment_at|jalali }}</small>{% endif %}</div>
+        <a class="btn btn-sm" href="{{ url_for('leads.detail', lead_id=lead.id) }}">ادامه پیگیری</a>
+    </article>
+    {% endfor %}
+</section>
+{% else %}
+<section class="auto-empty"><svg class="icon"><use href="#i-users"></use></svg><h2>سرنخی در این نما نیست</h2><p>سرنخ جدید ثبت کنید یا فیلترها را تغییر دهید.</p></section>
+{% endif %}
+{% endblock %}
+{% block scripts %}
+{{ super() }}
+<script>
+(() => {
+  const card = document.querySelector('[data-lead-create-card]');
+  document.querySelectorAll('[data-lead-create-toggle]').forEach((button) => {
+    button.addEventListener('click', () => {
+      card?.classList.toggle('is-collapsed');
+      if (card && !card.classList.contains('is-collapsed')) {
+        card.querySelector('input[name="full_name"]')?.focus();
+      }
+    });
+  });
+})();
+</script>
+{% endblock %}
