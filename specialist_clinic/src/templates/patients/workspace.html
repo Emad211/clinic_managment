@@ -34,11 +34,11 @@
             <a class="btn btn-ghost" href="{{ url_for('clinical_reconciliation.workspace', pid=patient.id) }}"><svg class="icon icon-sm"><use href="#i-refresh"></use></svg> بررسی اختلاف</a>
             <a class="btn" href="{{ url_for('unified_followups.index', view='all', q=patient.national_id or patient.full_name) if config.get('FOLLOWUP_UNIFIED_WORKLIST_READONLY') else url_for('followups.worklist', q=patient.national_id or patient.full_name) }}"><svg class="icon icon-sm"><use href="#i-list-checks"></use></svg> کارهای بیمار</a>
         </div>
-        <div class="patient-workspace-status" aria-label="خلاصه پرونده">
+        <div class="patient-workspace-status" aria-label="خلاصه عملیاتی بیمار">
             <div><span>پیگیری باز</span><strong>{{ followups|length|fa_num }}</strong></div>
-            <div><span>داروی فعال</span><strong>{{ medications|selectattr('is_active')|list|length|fa_num }}</strong></div>
-            <div><span>نوبت پیش‌رو</span><strong>{{ appt_summary.upcoming|length|fa_num }}</strong></div>
-            <div><span>سند ویزیت</span><strong>{{ encounter_documents|length|fa_num }}</strong></div>
+            <div><span>نوبت بعدی</span><strong>{{ appointment_lifecycle.next.scheduled_at|jalali if appointment_lifecycle.next else 'ثبت نشده' }}</strong></div>
+            <div><span>آخرین تماس</span><strong>{{ contact_summary.last.occurred_at|jalali if contact_summary.last else 'ثبت نشده' }}</strong></div>
+            <div title="{{ financial_summary.evidence_label }}"><span>وصول منتسب</span><strong>{{ financial_summary.collected|fa_num if financial_summary.available else 'ناموجود' }}</strong></div>
         </div>
     </header>
 
