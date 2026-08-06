@@ -9,7 +9,6 @@ This is a small set of explicit rules, not a generic workflow engine:
 """
 from __future__ import annotations
 
-from datetime import datetime
 import sqlite3
 
 from src.adapters.sqlite.core import get_db
@@ -20,11 +19,6 @@ from src.adapters.sqlite.specialist_financial_funnel_repo import (
 from src.common.utils import iran_now
 
 
-_RECOVERY_REASONS = {
-    "no_show_recovery",
-    "cancellation_recovery",
-    "inactive_patient_recall",
-}
 _COLLECTION_OPEN_STATES = {"UNPAID", "PARTIALLY_COLLECTED"}
 _COLLECTION_CLOSED_STATES = {"COLLECTED", "CLOSED_NO_BILLABLE_ITEMS"}
 
@@ -104,13 +98,20 @@ class GrowthClosedLoopService:
             appointment = self.db.execute(
                 """SELECT * FROM appointments
                    WHERE patient_link_id=?
-                     AND status IN ('scheduled','done')
                      AND (
-                       datetime(scheduled_at)>=datetime(COALESCE(?,created_at))
-                       OR status='scheduled'
+                       (
+                         status='scheduled'
+                         AND datetime(scheduled_at)>=
+                             datetime('now','+3 hours','+30 minutes')
+                       )
+                       OR (
+                         status='done'
+                         AND datetime(scheduled_at)>=
+                             datetime(COALESCE(?, '1970-01-01'))
+                       )
                      )
                    ORDER BY CASE status WHEN 'done' THEN 0 ELSE 1 END,
-                            scheduled_at DESC,id DESC LIMIT 1""",
+                            datetime(scheduled_at) DESC,id DESC LIMIT 1""",
                 (
                     int(task["patient_link_id"]),
                     task.get("created_at"),
@@ -284,9 +285,10 @@ class GrowthClosedLoopService:
             or 0
         )
         eligible = self.finance.eligible_invoice_contexts()
+        latest = self.finance.latest_observations()
         observed_ids = {
             int(row["accounting_invoice_id"])
-            for row in self.finance.latest_observations()
+            for row in latest
         }
         missing_observations = sum(
             1
@@ -295,7 +297,7 @@ class GrowthClosedLoopService:
         )
         incomplete_collection = sum(
             1
-            for row in self.finance.latest_observations()
+            for row in latest
             if str(row.get("invoice_status") or "") == "closed"
             and str(row.get("collection_state") or "")
             in _COLLECTION_OPEN_STATES
