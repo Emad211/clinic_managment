@@ -9,6 +9,11 @@
         <span><b>صف انتظار</b><small>بیمار را برای Slotهای لغوشده و ظرفیت خالی آماده کنید.</small></span>
         <svg class="icon icon-sm"><use href="#i-chevron-left"></use></svg>
     </a>
+    <a class="workspace-action-card" href="{{ url_for('leads.index', source='PATIENT_REFERRAL', referrer_patient_id=patient.id) }}">
+        <span class="workspace-action-icon"><svg class="icon"><use href="#i-users"></use></svg></span>
+        <span><b>ثبت معرفی جدید</b><small>{{ patient.full_name }} به‌عنوان بیمار معرف از قبل انتخاب می‌شود.</small></span>
+        <svg class="icon icon-sm"><use href="#i-chevron-left"></use></svg>
+    </a>
     <a class="workspace-action-card" href="{{ url_for('unified_followups.index', view='all', q=patient.national_id or patient.full_name) if config.get('FOLLOWUP_UNIFIED_WORKLIST_READONLY') else url_for('followups.worklist', q=patient.national_id or patient.full_name) }}">
         <span class="workspace-action-icon"><svg class="icon"><use href="#i-list-checks"></use></svg></span>
         <span><b>مرکز کارها</b><small>پیگیری‌های بیمار را در مسیر یکپارچه رسیدگی کنید.</small></span>
