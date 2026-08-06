@@ -152,6 +152,7 @@ def captured():
 def register_automation_surfaces(state):
     """Register focused automation routes and compatibility hooks during setup."""
     from src.api.growth import bp as growth_bp
+    from src.api.growth_waitlist import bp as growth_waitlist_bp
     from src.api.leads import bp as leads_bp, lead_context
     from src.api.patient_workspace import (
         bp as patient_workspace_bp,
@@ -181,3 +182,5 @@ def register_automation_surfaces(state):
 
     if growth_bp.name not in state.app.blueprints:
         state.app.register_blueprint(growth_bp)
+    if growth_waitlist_bp.name not in state.app.blueprints:
+        state.app.register_blueprint(growth_waitlist_bp)
