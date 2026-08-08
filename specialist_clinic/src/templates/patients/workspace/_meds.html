@@ -1,3 +1,5 @@
+<script type="application/json" id="patientWorkspaceDrugCatalog">{{ drug_catalog|tojson }}</script>
+
 <section class="card" aria-labelledby="workspace-medications-title">
     <div class="section-title"><svg class="icon"><use href="#i-pill"></use></svg><div><div id="workspace-medications-title">داروهای بیمار</div><div class="section-sub">داروهای فعال در بالا؛ تاریخچه قطع‌شده پایین‌تر باقی می‌ماند.</div></div></div>
     <div class="workspace-medication-list">
@@ -42,13 +44,32 @@
         <summary>افزودن داروی جدید</summary>
         <form method="post" action="{{ url_for('patients.add_medication', pid=patient.id) }}" class="workspace-medication-add-form">
             <input type="hidden" name="workspace_tab" value="meds">
-            <div class="fld"><label for="workspace-drug-name">نام دارو</label><input id="workspace-drug-name" name="drug_name" required placeholder="نام ژنریک یا تجاری"></div>
-            <div class="fld"><label for="workspace-drug-class">کلاس دارویی</label><select id="workspace-drug-class" name="drug_class"><option value="">انتخاب‌نشده</option>{% for item in drug_class_options %}<option value="{{ item.class_key }}">{{ item.label }}</option>{% endfor %}</select></div>
-            <div class="fld"><label for="workspace-drug-dose">دوز</label><input id="workspace-drug-dose" name="dose"></div>
+            <div class="fld">
+                <label for="workspace-drug-class">کلاس دارویی</label>
+                <select id="workspace-drug-class" name="drug_class" required>
+                    <option value="">ابتدا کلاس را انتخاب کنید</option>
+                    {% for item in drug_class_options %}<option value="{{ item.class_key }}">{{ item.label }}</option>{% endfor %}
+                </select>
+            </div>
+            <div class="fld">
+                <label for="workspace-drug-name">نام دارو</label>
+                <select id="workspace-drug-name" name="drug_name" required>
+                    <option value="">انتخاب دارو از فهرست استاندارد</option>
+                    {% for item in drug_catalog %}<option value="{{ item.generic_fa }}" data-drug-class="{{ item.drug_class_key }}">{{ item.generic_fa }}</option>{% endfor %}
+                </select>
+            </div>
+            <div class="fld">
+                <label for="workspace-drug-dose">دوز</label>
+                <input id="workspace-drug-dose" name="dose" list="workspace-drug-dose-options" autocomplete="off" placeholder="دوز استاندارد را انتخاب یا مقدار لازم را وارد کنید">
+                <datalist id="workspace-drug-dose-options">
+                    {% for item in drug_catalog %}{% for dose in item.doses %}<option value="{{ dose }}"></option>{% endfor %}{% endfor %}
+                </datalist>
+            </div>
             <div class="fld"><label for="workspace-drug-schedule">برنامه مصرف</label><input id="workspace-drug-schedule" name="schedule" placeholder="مثلاً روزی دو بار"></div>
             <div class="fld"><label for="workspace-refill-interval">فاصله تجدید</label><select id="workspace-refill-interval" name="refill_interval"><option value="">بدون یادآوری</option><option value="15">۱۵ روز</option><option value="30">۱ ماه</option><option value="60">۲ ماه</option><option value="90">۳ ماه</option></select></div>
             <button class="btn" type="submit">افزودن دارو</button>
         </form>
+        <p class="muted text-xs mt-2">نام دارو از کاتالوگ استاندارد ثبت می‌شود؛ کلاس و دوزهای پیشنهادی با انتخاب دارو همگام می‌شوند.</p>
     </details>
     {% endif %}
 </section>
