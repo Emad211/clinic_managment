@@ -77,16 +77,52 @@ def _to_float(raw):
 @bp.route("/<int:pid>/lab/add", methods=["POST"])
 @login_required
 def add_lab(pid):
-    """Batch + catalog-aware lab entry.
+    """Catalog-aware single entry plus the historical batch/legacy contracts.
 
-    The redesigned record form posts parallel arrays (one row per chosen test):
-    test_name[], test_key[], value[], unit[], ref_low[], ref_high[] + a single
-    taken_date. Each row with a non-empty test_name AND value is inserted.
-    Falls back to the legacy single-row fields if the arrays aren't present.
+    Patient Workspace posts ``catalog_test_key``. The server resolves the
+    canonical name, unit and reference range from ``lab_test_catalog`` so the
+    browser cannot silently create a second spelling/unit for a known test.
+
+    The redesigned legacy record form still posts parallel arrays (one row per
+    chosen test): test_name[], test_key[], value[], unit[], ref_low[],
+    ref_high[] + a single taken_date. Historical single-row fields remain as a
+    compatibility fallback.
     """
     repo = VitalsRepository()
     taken = jalali_to_gregorian_str(request.form.get("taken_date", ""))
     taken_at = f"{taken} 12:00:00" if taken else None
+
+    catalog_test_key = (request.form.get("catalog_test_key") or "").strip()
+    if catalog_test_key:
+        from src.adapters.sqlite.lab_catalog_repo import LabCatalogRepository
+
+        catalog_test = LabCatalogRepository().get(catalog_test_key)
+        value = _to_float(request.form.get("value"))
+        if not catalog_test:
+            flash("آزمایش انتخاب‌شده در فهرست استاندارد پیدا نشد", "error")
+            return redirect(url_for("patients.detail", pid=pid) + "#record")
+        if value is None:
+            flash("مقدار آزمایش نامعتبر است", "error")
+            return redirect(url_for("patients.detail", pid=pid) + "#record")
+        repo.add_lab(
+            pid,
+            test_name=catalog_test["name_fa"],
+            test_key=catalog_test["test_key"],
+            value=value,
+            unit=catalog_test.get("unit") or None,
+            ref_low=catalog_test.get("ref_low"),
+            ref_high=catalog_test.get("ref_high"),
+            taken_at=taken_at,
+            notes=request.form.get("notes") or None,
+            recorded_by=g.user["username"],
+        )
+        log_activity(
+            "lab_add",
+            f"ثبت آزمایش کاتالوگ: {catalog_test['test_key']}",
+            patient_link_id=pid,
+        )
+        flash("آزمایش ثبت شد", "success")
+        return redirect(url_for("patients.detail", pid=pid) + "#record")
 
     names = request.form.getlist("test_name[]")
     if names:
