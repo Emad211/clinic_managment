@@ -39,7 +39,7 @@ Active branch:
 
 Current branch state verified after this development turn:
 
-- 26 commits ahead of the Stage 2 proven SHA and 0 behind.
+- Branch remains ahead-only of the Stage 2 proven SHA and is 0 behind.
 - Native five-tab server-rendered Workspace remains canonical.
 - Legacy `/patients/<pid>` compatibility redirect and mutation return-to-tab behavior remain in place.
 - The pre-existing Stage-2-era file `tests/test_frontend_automation_patient_workspace_v2.py` was found to test an obsolete JavaScript-composed Workspace. It has now been replaced with native runtime tests for canonical redirect, all five tabs, catalog controls and mutation continuity.
