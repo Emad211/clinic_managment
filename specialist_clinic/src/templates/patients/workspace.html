@@ -37,7 +37,7 @@
             <div><span>پیگیری باز</span><strong>{{ followups|length|fa_num }}</strong></div>
             <div><span>داروی فعال</span><strong>{{ medications|selectattr('is_active')|list|length|fa_num }}</strong></div>
             <div><span>نوبت پیش‌رو</span><strong>{{ appt_summary.upcoming|length|fa_num }}</strong></div>
-            <div><span>سند ویزیت</span><strong>{{ encounter_documents|length|fa_num }}</strong></div>
+            <div><span>ویزیت ثبت‌شده</span><strong>{{ visits_count|fa_num }}</strong></div>
         </div>
     </header>
 
