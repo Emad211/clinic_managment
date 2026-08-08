@@ -5,9 +5,9 @@
 
 <section class="work-center-summary" aria-label="خلاصه ویزیت و خدمات">
     <div class="work-center-kpi"><b>{{ appointments|length|fa_num }}</b><span>نوبت ثبت‌شده</span></div>
-    <div class="work-center-kpi"><b>{{ visit_history|length|fa_num }}</b><span>ویزیت تاریخی</span></div>
-    <div class="work-center-kpi"><b>{{ encounter_documents|length|fa_num }}</b><span>سند امضاشده</span></div>
-    <div class="work-center-kpi"><b>{{ service_line_summary.total|fa_num }}</b><span>خدمت متصل</span></div>
+    <div class="work-center-kpi"><b>{{ visit_history|length|fa_num }}</b><span>مراجعه ثبت‌شده</span></div>
+    <div class="work-center-kpi"><b>{{ followups|length|fa_num }}</b><span>پیگیری باز</span></div>
+    <div class="work-center-kpi"><b>{{ service_line_summary.total|fa_num }}</b><span>خدمت ثبت‌شده</span></div>
 </section>
 
 <div class="workspace-two-column">
@@ -26,7 +26,7 @@
     </section>
 
     <section class="card" aria-labelledby="workspace-service-lines-title">
-        <div class="section-title"><svg class="icon"><use href="#i-activity"></use></svg><div><div id="workspace-service-lines-title">خدمات متصل به Encounter</div><div class="section-sub">شمارش فقط از lineage قابل اثبات.</div></div></div>
+        <div class="section-title"><svg class="icon"><use href="#i-activity"></use></svg><div><div id="workspace-service-lines-title">خدمات ثبت‌شده</div><div class="section-sub">فقط خدماتی که اتصال آن‌ها به مراجعه قابل اثبات است.</div></div></div>
         <div class="workspace-fact-grid">
             <div><span>ویزیت</span><b>{{ service_line_summary.visits|fa_num }}</b></div>
             <div><span>تزریق</span><b>{{ service_line_summary.injections|fa_num }}</b></div>
@@ -36,25 +36,27 @@
     </section>
 </div>
 
-<section class="card" aria-labelledby="workspace-documents-title">
-    <div class="section-title"><svg class="icon"><use href="#i-file-text"></use></svg><div><div id="workspace-documents-title">اسناد امضاشده ویزیت</div><div class="section-sub">نسخه جاری هر Encounter؛ نسخه‌های قبلی در جزئیات سند حفظ شده‌اند.</div></div></div>
-    {% if encounter_documents %}
-    <div class="workspace-document-list">
-        {% for document in encounter_documents %}
-        <article class="workspace-document-card">
-            <div>
-                <div class="flex gap-2 wrap"><span class="badge badge-ok">امضاشده</span><span class="badge badge-info">{{ document.encounter_type }}</span><span class="badge badge-muted">{{ document.outcome_code }}</span></div>
-                <h3>{{ document.assessment }}</h3>
-                <p class="muted text-sm">{{ document.plan }}</p>
-                {% if document.followup_instructions %}<p class="text-sm"><b>پیگیری:</b> {{ document.followup_instructions }}</p>{% endif %}
-                <small class="muted">{{ document.authored_at|jalali }} · ثبت‌کننده: {{ document.actor_username }}</small>
-            </div>
-            <a class="btn btn-sm btn-ghost" href="{{ url_for('doctor_queue.document_detail', invoice_id=document.accounting_invoice_id) }}">جزئیات سند</a>
-        </article>
-        {% endfor %}
+<details class="card workspace-entry-details" aria-labelledby="workspace-documents-title">
+    <summary id="workspace-documents-title">یادداشت‌ها و اسناد نهایی ویزیت</summary>
+    <div class="auto-technical__body">
+        <p class="muted text-sm">این بخش برای مراجعه به جزئیات ثبت نهایی نگه داشته شده و جزو کار روزمرهٔ اصلی نیست.</p>
+        {% if encounter_documents %}
+        <div class="workspace-document-list">
+            {% for document in encounter_documents %}
+            <article class="workspace-document-card">
+                <div>
+                    <h3>{{ document.assessment }}</h3>
+                    <p class="muted text-sm">{{ document.plan }}</p>
+                    {% if document.followup_instructions %}<p class="text-sm"><b>پیگیری:</b> {{ document.followup_instructions }}</p>{% endif %}
+                    <small class="muted">{{ document.authored_at|jalali }}</small>
+                </div>
+                <a class="btn btn-sm btn-ghost" href="{{ url_for('doctor_queue.document_detail', invoice_id=document.accounting_invoice_id) }}">جزئیات فنی</a>
+            </article>
+            {% endfor %}
+        </div>
+        {% else %}<div class="empty-mini">یادداشت نهایی ثبت‌شده‌ای برای نمایش وجود ندارد.</div>{% endif %}
     </div>
-    {% else %}<div class="empty-mini">سند Encounter امضاشده‌ای ثبت نشده است.</div>{% endif %}
-</section>
+</details>
 
 <section class="card care-timeline-card" aria-labelledby="workspace-care-timeline-title">
     <div class="section-title"><svg class="icon"><use href="#i-activity"></use></svg><div><div id="workspace-care-timeline-title">تاریخچه مراقبت</div><div class="section-sub">ویزیت، خدمت، آزمایش، نوبت، دارو و پیگیری در یک خط زمانی.</div></div></div>
