@@ -1,6 +1,6 @@
 # Frontend Growth Automation — Execution Plan
 
-**Status:** active, Stage 3 hardening before growth expansion  
+**Status:** active — Stage 3 hardening, catalog accuracy restored; focused proof still pending  
 **Branch:** `feat/frontend-automation-v2-patient-workspace`  
 **Last verified:** 2026-08-08  
 **Primary product goals:** follow-up, automation, revenue growth, patient growth, accuracy.
@@ -33,16 +33,30 @@
 
 ### Stage 3 — Native Patient Workspace
 
-- Active branch: `feat/frontend-automation-v2-patient-workspace`
-- Verified delta from Stage 2: 15 commits ahead, 10 product files changed, no Stage 3 runtime test file committed yet.
-- Implemented: canonical `/patients/<pid>/workspace`, five server-rendered tabs, legacy compatibility redirect, mutation redirect-to-tab behavior, read-only `PatientWorkspaceService`, sticky patient header, responsive CSS, medication history and contextual links.
-- Known gaps:
-  - `lab_catalog` and `drug_catalog` are loaded but new lab/medication forms still accept key identity fields as free text.
-  - Legacy medication UI already had class → drug → dose catalog cascade; Stage 3 currently regresses that accuracy.
-  - Patient Workspace still emphasizes encounter documents and technical care artifacts more than return/revenue/business context.
-  - Actions still eject the user to several external surfaces instead of completing enough work in patient context.
-  - Workspace registration is coupled to the extension blueprint via `ext.py`.
-  - `FRONTEND_AUTOMATION_V2_EXECUTION_ROADMAP.md` is stale and still describes Stage 2 as active.
+Active branch:
+
+`feat/frontend-automation-v2-patient-workspace`
+
+Current branch state verified after this development turn:
+
+- 26 commits ahead of the Stage 2 proven SHA and 0 behind.
+- Native five-tab server-rendered Workspace remains canonical.
+- Legacy `/patients/<pid>` compatibility redirect and mutation return-to-tab behavior remain in place.
+- The pre-existing Stage-2-era file `tests/test_frontend_automation_patient_workspace_v2.py` was found to test an obsolete JavaScript-composed Workspace. It has now been replaced with native runtime tests for canonical redirect, all five tabs, catalog controls and mutation continuity.
+- Medication entry now selects the drug name from `drug_catalog`; class is required; a progressive class → drug → standard-dose helper uses the catalog while the base select remains usable without JavaScript.
+- Lab entry now posts `catalog_test_key`; the existing `/vitals/<pid>/lab/add` endpoint resolves canonical test name, unit and reference range on the server before persistence. Existing batch and legacy contracts remain available.
+- Visit-document count was removed from the primary patient header KPI.
+- Messaging-consent controls were moved under advanced details rather than being shown as normal daily work.
+- Final visit documents were demoted to a collapsed secondary section; appointment, visit, open follow-up and service facts are primary.
+- `FRONTEND_AUTOMATION_V2_EXECUTION_ROADMAP.md` is now aligned with Stage 2 proven / Stage 3 active status and points post-Stage-3 sequencing to this growth plan.
+
+Stage 3 still needs:
+
+- focused execution of `tests/test_frontend_automation_patient_workspace_v2.py` in a runnable checkout;
+- fixes for any real failures from that focused test only;
+- recent contact/outcome and return/retention context in Summary/Actions using existing data where available;
+- minimal decoupling of Patient Workspace registration from `src/api/ext.py`;
+- focused browser acceptance for desktop, 360px and keyboard.
 
 ## Seven implementation stages
 
@@ -50,14 +64,24 @@
 
 Goal: finish Patient Workspace without introducing growth scope prematurely.
 
-- Add focused runtime tests for all five tabs, legacy redirect, mutation redirect continuity and role-aware actions.
-- Restore catalog-aware medication entry using the existing `drug_catalog` and existing canonical drug identity behavior.
-- Restore catalog-aware lab entry using the existing `lab_catalog`, including canonical name/unit defaults where supported by current endpoints.
-- Remove or demote document/signature-oriented copy from primary patient KPIs.
-- Improve Actions/Summary so next action, recent contact, open work and booking are more directly actionable.
-- Decouple Patient Workspace registration from the prescription-extension blueprint when a minimal app-registration seam is available.
+Completed in current implementation:
 
-Exit: Stage 3 has focused runtime coverage and does not reduce clinical data accuracy compared with the legacy patient page.
+- native five-tab route and Jinja structure;
+- focused native test coverage written;
+- catalog-aware medication identity and progressive dose guidance;
+- server-authoritative lab catalog identity;
+- document/signature ceremony demoted from primary patient KPIs;
+- messaging-consent controls demoted from the normal action flow;
+- old V2 roadmap corrected.
+
+Remaining:
+
+- execute focused Stage 3 tests and repair only observed failures;
+- improve Summary/Actions with recent contact, clearer return context and next-action evidence;
+- decouple Patient Workspace registration from the prescription-extension blueprint;
+- perform focused visual/browser verification.
+
+Exit: Stage 3 is focused-test green, browser-smoke verified, and does not reduce clinical data accuracy compared with the legacy patient page.
 
 ### 2. Revenue Cockpit and operational value visibility
 
@@ -139,10 +163,9 @@ Exit: no high-severity browser defect remains and the five product goals are sup
 
 ## Immediate continuation order
 
-1. Create Stage 3 focused runtime tests (do not run broad suites).
-2. Restore medication catalog cascade/identity.
-3. Restore lab catalog selection/defaults.
-4. Tighten Patient Workspace summary/actions around return, open work and next action; demote document-oriented KPIs.
-5. Run only the new Stage 3 focused test file(s) and directly related existing tests.
-6. Update `FRONTEND_AUTOMATION_V2_EXECUTION_ROADMAP.md` to mark Stage 2 proven and Stage 3 active.
-7. Only after Stage 3 is focused-test green, begin Revenue Cockpit work.
+1. Run only `tests/test_frontend_automation_patient_workspace_v2.py` in a runnable checkout; do not run a broad suite.
+2. Fix only failures observed in that focused file and directly related code.
+3. Add recent contact/outcome and stronger return/retention context to Patient Workspace Summary/Actions from existing authoritative data.
+4. Decouple Patient Workspace registration from `src/api/ext.py` with the smallest app-factory change.
+5. Perform focused desktop/360px/keyboard browser verification when a browser-capable checkout is available.
+6. Once Stage 3 is focused-test green, start Revenue Cockpit work; do not jump to Encounter Autosave first.
