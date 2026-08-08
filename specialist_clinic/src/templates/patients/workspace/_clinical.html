@@ -116,12 +116,18 @@
         <summary>ثبت نتیجه آزمایش</summary>
         <form method="post" action="{{ url_for('vitals.add_lab', pid=patient.id) }}" class="workspace-lab-form">
             <input type="hidden" name="workspace_tab" value="clinical">
-            <div class="fld"><label for="workspace-lab-name">نام آزمایش</label><input id="workspace-lab-name" name="test_name" required></div>
+            <div class="fld">
+                <label for="workspace-lab-key">آزمایش</label>
+                <select id="workspace-lab-key" name="catalog_test_key" required>
+                    <option value="">انتخاب از فهرست استاندارد</option>
+                    {% for item in lab_catalog %}<option value="{{ item.test_key }}">{{ item.name_fa }}{% if item.unit %} — {{ item.unit }}{% endif %}</option>{% endfor %}
+                </select>
+            </div>
             <div class="fld"><label for="workspace-lab-value">مقدار</label><input id="workspace-lab-value" type="number" step="any" name="value" required></div>
-            <div class="fld"><label for="workspace-lab-unit">واحد</label><input id="workspace-lab-unit" name="unit"></div>
             <div class="fld"><label for="workspace-lab-date">تاریخ</label><input id="workspace-lab-date" class="jdate" name="taken_date" placeholder="خالی = امروز"></div>
             <button class="btn" type="submit">ثبت آزمایش</button>
         </form>
+        <p class="muted text-xs mt-2">نام، واحد و محدوده مرجع از کاتالوگ آزمایش روی سرور ثبت می‌شود و از فرم آزاد گرفته نمی‌شود.</p>
     </details>
     {% endif %}
 </section>
