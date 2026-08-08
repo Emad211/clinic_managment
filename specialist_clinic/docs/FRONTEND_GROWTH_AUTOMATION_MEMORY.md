@@ -38,70 +38,104 @@ Do not optimize the product around signatures, commitments, policy ceremony or s
 
 ### Stage 3 — Patient Workspace
 
-- Active branch is 15 commits ahead of Stage 2 before this memory/plan documentation commit series.
-- Verified Stage 3 product delta contained 10 files and no committed Stage 3 runtime tests.
-- Current implementation has:
-  - canonical `/patients/<pid>/workspace` route;
-  - five Jinja/server-rendered tabs;
-  - legacy detail redirect with `?legacy=1` escape hatch;
-  - mutation redirect rewriting back to the relevant workspace tab;
-  - read-only `PatientWorkspaceService` using existing repositories/facade;
-  - Summary / Actions / Clinical / Meds / Encounters partials;
-  - sticky responsive header and 360px-oriented CSS;
-  - medication active/inactive history and medication events;
-  - patient appointment context and Work Center links.
+Verified native implementation:
 
-## Verified gaps
+- canonical `/patients/<pid>/workspace` route;
+- five Jinja/server-rendered tabs;
+- legacy detail redirect with `?legacy=1` escape hatch;
+- mutation redirect rewriting back to the relevant workspace tab;
+- read-only `PatientWorkspaceService` using existing repositories/facade;
+- Summary / Actions / Clinical / Meds / Encounters partials;
+- sticky responsive header and 360px-oriented CSS;
+- medication active/inactive history and medication events;
+- patient appointment context and Work Center links.
 
-### Accuracy regression
+Important historical correction discovered on 2026-08-08:
 
-`PatientWorkspaceService` already supplies `lab_catalog` and `drug_catalog`, but the new workspace forms do not consume them for canonical entry.
+- `tests/test_frontend_automation_patient_workspace_v2.py` already existed at the Stage 2 SHA.
+- It was not valid coverage for the current native Workspace; it asserted an obsolete JavaScript-composed five-tab implementation and assets that the native Stage 3 no longer uses.
+- The prior Connector `422: "sha" wasn't supplied` happened because the path existed and needed an update with its real blob SHA, not a create call.
+- The stale file has now been replaced with native runtime tests covering canonical redirect, five tabs, catalog-bound forms, server-canonical lab persistence and medication return continuity.
 
-- New lab entry uses free-text `test_name` and `unit`.
-- New medication entry uses free-text `drug_name`, `dose` and schedule.
-- Legacy patient page already embeds the drug catalog and supports a class → drug → dose cascade.
+## Changes completed in the 2026-08-08 development turn
 
-Therefore the first product fix is to restore existing catalog-aware behavior, not invent a new subsystem.
+### Catalog accuracy
 
-### Patient 360 / business context gap
+Medication:
 
-The workspace still overweights technical/encounter artifacts:
+- Added `src/static/js/patient-workspace-catalogs-v2.js`.
+- New medication entry uses a server-rendered catalog select for canonical `drug_name` rather than a free-text identity field.
+- Drug class is required.
+- JavaScript progressively filters class → drug and provides standard-dose choices from `drug_catalog`.
+- The base medication select remains usable without JavaScript; the script does not persist data or call a parallel API.
 
-- header KPI includes visit-document count;
-- Encounters tab foregrounds signed documents and Encounter vocabulary;
-- Summary lacks recent contact outcome, acquisition source, cancellation/no-show history, retention signal and provable patient value context;
-- several Actions still redirect to other pages instead of finishing the task in patient context.
+Lab:
 
-### Architecture debt
+- Patient Workspace now posts `catalog_test_key` rather than free-text test identity/unit.
+- `src/api/vitals.py` resolves the catalog row on the server.
+- Canonical `name_fa`, `test_key`, `unit`, `ref_low` and `ref_high` are persisted from `lab_test_catalog`.
+- The existing batch form and historical single-row fallback remain intact.
 
-Patient Workspace registration is currently performed from `src/api/ext.py` inside the extension blueprint's `record_once` hook. This is a coupling smell. Fix only with a small registration move; do not start an application-bootstrap rewrite.
+### UX de-emphasis of non-goal ceremony
 
-### Documentation debt
+- Primary patient header KPI changed from visit-document count to recorded-visit count.
+- SMS consent/settings remain accessible but moved under collapsed advanced details in Actions.
+- Encounter document count was removed from the primary visit summary.
+- Final visit documents remain accessible only as a collapsed secondary section; normal visit, appointment, follow-up and service facts are primary.
+- Technical `Encounter` wording was removed from the primary service summary copy.
 
-`docs/FRONTEND_AUTOMATION_V2_EXECUTION_ROADMAP.md` is stale:
+### Documentation
 
-- it still says Stage 2 is active;
-- its Current continuation section still points to Stage 2;
-- Stage 2 is actually proven and Stage 3 is active.
+- Added and then updated `FRONTEND_GROWTH_AUTOMATION_EXECUTION_PLAN.md`.
+- Added and then updated this working-memory file.
+- Updated `FRONTEND_AUTOMATION_V2_EXECUTION_ROADMAP.md` so Stage 2 is proven, Stage 3 is active, broad suites are not run during implementation, and post-Stage-3 sequencing follows the growth plan instead of jumping to Encounter Autosave.
 
-### Browser state
+### Commits created during this turn
 
-Doctor Queue code currently renders a safe unavailable state instead of crashing when its read-only source fails, and its template contains current / waiting / completed-today sections. Sidebar is role-aware and matches the automation IA. However final visual/browser acceptance is still pending, so do not claim the historical browser defect is fully proven fixed until browser verification is performed.
+Key product/test commits:
+
+- `ade195b4efe6a9bd7252673b1870b6e1c4a1d28c` — medication catalog cascade JS
+- `c3573479f7232ecb56d6129005f4028a910f5b4f` — catalog medication entry
+- `55a28767150ccada81fd1557e8c881c7f53b5566` — load Workspace catalog enhancement
+- `5051a26f22e5d29212bbcb8cbe990d3da64481bc` — server-canonical lab identity
+- `1a6aff3539fd935733d38d2aeeee94b5c8e107ae` — catalog-authoritative lab form
+- `fd2dceb9e0843f3ecab73e30c8ce0ad46218bd16` — replace stale Workspace tests with native runtime coverage
+- `2fbf9627504dc5ebea16ebd10cb1b56c23036213` — remove document KPI from patient header
+- `07e13fa5dcecc3f102b797f7c73b004115623a66` — demote messaging consent controls
+- `356a5bcca66c6b3fb04c3fac0785140e2d81b863` — demote document ceremony in visit history
+- `896c6252d3cf2d2b962e1584d159355853d2e84f` — align old V2 roadmap with active Stage 3 and growth sequencing
+
+## Verification state
+
+Repository state was re-compared to the Stage 2 proven SHA after product/test changes. At that checkpoint the branch was 26 commits ahead and 0 behind, and the diff included the native Workspace files, the new catalog JS, the lab API change and the rewritten Patient Workspace test file.
+
+No broad suite was run. No test execution is being claimed in this turn. The focused Stage 3 test file is written but still needs execution in a runnable checkout.
+
+Doctor Queue code currently renders a safe unavailable state instead of crashing when its read-only source fails, and its template contains current / waiting / completed-today sections. Sidebar is role-aware and matches the automation IA. Final visual/browser acceptance is still pending, so do not claim the historical browser defect is fully proven fixed until browser verification is performed.
+
+## Remaining verified gaps
+
+1. Run only `tests/test_frontend_automation_patient_workspace_v2.py` and repair real failures.
+2. Patient Workspace still needs recent contact/outcome, clearer return/retention context, acquisition/source and other business facts where authoritative data already exists.
+3. Some actions still leave the Workspace instead of completing in patient context.
+4. Patient Workspace registration remains coupled to the extension blueprint via `src/api/ext.py`; fix with a small registration move only.
+5. Browser acceptance for desktop, 360px, keyboard, Doctor Queue and sidebar remains pending.
+6. Revenue Cockpit, lifecycle/acquisition, outcome attribution and automation playbooks have not started yet.
 
 ## Exact next action
 
-1. Add Stage 3 focused runtime tests.
-2. Restore catalog-aware medication entry.
-3. Restore catalog-aware lab entry/defaults.
-4. Tighten Summary/Actions around patient return and open work; demote document-centric copy.
-5. Run only focused Stage 3 and directly related tests.
-6. Update the old V2 roadmap status.
-7. Then start the Revenue Cockpit stage from `FRONTEND_GROWTH_AUTOMATION_EXECUTION_PLAN.md`.
+1. Execute only the focused Stage 3 test file in a runnable checkout; do not run broad suites.
+2. Fix any observed Stage 3 failures.
+3. Read the existing repositories/services for contact outcomes, appointment status history and financial lineage, then add recent-contact/return context to Patient Workspace without inventing parallel data.
+4. Decouple Patient Workspace registration from `src/api/ext.py` minimally.
+5. Perform focused browser verification when browser execution is available.
+6. Then start Revenue Cockpit work from `FRONTEND_GROWTH_AUTOMATION_EXECUTION_PLAN.md`.
 
 ## Persistent guardrails for future turns
 
 - Read this file and `FRONTEND_GROWTH_AUTOMATION_EXECUTION_PLAN.md` before making the next product change.
 - Update both files in every development turn with what actually changed, what was verified and the new exact continuation point.
 - Never state that a file/test/commit exists until it has been verified in the repository.
+- Never interpret a Connector create error as proof that a path is missing; fetch the path and use its real SHA if it already exists.
 - Do not run broad suites by default.
 - Keep the five owner outcomes visible in UX decisions: follow-up, automation, revenue, patient growth, accuracy.
