@@ -81,3 +81,7 @@
     </details>
 </section>
 {% endblock %}
+{% block scripts %}
+{{ super() }}
+<script src="{{ url_for('static', filename='js/patient-workspace-catalogs-v2.js') }}"></script>
+{% endblock %}
