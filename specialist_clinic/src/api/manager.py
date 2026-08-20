@@ -5,7 +5,6 @@ from src.adapters.sqlite.core import get_db
 from src.adapters.sqlite.sms_repo import SmsRepository
 from src.services.auth_service import AuthService
 from src.services.activity_logger import log_activity
-from src.adapters import accounting_bridge
 from src.common.network import get_network_info
 from src.config.settings import Config
 from src.common.utils import iran_now
@@ -360,10 +359,52 @@ def settings():
     except (IndexError, ValueError):
         request_port = Config.PORT
     network_info = get_network_info(request_port)
-    network_info['accounting_bridge_available'] = accounting_bridge.is_available()
-    return render_template(
-        "manager/settings.html", data=data, network_info=network_info, active_page='manager'
+    from src.services.accounting_connection_service import (
+        AccountingConnectionService,
     )
+
+    accounting_connection = AccountingConnectionService().status().as_dict()
+    network_info['accounting_bridge_available'] = accounting_connection["ok"]
+    return render_template(
+        "manager/settings.html",
+        data=data,
+        network_info=network_info,
+        accounting_connection=accounting_connection,
+        active_page='manager',
+    )
+
+
+@bp.post("/settings/accounting")
+@manager_required
+@permission_required(Permission.SMS_SETTINGS_MANAGE)
+def accounting_connection_update():
+    from src.services.accounting_connection_service import (
+        AccountingConnectionError,
+        AccountingConnectionService,
+    )
+
+    service = AccountingConnectionService()
+    action = str(request.form.get("action") or "save").strip().lower()
+    try:
+        if action == "discover":
+            result = service.discover_and_save()
+            success = "حسابداری سیب پیدا شد و اتصال آن فعال شد."
+        elif action == "save":
+            result = service.save(request.form.get("accounting_db_path", ""))
+            success = "مسیر حسابداری ذخیره و اتصال فقط‌خواندنی فعال شد."
+        else:
+            raise AccountingConnectionError("عملیات اتصال حسابداری شناخته‌شده نیست.")
+        log_activity(
+            "accounting_connection_update",
+            "اتصال فقط‌خواندنی حسابداری سیب تأیید و فعال شد",
+        )
+        flash(
+            f"{success} تعداد بیماران قابل‌خواندن: {result.patient_count or 0}",
+            "success",
+        )
+    except AccountingConnectionError as exc:
+        flash(f"اتصال حسابداری فعال نشد: {exc}", "error")
+    return redirect(url_for("manager.settings") + "#accounting-connection")
 
 
 @bp.route("/users", methods=["GET", "POST"])

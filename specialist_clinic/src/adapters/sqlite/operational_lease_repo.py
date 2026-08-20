@@ -164,9 +164,11 @@ class OperationalLeaseRepository:
                 db.rollback()
                 return False
             heartbeat = datetime.fromisoformat(row["heartbeat_at"])
-            expiry = current
-            if expiry <= heartbeat:
-                expiry = heartbeat + timedelta(seconds=1)
+            # Values are persisted with second precision by `_text`.  A release
+            # later in the same wall-clock second (for example 12:00:00.900)
+            # would otherwise serialize to the exact heartbeat timestamp and
+            # violate the storage invariant `heartbeat_at < expires_at`.
+            expiry = max(current, heartbeat + timedelta(seconds=1))
             cursor = db.execute(
                 """UPDATE operational_leases SET expires_at=?
                    WHERE lease_name=? AND owner_id=? AND fencing_token=?""",

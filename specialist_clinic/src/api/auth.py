@@ -2,6 +2,8 @@ import functools
 
 from flask import (
     Blueprint,
+    abort,
+    current_app,
     flash,
     g,
     jsonify,
@@ -34,6 +36,11 @@ from src.security.permissions import Permission, permission_required
 from src.security.route_policy import enforce_route_permission
 from src.services.activity_logger import log_activity
 from src.services.auth_service import AuthService
+from src.services.first_run_service import (
+    FirstRunService,
+    FirstRunValidationError,
+)
+from src.common.network_policy import is_loopback_remote
 
 
 bp = Blueprint("auth", __name__, url_prefix="/auth")
@@ -72,6 +79,8 @@ manager_required = permission_required(Permission.SECURITY_GRANT_MANAGE)
 
 @bp.route("/login", methods=("GET", "POST"))
 def login():
+    if FirstRunService().setup_required():
+        return redirect(url_for("auth.setup"))
     service = AuthService()
     if request.method == "POST":
         username = request.form.get("username", "")
@@ -95,6 +104,54 @@ def login():
             )
             return redirect(url_for("dashboard.index"))
     return render_template("auth/login.html")
+
+
+@bp.route("/setup", methods=("GET", "POST"))
+def setup():
+    if not is_loopback_remote(request.remote_addr):
+        abort(403)
+    service = FirstRunService()
+    target = service.setup_target()
+    if target is None:
+        return redirect(url_for("auth.login"))
+
+    if request.method == "POST":
+        try:
+            user = service.complete(
+                username=request.form.get("username", ""),
+                password=request.form.get("password", ""),
+                password_confirm=request.form.get("password_confirm", ""),
+                full_name=request.form.get("full_name", ""),
+            )
+        except FirstRunValidationError as exc:
+            flash(str(exc))
+        except Exception:
+            current_app.logger.exception("Secure first-run setup failed")
+            flash("راه‌اندازی کامل نشد؛ لطفاً دوباره تلاش کنید.")
+        else:
+            session.clear()
+            log_activity(
+                "secure_first_run_completed",
+                "Secure manager credentials configured",
+                user_id=int(user["id"]),
+                username=str(user["username"]),
+            )
+            if (
+                not current_app.config.get("TESTING", False)
+                and current_app.config.get("START_SCHEDULER", True)
+            ):
+                try:
+                    from src.services.scheduler import init_scheduler
+
+                    init_scheduler(current_app._get_current_object())
+                except Exception:
+                    current_app.logger.exception(
+                        "Scheduler did not start after first-run setup"
+                    )
+            flash("راه‌اندازی امن تکمیل شد. اکنون وارد شوید.")
+            return redirect(url_for("auth.login"))
+
+    return render_template("auth/setup.html", target=target)
 
 
 @bp.post("/logout")

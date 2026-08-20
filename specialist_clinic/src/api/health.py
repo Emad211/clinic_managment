@@ -3,8 +3,9 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from flask import Blueprint, jsonify
+from flask import Blueprint, current_app, jsonify
 
+from src.adapters import accounting_bridge, specialist_accounting_invoice_reader
 from src.adapters.sqlite.clinical_audit_integrity_schema import (
     ensure_clinical_audit_integrity_storage,
 )
@@ -64,6 +65,7 @@ from src.security.permissions import Permission, permission_required
 from src.services.clinical_audit_integrity import (
     ClinicalAuditIntegrityService,
 )
+from src.services.first_run_service import FirstRunService
 
 
 bp = Blueprint("health", __name__, url_prefix="/health")
@@ -149,7 +151,9 @@ def _readiness_checks() -> dict[str, bool]:
             "SELECT name FROM sqlite_master WHERE type='table'"
         ).fetchall()
     }
-    schema_ok = _REQUIRED_TABLES <= tables
+    from src.adapters.sqlite.core import schema_contract_ok
+
+    schema_ok = _REQUIRED_TABLES <= tables and schema_contract_ok(db)
 
     activation = ClinicalEngineActivationRepository()
     raw_mode = activation.raw_mode()
@@ -163,7 +167,9 @@ def _readiness_checks() -> dict[str, bool]:
     audit = ClinicalAuditIntegrityService().verify_latest(
         require_checkpoint=raw_mode in {"on_selected", "on"}
     )
-    audit_ok = audit.ok
+    audit_ok = audit.ok and current_app.extensions.get(
+        "activity_audit_healthy", True
+    )
 
     # A RUNNING job is unhealthy only when it is old and no matching live lease
     # owns its fencing token. This reports no job name, owner or timestamp.
@@ -171,7 +177,7 @@ def _readiness_checks() -> dict[str, bool]:
         """SELECT 1
            FROM operational_job_runs job
            WHERE job.status='RUNNING'
-             AND datetime(job.started_at) < datetime('now','-2 hours')
+             AND datetime(job.started_at) < datetime('now','+3 hours','+30 minutes','-2 hours')
              AND NOT EXISTS (
                  SELECT 1 FROM operational_leases lease
                  WHERE lease.lease_name=job.lease_name
@@ -292,6 +298,11 @@ def _readiness_checks() -> dict[str, bool]:
     return {
         "database": integrity_ok,
         "schema": schema_ok,
+        "accounting_bridge": (
+            accounting_bridge.is_available()
+            and specialist_accounting_invoice_reader.is_available()
+        ),
+        "first_run": not FirstRunService().setup_required(),
         "activation": activation_ok,
         "audit": audit_ok,
         "worker": worker_ok,
@@ -316,9 +327,12 @@ def ready():
     try:
         checks = _readiness_checks()
     except Exception:
+        current_app.logger.exception("readiness check failed")
         checks = {
             "database": False,
             "schema": False,
+            "accounting_bridge": False,
+            "first_run": False,
             "activation": False,
             "audit": False,
             "worker": False,
@@ -345,9 +359,12 @@ def details():
         checks = _readiness_checks()
         error = None
     except Exception:
+        current_app.logger.exception("readiness details check failed")
         checks = {
             "database": False,
             "schema": False,
+            "accounting_bridge": False,
+            "first_run": False,
             "activation": False,
             "audit": False,
             "worker": False,

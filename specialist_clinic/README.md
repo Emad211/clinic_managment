@@ -21,11 +21,18 @@ python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
 .\.venv\Scripts\python.exe start.py
 ```
-مرورگر روی `http://127.0.0.1:8090` باز می‌شود. ورود اولیه: `admin` / `admin`.
+مرورگر روی `http://127.0.0.1:8090` باز می‌شود. در اولین اجرا هیچ رمز پیش‌فرضی
+وجود ندارد؛ فرم راه‌اندازی امن، حساب مدیر و رمز قوی را دریافت می‌کند. نصب‌های قدیمی
+که هنوز `admin/admin` دارند نیز تا تغییر رمز از همان رایانه متوقف می‌شوند.
 
 ## اتصال به دیتابیس حسابداری
-به‌صورت پیش‌فرض دیتابیس حسابداری در `../webapp/clinic_new.db` خوانده می‌شود
-(فقط-خواندنی؛ هرگز نوشته نمی‌شود). برای مسیر دیگر، متغیر محیطی تنظیم کنید:
+مدیر از مسیر **تنظیمات سیستم → اتصال به حسابداری سیب** نشانی محلی
+`clinic_new.db` را وارد می‌کند. فرم، مسیر مستقیم دیتابیس، پوشهٔ حسابداری یا خود
+`HesabdariSib.exe` را می‌پذیرد، ساختار و سلامت فایل را بررسی می‌کند و فقط پس از
+تأیید اتصال `mode=ro` آن را فعال می‌کند. مسیر در دیتابیس خود کلینیک ذخیره می‌شود
+و بدون restart در صف پزشک، همگام‌سازی فاکتور و گزارش مالی استفاده می‌شود.
+
+در استقرارهای مدیریت‌شده می‌توان مسیر UI را با متغیر محیطی زیر قفل کرد:
 ```powershell
 $env:ACCOUNTING_DB_PATH = "C:\path\to\clinic_new.db"
 ```
@@ -40,17 +47,15 @@ $env:ACCOUNTING_DB_PATH = "C:\path\to\clinic_new.db"
 
 ## ساخت فایل اجرایی (.exe)
 ```powershell
-.\.venv\Scripts\python.exe -m pip install pyinstaller
-.\.venv\Scripts\pyinstaller --noconfirm --onefile --noconsole `
-  --add-data "src/templates;src/templates" `
-  --add-data "src/static;src/static" `
-  --add-data "src/adapters/sqlite/schema.sql;src/adapters/sqlite" `
-  --add-data "src/domain/clinical_engine/schemas;src/domain/clinical_engine/schemas" `
-  --add-data "src/domain/clinical_engine/rule_artifacts;src/domain/clinical_engine/rule_artifacts" `
-  --name SpecialistClinic start.py
+.\scripts\build_release.ps1
 ```
-دیتابیس `specialist.db` و پوشه `backups` کنار فایل exe ساخته می‌شوند.
-مسیر دیتابیس حسابداری را با متغیر `ACCOUNTING_DB_PATH` تنظیم کنید.
+این فرایند از dependency lock و `SpecialistClinic.spec` استفاده می‌کند، تمام تست‌ها
+را اجرا می‌کند و سپس self-test را روی خود EXE انجام می‌دهد. راهنمای preflight،
+پشتیبان‌گیری و بازیابی در [`docs/RELEASE_RUNBOOK.md`](docs/RELEASE_RUNBOOK.md) است.
+
+دیتابیس `specialist.db`، secret تصادفی نصب و پوشه `backups` کنار فایل exe ساخته
+می‌شوند. سرور Waitress به‌طور پیش‌فرض فقط روی `127.0.0.1` گوش می‌دهد. مسیر دیتابیس
+حسابداری را پس از اولین ورود از صفحهٔ تنظیمات انتخاب کنید.
 
 ## معماری
 ```

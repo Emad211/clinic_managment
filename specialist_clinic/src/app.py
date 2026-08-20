@@ -6,9 +6,22 @@ import webbrowser
 from datetime import datetime, timedelta
 
 import click
-from flask import Flask, g, redirect, render_template, session, url_for
+from flask import (
+    Flask,
+    g,
+    jsonify,
+    redirect,
+    render_template,
+    request,
+    session,
+    url_for,
+)
 
 from src.adapters.sqlite.core import close_connection, get_db
+from src.common.install_secret import (
+    is_strong_secret,
+    load_or_create_install_secret,
+)
 from src.config.settings import Config, DEFAULT_SECRET_KEY
 from src.security.csrf import install_csrf
 from src.security.permissions import permissions_for_template
@@ -33,13 +46,32 @@ def create_app(test_config=None):
     app.config.from_object(Config)
     if test_config is not None:
         app.config.update(test_config)
+    from src.services.activity_logger import activity_audit_marker_exists
 
-    if app.config.get("PRODUCTION") and not app.config.get("TESTING", False):
-        if app.config.get("SECRET_KEY") in (None, DEFAULT_SECRET_KEY):
+    app.extensions["activity_audit_healthy"] = not activity_audit_marker_exists(
+        app.config["DATABASE_PATH"], instance_path=app.instance_path
+    )
+
+    testing = bool(app.config.get("TESTING", False))
+    production = bool(app.config.get("PRODUCTION")) and not testing
+    configured_secret = app.config.get("SECRET_KEY")
+    if production:
+        if (
+            configured_secret in (None, DEFAULT_SECRET_KEY)
+            or not is_strong_secret(configured_secret)
+        ):
             raise RuntimeError(
                 "PRODUCTION=1 but SECRET_KEY is unset or the insecure default. "
                 "Set a strong SECRET_KEY before production startup."
             )
+    elif not testing and configured_secret in (None, DEFAULT_SECRET_KEY):
+        app.config["SECRET_KEY"] = load_or_create_install_secret(
+            database_path=app.config.get("DATABASE_PATH") or "",
+            project_root=app.config.get("PROJECT_ROOT") or base_dir,
+            explicit_path=app.config.get("INSTALL_SECRET_PATH"),
+        )
+    elif testing and not configured_secret:
+        app.config["SECRET_KEY"] = "specialist-clinic-test-secret"
     app.config.setdefault("SESSION_COOKIE_HTTPONLY", True)
     app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
     app.config["SESSION_COOKIE_SECURE"] = bool(
@@ -149,6 +181,35 @@ def create_app(test_config=None):
         health_bp,
     ):
         app.register_blueprint(blueprint)
+
+    @app.before_request
+    def enforce_secure_first_run():
+        from src.services.first_run_service import FirstRunService
+
+        if not FirstRunService().setup_required():
+            return None
+        if request.endpoint in {
+            "auth.setup",
+            "health.live",
+            "health.ready",
+            "static",
+        }:
+            return None
+        if (
+            request.is_json
+            or request.path.startswith("/api/")
+            or request.accept_mimetypes.best == "application/json"
+        ):
+            return (
+                jsonify(
+                    {
+                        "error": "first_run_setup_required",
+                        "status": "not_ready",
+                    }
+                ),
+                503,
+            )
+        return redirect(url_for("auth.setup"))
 
     @app.template_filter("jalali")
     def jalali_filter(value):
@@ -407,6 +468,30 @@ def create_app(test_config=None):
             404,
         )
 
+    from src.adapters.accounting_bridge import AccountingBridgeError
+
+    @app.errorhandler(AccountingBridgeError)
+    def accounting_bridge_error(error):
+        app.logger.exception(
+            "read-only accounting bridge failed",
+            exc_info=(type(error), error, error.__traceback__),
+        )
+        message = error.user_message
+        if request.path.startswith("/patients/api/"):
+            return jsonify(
+                {"error": {"code": error.code, "message": message}}
+            ), error.status_code
+        return (
+            render_template(
+                "errors/error.html",
+                status_code=503,
+                error_title="حسابداری در دسترس نیست",
+                error_message=message,
+                active_page=None,
+            ),
+            error.status_code,
+        )
+
     @app.errorhandler(500)
     def internal_error(_error):
         return (
@@ -423,23 +508,37 @@ def create_app(test_config=None):
             500,
         )
 
-    if not app.config.get("TESTING", False):
+    if not testing and app.config.get("START_SCHEDULER", True):
         try:
             from src.services.scheduler import init_scheduler
+            from src.services.first_run_service import FirstRunService
 
-            init_scheduler(app)
+            with app.app_context():
+                setup_complete = not FirstRunService().setup_required()
+            if setup_complete:
+                init_scheduler(app)
+            else:
+                app.logger.warning(
+                    "[scheduler] suspended until secure first-run is complete"
+                )
         except Exception as exc:
             print(f"[scheduler] not started: {exc}")
 
     return app
 
 
-def open_browser():
-    url = f"http://127.0.0.1:{Config.PORT}/"
+def open_browser(*, port: int | None = None) -> bool:
+    url = f"http://127.0.0.1:{port or Config.PORT}/"
+    if os.name == "nt":
+        try:
+            os.startfile(url)
+            return True
+        except (AttributeError, OSError):
+            pass
     try:
-        webbrowser.open(url)
-    except Exception:
-        pass
+        return bool(webbrowser.open(url, new=2))
+    except (OSError, webbrowser.Error):
+        return False
 
 
 if __name__ == "__main__":

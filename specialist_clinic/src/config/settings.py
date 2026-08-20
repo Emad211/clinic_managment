@@ -61,7 +61,13 @@ class Config:
     BACKUP_FOLDER = os.path.join(PROJECT_ROOT, 'backups')
 
     # Network
+    HOST = os.environ.get('CLINIC_BIND_HOST', '127.0.0.1').strip() or '127.0.0.1'
     PORT = int(os.environ.get('PORT', 8090))
+    SERVER_THREADS = max(2, int(os.environ.get('CLINIC_SERVER_THREADS', 8)))
+    OPEN_BROWSER = not _env_flag('CLINIC_NO_BROWSER')
+    START_SCHEDULER = not _env_flag('CLINIC_NO_SCHEDULER')
+    INSTALL_SECRET_PATH = os.environ.get('CLINIC_INSTALL_SECRET_PATH')
+    CREATE_TEST_ADMIN = True
 
     DEBUG = _env_flag('DEBUG')
     TESTING = False

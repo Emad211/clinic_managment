@@ -20,6 +20,7 @@ id consumed. The query also re-checks the last FLOOR_DAYS by `closed_at` to catc
 late-closed, low-id invoice (de-duplicated by the ledger).
 """
 from datetime import timedelta
+import logging
 
 from src.adapters import accounting_bridge
 from src.adapters.sqlite.invoice_sync_repo import InvoiceSyncRepository
@@ -30,6 +31,7 @@ from src.common.utils import iran_now
 CURSOR_KEY = "invoice_sync_last_id"
 FLOOR_DAYS = 30          # reconciliation window for late-closed low-id invoices
 BATCH_LIMIT = 500
+logger = logging.getLogger(__name__)
 
 # Free-text accounting procedure_type → follow-up invite event (keyword match). The
 # accounting app stores procedure_type as free text, so we match by keyword; calibrate
@@ -84,26 +86,40 @@ class InvoiceSyncService:
                 new += 1
                 if not plid:
                     pending += 1
-            # Outreach is DECOUPLED from the ledger idempotency key: gated on
-            # `outreach_done`, not on `inserted`. A closed invoice is recorded once, but
-            # its thank-you/invite is retried on later passes until it succeeds — so a
-            # transient failure (e.g. a DB lock mid-enqueue) never silently loses the SMS.
-            # enqueue is itself idempotent (engagement period_key). Per-row guarded so one
-            # bad row blocks neither the cursor nor the other rows' outreach. (Freshly
-            # inserted rows are outreach_done=0 by definition, so skip the extra read.)
-            if plid and (inserted or not self.repo.outreach_done(inv_id)):
-                try:
-                    self.on_invoice_processed(plid, r)
-                    self.repo.mark_outreach_done(inv_id)
-                except Exception as e:  # deferred — retried next pass within the FLOOR window
-                    print(f"[invoice-sync] outreach deferred for invoice {inv_id}: {e}")
             if inv_id > max_id:
                 max_id = inv_id
 
         # Advance the cursor only after the batch processed without raising (fail-loud).
         if max_id > last_id:
             self.settings.set_setting(CURSOR_KEY, str(max_id))
-        return {"fetched": len(rows), "new": new, "pending_link": pending, "cursor": max_id}
+
+        # The local ledger is the durable retry source. It is deliberately drained
+        # after cursor advancement, so old invoices and later patient enrollments do
+        # not depend on the accounting query's rolling 30-day floor.
+        relinked = self.repo.reconcile_pending_links()
+        outreach_completed = outreach_failed = 0
+        for invoice in self.repo.pending_outreach(limit=limit):
+            invoice_id = int(invoice["invoice_id"])
+            try:
+                self.on_invoice_processed(
+                    int(invoice["patient_link_id"]), invoice
+                )
+                self.repo.mark_outreach_done(invoice_id)
+                outreach_completed += 1
+            except Exception:
+                outreach_failed += 1
+                logger.exception(
+                    "invoice outreach deferred invoice_id=%s", invoice_id
+                )
+        return {
+            "fetched": len(rows),
+            "new": new,
+            "pending_link": pending,
+            "relinked": relinked,
+            "outreach_completed": outreach_completed,
+            "outreach_failed": outreach_failed,
+            "cursor": max_id,
+        }
 
     def on_invoice_processed(self, patient_link_id, invoice):
         """Phase 2: invoice-triggered outreach via the physician approval queue.

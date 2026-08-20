@@ -35,7 +35,7 @@ Most domain comments and UI strings are Persian. The product is RTL/Jalali throu
 **Specialist Clinic** (known-good venv, Python 3.13):
 ```powershell
 cd specialist_clinic
-.\.venv\Scripts\python.exe start.py        # http://127.0.0.1:8090 — login admin/admin
+.\.venv\Scripts\python.exe start.py        # http://127.0.0.1:8090 — secure first-run wizard
 ```
 
 **Accounting** (`webapp`):
@@ -43,19 +43,29 @@ cd specialist_clinic
 cd webapp
 python start.py                            # http://127.0.0.1:8080  (or run.bat)
 ```
-Both `start.py` scripts open a browser tab after ~1.5s and run with `debug=False`, `use_reloader=False`. Use a system Python or a fresh venv for `webapp`; `specialist_clinic/.venv` is the known-good interpreter for the specialist app.
+The Specialist Clinic entrypoint serves through Waitress and binds to `127.0.0.1`
+by default; it never creates a default real user. The accounting entrypoint retains
+its existing local Flask runner. Both open a browser tab after ~1.5s. Use a system
+Python or a fresh venv for `webapp`; `specialist_clinic/.venv` is the known-good
+interpreter for the specialist app.
 
 ### Seeding / CLI
 - `specialist_clinic`: `.\.venv\Scripts\python.exe seed_demo_data.py` — idempotently rebuilds the canonical **10-patient longitudinal cohort** (`TEST0001..TEST0010`) with 5.5 years of vitals, labs, treatments, notes, appointments, histories, and safety-positive controls. It replaces only `TESTxxxx` clinical records and preserves real patients. **Use this cohort for all clinical-engine development/testing.**
 - `webapp`: `flask --app src.app init-db` and `flask --app src.app create-user <username> <password> [role]`; helper scripts under `webapp/scripts/`.
 
 ### Tests
-There is **no automated test suite** in either app — verify changes by exercising the running app. Both `create_app` factories accept a `test_config`/`TestConfig` with `DATABASE_PATH=':memory:'`.
+Both apps have pytest regression suites under their `tests/` directories. Run
+`specialist_clinic/.venv/Scripts/python.exe -m pytest specialist_clinic/tests -q`
+for the specialist app. Both `create_app` factories accept a
+`test_config`/`TestConfig` with `DATABASE_PATH=':memory:'`.
 
 ### Building the .exe (PyInstaller)
 Each app ships as a single Windows `.exe` that creates its DB and `backups/` next to the executable.
 - `webapp`: `pyinstaller HesabdariSib.spec` (bundles `src/templates`, `src/static`, `schema.sql`).
-- `specialist_clinic`: see the `pyinstaller` command in `specialist_clinic/README.md`; pass `ACCOUNTING_DB_PATH` to point the build at the real accounting DB.
+- `specialist_clinic`: run `specialist_clinic/scripts/build_release.ps1`. It uses
+  the committed `SpecialistClinic.spec`, locked dependencies, full regression
+  checks and a frozen self-test. Pass `ACCOUNTING_DB_PATH` at runtime to point the
+  executable at the real accounting DB.
 
 Both `create_app` factories detect frozen mode via `sys.frozen` / `sys._MEIPASS`. Keep that dual source/frozen path handling intact when touching app/config bootstrap or adding bundled data files (and update the PyInstaller `datas`/command, or the file will be missing from the `.exe`).
 
@@ -77,7 +87,7 @@ A route calls a service; a service calls a repository. **Do not put SQL in route
 - **No migration framework.** `src/adapters/sqlite/schema.sql` is the source of truth and is applied on first connection (idempotent via `IF NOT EXISTS` / `INSERT OR IGNORE`). Schema changes to existing DBs are made with **additive runtime migrations** (an `_ensure_column(...)`/`_run_migrations` call in `core.py`) that must be safe to re-run. Never assume a fresh DB.
 - **Jalali dates everywhere.** Conversion via `src/common/jalali.py` + `utils.py`, exposed as Jinja filters. UI date inputs are Jalali (`YYYY/MM/DD`) and converted to Gregorian server-side before storage. Persian digits via a `fa_num` filter.
 - **Iran local time (UTC+3:30).** Timestamps are stored as Tehran local time via `utils.iran_now()` (OS-timezone-independent) or SQLite `datetime('now','+3 hours','+30 minutes')`. Never introduce naive `datetime.now()` / UTC timestamps.
-- **Auth & roles.** Passwords use `bcrypt`; legacy `werkzeug` hashes migrate to bcrypt on successful login. After **5 failed attempts the account locks for 15 minutes**. `webapp` roles: `manager` / `reception` / `doctor`. `specialist_clinic` roles: `manager` / `staff` (login `admin/admin`); it has both `login_required` and `manager_required` decorators.
+- **Auth & roles.** Passwords use `bcrypt`; legacy `werkzeug` hashes migrate to bcrypt on successful login. After **5 failed attempts the account locks for 15 minutes**. `webapp` roles: `manager` / `reception` / `doctor`. `specialist_clinic` roles: `manager` / `staff`; a fresh real database uses the loopback-only secure first-run wizard and has no default password. Legacy `admin/admin` is forced through that wizard before use. It has both `login_required` and `manager_required` decorators.
 - **Activity logging.** Log new state-changing actions into the `activity_logs` table via each app's activity logger.
 - **Automatic backups.** A daemon thread copies the DB weekly into `backups/`, keeping the last few. Started from `create_app` unless `TESTING`.
 

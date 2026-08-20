@@ -10,6 +10,82 @@
     </div>
 </header>
 
+<section id="accounting-connection" class="card accounting-settings" aria-labelledby="accounting-settings-title">
+    <div class="section-title">
+        <svg class="icon"><use href="#i-wallet"></use></svg>
+        <span id="accounting-settings-title">اتصال به حسابداری سیب</span>
+        <span class="section-sub">خواندن زندهٔ بیمار، فاکتور و درآمد؛ همیشه فقط‌خواندنی</span>
+    </div>
+
+    <div class="accounting-status-panel {% if accounting_connection.ok %}is-connected{% else %}is-disconnected{% endif %}"
+         role="status" aria-live="polite">
+        <div class="accounting-status-icon" aria-hidden="true">
+            <svg class="icon"><use href="#i-{{ 'check' if accounting_connection.ok else 'alert' }}"></use></svg>
+        </div>
+        <div>
+            <b>{{ 'اتصال برقرار است' if accounting_connection.ok else 'اتصال برقرار نیست' }}</b>
+            <div>{{ accounting_connection.message }}</div>
+        </div>
+        <span class="badge">{{ accounting_connection.source_label }}</span>
+    </div>
+
+    {% if accounting_connection.ok %}
+    <div class="accounting-facts">
+        <div>
+            <span>بیماران قابل‌خواندن</span>
+            <b class="nums">{{ accounting_connection.patient_count|fa_num }}</b>
+        </div>
+        <div>
+            <span>نوع دسترسی</span>
+            <b><svg class="icon icon-sm"><use href="#i-shield"></use></svg> فقط‌خواندنی</b>
+        </div>
+    </div>
+    {% endif %}
+
+    <form method="post" action="{{ url_for('manager.accounting_connection_update') }}" class="accounting-path-form">
+        <div class="fld">
+            <label for="accounting-db-path">مسیر دیتابیس حسابداری</label>
+            <input id="accounting-db-path"
+                   class="input-ltr accounting-path-input"
+                   type="text"
+                   name="accounting_db_path"
+                   value="{{ accounting_connection.path }}"
+                   placeholder="C:\HesabdariSib\clinic_new.db"
+                   spellcheck="false"
+                   autocomplete="off"
+                   {% if accounting_connection.source == 'environment' %}disabled aria-disabled="true"{% else %}required{% endif %}>
+            <div class="help">
+                می‌توانید مسیر مستقیم <code>clinic_new.db</code>، پوشهٔ حسابداری یا خود
+                <code>HesabdariSib.exe</code> را وارد کنید. فایل جابه‌جا یا کپی نمی‌شود؛
+                کلینیک همان دیتابیس اصلی را زنده می‌خواند.
+            </div>
+        </div>
+
+        {% if accounting_connection.source == 'environment' %}
+        <div class="alert-banner alert-info">
+            <svg class="icon"><use href="#i-info"></use></svg>
+            <div>این مسیر با تنظیم سیستمی <code>ACCOUNTING_DB_PATH</code> قفل شده است. برای مدیریت مسیر از این صفحه، آن تنظیم سیستمی را حذف کنید.</div>
+        </div>
+        {% else %}
+        <div class="accounting-actions">
+            <button class="btn" type="submit" name="action" value="save">
+                <svg class="icon"><use href="#i-save"></use></svg>
+                ذخیره و بررسی اتصال
+            </button>
+            <button class="btn btn-ghost" type="submit" name="action" value="discover" formnovalidate>
+                <svg class="icon"><use href="#i-search"></use></svg>
+                یافتن خودکار حسابداری سیب
+            </button>
+        </div>
+        {% endif %}
+    </form>
+
+    <div class="accounting-active-path">
+        <span>مسیر فعال</span>
+        <code class="nums" dir="ltr">{{ accounting_connection.path or 'تنظیم نشده' }}</code>
+    </div>
+</section>
+
 <form method="post" class="settings-workspace" id="settings-form">
     <nav class="settings-nav" aria-label="بخش‌های تنظیمات">
         <a href="#settings-network"><svg class="icon icon-sm"><use href="#i-building"></use></svg> شبکه و حسابداری</a>
@@ -58,7 +134,7 @@
                 </div>
                 <label class="settings-secret-clear"><input type="checkbox" name="clear_kavenegar_api_key" value="1" data-sensitive-clear> پاک‌کردن کلید ذخیره‌شده کاوه‌نگار</label>
 
-                <details class="auto-technical" data-technical-details {% if data.sms_provider=='mediana' %}open{% endif %}">
+                <details class="auto-technical" data-technical-details {% if data.sms_provider=='mediana' %}open{% endif %}>
                     <summary>پنل جایگزین مدیانا</summary>
                     <div class="auto-technical__body">
                         <div class="settings-provider-status"><div><b>مدیانا</b><div class="muted text-xs">فقط در صورت انتخاب به‌عنوان پنل فعال</div></div>{% if data.mediana_api_key_set %}<span class="badge badge-ok">کلید تنظیم شده</span>{% else %}<span class="badge badge-warn">کلید تنظیم نشده</span>{% endif %}</div>
