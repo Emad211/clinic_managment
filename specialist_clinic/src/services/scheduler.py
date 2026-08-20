@@ -29,6 +29,7 @@ logger = logging.getLogger(__name__)
 class Scheduler:
     LEASE_NAME = "specialist-clinic:scheduler"
     LEASE_TTL_SECONDS = 1800
+    LEASE_HEARTBEAT_SECONDS = 60
 
     def __init__(self, app=None):
         self.app = app
@@ -95,8 +96,35 @@ class Scheduler:
             return False
         if not should_run:
             return True
+        heartbeat_stop = threading.Event()
+        heartbeat_errors: list[Exception] = []
+
+        def heartbeat():
+            while not heartbeat_stop.wait(self.LEASE_HEARTBEAT_SECONDS):
+                try:
+                    with self.app.app_context():
+                        OperationalLeaseRepository().renew(
+                            lease,
+                            ttl_seconds=self.LEASE_TTL_SECONDS,
+                            now=iran_now(),
+                        )
+                except Exception as exc:
+                    heartbeat_errors.append(exc)
+                    logger.exception(
+                        "[scheduler] lease heartbeat failed job=%s", job_name
+                    )
+                    return
+
+        heartbeat_thread = threading.Thread(
+            target=heartbeat,
+            name=f"lease-heartbeat:{job_name}",
+            daemon=True,
+        )
+        heartbeat_thread.start()
         try:
             result = callback()
+            if heartbeat_errors:
+                raise LeaseLost("lease heartbeat failed during job")
             if result is False:
                 raise RuntimeError(f"{job_name}_reported_failure")
         except Exception as exc:
@@ -114,6 +142,9 @@ class Scheduler:
                     job_name,
                 )
             return False
+        finally:
+            heartbeat_stop.set()
+            heartbeat_thread.join(timeout=2)
         try:
             repo.finish_job(job_key, lease, succeeded=True)
         except LeaseLost:
@@ -137,63 +168,63 @@ class Scheduler:
             logger.debug("[scheduler] another process owns the lease")
             return
         try:
-            if self._run_once(
+            def run(**kwargs):
+                nonlocal lease
+                lease = leases.renew(
+                    lease,
+                    ttl_seconds=self.LEASE_TTL_SECONDS,
+                    now=iran_now(),
+                )
+                return self._run_once(lease=lease, **kwargs)
+
+            if run(
                 job_name="clinical-followups",
                 period_key=today,
-                lease=lease,
                 callback=self._run_clinical_followups,
             ):
                 self._last_followup_day = today
-            self._run_once(
+            run(
                 job_name="clinical-audit-checkpoint",
                 period_key=today,
-                lease=lease,
                 callback=self._seal_clinical_audit,
             )
 
             period = self._bucket(now)
-            self._run_once(
+            run(
                 job_name="clinical-alerts",
                 period_key=period,
-                lease=lease,
                 callback=self._run_clinical_alerts,
             )
-            self._run_once(
+            run(
                 job_name="administrative-engagement",
                 period_key=period,
-                lease=lease,
                 callback=self._run_engagement,
             )
-            self._run_once(
+            run(
                 job_name="invoice-sync",
                 period_key=period,
-                lease=lease,
                 callback=self._sync_invoices,
             )
-            self._run_once(
+            run(
                 job_name="specialist-financial-reconciliation",
                 period_key=period,
-                lease=lease,
                 callback=self._reconcile_specialist_finance,
             )
-            self._run_once(
+            run(
                 job_name="due-campaigns",
                 period_key=period,
-                lease=lease,
                 callback=self._run_due_campaigns,
             )
-            self._run_once(
+            run(
                 job_name="sms-delivery-reconciliation",
                 period_key=period,
-                lease=lease,
                 callback=self._reconcile_sms_delivery,
             )
 
             if now.weekday() == 5 and now.hour == 3:
-                if self._run_once(
+                if run(
                     job_name="verified-backup",
                     period_key=today,
-                    lease=lease,
                     callback=self._backup,
                 ):
                     self._last_backup_day = today
@@ -269,6 +300,12 @@ class Scheduler:
                 result["pending_link"],
                 result["cursor"],
             )
+        if result.get("outreach_failed"):
+            logger.error(
+                "[scheduler] invoice outreach retry failures=%s",
+                result["outreach_failed"],
+            )
+            return False
         return True
 
     def _reconcile_specialist_finance(self):
@@ -320,7 +357,11 @@ class Scheduler:
     def _backup(self):
         """Create, verify and attest one atomic SQLite online-backup snapshot."""
         if not self.db_path.exists():
-            return True
+            logger.error(
+                "[scheduler] backup source database is missing path=%s",
+                self.db_path,
+            )
+            return False
         try:
             from src.services.backup_integrity import BackupIntegrityService
 
@@ -329,6 +370,7 @@ class Scheduler:
                 self.backup_dir,
                 prefix="backup_auto",
                 keep=4,
+                deadline_seconds=600,
             )
             logger.info(
                 "[scheduler] verified backup created file=%s bytes=%s sha256=%s",

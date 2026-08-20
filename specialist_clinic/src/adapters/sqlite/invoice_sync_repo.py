@@ -46,6 +46,44 @@ class InvoiceSyncRepository:
             (accounting_invoice_id,))
         db.commit()
 
+    def reconcile_pending_links(self) -> int:
+        """Attach old ledger rows after the matching patient is enrolled locally."""
+        db = get_db()
+        cursor = db.execute(
+            """UPDATE processed_invoices
+               SET patient_link_id=(
+                       SELECT patient.id FROM patient_links patient
+                       WHERE patient.national_id=processed_invoices.national_id
+                         AND patient.is_active=1
+                       ORDER BY patient.id LIMIT 1
+                   ),
+                   status='applied'
+               WHERE status='pending_link'
+                 AND patient_link_id IS NULL
+                 AND national_id IS NOT NULL
+                 AND EXISTS (
+                       SELECT 1 FROM patient_links patient
+                       WHERE patient.national_id=processed_invoices.national_id
+                         AND patient.is_active=1
+                   )"""
+        )
+        db.commit()
+        return int(cursor.rowcount or 0)
+
+    def pending_outreach(self, limit: int = 500) -> list[dict]:
+        """Durable retry queue, independent from the accounting polling cursor."""
+        rows = get_db().execute(
+            """SELECT accounting_invoice_id AS invoice_id,
+                      patient_link_id, national_id, full_name, work_date,
+                      closed_at, total_amount, status
+               FROM processed_invoices
+               WHERE patient_link_id IS NOT NULL AND outreach_done=0
+               ORDER BY accounting_invoice_id ASC
+               LIMIT ?""",
+            (int(limit),),
+        ).fetchall()
+        return [dict(row) for row in rows]
+
     def max_processed_id(self) -> int:
         db = get_db()
         row = db.execute(

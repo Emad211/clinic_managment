@@ -513,6 +513,74 @@ class TestScenario7NullNationalId:
         assert dict(row)["national_id"] is None
 
 
+class TestScenario7BPendingLinkReconciliation:
+    def test_old_pending_invoice_links_after_later_enrollment(
+        self, specialist_app, tmp_dir, monkeypatch
+    ):
+        _app, _spec_db, _ = specialist_app
+        acc_db = os.path.join(tmp_dir, "acc_pending_reconcile.db")
+        _make_acc_db(acc_db)
+        conn = sqlite3.connect(acc_db)
+        accounting_patient = _acc_add_patient(
+            conn, "بیمار بعداً ثبت‌شده", national_id="6777777777"
+        )
+        invoice_id = _acc_add_invoice(
+            conn,
+            accounting_patient,
+            "closed",
+            total=4000,
+            closed_at="2025-01-01 10:00:00",
+        )
+        conn.close()
+        _set_acc_path(acc_db)
+
+        from src.adapters import accounting_bridge
+        from src.adapters.sqlite.core import get_db
+        from src.services.invoice_sync_service import InvoiceSyncService
+
+        service = InvoiceSyncService()
+        service.run()
+        db = get_db()
+        pending = db.execute(
+            "SELECT * FROM processed_invoices WHERE accounting_invoice_id=?",
+            (invoice_id,),
+        ).fetchone()
+        assert pending["status"] == "pending_link"
+
+        cursor = db.execute(
+            "SELECT value FROM settings WHERE key='invoice_sync_last_id'"
+        ).fetchone()["value"]
+        db.execute(
+            """INSERT INTO patient_links
+               (national_id, full_name, enrolled_by)
+               VALUES ('6777777777','بیمار بعداً ثبت‌شده','pytest')"""
+        )
+        patient_link_id = db.execute("SELECT last_insert_rowid()").fetchone()[0]
+        db.commit()
+        monkeypatch.setattr(
+            accounting_bridge, "fetch_closed_invoices", lambda **_kwargs: []
+        )
+        processed = []
+        monkeypatch.setattr(
+            service,
+            "on_invoice_processed",
+            lambda plid, invoice: processed.append(
+                (plid, invoice["invoice_id"])
+            ),
+        )
+
+        result = service.run()
+        reconciled = db.execute(
+            "SELECT * FROM processed_invoices WHERE accounting_invoice_id=?",
+            (invoice_id,),
+        ).fetchone()
+        assert reconciled["status"] == "applied"
+        assert reconciled["patient_link_id"] == patient_link_id
+        assert reconciled["outreach_done"] == 1
+        assert processed == [(patient_link_id, invoice_id)]
+        assert result["cursor"] == int(cursor)
+
+
 # ===========================================================================
 # Scenario 8 — fail-loud: missing invoices table → exception propagates;
 #              cursor does NOT advance; missing file → [] (no crash)
@@ -550,16 +618,16 @@ class TestScenario8FailLoud:
             f"Cursor must not advance on failure; expected 42, got {cursor_val}"
         )
 
-    def test_missing_accounting_file_returns_empty_no_crash(self, specialist_app, tmp_dir):
+    def test_missing_accounting_file_fails_loud_without_advancing(self, specialist_app, tmp_dir):
         app, spec_db, _ = specialist_app
         nonexistent = os.path.join(tmp_dir, "does_not_exist.db")
         _set_acc_path(nonexistent)
 
         from src.services.invoice_sync_service import InvoiceSyncService
-        # Must NOT raise — returns [] gracefully
-        res = InvoiceSyncService().run()
-        assert res["fetched"] == 0, f"Missing acc file should return fetched=0, got {res['fetched']}"
-        assert res["new"] == 0
+        from src.adapters.accounting_bridge import AccountingBridgeUnavailable
+
+        with pytest.raises(AccountingBridgeUnavailable):
+            InvoiceSyncService().run()
 
 
 # ===========================================================================

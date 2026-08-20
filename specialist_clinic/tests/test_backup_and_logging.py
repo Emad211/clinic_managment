@@ -308,14 +308,17 @@ class TestA2Backup:
         # Oldest files (base_ts + 0..5 * 60) all predate now-3600.
         now_ts = time.time()
         base_ts = now_ts - 7200  # 2 hours ago; all dummies are older than the real backup
-        dummy_files = []
+        from src.services.backup_integrity import BackupIntegrityService
+
+        verified_files = []
         for i in range(6):
-            fname = bd / f"backup_auto_20231114_{100000 + i * 100:06d}.db"
-            conn = sqlite3.connect(str(fname))
-            conn.close()
+            verified = BackupIntegrityService().create(
+                spec_db, bd, prefix="backup_auto"
+            )
             mtime = base_ts + i * 60  # each 1 minute apart, all > 1 hour ago
-            os.utime(str(fname), (mtime, mtime))
-            dummy_files.append(fname)
+            os.utime(str(verified.database_path), (mtime, mtime))
+            os.utime(str(verified.manifest_path), (mtime, mtime))
+            verified_files.append(verified.database_path)
 
         # All 6 should exist now
         assert len(list(bd.glob("backup_auto_*.db"))) == 6
@@ -336,17 +339,18 @@ class TestA2Backup:
             "The 2 oldest dummy files should have been pruned"
         )
 
-    # ── A2-5a: missing db_path → silent return, no crash ─────────────────────
+    # ── A2-5a: missing db_path → explicit failure ─────────────────────────────
 
-    def test_missing_db_path_returns_silently(self, specialist_app):
-        """If db_path does not exist, _backup() returns without raising."""
+    def test_missing_db_path_reports_failure(self, specialist_app, caplog):
+        """A missing source database must never be recorded as a successful backup."""
         app, spec_db, backup_dir, tmp_dir = specialist_app
 
         s = _make_scheduler(app, backup_dir)
         s.db_path = Path(tmp_dir) / "nonexistent.db"  # does not exist
 
-        # Must not raise
-        s._backup()
+        with caplog.at_level(logging.ERROR, logger="src.services.scheduler"):
+            assert s._backup() is False
+        assert "source database is missing" in caplog.text
 
         files = list(Path(backup_dir).glob("backup_auto_*.db"))
         assert files == [], (

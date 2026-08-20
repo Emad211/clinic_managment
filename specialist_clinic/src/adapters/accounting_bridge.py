@@ -18,6 +18,32 @@ from typing import Any, Optional
 from src.adapters.accounting_path import accounting_db_path
 
 
+class AccountingBridgeError(RuntimeError):
+    """Base error for the clinic's strictly read-only accounting bridge."""
+
+    code = "ACCOUNTING_BRIDGE_ERROR"
+    status_code = 503
+    user_message = "خواندن دیتابیس حسابداری ممکن نیست."
+
+
+class AccountingBridgeUnavailable(AccountingBridgeError):
+    """The configured accounting database cannot be opened read-only."""
+
+    code = "ACCOUNTING_BRIDGE_UNAVAILABLE"
+    user_message = (
+        "ارتباط خواندنی با دیتابیس حسابداری برقرار نیست؛ مسیر فایل را بررسی کنید."
+    )
+
+
+class AccountingBridgeQueryError(AccountingBridgeError):
+    """The accounting database is reachable but its read contract failed."""
+
+    code = "ACCOUNTING_BRIDGE_READ_FAILED"
+    user_message = (
+        "خواندن دیتابیس حسابداری ممکن نیست؛ ساختار یا سلامت فایل را بررسی کنید."
+    )
+
+
 def _patient_name_expression(
     connection: sqlite3.Connection,
     *,
@@ -40,11 +66,11 @@ def _patient_name_expression(
     raise sqlite3.OperationalError("accounting patient name columns are unavailable")
 
 
-def _connect_ro() -> Optional[sqlite3.Connection]:
-    """Open a read-only connection to the accounting DB, or None if unavailable."""
+def _connect_ro() -> sqlite3.Connection:
+    """Open a read-only connection or raise an explicit availability error."""
     path = accounting_db_path()
     if not path or not os.path.exists(path):
-        return None
+        raise AccountingBridgeUnavailable("accounting database is unavailable")
     try:
         # mode=ro => read-only live view (sees committed writes from the accounting app).
         uri = f"file:{path.replace(os.sep, '/')}?mode=ro"
@@ -52,14 +78,17 @@ def _connect_ro() -> Optional[sqlite3.Connection]:
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA busy_timeout = 3000")
         return conn
-    except Exception:
-        return None
+    except (OSError, sqlite3.Error) as exc:
+        raise AccountingBridgeUnavailable(
+            "accounting database cannot be opened read-only"
+        ) from exc
 
 
 def is_available() -> bool:
     """True if the accounting DB exists and can be opened read-only."""
-    conn = _connect_ro()
-    if conn is None:
+    try:
+        conn = _connect_ro()
+    except AccountingBridgeError:
         return False
     try:
         name = _patient_name_expression(conn)
@@ -109,8 +138,8 @@ def search_patients(query: str, limit: int = 30) -> list[dict[str, Any]]:
                 (limit,),
             ).fetchall()
         return [dict(r) for r in rows]
-    except Exception:
-        return []
+    except sqlite3.Error as exc:
+        raise AccountingBridgeQueryError("accounting patient search failed") from exc
     finally:
         conn.close()
 
@@ -132,8 +161,8 @@ def get_patient_by_national_id(national_id: str) -> Optional[dict[str, Any]]:
             (national_id,),
         ).fetchone()
         return dict(row) if row else None
-    except Exception:
-        return None
+    except sqlite3.Error as exc:
+        raise AccountingBridgeQueryError("accounting patient lookup failed") from exc
     finally:
         conn.close()
 
@@ -167,6 +196,8 @@ def fetch_closed_invoices(last_id: int = 0, floor_date: Optional[str] = None,
             (last_id, floor_date, floor_date, limit),
         ).fetchall()
         return [dict(r) for r in rows]
+    except sqlite3.Error as exc:
+        raise AccountingBridgeQueryError("closed invoice query failed") from exc
     finally:
         conn.close()
 
@@ -194,8 +225,8 @@ def fetch_open_visit_invoices(work_date: Optional[str] = None,
         else:
             rows = conn.execute(base + " ORDER BY i.opened_at ASC LIMIT ?", (limit,)).fetchall()
         return [dict(r) for r in rows]
-    except Exception:
-        return []
+    except sqlite3.Error as exc:
+        raise AccountingBridgeQueryError("accounting visit queue query failed") from exc
     finally:
         conn.close()
 
@@ -221,8 +252,8 @@ def fetch_invoice_items(invoice_id: int) -> list[dict[str, Any]]:
             (invoice_id, invoice_id, invoice_id),
         ).fetchall()
         return [dict(r) for r in rows]
-    except Exception:
-        return []
+    except sqlite3.Error as exc:
+        raise AccountingBridgeQueryError("accounting invoice item query failed") from exc
     finally:
         conn.close()
 
@@ -242,8 +273,8 @@ def get_patient_by_id(accounting_patient_id: int) -> Optional[dict[str, Any]]:
             (accounting_patient_id,),
         ).fetchone()
         return dict(row) if row else None
-    except Exception:
-        return None
+    except sqlite3.Error as exc:
+        raise AccountingBridgeQueryError("accounting patient id lookup failed") from exc
     finally:
         conn.close()
 
@@ -308,8 +339,8 @@ def revenue_for_accounting_ids(ids: list[int], since: str | None = None,
             out['invoices'] += int(inv or 0)
         out['total'] = out['visits'] + out['injections'] + out['procedures']
         return out
-    except Exception:
-        return out
+    except sqlite3.Error as exc:
+        raise AccountingBridgeQueryError("accounting revenue query failed") from exc
     finally:
         conn.close()
 
@@ -337,8 +368,8 @@ def daily_revenue_for_accounting_ids(ids: list[int], date_from: str, date_to: st
                     if r['d']:
                         totals[r['d']] = totals.get(r['d'], 0) + int(r['s'] or 0)
         return totals
-    except Exception:
-        return totals
+    except sqlite3.Error as exc:
+        raise AccountingBridgeQueryError("accounting daily revenue query failed") from exc
     finally:
         conn.close()
 
@@ -407,8 +438,8 @@ def revenue_for_enrolled(pairs: list[tuple[int, str | None]], floor: str | None 
             out['invoices'] += int(inv or 0)
         out['total'] = out['visits'] + out['injections'] + out['procedures']
         return out
-    except Exception:
-        return out
+    except sqlite3.Error as exc:
+        raise AccountingBridgeQueryError("enrolled revenue query failed") from exc
     finally:
         conn.close()
 
@@ -454,8 +485,8 @@ def revenue_by_patient(pairs: list[tuple[int, str | None]]) -> dict[int, int]:
                     if r['pid'] is not None:
                         out[int(r['pid'])] = out.get(int(r['pid']), 0) + int(r['collected'] or 0)
         return out
-    except Exception:
-        return out
+    except sqlite3.Error as exc:
+        raise AccountingBridgeQueryError("patient revenue query failed") from exc
     finally:
         conn.close()
 
@@ -489,8 +520,8 @@ def daily_revenue_for_enrolled(pairs: list[tuple[int, str | None]], date_from: s
                     if r['d']:
                         totals[r['d']] = totals.get(r['d'], 0) + int(r['s'] or 0)
         return totals
-    except Exception:
-        return totals
+    except sqlite3.Error as exc:
+        raise AccountingBridgeQueryError("enrolled daily revenue query failed") from exc
     finally:
         conn.close()
 
@@ -545,8 +576,8 @@ def revenue_windowed(triples: list[tuple[int, str, str]]) -> dict[str, int]:
                 (*flat,)).fetchone()['c']
             out['invoices'] += int(inv or 0)
         return out
-    except Exception:
-        return out
+    except sqlite3.Error as exc:
+        raise AccountingBridgeQueryError("specialist window revenue query failed") from exc
     finally:
         conn.close()
 
@@ -559,10 +590,27 @@ def get_visit_history(accounting_patient_id: int, limit: int = 30) -> list[dict[
     if conn is None:
         return []
     try:
+        visit_columns = {
+            str(row["name"])
+            for row in conn.execute("PRAGMA table_info(visits)").fetchall()
+        }
+        if not {"id", "patient_id", "visit_date"} <= visit_columns:
+            raise sqlite3.OperationalError(
+                "accounting visits identity columns are unavailable"
+            )
+
+        def optional(column: str) -> str:
+            return (
+                f"v.{column} AS {column}"
+                if column in visit_columns
+                else f"NULL AS {column}"
+            )
+
         rows = conn.execute(
-            """
-            SELECT v.id, v.visit_date, v.doctor_name, v.price, v.insurance_type,
-                   v.supplementary_insurance, v.invoice_id
+            f"""
+            SELECT v.id, v.visit_date, {optional('doctor_name')}, {optional('price')},
+                   {optional('insurance_type')}, {optional('supplementary_insurance')},
+                   {optional('invoice_id')}
             FROM visits v
             WHERE v.patient_id = ?
             ORDER BY v.visit_date DESC
@@ -571,7 +619,7 @@ def get_visit_history(accounting_patient_id: int, limit: int = 30) -> list[dict[
             (accounting_patient_id, limit),
         ).fetchall()
         return [dict(r) for r in rows]
-    except Exception:
-        return []
+    except sqlite3.Error as exc:
+        raise AccountingBridgeQueryError("accounting visit history query failed") from exc
     finally:
         conn.close()

@@ -276,14 +276,22 @@ class TestScenario1RetryBugFix:
         # ── Patch bridge تا فقط همین فاکتور را برگرداند ───────────────────
         orig_fetch_closed = bridge_mod.fetch_closed_invoices
         orig_fetch_items = bridge_mod.fetch_invoice_items
-        bridge_mod.fetch_closed_invoices = lambda **kw: [{
-            "invoice_id": inv_id,
-            "national_id": "8800000001",
-            "full_name": "رضا امینی",
-            "work_date": "2026-06-01",
-            "closed_at": "2026-06-01 10:00:00",
-            "total_amount": 1000,
-        }]
+        fetch_calls = [0]
+
+        def fetch_once_then_outside_floor(**_kwargs):
+            fetch_calls[0] += 1
+            if fetch_calls[0] > 1:
+                return []
+            return [{
+                "invoice_id": inv_id,
+                "national_id": "8800000001",
+                "full_name": "رضا امینی",
+                "work_date": "2026-06-01",
+                "closed_at": "2026-06-01 10:00:00",
+                "total_amount": 1000,
+            }]
+
+        bridge_mod.fetch_closed_invoices = fetch_once_then_outside_floor
         bridge_mod.fetch_invoice_items = lambda inv: []
 
         # ── Patch on_invoice_processed تا بار اول raise کند ────────────────
@@ -317,10 +325,6 @@ class TestScenario1RetryBugFix:
                 f"PASS1: هیچ approval نباید باشد (outreach شکست خورد)، got {approvals_after_pass1}"
 
             # ── PASS 2: retry — outreach موفق می‌شود ───────────────────────
-            # cursor را reset کن تا همان فاکتور دوباره دیده شود
-            db.execute("DELETE FROM settings WHERE key='invoice_sync_last_id'")
-            db.commit()
-
             res2 = InvoiceSyncService().run()
             pi2 = _get_pi_row(db, inv_id)
 
@@ -333,8 +337,6 @@ class TestScenario1RetryBugFix:
                 f"got {approvals_after_pass2}"
 
             # ── PASS 3: outreach_done=1 → دیگر تلاش نشود ──────────────────
-            db.execute("DELETE FROM settings WHERE key='invoice_sync_last_id'")
-            db.commit()
             call_count_before_pass3 = call_count[0]
 
             res3 = InvoiceSyncService().run()

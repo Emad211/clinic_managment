@@ -46,6 +46,11 @@ def create_app(test_config=None):
     app.config.from_object(Config)
     if test_config is not None:
         app.config.update(test_config)
+    from src.services.activity_logger import activity_audit_marker_exists
+
+    app.extensions["activity_audit_healthy"] = not activity_audit_marker_exists(
+        app.config["DATABASE_PATH"], instance_path=app.instance_path
+    )
 
     testing = bool(app.config.get("TESTING", False))
     production = bool(app.config.get("PRODUCTION")) and not testing
@@ -461,6 +466,30 @@ def create_app(test_config=None):
                 active_page=None,
             ),
             404,
+        )
+
+    from src.adapters.accounting_bridge import AccountingBridgeError
+
+    @app.errorhandler(AccountingBridgeError)
+    def accounting_bridge_error(error):
+        app.logger.exception(
+            "read-only accounting bridge failed",
+            exc_info=(type(error), error, error.__traceback__),
+        )
+        message = error.user_message
+        if request.path.startswith("/patients/api/"):
+            return jsonify(
+                {"error": {"code": error.code, "message": message}}
+            ), error.status_code
+        return (
+            render_template(
+                "errors/error.html",
+                status_code=503,
+                error_title="حسابداری در دسترس نیست",
+                error_message=message,
+                active_page=None,
+            ),
+            error.status_code,
         )
 
     @app.errorhandler(500)

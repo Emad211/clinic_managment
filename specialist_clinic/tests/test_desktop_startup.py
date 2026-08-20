@@ -71,6 +71,34 @@ def test_second_launch_respects_no_browser(monkeypatch):
     assert result == 0
 
 
+def test_second_launch_reports_browser_failure(monkeypatch):
+    reported: list[int] = []
+    monkeypatch.setattr(start, "_clinic_is_live", lambda _port: True)
+    monkeypatch.setattr(start, "_launch_browser", lambda _port: False)
+    monkeypatch.setattr(
+        start, "_notify_browser_failure", lambda port: reported.append(port)
+    )
+
+    result = start._serve(
+        Namespace(host="127.0.0.1", port=8090, no_browser=False)
+    )
+
+    assert result != 0
+    assert reported == [8090]
+
+
+def test_browser_worker_reports_timeout(monkeypatch):
+    reported: list[int] = []
+    monkeypatch.setattr(start, "_open_browser_when_live", lambda _port: False)
+    monkeypatch.setattr(
+        start, "_notify_browser_failure", lambda port: reported.append(port)
+    )
+
+    start._browser_launch_worker(8090)
+
+    assert reported == [8090]
+
+
 def test_browser_waits_for_live_endpoint(monkeypatch):
     probes = iter((False, False, True))
     opened: list[int] = []

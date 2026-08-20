@@ -9,12 +9,17 @@ import os
 from pathlib import Path
 import shutil
 import sqlite3
+import time
 from typing import Any
 
 from src.common.utils import iran_now
 
 
 class BackupVerificationError(RuntimeError):
+    pass
+
+
+class BackupTimeoutError(TimeoutError):
     pass
 
 
@@ -47,6 +52,9 @@ def sqlite_integrity(path: Path) -> str:
 class BackupIntegrityService:
     """Accept only a manifest-matched, internally consistent SQLite snapshot."""
 
+    def __init__(self, *, clock=time.monotonic):
+        self._clock = clock
+
     def create(
         self,
         source_path: str | os.PathLike,
@@ -54,8 +62,12 @@ class BackupIntegrityService:
         *,
         prefix: str = "backup_manual",
         keep: int | None = None,
+        deadline_seconds: float = 600,
     ) -> VerifiedBackup:
         """Create an online SQLite snapshot, attest it, then verify the result."""
+        if deadline_seconds <= 0:
+            raise ValueError("backup deadline must be positive")
+        deadline = self._clock() + float(deadline_seconds)
         source_database = Path(source_path).resolve()
         if not source_database.is_file():
             raise FileNotFoundError(f"source database is missing: {source_database}")
@@ -72,7 +84,11 @@ class BackupIntegrityService:
             try:
                 output = sqlite3.connect(str(staging), timeout=30)
                 try:
-                    source.backup(output, pages=-1)
+                    def _deadline_guard(_status, _remaining, _total):
+                        if self._clock() >= deadline:
+                            raise BackupTimeoutError("backup deadline exceeded")
+
+                    source.backup(output, pages=256, progress=_deadline_guard)
                     output.commit()
                 finally:
                     output.close()
@@ -109,15 +125,27 @@ class BackupIntegrityService:
             verified = self.verify(destination, manifest_path=manifest_path)
 
             if keep is not None and keep > 0:
-                backups = sorted(
-                    folder.glob(f"{prefix}_*.db"),
-                    key=lambda file: file.stat().st_mtime,
-                    reverse=True,
+                backups = []
+                for candidate in folder.glob(f"{prefix}_*.db"):
+                    try:
+                        self.verify(candidate)
+                    except BackupVerificationError:
+                        continue
+                    backups.append(candidate)
+                backups.sort(
+                    key=lambda file: file.stat().st_mtime, reverse=True
                 )
                 for old in backups[keep:]:
                     old.unlink(missing_ok=True)
                     old.with_suffix(".manifest.json").unlink(missing_ok=True)
             return verified
+        except Exception:
+            # Publishing a database without its attestation is not a backup. Since
+            # two filesystem entries cannot be atomically replaced together, undo
+            # either final artifact on every post-publish failure.
+            destination.unlink(missing_ok=True)
+            manifest_path.unlink(missing_ok=True)
+            raise
         finally:
             staging.unlink(missing_ok=True)
             manifest_staging.unlink(missing_ok=True)

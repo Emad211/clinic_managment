@@ -8,6 +8,7 @@ from flask import g, current_app
 from src.config.settings import Config
 
 _initialized = False
+_initialized_db_path = None
 
 _CLINICAL_ENGINE_V2_TABLES = frozenset({
     "clinical_rule_versions",
@@ -82,13 +83,30 @@ def _load_schema_text():
 
 
 def _ensure_column(db, table: str, column: str, decl: str):
-    try:
-        cols = db.execute(f"PRAGMA table_info({table})").fetchall()
-        if not any(c["name"] == column for c in cols):
-            db.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
-            db.commit()
-    except Exception:
-        pass
+    cols = db.execute(f"PRAGMA table_info({table})").fetchall()
+    if not cols:
+        raise sqlite3.OperationalError(f"migration table is missing: {table}")
+    if not any(c["name"] == column for c in cols):
+        db.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
+        db.commit()
+
+
+_CRITICAL_INDEXES = frozenset({
+    "idx_sms_messages_idempotency",
+    "idx_sms_messages_delivery_due",
+    "idx_wallet_tx_idempotency",
+})
+
+
+def schema_contract_ok(db) -> bool:
+    """Return whether the critical additive-migration postconditions hold."""
+    indexes = {
+        str(row["name"])
+        for row in db.execute(
+            "SELECT name FROM sqlite_master WHERE type='index'"
+        ).fetchall()
+    }
+    return _CRITICAL_INDEXES <= indexes
 
 
 def _seed_condition_meta(db):
@@ -106,19 +124,16 @@ def _seed_condition_meta(db):
         ('thyroid', 50, 'i-stethoscope', 'ok',
          'پایش TSH و تنظیم درمان تیروئید.'),
     ]
-    try:
-        for code, order, icon, color, desc in meta:
-            db.execute(
-                """UPDATE conditions SET
-                     display_order = CASE WHEN display_order IS NULL OR display_order=100 THEN ? ELSE display_order END,
-                     icon        = COALESCE(icon, ?),
-                     color       = COALESCE(color, ?),
-                     description = COALESCE(description, ?)
-                   WHERE code = ?""",
-                (order, icon, color, desc, code))
-        db.commit()
-    except Exception:
-        pass
+    for code, order, icon, color, desc in meta:
+        db.execute(
+            """UPDATE conditions SET
+                 display_order = CASE WHEN display_order IS NULL OR display_order=100 THEN ? ELSE display_order END,
+                 icon        = COALESCE(icon, ?),
+                 color       = COALESCE(color, ?),
+                 description = COALESCE(description, ?)
+               WHERE code = ?""",
+            (order, icon, color, desc, code))
+    db.commit()
 
 
 def _seed_flag_sections(db):
@@ -152,26 +167,23 @@ def _seed_flag_sections(db):
     flag_overrides = {
         'metabolic_surgery': 'disease',
     }
-    try:
-        # Per-flag overrides FIRST so they win over the category mapping; still
-        # guarded by IS NULL so manager edits are preserved.
-        for flag_key, section in flag_overrides.items():
-            db.execute(
-                "UPDATE flag_catalog SET record_section = ? "
-                "WHERE record_section IS NULL AND flag_key = ?",
-                (section, flag_key))
-        # Then map known categories; anything still unmapped falls back to 'general'.
-        for category, section in category_to_section.items():
-            db.execute(
-                "UPDATE flag_catalog SET record_section = ? "
-                "WHERE record_section IS NULL AND category = ?",
-                (section, category))
+    # Per-flag overrides FIRST so they win over the category mapping; still
+    # guarded by IS NULL so manager edits are preserved.
+    for flag_key, section in flag_overrides.items():
         db.execute(
-            "UPDATE flag_catalog SET record_section = 'general' "
-            "WHERE record_section IS NULL")
-        db.commit()
-    except Exception:
-        pass
+            "UPDATE flag_catalog SET record_section = ? "
+            "WHERE record_section IS NULL AND flag_key = ?",
+            (section, flag_key))
+    # Then map known categories; anything still unmapped falls back to 'general'.
+    for category, section in category_to_section.items():
+        db.execute(
+            "UPDATE flag_catalog SET record_section = ? "
+            "WHERE record_section IS NULL AND category = ?",
+            (section, category))
+    db.execute(
+        "UPDATE flag_catalog SET record_section = 'general' "
+        "WHERE record_section IS NULL")
+    db.commit()
 
 
 def _ensure_clinical_engine_v2_storage(db):
@@ -233,7 +245,13 @@ def _ensure_clinical_engine_v2_storage(db):
 
 
 def _run_migrations(db):
-    """Additive migrations for existing DBs (new tables come from schema IF NOT EXISTS)."""
+    """Run idempotent additive migrations for existing databases.
+
+    Individual SQLite schema helpers may commit, so this is intentionally a
+    resumable migration pass rather than a promise of all-or-nothing rollback.
+    ``_initialized`` is published only after every postcondition succeeds; a
+    later startup safely repeats already-applied steps and completes the rest.
+    """
     _ensure_column(db, "patient_links", "wallet_balance", "INTEGER NOT NULL DEFAULT 0")
     _ensure_column(db, "sms_campaigns", "campaign_type", "TEXT NOT NULL DEFAULT 'info'")
     _ensure_column(db, "sms_campaigns", "credit_amount", "INTEGER DEFAULT 0")
@@ -257,16 +275,13 @@ def _run_migrations(db):
     _ensure_column(db, "sms_messages", "retryable", "INTEGER NOT NULL DEFAULT 0")
     _ensure_column(db, "sms_messages", "source_type", "TEXT")
     _ensure_column(db, "sms_messages", "source_ref", "TEXT")
-    try:
-        db.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_sms_messages_idempotency "
-                   "ON sms_messages(idempotency_key) WHERE idempotency_key IS NOT NULL")
-        db.execute("CREATE INDEX IF NOT EXISTS idx_sms_messages_delivery_due "
-                   "ON sms_messages(provider, next_status_check_at, delivery_status)")
-        db.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_wallet_tx_idempotency "
-                   "ON wallet_transactions(idempotency_key) WHERE idempotency_key IS NOT NULL")
-        db.commit()
-    except Exception:
-        pass
+    db.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_sms_messages_idempotency "
+               "ON sms_messages(idempotency_key) WHERE idempotency_key IS NOT NULL")
+    db.execute("CREATE INDEX IF NOT EXISTS idx_sms_messages_delivery_due "
+               "ON sms_messages(provider, next_status_check_at, delivery_status)")
+    db.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_wallet_tx_idempotency "
+               "ON wallet_transactions(idempotency_key) WHERE idempotency_key IS NOT NULL")
+    db.commit()
     # Medication lifecycle: stop date for effect/timeline tracking
     _ensure_column(db, "patient_medications", "end_date", "TEXT")
     # Pharmacologic class (drives the treatment/risk engines)
@@ -444,18 +459,12 @@ def _run_migrations(db):
         ensure_descriptive_indicator_catalog,
     )
     ensure_descriptive_indicator_catalog(db)
-    # Seed the lab-test and drug catalogs (idempotent; wrapped so a missing seed
-    # module or any failure never breaks startup).
-    try:
-        from src.adapters.sqlite.lab_catalog_seed import seed_lab_catalog
-        seed_lab_catalog(db)
-    except Exception:
-        pass
-    try:
-        from src.adapters.sqlite.drug_catalog_seed import seed_drug_catalog
-        seed_drug_catalog(db)
-    except Exception:
-        pass
+    # Catalog seeds are part of the runtime contract. An incomplete catalog must
+    # fail initialization instead of publishing a false-green readiness state.
+    from src.adapters.sqlite.lab_catalog_seed import seed_lab_catalog
+    seed_lab_catalog(db)
+    from src.adapters.sqlite.drug_catalog_seed import seed_drug_catalog
+    seed_drug_catalog(db)
 
     # A copied pre-cutover database may still contain retired v1 objects. Remove
     # them on the same connection before `_initialized` is published. Fresh and
@@ -550,7 +559,7 @@ def _mark_legacy_default_admin_for_change(db):
 
 def get_db():
     """Return the per-request connection to the specialist DB (created on first use)."""
-    global _initialized
+    global _initialized, _initialized_db_path
     db = getattr(g, '_database', None)
     if db is None:
         # The application factory can point tests and packaged deployments at a
@@ -575,26 +584,28 @@ def get_db():
             db.execute("PRAGMA synchronous = NORMAL")
             db.execute("PRAGMA wal_autocheckpoint = 1000")
 
-        # Initialize schema once per process if users table is missing.
-        try:
-            cur = db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='users'")
-            if not cur.fetchone():
-                db.executescript(_load_schema_text())
-                _initialized = False
-        except Exception:
-            try:
-                db.executescript(_load_schema_text())
-            except Exception:
-                pass
-
-        if not _initialized:
+        needs_initialization = (
+            not _initialized
+            or db_path == ":memory:"
+            or _initialized_db_path != os.path.abspath(db_path)
+        )
+        if needs_initialization:
             try:
                 db.executescript(_load_schema_text())  # idempotent (IF NOT EXISTS / OR IGNORE)
+                _run_migrations(db)
+                _ensure_default_admin(db)
+                if not schema_contract_ok(db):
+                    raise sqlite3.DatabaseError(
+                        "critical schema migration postconditions failed"
+                    )
             except Exception:
-                pass
-            _run_migrations(db)
-            _ensure_default_admin(db)
-            _initialized = True
+                _initialized = False
+                _initialized_db_path = None
+                db.rollback()
+                raise
+            else:
+                _initialized = True
+                _initialized_db_path = os.path.abspath(db_path)
 
     return db
 

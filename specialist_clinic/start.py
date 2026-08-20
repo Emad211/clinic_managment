@@ -76,6 +76,30 @@ def _open_browser_when_live(
     return False
 
 
+def _notify_browser_failure(port: int) -> None:
+    url = _clinic_url(port)
+    message = (
+        "کلینیک تخصصی اجرا شده است، اما مرورگر خودکار باز نشد.\n\n"
+        f"این آدرس را در مرورگر باز کنید:\n{url}"
+    )
+    if getattr(sys, "frozen", False) and os.name == "nt":
+        try:
+            import ctypes
+
+            ctypes.windll.user32.MessageBoxW(
+                None, message, "کلینیک تخصصی", 0x30
+            )
+            return
+        except (AttributeError, OSError):
+            pass
+    print(message, file=sys.stderr)
+
+
+def _browser_launch_worker(port: int) -> None:
+    if not _open_browser_when_live(port):
+        _notify_browser_failure(port)
+
+
 def _startup_blockers(report: dict) -> list[dict]:
     return [
         item
@@ -120,6 +144,13 @@ def _parser() -> argparse.ArgumentParser:
     commands.add_parser("preflight", help="Validate the current installation")
     commands.add_parser("self-test", help="Run an isolated release smoke test")
 
+    acknowledge = commands.add_parser(
+        "acknowledge-audit-gap",
+        help="Acknowledge a persisted activity-audit incident",
+    )
+    acknowledge.add_argument("--actor", required=True)
+    acknowledge.add_argument("--confirm", required=True)
+
     backup = commands.add_parser("backup", help="Create a verified online backup")
     backup.add_argument("--output-dir", default=Config.BACKUP_FOLDER)
 
@@ -150,7 +181,9 @@ def _serve(args) -> int:
     browser_enabled = Config.OPEN_BROWSER and not args.no_browser
     if _clinic_is_live(args.port):
         if browser_enabled:
-            _launch_browser(args.port)
+            if not _launch_browser(args.port):
+                _notify_browser_failure(args.port)
+                return 3
         return 0
     if _loopback_port_in_use(args.port):
         raise RuntimeError(
@@ -187,7 +220,7 @@ def _serve(args) -> int:
         init_scheduler(app)
     if app.config.get("OPEN_BROWSER", True) and not args.no_browser:
         threading.Thread(
-            target=_open_browser_when_live,
+            target=_browser_launch_worker,
             args=(args.port,),
             name="browser-launch",
             daemon=True,
@@ -237,6 +270,18 @@ def main(argv: list[str] | None = None) -> int:
         report = run_preflight(app)
         _print(report)
         return 0 if report["required_ok"] else 2
+    if command == "acknowledge-audit-gap":
+        if args.confirm != "ACKNOWLEDGE-ACTIVITY-AUDIT-GAP":
+            raise RuntimeError("Audit-gap confirmation phrase is invalid.")
+        from src.services.activity_logger import (
+            acknowledge_activity_audit_gap,
+        )
+
+        app = _create_runtime_app()
+        with app.app_context():
+            acknowledged = acknowledge_activity_audit_gap(args.actor)
+        _print({"status": "pass", "acknowledged": acknowledged})
+        return 0
     if command == "backup":
         verified = BackupIntegrityService().create(
             Config.DATABASE_PATH,
