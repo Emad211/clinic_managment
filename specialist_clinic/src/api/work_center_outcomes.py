@@ -15,7 +15,7 @@ from flask import (
 )
 
 from src.adapters.sqlite.core import get_db
-from src.common.utils import iran_now, jalali_to_gregorian_str
+from src.common.utils import iran_now, jalali_date_to_observation_text
 from src.security.permissions import Permission, permission_required, resolved_permissions
 from src.services.activity_logger import log_activity
 from src.services.followup_orchestration.ownership_service import (
@@ -158,17 +158,20 @@ def _success(episode_id: str, result: dict, message: str):
 
 
 def _observed_at(value: object) -> str:
+    """Resolve the observation instant for a completion, never later than now.
+
+    An omitted date means the clinician is recording what they observed at this moment,
+    so the current instant is used rather than a fabricated midday value that would be in
+    the future for any completion before noon.
+    """
     raw = str(value or "").strip()
     if raw:
-        converted = jalali_to_gregorian_str(raw)
-        return f"{converted} 12:00:00" if converted else raw
-    return iran_now().replace(
-        hour=12,
-        minute=0,
-        second=0,
-        microsecond=0,
-        tzinfo=None,
-    ).isoformat(sep=" ", timespec="seconds")
+        converted = jalali_date_to_observation_text(raw)
+        return converted if converted else raw
+    return iran_now().replace(microsecond=0, tzinfo=None).isoformat(
+        sep=" ",
+        timespec="seconds",
+    )
 
 
 def template_context() -> dict:

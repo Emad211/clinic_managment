@@ -14,6 +14,9 @@ from src.adapters.sqlite.encounter_documentation_repo import (
     EncounterDocumentationRepository,
 )
 from src.adapters.sqlite.flags_repo import ClinicalFlagsRepository
+from src.adapters.sqlite.followup_operations_repo import (
+    FollowupOperationsRepository,
+)
 from src.adapters.sqlite.followups_repo import FollowupRepository
 from src.adapters.sqlite.lab_catalog_repo import LabCatalogRepository
 from src.adapters.sqlite.patients_repo import PatientRepository
@@ -134,6 +137,13 @@ class PatientWorkspaceService:
             service_lines=service_lines,
             encounter_documents=encounter_documents,
         )
+        # Contacts are read by patient, not by the follow-up ids above: that list merges
+        # three id spaces, while a contact event points at `followup_tasks` alone.
+        continuity = cockpit.continuity(
+            contact=FollowupOperationsRepository().patient_summary(pid),
+            appointments=appointments,
+            visits=profile["visit_history"],
+        )
 
         wallet_repo = WalletRepository()
         return {
@@ -173,6 +183,7 @@ class PatientWorkspaceService:
             "visits_count": analytics["visits_count"],
             "last_visit": analytics["last_visit"],
             "care_timeline": care_timeline,
+            "continuity": continuity,
             "encounter_documents": encounter_documents,
             "service_lines": service_lines,
             "service_line_summary": service_line_summary,

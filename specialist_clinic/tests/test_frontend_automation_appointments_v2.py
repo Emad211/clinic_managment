@@ -184,7 +184,12 @@ def test_patient_context_booking_creates_appointment_and_returns_to_patient(
     )
 
     assert response.status_code in {302, 303}
-    assert response.headers["Location"].endswith(f"/patients/{patient_id}")
+    # Booking returns to the patient, and the Patient Workspace lands the clinician on
+    # the tab where the appointment just created is visible instead of a bare patient
+    # URL that would make them hunt for it.
+    location = response.headers["Location"]
+    assert location.startswith(f"/patients/{patient_id}/")
+    assert location.endswith("/workspace?tab=encounters")
     row = appointments_app["db"].execute(
         """SELECT * FROM appointments
            WHERE patient_link_id=? AND scheduled_at='2026-08-07 09:30:00'""",

@@ -1,3 +1,19 @@
+{# An owed callback sits above the action grid on purpose: booking a new appointment while a
+   callback is already overdue duplicates the contact instead of closing it. #}
+{% if continuity.callback %}
+<div class="workspace-continuity-callback tone-{{ 'warn' if continuity.callback.overdue else 'info' }}">
+    <svg class="icon"><use href="#i-alert"></use></svg>
+    <span>
+        {% if continuity.callback.overdue %}
+        تماس مجدد این بیمار {{ continuity.callback.days|fa_num }} روز از موعد گذشته است؛ پیش از اقدام جدید نتیجهٔ تماس را ثبت کنید.
+        {% else %}
+        تماس مجدد برای {{ continuity.callback.at|jalali }} ثبت شده است{% if continuity.callback.days is not none %} — {{ continuity.callback.days|fa_num }} روز دیگر{% endif %}.
+        {% endif %}
+    </span>
+    <a class="btn btn-sm" href="{{ url_for('unified_followups.index', view='all', q=patient.national_id or patient.full_name) if config.get('FOLLOWUP_UNIFIED_WORKLIST_READONLY') else url_for('followups.worklist', q=patient.national_id or patient.full_name) }}">ثبت نتیجهٔ تماس</a>
+</div>
+{% endif %}
+
 <section class="workspace-action-grid" aria-label="اقدامات بیمار">
     <a class="workspace-action-card is-primary" href="{{ url_for('appointments.new_appointment', patient_link_id=patient.id, return_url=request.full_path) }}">
         <span class="workspace-action-icon"><svg class="icon"><use href="#i-calendar"></use></svg></span>
@@ -19,6 +35,46 @@
         <span><b>بررسی اختلاف داده</b><small>شرایط، داروها و حساسیت‌ها را با منبع اصلی تطبیق دهید.</small></span>
         <svg class="icon icon-sm"><use href="#i-chevron-left"></use></svg>
     </a>
+</section>
+
+<section class="card workspace-continuity" aria-labelledby="workspace-actions-continuity-title">
+    <div class="section-title">
+        <svg class="icon"><use href="#i-phone"></use></svg>
+        <div><div id="workspace-actions-continuity-title">سابقهٔ تماس و بازگشت</div><div class="section-sub">پیش از تماس یا ثبت نوبت، آخرین رویداد ثبت‌شده را ببینید؛ مقدار حدسی جای دادهٔ نبود نمی‌نشیند.</div></div>
+    </div>
+    <div class="workspace-continuity-grid">
+        {% if continuity.last_contact %}
+        <div class="tone-{{ 'ok' if continuity.last_contact.reached else 'warn' }}">
+            <span>آخرین تماس</span>
+            <b>{{ continuity.last_contact.outcome_label }}</b>
+            <small>{{ continuity.last_contact.channel_label }} · {{ continuity.last_contact.at|jalali }}{% if continuity.last_contact.days_ago is not none %} · {{ continuity.last_contact.days_ago|fa_num }} روز پیش{% endif %}</small>
+        </div>
+        {% else %}
+        <div>
+            <span>آخرین تماس</span>
+            <b>تماسی ثبت نشده</b>
+            <small>اولین تماس را از مرکز کارها ثبت کنید.</small>
+        </div>
+        {% endif %}
+        <div class="{{ 'tone-warn' if continuity.attendance.lapsed }}">
+            <span>آخرین مراجعه</span>
+            <b>{% if continuity.attendance.last_attended_at %}{{ continuity.attendance.last_attended_at|jalali_date }}{% else %}مراجعه‌ای ثبت نشده{% endif %}</b>
+            <small>
+                {% if continuity.attendance.lapsed %}
+                بیش از {{ continuity.lapsed_days_threshold|fa_num }} روز بدون مراجعه؛ نوبت پیگیری لازم است.
+                {% elif continuity.attendance.days_since_attendance is not none %}
+                {{ continuity.attendance.days_since_attendance|fa_num }} روز از آخرین مراجعه
+                {% else %}
+                نه نوبت انجام‌شده و نه ویزیت حسابداری ثبت شده است.
+                {% endif %}
+            </small>
+        </div>
+        <div class="{{ 'tone-warn' if continuity.attendance.no_show }}">
+            <span>پایبندی به نوبت</span>
+            <b>{% if continuity.attendance.reliability is not none %}{{ continuity.attendance.reliability|fa_num }}٪{% else %}نوبت تعیین‌شده‌ای بسته نشده{% endif %}</b>
+            <small>{{ continuity.attendance.attended|fa_num }} حضور · {{ continuity.attendance.no_show|fa_num }} عدم مراجعه · {{ continuity.attendance.cancelled|fa_num }} لغو</small>
+        </div>
+    </div>
 </section>
 
 <details class="auto-technical" data-technical-details>

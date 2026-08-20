@@ -7,6 +7,8 @@ suppressed only when the exact same accounting invoice has a governed VISIT line
 """
 from __future__ import annotations
 
+from src.common.utils import iran_now, parse_datetime
+
 
 APPOINTMENT_STATUS = {
     "scheduled": ("نوبت برنامه‌ریزی‌شده", "info"),
@@ -48,6 +50,14 @@ DOCUMENT_OUTCOME = {
 def _date(value) -> str:
     """Return a sortable ISO-like value without inventing a timestamp."""
     return str(value or "").strip()
+
+
+def _days_since(value, *, now) -> int | None:
+    """Whole days between a stored timestamp and now, or None when unparsable."""
+    parsed = parse_datetime(_date(value))
+    if parsed is None:
+        return None
+    return (now - parsed).days
 
 
 class PatientCockpitService:
@@ -253,3 +263,98 @@ class PatientCockpitService:
         events = [event for event in events if event["sort_at"]]
         events.sort(key=lambda event: event["sort_at"], reverse=True)
         return events[:max(1, int(limit))]
+
+    @staticmethod
+    def continuity(*, contact, appointments, visits, now=None) -> dict:
+        """Compose what already happened with this patient into one honest block.
+
+        Answers the three questions a clinician asks before acting: when was this patient
+        last contacted and what came of it, is a callback already owed, and how reliably do
+        they actually come back. Every value is derived from recorded events — an absent
+        fact stays absent rather than being replaced by a reassuring default.
+        """
+        # Imported lazily: this module is a dependency-free composer, while these two
+        # modules reach for the database and the accounting adapters at import time.
+        # The labels and the lapse threshold are reused rather than restated so the app
+        # keeps one definition per concept.
+        from src.services.control_room_service import LAPSED_DAYS
+        from src.services.followup_contact_service import (
+            CHANNEL_LABELS,
+            OUTCOME_LABELS,
+        )
+
+        current = now or iran_now().replace(tzinfo=None, microsecond=0)
+        summary = dict(contact or {})
+
+        last_contact = None
+        if summary.get("last_contact_at"):
+            outcome = str(summary.get("last_contact_outcome") or "")
+            last_contact = {
+                "at": summary["last_contact_at"],
+                "days_ago": _days_since(summary["last_contact_at"], now=current),
+                "channel": summary.get("last_contact_channel"),
+                "channel_label": CHANNEL_LABELS.get(
+                    str(summary.get("last_contact_channel") or ""),
+                    "کانال ثبت‌نشده",
+                ),
+                "outcome": outcome,
+                "outcome_label": OUTCOME_LABELS.get(outcome, "نتیجهٔ ثبت‌نشده"),
+                "reached": outcome == "REACHED",
+                "note": summary.get("last_contact_note"),
+                "actor": summary.get("last_contact_actor"),
+            }
+
+        callback_at = summary.get("next_contact_at")
+        callback = None
+        if callback_at:
+            overdue_days = _days_since(callback_at, now=current)
+            callback = {
+                "at": callback_at,
+                "overdue": bool(overdue_days is not None and overdue_days >= 0),
+                "days": abs(overdue_days) if overdue_days is not None else None,
+            }
+
+        rows = list(appointments or [])
+        no_show = sum(1 for row in rows if row.get("status") == "no_show")
+        cancelled = sum(1 for row in rows if row.get("status") == "cancelled")
+        attended = sum(1 for row in rows if row.get("status") == "done")
+        decided = attended + no_show + cancelled
+
+        # Attendance is proven by a kept appointment or a recorded accounting visit; a
+        # future booking is an intention, so it never counts as a return.
+        attendance_dates = [
+            _date(row.get("scheduled_at"))
+            for row in rows
+            if row.get("status") == "done"
+        ]
+        attendance_dates += [_date(row.get("visit_date")) for row in (visits or [])]
+        last_attended = max((value for value in attendance_dates if value), default="")
+        days_since_attendance = (
+            _days_since(last_attended, now=current) if last_attended else None
+        )
+
+        return {
+            "last_contact": last_contact,
+            "contact_count": int(summary.get("contact_count") or 0),
+            "reached_count": int(summary.get("reached_count") or 0),
+            "callback": callback,
+            "attendance": {
+                "attended": attended,
+                "no_show": no_show,
+                "cancelled": cancelled,
+                "decided": decided,
+                # Reliability is only meaningful once an appointment has resolved.
+                "reliability": (
+                    round(attended * 100 / decided) if decided else None
+                ),
+                "last_attended_at": last_attended or None,
+                "days_since_attendance": days_since_attendance,
+                "lapsed": bool(
+                    days_since_attendance is not None
+                    and days_since_attendance > LAPSED_DAYS
+                ),
+                "never_attended": decided == 0 and not last_attended,
+            },
+            "lapsed_days_threshold": LAPSED_DAYS,
+        }
+

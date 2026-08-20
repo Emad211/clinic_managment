@@ -148,6 +148,49 @@ class FollowupOperationsRepository:
         ).fetchall()
         return [dict(row) for row in rows]
 
+    def patient_summary(self, patient_link_id: int) -> dict | None:
+        """Return the patient's most recent contact event plus their contact totals.
+
+        Contacts are read by patient rather than by task id. A patient's follow-up list
+        merges three id spaces (administrative tasks, clinical care-loop tasks and plan
+        commitments), while `task_id` here references `followup_tasks` alone, so filtering
+        by a mixed set of ids would attribute one task's contacts to another.
+        Returns None when the patient has never been contacted.
+        """
+        row = self._db().execute(
+            """SELECT event.*,
+                      (SELECT COUNT(*) FROM followup_contact_events total
+                       WHERE total.patient_link_id=event.patient_link_id)
+                      AS contact_count,
+                      (SELECT COUNT(*) FROM followup_contact_events reached
+                       WHERE reached.patient_link_id=event.patient_link_id
+                         AND reached.outcome='REACHED') AS reached_count,
+                      (SELECT MIN(pending.next_contact_at)
+                       FROM followup_contact_events pending
+                       WHERE pending.patient_link_id=event.patient_link_id
+                         AND pending.next_contact_at IS NOT NULL)
+                      AS earliest_next_contact_at
+               FROM followup_contact_events event
+               WHERE event.patient_link_id=?
+               ORDER BY event.occurred_at DESC, event.id DESC
+               LIMIT 1""",
+            (int(patient_link_id),),
+        ).fetchone()
+        if not row:
+            return None
+        return {
+            "contact_count": int(row["contact_count"]),
+            "reached_count": int(row["reached_count"]),
+            "last_contact_id": int(row["id"]),
+            "last_contact_task_id": int(row["task_id"]),
+            "last_contact_at": row["occurred_at"],
+            "last_contact_channel": row["channel"],
+            "last_contact_outcome": row["outcome"],
+            "last_contact_note": row["note"],
+            "last_contact_actor": row["actor_username"],
+            "next_contact_at": row["earliest_next_contact_at"],
+        }
+
     def summaries(self, task_ids: list[int]) -> dict[int, dict]:
         ids = [int(value) for value in task_ids if value]
         if not ids:

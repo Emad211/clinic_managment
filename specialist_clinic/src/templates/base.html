@@ -28,6 +28,7 @@
     {% set queue_active = endpoint.startswith('doctor_queue.') %}
     {% set messages_active = endpoint.startswith('sms.') or endpoint == 'manager.engagement' %}
     {% set finance_active = endpoint.startswith('finance_review.') %}
+    {% set cockpit_active = endpoint.startswith('revenue_cockpit.') %}
     {% set engine_active = endpoint.startswith('manager.clinical_engine') or endpoint.startswith('hypoglycemia_shadow_monitor.') %}
     {% set users_active = endpoint == 'manager.users' or endpoint == 'manager.user_token' %}
     {% set settings_active = endpoint == 'manager.settings' or endpoint == 'manager.index' %}
@@ -113,6 +114,12 @@
 
             {% if permissions.get('financial.review.view') or permissions.get('rule.review.clinical') or permissions.get('rule.review.technical') or permissions.get('rule.activate') or permissions.get('security.grant.manage') or permissions.get('sms.settings.manage') %}
             <div class="nav-section">مدیریت</div>
+            {% if permissions.get('financial.review.view') %}
+            <a class="nav-item {% if cockpit_active %}active{% endif %}" href="{{ url_for('revenue_cockpit.index') }}"
+               {% if cockpit_active %}aria-current="page"{% endif %}>
+                <svg class="icon"><use href="#i-trending-up"></use></svg><span class="nav-item__label">درآمد و عملکرد</span>
+            </a>
+            {% endif %}
             {% if permissions.get('financial.review.view') %}
             <a class="nav-item {% if finance_active %}active{% endif %}" href="{{ url_for('finance_review.index') }}"
                {% if finance_active %}aria-current="page"{% endif %}>

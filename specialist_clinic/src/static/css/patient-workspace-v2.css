@@ -38,6 +38,26 @@
 .workspace-fact-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--s2,8px)}
 .workspace-fact-grid>div{padding:var(--s3,12px);border:1px solid var(--auto-border);border-radius:10px;background:var(--auto-panel-soft)}
 .workspace-fact-grid span,.workspace-fact-grid b{display:block}.workspace-fact-grid span{color:var(--muted);font-size:.75rem}.workspace-fact-grid b{margin-top:.3rem}
+
+/* Contact history and return behaviour. The tone classes are scoped to this component
+   because the shared `tone-*` names in app.css only style .patient-next-action and
+   .care-event; an unscoped tone rule would leak into unrelated cards. */
+.workspace-continuity{display:grid;gap:var(--s3,12px)}
+.workspace-continuity-callback{display:flex;align-items:center;gap:var(--s3,12px);flex-wrap:wrap;padding:var(--s3,12px);border:1px solid var(--auto-border);border-inline-start-width:4px;border-radius:12px;background:var(--auto-panel-soft)}
+.workspace-continuity-callback>span{flex:1 1 240px;min-width:0;font-weight:700}
+.workspace-continuity-callback>.icon{flex:0 0 auto}
+.workspace-continuity-callback.tone-warn{border-inline-start-color:var(--warn);background:linear-gradient(90deg,var(--warn-soft),var(--auto-panel-soft) 45%);color:var(--warn-fg)}
+.workspace-continuity-callback.tone-info{border-inline-start-color:var(--info);background:linear-gradient(90deg,var(--info-soft),var(--auto-panel-soft) 45%);color:var(--info-fg)}
+.workspace-continuity-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(205px,1fr));gap:var(--s2,8px)}
+.workspace-continuity-grid>div{padding:var(--s3,12px);border:1px solid var(--auto-border);border-inline-start:3px solid var(--auto-border);border-radius:10px;background:var(--auto-panel-soft)}
+.workspace-continuity-grid span,.workspace-continuity-grid b,.workspace-continuity-grid small{display:block}
+.workspace-continuity-grid span{color:var(--muted);font-size:.75rem}
+.workspace-continuity-grid b{margin-top:.3rem;font-size:1rem}
+.workspace-continuity-grid small{margin-top:.3rem;color:var(--muted);font-size:.73rem}
+.workspace-continuity-grid>.tone-ok{border-inline-start-color:var(--ok)}.workspace-continuity-grid>.tone-ok b{color:var(--ok-fg)}
+.workspace-continuity-grid>.tone-warn{border-inline-start-color:var(--warn)}.workspace-continuity-grid>.tone-warn b{color:var(--warn-fg)}
+.workspace-continuity-note{margin:var(--s2,8px) 0 0;padding-top:var(--s2,8px);border-top:1px solid var(--auto-border);color:var(--text);font-size:.78rem}
+
 .workspace-two-column{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--s4,16px)}
 .workspace-clinical-columns{align-items:start}
 .workspace-disease-list{display:grid;gap:var(--s3,12px)}

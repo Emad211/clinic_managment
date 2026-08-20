@@ -1,0 +1,331 @@
+{% extends "automation_base.html" %}
+{% block title %}درآمد و عملکرد{% endblock %}
+{% block head %}{{ super() }}<link rel="stylesheet" href="{{ url_for('static', filename='css/revenue-cockpit-automation-v1.css') }}">{% endblock %}
+{% block content %}
+{% set money = cockpit.money %}
+{% set ops = cockpit.operations %}
+{% set campaigns = cockpit.campaigns %}
+{% set measurement_labels = {
+    'JOURNEY_LINK_REQUIRED': 'نیازمند اتصال Journey',
+    'READY': 'آماده',
+    'CAMPAIGN_ECONOMICS_INCOMPLETE': 'اقتصاد کمپین ناقص'
+} %}
+
+<header class="auto-page-header">
+    <div class="auto-page-header__copy">
+        <h1><svg class="icon icon-lg"><use href="#i-trending-up"></use></svg> درآمد و عملکرد</h1>
+        <p class="muted">
+            این صفحه فقط نمایش است و هیچ عددی را خودش نمی‌سازد؛ درآمد از همان منبع فقط‌خواندنیِ
+            حسابداری خوانده می‌شود و کارِ عملیاتی در کنارش نشان داده می‌شود تا ببینید کدام فعالیت به
+            درآمدِ قابل‌اثبات می‌رسد.
+        </p>
+    </div>
+    <div class="auto-page-header__actions">
+        {% if permissions.get('financial.review.view') %}
+        <a class="btn btn-ghost" href="{{ url_for('finance_review.index') }}">
+            <svg class="icon"><use href="#i-banknote"></use></svg> امور مالی
+        </a>
+        {% endif %}
+    </div>
+</header>
+
+<p class="muted text-sm" style="margin:-4px 0 var(--s4,16px)">
+    وضعیت در تاریخ <span class="nums">{{ cockpit.as_of_fa }}</span>
+</p>
+
+<div class="cockpit-stack">
+
+    <!-- ============ MONEY — authoritative or explicitly unavailable ============ -->
+    <section class="cockpit-section" aria-label="درآمد">
+        <h2><svg class="icon"><use href="#i-banknote"></use></svg> درآمدِ قابل‌اثبات</h2>
+        {% if money.available %}
+        <section class="work-center-summary" aria-label="خلاصهٔ درآمد">
+            <div class="work-center-kpi"><b>{{ money.month.collected|fa_num }}</b><span>وصولِ این ماه</span></div>
+            <div class="work-center-kpi"><b>{{ money.month.total|fa_num }}</b><span>صورتحسابِ این ماه</span></div>
+            <div class="work-center-kpi"><b>{{ money.total.collected|fa_num }}</b><span>وصولِ کل</span></div>
+            <div class="work-center-kpi"><b>{{ money.total.total|fa_num }}</b><span>صورتحسابِ کل</span></div>
+            <div class="work-center-kpi"><b>{{ money.enrolled|fa_num }}</b><span>بیمارانِ ثبت‌نام‌شده</span></div>
+        </section>
+
+        <div class="grid grid-4" style="margin-top:var(--s4,16px)">
+            <div class="mini">
+                <div class="m-num nums">{% if money.payer_review.safe_to_sum %}{{ money.payer_review.adjusted_collected|fa_num }}{% else %}—{% endif %}</div>
+                <div class="m-lbl">خالصِ قابل‌جمع (بازبینی‌شده)</div>
+            </div>
+            <div class="mini">
+                <div class="m-num nums">{{ money.payer_review.reviewed_invoices|fa_num }}</div>
+                <div class="m-lbl">فاکتورِ بازبینی‌شده</div>
+            </div>
+            <div class="mini">
+                <div class="m-num nums">{{ money.payer_review.pending_review|fa_num }}</div>
+                <div class="m-lbl">در انتظارِ بازبینی</div>
+            </div>
+            <div class="mini">
+                <div class="m-num nums">{{ money.total.invoices|fa_num }}</div>
+                <div class="m-lbl">فاکتورِ مشاهده‌شده</div>
+            </div>
+        </div>
+
+        {% if not money.payer_review.safe_to_sum and money.payer_review.pending_review %}
+        <p class="value-note" style="margin-top:var(--s2,8px)">
+            <svg class="icon icon-sm"><use href="#i-info"></use></svg>
+            تا وقتی همهٔ فاکتورها تفکیکِ پرداخت نداشته باشند، «خالصِ قابل‌جمع» منتشر نمی‌شود.
+        </p>
+        {% endif %}
+
+        <div class="cockpit-chart">
+            <canvas id="cockpitTrend" role="img"
+                    aria-label="نمودار ۳۰ روزهٔ صورتحساب و وصول"></canvas>
+        </div>
+        <p class="value-note" style="margin-top:var(--s2,8px)">
+            <svg class="icon icon-sm"><use href="#i-info"></use></svg>
+            آخرین snapshotِ مالی
+            {% if money.observation_age_minutes is not none %}<span class="nums">{{ money.observation_age_minutes|fa_num }}</span> دقیقه پیش{% else %}—{% endif %}
+            (سقفِ تازگی <span class="nums">{{ money.freshness_minutes|fa_num }}</span> دقیقه).
+        </p>
+
+        {% else %}
+        <div class="cockpit-unavailable" role="status">
+            <div class="cockpit-unavailable__title">
+                <svg class="icon"><use href="#i-alert"></use></svg>
+                درآمد فعلاً قابل‌اثبات نیست
+                {% if money.error_code %}<code dir="ltr">{{ money.error_code }}</code>{% endif %}
+            </div>
+            <p style="margin:0">{{ money.reason }}</p>
+            <div class="cockpit-unavailable__scope">
+                {% if money.eligible_invoices is not none %}
+                <span class="badge badge-muted">فاکتورِ واجدِ شرایط: <b class="nums">{{ money.eligible_invoices|fa_num }}</b></span>
+                {% endif %}
+                {% if money.missing_observations is not none %}
+                <span class="badge badge-warn">snapshotِ نبود: <b class="nums">{{ money.missing_observations|fa_num }}</b></span>
+                {% endif %}
+            </div>
+            <p class="value-note" style="margin:0">
+                <svg class="icon icon-sm"><use href="#i-info"></use></svg>
+                {% if money.reconcile_helps %}
+                    بازخوانیِ حسابداری از صفحهٔ «امور مالی» ممکن است این را برطرف کند؛ عددِ حدسی جای آن گذاشته نمی‌شود.
+                {% else %}
+                    این با بازخوانی برطرف نمی‌شود و نیازمندِ اصلاحِ پیکربندی/انتساب است؛ عددِ حدسی جای آن گذاشته نمی‌شود.
+                {% endif %}
+            </p>
+        </div>
+        {% endif %}
+    </section>
+
+    <!-- ============ A4 FUNNEL — always present, even when money is absent ======= -->
+    <section class="cockpit-section" aria-label="قیفِ حضور تا وصول">
+        <h2><svg class="icon"><use href="#i-activity"></use></svg> قیفِ حضور تا وصول</h2>
+        <p class="cockpit-section__hint muted text-sm">
+            این پنج مرحله مستقل‌اند، نه زیرمجموعهٔ خطیِ هم؛ درصد فقط وقتی نشان داده می‌شود که واقعاً
+            زیرمجموعهٔ مرحلهٔ پیش باشد (مثلاً مراجعهٔ بدونِ نوبت باعث می‌شود «حضور» از «رزرو» بیشتر شود).
+        </p>
+        <div class="funnel-flow">
+            {% for stage in cockpit.funnel.stages %}
+            <div class="funnel-stage">
+                <div class="funnel-stage__count nums">{{ stage.count|fa_num }}</div>
+                <div class="funnel-stage__label">{{ stage.label }}</div>
+                <div class="funnel-stage__rate">
+                    {% if stage.of_label %}
+                        {% if stage.rate is not none %}
+                            <b>{{ stage.rate|fa_num }}٪</b> از {{ stage.of_label }}
+                        {% else %}
+                            — از {{ stage.of_label }}
+                        {% endif %}
+                    {% else %}
+                        &nbsp;
+                    {% endif %}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+
+        <div class="collection-chips" aria-label="تفکیکِ وصول">
+            {% for item in cockpit.funnel.collection %}
+            <span class="badge badge-{{ item.tone }}">{{ item.label }} <b class="nums">{{ item.count|fa_num }}</b></span>
+            {% endfor %}
+        </div>
+    </section>
+
+    <!-- ============ OPERATIONS — counts only, never money ====================== -->
+    <section class="cockpit-section" aria-label="عملکردِ نوبت‌ها">
+        <h2><svg class="icon"><use href="#i-calendar"></use></svg> عملکردِ نوبت‌ها</h2>
+        <p class="cockpit-section__hint muted text-sm">
+            بازهٔ <span class="nums">{{ ops.window.days|fa_num }}</span> روزهٔ گذشته
+            (<span class="nums">{{ ops.window.from_fa }}</span> تا <span class="nums">{{ ops.window.to_fa }}</span>).
+            این اعداد تعدادند، نه مبلغ.
+        </p>
+
+        <section class="work-center-summary" aria-label="خلاصهٔ نوبت‌ها">
+            {% for outcome in ops.outcomes %}
+            <div class="work-center-kpi"><b>{{ outcome.count|fa_num }}</b><span>{{ outcome.label }}</span></div>
+            {% endfor %}
+            <div class="work-center-kpi">
+                <b>{% if ops.attendance_rate is not none %}{{ ops.attendance_rate|fa_num }}٪{% else %}—{% endif %}</b>
+                <span>نرخِ حضور</span>
+            </div>
+            <div class="work-center-kpi">
+                <b>{{ ops.ahead.count|fa_num }}</b>
+                <span>نوبتِ پیشِ‌رو (<span class="nums">{{ ops.ahead.days|fa_num }}</span> روز)</span>
+            </div>
+        </section>
+
+        <div class="grid grid-2" style="margin-top:var(--s4,16px)">
+            <div class="mini">
+                <div class="m-num nums">{{ ops.lost.count|fa_num }}{% if ops.lost.rate is not none %} <span class="text-sm muted">({{ ops.lost.rate|fa_num }}٪)</span>{% endif %}</div>
+                <div class="m-lbl">فرصتِ ازدست‌رفته (عدم‌مراجعه + لغو)</div>
+            </div>
+            <div class="mini">
+                <div class="m-num nums">{{ ops.decided|fa_num }}</div>
+                <div class="m-lbl">نوبتِ تعیین‌تکلیف‌شده (مبنای نرخ‌ها)</div>
+            </div>
+        </div>
+        <p class="value-note" style="margin-top:var(--s2,8px)">
+            <svg class="icon icon-sm"><use href="#i-info"></use></svg>
+            جدولِ نوبت‌ها ستونِ قیمت ندارد؛ هزینهٔ یک عدم‌مراجعه از اینجا قابل‌اثبات نیست، فقط تعدادش.
+        </p>
+
+        {% if ops.lost.rows %}
+        <h3 class="text-sm" style="margin:var(--s4,16px) 0 0">
+            فرصت‌های ازدست‌رفته
+            <span class="muted">(نمایشِ <span class="nums">{{ ops.lost.shown|fa_num }}</span> از <span class="nums">{{ ops.lost.count|fa_num }}</span>)</span>
+        </h3>
+        <div class="lost-list">
+            {% for item in ops.lost.rows %}
+            <div class="lost-row">
+                <div class="lost-row__who">
+                    <span class="badge badge-{{ item.status_tone }}">{{ item.status_label }}</span>
+                    <a href="{{ url_for('patient_workspace.detail', pid=item.patient_link_id, tab='actions') }}">
+                        {{ item.patient_name or 'بیمار' }}
+                    </a>
+                </div>
+                <div class="lost-row__meta">
+                    {% if item.appt_type %}<span>{{ item.appt_type }}</span>{% endif %}
+                    <span class="nums">{{ item.scheduled_fa }}</span>
+                    {% if item.phone_number %}<span class="nums" dir="ltr">{{ item.phone_number }}</span>{% endif %}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="auto-empty" style="margin-top:var(--s3,12px)">در این بازه عدم‌مراجعه یا لغوی ثبت نشده است.</div>
+        {% endif %}
+    </section>
+
+    <!-- ============ CAMPAIGNS — every money number gated on provability ======== -->
+    <section class="cockpit-section" aria-label="اقتصادِ کمپین‌ها">
+        <h2><svg class="icon"><use href="#i-megaphone"></use></svg> اقتصادِ کمپین‌ها</h2>
+        {% if campaigns.rows %}
+        <p class="cockpit-section__hint muted text-sm">
+            درآمد و سهمِ خالصِ هر کمپین فقط وقتی نشان داده می‌شود که از مسیرِ صریحِ Journey→فاکتور
+            قابل‌اثبات باشد؛ در غیرِ این‌صورت «—» می‌بینید، نه صفر.
+        </p>
+        <div class="table-wrap" tabindex="0">
+        <table class="cockpit-table">
+            <thead>
+                <tr>
+                    <th>کمپین</th>
+                    <th class="nums">گیرنده</th>
+                    <th class="nums">تحویل‌شده</th>
+                    <th class="nums">Journey</th>
+                    <th class="nums">درآمدِ منتسب</th>
+                    <th class="nums">سهمِ خالص</th>
+                    <th>وضعیتِ سنجش</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in campaigns.rows %}
+                <tr>
+                    <td>
+                        {{ row.name }}
+                        {% if row.type %}<div class="text-xs muted" dir="ltr"><code>{{ row.type }}</code></div>{% endif %}
+                    </td>
+                    <td class="nums">{{ row.recipients|fa_num }}</td>
+                    <td class="nums">{{ row.delivered|fa_num }}</td>
+                    <td class="nums">{{ row.journeys|fa_num }}</td>
+                    <td class="nums">{% if row.safe_to_sum and row.revenue is not none %}{{ row.revenue|fa_num }}{% else %}—{% endif %}</td>
+                    <td class="nums">{% if row.safe_to_sum and row.net_contribution is not none %}{{ row.net_contribution|fa_num }}{% else %}—{% endif %}</td>
+                    <td>
+                        <span class="badge {% if row.safe_to_sum %}badge-ok{% else %}badge-muted{% endif %}">
+                            {{ measurement_labels.get(row.measurement_status, row.measurement_status) }}
+                        </span>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+            {% if campaigns.safe_to_sum %}
+            <tfoot>
+                <tr>
+                    <th>جمعِ قابل‌اثبات</th>
+                    <th class="nums" colspan="3"></th>
+                    <th class="nums">{{ campaigns.attributed_total|fa_num }}</th>
+                    <th class="nums">{{ campaigns.net_contribution_total|fa_num }}</th>
+                    <th></th>
+                </tr>
+            </tfoot>
+            {% endif %}
+        </table>
+        </div>
+        {% if not campaigns.safe_to_sum %}
+        <p class="value-note" style="margin-top:var(--s2,8px)">
+            <svg class="icon icon-sm"><use href="#i-info"></use></svg>
+            جمعِ کل تا وقتی همهٔ کمپین‌ها اقتصادِ کاملِ قابل‌اثبات نداشته باشند منتشر نمی‌شود.
+        </p>
+        {% endif %}
+        {% else %}
+        <div class="auto-empty">هنوز هیچ کمپینی به Journey و فاکتور متصل نشده است؛ عددِ درآمدی نمایش داده نمی‌شود.</div>
+        {% endif %}
+    </section>
+
+    <!-- ============ machine-readable provenance ================================ -->
+    <details class="auto-technical" data-technical-details>
+        <summary>جزئیاتِ فنی و منبعِ اعداد</summary>
+        <div class="auto-technical__body">
+            <div class="flex gap-2 wrap items-center">
+                <span class="chip">سیاست: <code dir="ltr">{{ cockpit.policy_version }}</code></span>
+                {% if money.policy_version %}<span class="chip">درآمد: <code dir="ltr">{{ money.policy_version }}</code></span>{% endif %}
+                <span class="chip">as_of: <code dir="ltr">{{ cockpit.as_of }}</code></span>
+                <span class="chip">وضعیتِ کمپین: <code dir="ltr">{{ campaigns.measurement_status }}</code></span>
+            </div>
+            <p class="muted text-xs" style="margin-top:var(--s2,8px)">
+                درآمد از <code dir="ltr">RevenueService</code> (اسکوپِ Encounterِ تکمیل‌شده، سقفِ تازگی،
+                قراردادِ عدمِ‌دسترسی) خوانده می‌شود و این صفحه فقط آن را کنارِ کارِ عملیاتی می‌چیند.
+                جدولِ نوبت‌ها ستونِ مبلغ ندارد و اعدادِ عملیاتی هرگز به‌جای مبلغ خوانده نمی‌شوند.
+            </p>
+        </div>
+    </details>
+
+</div>
+{% endblock %}
+
+{% block scripts %}{{ super() }}
+{% if cockpit.money.available %}
+<script>
+(function(){
+    var el = document.getElementById('cockpitTrend');
+    if (!el || typeof Chart === 'undefined') return;
+    var trend = {{ cockpit.money.trend|tojson }};
+    var T = window.CLINIC_THEME || {};
+    new Chart(el, {
+        type: 'bar',
+        data: {
+            labels: trend.labels,
+            datasets: [
+                {label:'صورتحسابِ تخصصی', data:trend.billed_values,
+                 backgroundColor:'rgba(59,130,246,.35)', borderColor:(T.info||'#3b82f6'), borderWidth:1},
+                {label:'وصولِ واقعی', data:trend.collected_values,
+                 backgroundColor:'rgba(34,197,94,.5)', borderColor:(T.ok||'#22c55e'), borderWidth:1}
+            ]
+        },
+        options: {
+            responsive:true, maintainAspectRatio:false,
+            plugins:{legend:{display:true,labels:{color:(T.tick||'#92a2c0')}}},
+            scales:{
+                x:{ticks:{color:(T.tick||'#92a2c0'),maxTicksLimit:10}},
+                y:{ticks:{color:(T.tick||'#92a2c0')},beginAtZero:true}
+            }
+        }
+    });
+})();
+</script>
+{% endif %}
+{% endblock %}

@@ -59,6 +59,22 @@ def jalali_to_gregorian_str(jalali_str: str):
         return None
 
 
+def jalali_date_to_observation_text(jalali_str: str):
+    """Convert a Jalali date to an observation timestamp that is never in the future.
+
+    A submitted date carries no time of day, so it is anchored at noon — the midpoint of
+    that day. Observation storage requires `observed_at <= recorded_at`, so today's date
+    resolves to the current Tehran instant instead of a noon that has not happened yet.
+    Returns None on failure.
+    """
+    gregorian = jalali_to_gregorian_str(jalali_str)
+    if not gregorian:
+        return None
+    noon = datetime.fromisoformat(f"{gregorian} 12:00:00")
+    now = iran_now().replace(microsecond=0)
+    return min(noon, now).isoformat(sep=' ', timespec='seconds')
+
+
 def format_jalali_datetime(dt, include_seconds: bool = False) -> str:
     """Format datetime (or string) as Jalali date+time string."""
     parsed = parse_datetime(dt)

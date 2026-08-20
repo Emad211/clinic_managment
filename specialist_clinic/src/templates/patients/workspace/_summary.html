@@ -22,8 +22,88 @@
             <div><span>موعد تجدید نسخه</span><b>{{ refill_due|fa_num }}</b></div>
             <div><span>خدمات متصل</span><b>{{ service_line_summary.total|fa_num }}</b></div>
             <div><span>اعتبار کیف پول</span><b>{{ wallet_balance|fa_num }}</b></div>
+            {% if continuity.last_contact %}
+            <div><span>آخرین تماس</span><b>{{ continuity.last_contact.at|jalali_date }}{% if continuity.last_contact.days_ago is not none %} <small>({{ continuity.last_contact.days_ago|fa_num }} روز پیش)</small>{% endif %}</b></div>
+            {% else %}
+            <div><span>آخرین تماس</span><b>ثبت نشده</b></div>
+            {% endif %}
+            {% if continuity.attendance.days_since_attendance is not none %}
+            <div><span>فاصله از مراجعه</span><b class="{{ 'c-warn' if continuity.attendance.lapsed }}">{{ continuity.attendance.days_since_attendance|fa_num }} روز</b></div>
+            {% else %}
+            <div><span>فاصله از مراجعه</span><b>مراجعه‌ای ثبت نشده</b></div>
+            {% endif %}
         </div>
     </article>
+</section>
+
+<section class="card workspace-continuity" aria-label="سابقه تماس و بازگشت بیمار">
+    <div class="section-title">
+        <svg class="icon"><use href="#i-phone"></use></svg>
+        <div><div>تماس و بازگشت بیمار</div><div class="section-sub">فقط رویدادهای ثبت‌شده؛ مقدار حدسی جای دادهٔ نبود نمی‌نشیند.</div></div>
+    </div>
+
+    {% if continuity.callback %}
+    <div class="workspace-continuity-callback tone-{{ 'warn' if continuity.callback.overdue else 'info' }}">
+        <svg class="icon"><use href="#i-alert"></use></svg>
+        <span>
+            {% if continuity.callback.overdue %}
+            تماس مجدد {{ continuity.callback.days|fa_num }} روز از موعد گذشته است ({{ continuity.callback.at|jalali }}).
+            {% else %}
+            تماس مجدد برای {{ continuity.callback.at|jalali }} ثبت شده است{% if continuity.callback.days is not none %} — {{ continuity.callback.days|fa_num }} روز دیگر{% endif %}.
+            {% endif %}
+        </span>
+        <a class="btn btn-sm" href="{{ url_for('unified_followups.index', view='all', q=patient.national_id or patient.full_name) if config.get('FOLLOWUP_UNIFIED_WORKLIST_READONLY') else url_for('followups.worklist', q=patient.national_id or patient.full_name) }}">ثبت تماس</a>
+    </div>
+    {% endif %}
+
+    <div class="workspace-continuity-grid">
+        {% if continuity.last_contact %}
+        <div class="tone-{{ 'ok' if continuity.last_contact.reached else 'warn' }}">
+            <span>آخرین نتیجهٔ تماس</span>
+            <b>{{ continuity.last_contact.outcome_label }}</b>
+            <small>{{ continuity.last_contact.channel_label }} · {{ continuity.last_contact.at|jalali }}{% if continuity.last_contact.actor %} · {{ continuity.last_contact.actor }}{% endif %}</small>
+            {% if continuity.last_contact.note %}<p class="workspace-continuity-note">{{ continuity.last_contact.note }}</p>{% endif %}
+        </div>
+        <div>
+            <span>تماس‌های ثبت‌شده</span>
+            <b>{{ continuity.reached_count|fa_num }} از {{ continuity.contact_count|fa_num }}</b>
+            <small>پاسخ‌داده از کل تماس‌ها</small>
+        </div>
+        {% else %}
+        <div>
+            <span>آخرین نتیجهٔ تماس</span>
+            <b>تماسی ثبت نشده</b>
+            <small>هیچ رویداد تماسی برای این بیمار ثبت نشده است.</small>
+        </div>
+        {% endif %}
+
+        {% if continuity.attendance.never_attended %}
+        <div>
+            <span>بازگشت بیمار</span>
+            <b>سابقهٔ مراجعه ثبت نشده</b>
+            <small>نه نوبت انجام‌شده و نه ویزیت حسابداری ثبت شده است.</small>
+        </div>
+        {% else %}
+        <div class="{{ 'tone-warn' if continuity.attendance.lapsed }}">
+            <span>بازگشت بیمار</span>
+            <b>{% if continuity.attendance.last_attended_at %}{{ continuity.attendance.last_attended_at|jalali_date }}{% else %}تاریخ نامشخص{% endif %}</b>
+            <small>
+                {% if continuity.attendance.lapsed %}
+                بیش از {{ continuity.lapsed_days_threshold|fa_num }} روز بدون مراجعه
+                {% elif continuity.attendance.days_since_attendance is not none %}
+                {{ continuity.attendance.days_since_attendance|fa_num }} روز از آخرین مراجعه
+                {% else %}
+                آخرین مراجعهٔ ثبت‌شده
+                {% endif %}
+            </small>
+        </div>
+        <div class="{{ 'tone-warn' if continuity.attendance.no_show }}">
+            <span>پایبندی به نوبت</span>
+            <b>{% if continuity.attendance.reliability is not none %}{{ continuity.attendance.reliability|fa_num }}٪{% else %}نوبت تعیین‌شده‌ای بسته نشده{% endif %}</b>
+            <small>{{ continuity.attendance.attended|fa_num }} حضور · {{ continuity.attendance.no_show|fa_num }} عدم مراجعه · {{ continuity.attendance.cancelled|fa_num }} لغو</small>
+        </div>
+        {% endif %}
+    </div>
 </section>
 
 {% if clinical_v2 %}

@@ -113,6 +113,61 @@ class AppointmentRepository:
             ).fetchall()
         ]
 
+    # --- Operational aggregates -------------------------------------------
+    # `appointments` carries no price column, so nothing here can be turned into
+    # money. These aggregates deliberately return counts only; booking volume is
+    # not revenue and must never be presented as such.
+
+    def outcome_counts(self, date_from: str, date_to: str) -> dict:
+        """Appointment outcomes in a closed window, grouped by stored status."""
+        rows = self._db().execute(
+            """SELECT status, COUNT(*) AS count FROM appointments
+               WHERE scheduled_at BETWEEN ? AND ?
+               GROUP BY status""",
+            (f"{date_from} 00:00:00", f"{date_to} 23:59:59"),
+        ).fetchall()
+        counts = {"scheduled": 0, "done": 0, "no_show": 0, "cancelled": 0}
+        other = 0
+        for row in rows:
+            key = str(row["status"] or "")
+            if key in counts:
+                counts[key] = int(row["count"] or 0)
+            else:
+                other += int(row["count"] or 0)
+        counts["other"] = other
+        counts["total"] = sum(counts.values())
+        return counts
+
+    def scheduled_ahead_count(self, date_to: str) -> int:
+        """Still-scheduled future appointments up to and including a date."""
+        row = self._db().execute(
+            """SELECT COUNT(*) AS count FROM appointments
+               WHERE status='scheduled'
+                 AND scheduled_at >= datetime('now','+3 hours','+30 minutes')
+                 AND scheduled_at <= ?""",
+            (f"{date_to} 23:59:59",),
+        ).fetchone()
+        return int(row["count"] or 0)
+
+    def lost_opportunities(
+        self, date_from: str, date_to: str, *, limit: int = 20
+    ) -> list[dict]:
+        """Cancelled / no-show appointments in a window, newest first.
+
+        This is the drill-down behind the lost-opportunity counts: every number a
+        manager sees must lead back to the patient who produced it.
+        """
+        rows = self._db().execute(
+            """SELECT a.id, a.patient_link_id, a.scheduled_at, a.status,
+                      a.appt_type, p.full_name AS patient_name, p.phone_number
+               FROM appointments a JOIN patient_links p ON p.id=a.patient_link_id
+               WHERE a.scheduled_at BETWEEN ? AND ?
+                 AND a.status IN ('no_show','cancelled')
+               ORDER BY a.scheduled_at DESC, a.id DESC LIMIT ?""",
+            (f"{date_from} 00:00:00", f"{date_to} 23:59:59", int(limit)),
+        ).fetchall()
+        return [dict(row) for row in rows]
+
     def set_status(self, appt_id: int, status: str, *, commit: bool = True):
         db = self._db()
         db.execute(

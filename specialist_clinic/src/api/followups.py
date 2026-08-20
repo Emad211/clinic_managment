@@ -7,7 +7,11 @@ from flask import Blueprint, flash, g, redirect, render_template, request, url_f
 from src.adapters.sqlite.core import get_db
 from src.adapters.sqlite.engagement_repo import EngagementRepository
 from src.adapters.sqlite.followups_repo import FollowupRepository
-from src.common.utils import iran_now, jalali_to_gregorian_str
+from src.common.utils import (
+    iran_now,
+    jalali_date_to_observation_text,
+    jalali_to_gregorian_str,
+)
 from src.security.permissions import (
     Permission,
     has_permission,
@@ -69,11 +73,11 @@ def _clinical_task(task_id: int) -> bool:
 
 
 def _observed_at(raw: str | None):
+    """Resolve a submitted observation date, or None to let the repository use now."""
     value = (raw or "").strip()
     if not value:
         return None
-    gregorian = jalali_to_gregorian_str(value)
-    return f"{gregorian} 12:00:00" if gregorian else value
+    return jalali_date_to_observation_text(value) or value
 
 
 def _safe_work_url(value: object, fallback: str) -> str:

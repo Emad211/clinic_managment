@@ -124,9 +124,18 @@ def create_app(test_config=None):
     )
     from src.api.manager import bp as manager_bp
     from src.api.patient_card import bp as patient_card_bp
+    from src.api.patient_workspace import (
+        bp as patient_workspace_bp,
+        install_compatibility as install_patient_workspace_compatibility,
+    )
     from src.api.patients import bp as patients_bp
+    from src.api.revenue_cockpit import bp as revenue_cockpit_bp
     from src.api.sms import bp as sms_bp
     from src.api.vitals import bp as vitals_bp
+    from src.api.work_center_outcomes import (
+        bp as work_center_outcomes_bp,
+        template_context as work_center_template_context,
+    )
 
     for blueprint in (
         auth_bp,
@@ -139,6 +148,7 @@ def create_app(test_config=None):
         followups_bp,
         unified_followups_bp,
         finance_review_bp,
+        revenue_cockpit_bp,
         sms_bp,
         manager_bp,
         hypoglycemia_shadow_monitor_bp,
@@ -146,9 +156,17 @@ def create_app(test_config=None):
         ext_bp,
         doctor_queue_bp,
         patient_card_bp,
+        patient_workspace_bp,
+        work_center_outcomes_bp,
         health_bp,
     ):
         app.register_blueprint(blueprint)
+
+    # The Patient Workspace is a first-class application surface, so its routing
+    # compatibility and the Work Center action contract are owned by the factory
+    # rather than by the unrelated prescription-bridge blueprint.
+    app.context_processor(work_center_template_context)
+    install_patient_workspace_compatibility(app)
 
     @app.template_filter("jalali")
     def jalali_filter(value):
