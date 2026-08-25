@@ -1,12 +1,14 @@
 """Application service for immutable package validation and dual attestation."""
 from __future__ import annotations
 
+from datetime import datetime
 from pathlib import Path
 
 from src.adapters.sqlite.clinical_validation_repo import (
     ClinicalValidationError,
     ClinicalValidationReportRepository,
 )
+from src.common.utils import iran_now
 from src.domain.clinical_engine.release import (
     CURRENT_BUNDLED_PACKAGE_VERSION,
     CURRENT_ENGINE_VERSION,
@@ -16,6 +18,8 @@ from src.services.activity_logger import log_activity
 from src.services.clinical_engine.validation_harness import (
     GoldenCaseValidationHarness,
 )
+
+FRESH_VALIDATION_MAX_AGE_MINUTES = 60
 
 
 class ClinicalValidationService:
@@ -89,6 +93,54 @@ class ClinicalValidationService:
             ruleset_code=RULESET_CODE,
             package_version=CURRENT_BUNDLED_PACKAGE_VERSION,
         )
+
+    def _latest_passing_report(self) -> dict | None:
+        return self.repository.latest_passing(
+            engine_version=CURRENT_ENGINE_VERSION,
+            ruleset_code=RULESET_CODE,
+            package_version=CURRENT_BUNDLED_PACKAGE_VERSION,
+        )
+
+    @staticmethod
+    def _is_fresh(report: dict | None) -> bool:
+        if not report:
+            return False
+        try:
+            created_at = datetime.fromisoformat(str(report["created_at"]))
+        except (TypeError, ValueError):
+            return False
+        now = iran_now()
+        if now.tzinfo is not None:
+            now = now.replace(tzinfo=None)
+        age_seconds = (now - created_at).total_seconds()
+        return 0 <= age_seconds <= FRESH_VALIDATION_MAX_AGE_MINUTES * 60
+
+    def ensure_fresh_release_evidence(self, *, actor: str) -> dict | None:
+        """Guarantee a current, fresh, fully-attested release evidence set.
+
+        Single-operator mode: the same actor may hold both attestation roles;
+        idempotency comes from UNIQUE(validation_report_id, role).
+        """
+        operator = " ".join(str(actor or "").split())
+        if not operator:
+            raise ClinicalValidationError("actor is required")
+        report = self._latest_passing_report()
+        if not self._is_fresh(report):
+            report = self.run_current(created_by=operator)
+            if report["status"] != "PASS":
+                raise ClinicalValidationError(
+                    "اعتبارسنجی golden-case موفق نشد؛ فعال‌سازی تک‌اپراتور مسدود است"
+                )
+        attestations = self.repository.attestations(int(report["id"]))
+        for role in ("CLINICAL", "TECHNICAL"):
+            if role not in attestations:
+                self.attest_current(
+                    role=role.lower(),
+                    reviewer=operator,
+                    note="تأیید خودکار تک‌اپراتور",
+                    report_hash=report["report_hash"],
+                )
+        return self.current_release_evidence()
 
     def dashboard(self) -> dict:
         latest = self.repository.latest_for_identity(

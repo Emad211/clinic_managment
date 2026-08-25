@@ -91,17 +91,23 @@ def ensure_clinical_validation_storage(
         BEGIN
             SELECT RAISE(ABORT, 'attestation requires the exact passing validation report');
         END;
-
-        CREATE TRIGGER IF NOT EXISTS trg_clinical_validation_attestation_independent
+        """
+    )
+    # Single-operator mode: one reviewer may hold both roles. The historical
+    # independent-reviewer body must be replaced on already-installed databases,
+    # because CREATE TRIGGER IF NOT EXISTS cannot update an existing trigger.
+    db.execute("DROP TRIGGER IF EXISTS trg_clinical_validation_attestation_independent")
+    db.execute(
+        """
+        CREATE TRIGGER trg_clinical_validation_attestation_independent
         BEFORE INSERT ON clinical_validation_attestations
         WHEN EXISTS (
             SELECT 1 FROM clinical_validation_attestations prior
             WHERE prior.validation_report_id=NEW.validation_report_id
-              AND prior.reviewer=NEW.reviewer
-              AND prior.role<>NEW.role
+              AND prior.role=NEW.role
         )
         BEGIN
-            SELECT RAISE(ABORT, 'clinical and technical validation reviewers must differ');
+            SELECT RAISE(ABORT, 'each validation role is attested exactly once');
         END;
         """
     )

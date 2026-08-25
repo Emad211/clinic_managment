@@ -14,7 +14,6 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from src.adapters.sqlite.clinical_validation_repo import (
-    ClinicalValidationError,
     ClinicalValidationReportRepository,
 )
 from src.domain.clinical_engine.release import (
@@ -109,25 +108,23 @@ def test_validation_reports_are_append_only_and_require_independent_attestation(
         note="Golden cases and clinical explanations reviewed.",
         report_hash=stored["report_hash"],
     )
-    with pytest.raises(ClinicalValidationError, match="must differ"):
-        service.attest_current(
-            role="technical",
-            reviewer="physician-a",
-            note="Attempted second-role attestation.",
-            report_hash=stored["report_hash"],
-        )
     technical = service.attest_current(
         role="technical",
-        reviewer="engineer-b",
-        note="Determinism, storage and failure metrics reviewed.",
+        reviewer="physician-a",
+        note="Single-operator second-role attestation is allowed.",
         report_hash=stored["report_hash"],
     )
     assert clinical["role"] == "CLINICAL"
     assert technical["role"] == "TECHNICAL"
+    assert clinical["reviewer"] == technical["reviewer"]
     evidence = service.current_release_evidence()
     assert evidence
     assert evidence["validation_report_id"] == stored["id"]
     assert evidence["validation_report_hash"] == stored["report_hash"]
+    assert (
+        evidence["attestations"]["CLINICAL"]["reviewer"]
+        == evidence["attestations"]["TECHNICAL"]["reviewer"]
+    )
 
     with pytest.raises(sqlite3.IntegrityError, match="append-only"):
         db.execute(

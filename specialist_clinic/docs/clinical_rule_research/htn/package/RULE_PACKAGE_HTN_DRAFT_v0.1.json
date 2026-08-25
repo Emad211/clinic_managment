@@ -1,0 +1,4731 @@
+{
+  "package_format": "clinical-rule-package.draft/0.1",
+  "ruleset_code": "htn-core-v1",
+  "version": "0.1.0-draft",
+  "status": "DRAFT",
+  "clinical_use": "NOT_APPROVED_HISTORICAL_REGRESSION_ONLY",
+  "source_dossier": "GUIDELINE_DOSSIER_FA v1.0.0",
+  "generated_at": "2026-08-23T17:57:58+03:30",
+  "schema_version": "2.0",
+  "dsl_version": "2.0",
+  "rule_schema_ref": "src/domain/clinical_engine/schemas/clinical-rule.schema.json",
+  "validation": {
+    "method": "jsonschema.Draft202012Validator with FormatChecker against clinical-rule.schema.json (internal refs only; no external registry needed)",
+    "validated_at": "2026-08-23T18:45:39+03:30",
+    "rules_total": 45,
+    "rules_valid": 45,
+    "result": "ALL_VALID",
+    "validator_version_note": "jsonschema library in specialist_clinic/.venv; each entry of rules[] validated as a standalone RuleDefinition"
+  },
+  "authoring_notes": [
+    "STRUCTURAL MAPPING (per dossier DSL section): indicator.X.latest → observation.X / lab.X با selector.aggregation=latest؛ med.class has → medication.<class> truthy؛ med.class not_has → not{medication.<class> truthy}؛ flag.<key> → fact کاتالوگ فلگ؛ age → patient.age (+ scope.age_min). هر گرهٔ expression node_id قطعی <CODE>-e*/c* دارد.",
+    "OPERATORS: همهٔ عملگرهای داسیه (has, not_has, in, between, >=, <, ==, truthy) زیرمجموعهٔ SUPPORTED_OPERATORS در compiler_support.py هستند. تنها تطبیق ساختاری: has/not_has روی med.class به برگ‌های truthy/not{truthy} روی medication.<class> بسط یافت.",
+    "VERBATIM TRIGGERS: تریگر خام داسیه عیناً (آرایهٔ conditions با AND ضمنی) در کلید ریشهٔ dossier_triggers نگهداری می‌شود؛ کلیدها کدِ بسته است. پسوندهای a/b/c داسیه به A/B/C بزرگ تبدیل شدند چون الگوی rule_code اسکیما فقط حروف بزرگ می‌پذیرد.",
+    "PHASE mapping طبق داسیه: redflag → PREFLIGHT، safety → SAFETY، routine → ROUTINE. SEVERITY mapping: critical→CRITICAL، high→URGENT، medium→WARN، low→INFO. PRIORITY ×100 تا در بازهٔ 0–10000 اسکیما بگنجد.",
+    "FLAG→FACT نگاشت: پرچم‌های حضور بیماری (flag.hypertension/flag.diabetes/flag.ckd) به condition.hypertension/condition.diabetes/condition.ckd نگاشت شدند (سازگار با بستهٔ RED FLAGS)؛ flag.ascvd مطابق قرارداد RED FLAGS به‌صورت flag.ascvd ماند؛ سایر پرچم‌های عملیاتی عیناً flag.<key> هستند.",
+    "ELIGIBILITY: وقتی گیت بیماری در تریگر هست = truthy روی condition.<code>؛ وگرنه exists روی فکت اصلی (تک‌فکتی) یا any-of از existsها (چندفکتی، الگوی RF-BP-02 بستهٔ پرچم‌های قرمز).",
+    "may_create_internal_task=true فقط برای action_type=create_followup طبق دستور کار — محدودتر از INTERNAL_TASK_ACTIONS کامپایلر که schedule_screening/vaccine را هم شامل می‌شود؛ تصمیم نهایی با مالک.",
+    "شرایط منفی دارویی (not_has) fail-closed بسته شدند: REQUIRED/NEEDS_DATA در required_facts تا در نبود دادهٔ دارو، قاعده پیشنهاد شروع دارو ندهد. شرایط مثبت AND مانند RED FLAGS (SF-BP-03) با REQUIRED/NOT_APPLICABLE.",
+    "پرچم‌های نام‌شده در شکاف #۲ داسیه (end_organ_symptom، frail_or_orthostatic، resistant_htn_*، rasi_started_or_titrated_within_4w، potassium_gt_5_5) هنوز در fact snapshot نیستند؛ قواعد وابسته به آنها نباید قبل از تأمین پرچم‌ها فعال شوند (DRAFT خودش مانع فعال‌سازی است).",
+    "HTN-R28: تریگر داسیه (uacr_done_within_days < 365 یعنی «UACR اخیراً انجام شده») ظاهراً وارونهٔ هدف سالانه است — عیناً حفظ شد و در change_note برای بازبینی پزشک علامت خورد؛ هیچ اصلاح منطقی انجام نشد.",
+    "ماشین حالت تیتراسیون (R12/R18/R19/R27 به «زمان آخرین تغییر دوز» و «دوز فعلی/max» نیاز دارند) در DSL 2.0 بیان‌پذیر نیست — طبق شکاف #۳ داسیه به‌عنوان DSL gap ثبت شد و هیچ فکت جایگزینی اختراع نشد؛ شرط جانشین flag-based عیناً از خود داسیه آمده است.",
+    "source_urlها فقط از DOI/PMID داخل ارجاع داسیه یا صفحهٔ فرود ژورنال ساخته شده‌اند؛ موارد بدون DOI/PMID با local_adaptation_note علامت خورده‌اند. FLOW (NEJM 2024) طبق شکاف #۱ داسیه فقط با هشدار «عدد دقیق تأییدنشده» ذکر شده و استناد اصلی FIDELIO-DKD (PMID 33264825) است.",
+    "evidence_certainty/recommendation_strength = NOT_GRADED برای همه (داسیه درجه‌بندی GRADE نداده). review_due_date پیش‌فرض عملیاتی ۹۰ روزه (2026-11-21) است؛ مالک می‌تواند تغییر دهد.",
+    "encounter_types=['chronic_followup'] طبق دستور کار این بسته (در بستهٔ RED FLAGS مقدار outpatient_chronic_care بود) — تفاوت آگاهانه است.",
+    "فعال‌سازی این بسته مستلزم package_contract validation + بازبینی بالینی مستقل + کلیک مالک است؛ این فایل به runtime/compiler متصل نیست و clinical_use آن فقط HISTORICAL_REGRESSION است."
+  ],
+  "dossier_triggers": {
+    "HTN-R01A": {
+      "conditions": [
+        {
+          "var": "indicator.bp_systolic.latest",
+          "op": ">=",
+          "value": 140
+        }
+      ]
+    },
+    "HTN-R01B": {
+      "conditions": [
+        {
+          "var": "indicator.bp_diastolic.latest",
+          "op": ">=",
+          "value": 90
+        }
+      ]
+    },
+    "HTN-R02A": {
+      "conditions": [
+        {
+          "var": "indicator.bp_systolic.latest",
+          "op": "between",
+          "value": [
+            130,
+            139
+          ]
+        }
+      ]
+    },
+    "HTN-R02B": {
+      "conditions": [
+        {
+          "var": "indicator.bp_diastolic.latest",
+          "op": "between",
+          "value": [
+            80,
+            89
+          ]
+        }
+      ]
+    },
+    "HTN-R03": {
+      "conditions": [
+        {
+          "var": "indicator.bp_systolic.latest",
+          "op": "between",
+          "value": [
+            120,
+            129
+          ]
+        },
+        {
+          "var": "indicator.bp_diastolic.latest",
+          "op": "<",
+          "value": 80
+        }
+      ]
+    },
+    "HTN-R04": {
+      "conditions": [
+        {
+          "var": "indicator.bp_systolic.latest",
+          "op": "<",
+          "value": 120
+        },
+        {
+          "var": "indicator.bp_diastolic.latest",
+          "op": "<",
+          "value": 80
+        }
+      ]
+    },
+    "HTN-R05A": {
+      "conditions": [
+        {
+          "var": "indicator.bp_systolic.latest",
+          "op": ">=",
+          "value": 180
+        }
+      ]
+    },
+    "HTN-R05B": {
+      "conditions": [
+        {
+          "var": "indicator.bp_diastolic.latest",
+          "op": ">=",
+          "value": 110
+        }
+      ]
+    },
+    "HTN-R06": {
+      "conditions": [
+        {
+          "var": "flag.hypertension",
+          "op": "truthy"
+        }
+      ]
+    },
+    "HTN-R07": {
+      "conditions": [
+        {
+          "var": "flag.diabetes",
+          "op": "truthy"
+        }
+      ]
+    },
+    "HTN-R08": {
+      "conditions": [
+        {
+          "var": "flag.ckd",
+          "op": "truthy"
+        }
+      ]
+    },
+    "HTN-R09": {
+      "conditions": [
+        {
+          "var": "age",
+          "op": ">=",
+          "value": 65
+        }
+      ]
+    },
+    "HTN-R10": {
+      "conditions": [
+        {
+          "var": "flag.frail_or_orthostatic",
+          "op": "truthy"
+        }
+      ]
+    },
+    "HTN-R11": {
+      "conditions": [
+        {
+          "var": "flag.hypertension",
+          "op": "truthy"
+        },
+        {
+          "var": "med.class",
+          "op": "not_has",
+          "value": "acei"
+        },
+        {
+          "var": "med.class",
+          "op": "not_has",
+          "value": "arb"
+        },
+        {
+          "var": "med.class",
+          "op": "not_has",
+          "value": "ccb"
+        },
+        {
+          "var": "med.class",
+          "op": "not_has",
+          "value": "thiazide"
+        }
+      ]
+    },
+    "HTN-R12": {
+      "conditions": [
+        {
+          "var": "indicator.bp_systolic.latest",
+          "op": ">=",
+          "value": 130
+        },
+        {
+          "var": "flag.on_single_agent_below_max",
+          "op": "truthy"
+        }
+      ]
+    },
+    "HTN-R13": {
+      "conditions": [
+        {
+          "var": "flag.acei_cough_intolerant",
+          "op": "truthy"
+        },
+        {
+          "var": "med.class",
+          "op": "not_has",
+          "value": "ccb"
+        }
+      ]
+    },
+    "HTN-R14": {
+      "conditions": [
+        {
+          "var": "flag.hypertension_uncontrolled",
+          "op": "truthy"
+        },
+        {
+          "var": "med.class",
+          "op": "not_has",
+          "value": "thiazide"
+        }
+      ]
+    },
+    "HTN-R15": {
+      "conditions": [
+        {
+          "var": "indicator.egfr.latest",
+          "op": "<",
+          "value": 30
+        },
+        {
+          "var": "med.class",
+          "op": "has",
+          "value": "thiazide"
+        }
+      ]
+    },
+    "HTN-R16A": {
+      "conditions": [
+        {
+          "var": "indicator.bp_systolic.latest",
+          "op": ">=",
+          "value": 160
+        },
+        {
+          "var": "med.class",
+          "op": "not_has",
+          "value": "acei"
+        },
+        {
+          "var": "med.class",
+          "op": "not_has",
+          "value": "arb"
+        }
+      ]
+    },
+    "HTN-R16B": {
+      "conditions": [
+        {
+          "var": "indicator.bp_diastolic.latest",
+          "op": ">=",
+          "value": 100
+        },
+        {
+          "var": "med.class",
+          "op": "not_has",
+          "value": "acei"
+        },
+        {
+          "var": "med.class",
+          "op": "not_has",
+          "value": "arb"
+        }
+      ]
+    },
+    "HTN-R17": {
+      "conditions": [
+        {
+          "var": "med.class",
+          "op": "has",
+          "value": "acei"
+        },
+        {
+          "var": "med.class",
+          "op": "has",
+          "value": "arb"
+        }
+      ]
+    },
+    "HTN-R18": {
+      "conditions": [
+        {
+          "var": "flag.resistant_htn_3drugs_with_diuretic",
+          "op": "truthy"
+        },
+        {
+          "var": "med.class",
+          "op": "not_has",
+          "value": "mra"
+        }
+      ]
+    },
+    "HTN-R19": {
+      "conditions": [
+        {
+          "var": "med.class",
+          "op": "has",
+          "value": "mra"
+        },
+        {
+          "var": "flag.mra_started_or_titrated_within_4w",
+          "op": "truthy"
+        }
+      ]
+    },
+    "HTN-R20": {
+      "conditions": [
+        {
+          "var": "flag.resistant_htn_on_4drugs_uncontrolled",
+          "op": "truthy"
+        }
+      ]
+    },
+    "HTN-R21": {
+      "conditions": [
+        {
+          "var": "flag.diabetes",
+          "op": "truthy"
+        },
+        {
+          "var": "med.class",
+          "op": "not_has",
+          "value": "acei"
+        },
+        {
+          "var": "med.class",
+          "op": "not_has",
+          "value": "arb"
+        }
+      ]
+    },
+    "HTN-R22": {
+      "conditions": [
+        {
+          "var": "indicator.uacr.latest",
+          "op": ">=",
+          "value": 300
+        },
+        {
+          "var": "med.class",
+          "op": "not_has",
+          "value": "acei"
+        },
+        {
+          "var": "med.class",
+          "op": "not_has",
+          "value": "arb"
+        }
+      ]
+    },
+    "HTN-R23": {
+      "conditions": [
+        {
+          "var": "flag.diabetes",
+          "op": "truthy"
+        },
+        {
+          "var": "flag.ckd",
+          "op": "truthy"
+        },
+        {
+          "var": "indicator.egfr.latest",
+          "op": "between",
+          "value": [
+            25,
+            75
+          ]
+        },
+        {
+          "var": "indicator.uacr.latest",
+          "op": ">=",
+          "value": 30
+        },
+        {
+          "var": "med.class",
+          "op": "not_has",
+          "value": "finerenone"
+        }
+      ]
+    },
+    "HTN-R24": {
+      "conditions": [
+        {
+          "var": "flag.ascvd",
+          "op": "truthy"
+        }
+      ]
+    },
+    "HTN-R25": {
+      "conditions": [
+        {
+          "var": "flag.chronic_disease",
+          "op": "truthy"
+        }
+      ]
+    },
+    "HTN-R26": {
+      "conditions": [
+        {
+          "var": "flag.rasi_about_to_start",
+          "op": "truthy"
+        },
+        {
+          "var": "flag.baseline_labs_current",
+          "op": "==",
+          "value": false
+        }
+      ]
+    },
+    "HTN-R27": {
+      "conditions": [
+        {
+          "var": "flag.rasi_started_or_titrated_within_4w",
+          "op": "truthy"
+        },
+        {
+          "var": "flag.post_change_labs_done",
+          "op": "==",
+          "value": false
+        }
+      ]
+    },
+    "HTN-R28": {
+      "conditions": [
+        {
+          "var": "flag.diabetes",
+          "op": "truthy"
+        },
+        {
+          "var": "flag.uacr_done_within_days",
+          "op": "<",
+          "value": 365
+        }
+      ]
+    },
+    "HTN-R29": {
+      "conditions": [
+        {
+          "var": "flag.hypertension_on_treatment",
+          "op": "truthy"
+        }
+      ]
+    },
+    "HTN-R30": {
+      "conditions": [
+        {
+          "var": "flag.bp_unconfirmed_or_white_coat_suspect",
+          "op": "truthy"
+        }
+      ]
+    },
+    "HTN-R31A": {
+      "conditions": [
+        {
+          "var": "indicator.bp_systolic.latest",
+          "op": ">=",
+          "value": 180
+        },
+        {
+          "var": "indicator.bp_diastolic.latest",
+          "op": ">=",
+          "value": 120
+        },
+        {
+          "var": "flag.end_organ_symptom",
+          "op": "in",
+          "value": [
+            "chest_pain",
+            "dyspnea",
+            "neuro_deficit",
+            "vision_loss",
+            "seizure",
+            "oliguria"
+          ]
+        }
+      ]
+    },
+    "HTN-R31B": {
+      "conditions": [
+        {
+          "var": "indicator.bp_systolic.latest",
+          "op": ">=",
+          "value": 180
+        },
+        {
+          "var": "flag.end_organ_symptom",
+          "op": "in",
+          "value": [
+            "chest_pain",
+            "dyspnea",
+            "neuro_deficit",
+            "vision_loss",
+            "seizure",
+            "oliguria"
+          ]
+        }
+      ]
+    },
+    "HTN-R31C": {
+      "conditions": [
+        {
+          "var": "indicator.bp_diastolic.latest",
+          "op": ">=",
+          "value": 120
+        },
+        {
+          "var": "flag.end_organ_symptom",
+          "op": "in",
+          "value": [
+            "chest_pain",
+            "dyspnea",
+            "neuro_deficit",
+            "vision_loss",
+            "seizure",
+            "oliguria"
+          ]
+        }
+      ]
+    },
+    "HTN-R32A": {
+      "conditions": [
+        {
+          "var": "indicator.bp_systolic.latest",
+          "op": ">=",
+          "value": 180
+        },
+        {
+          "var": "flag.end_organ_symptom",
+          "op": "==",
+          "value": false
+        }
+      ]
+    },
+    "HTN-R32B": {
+      "conditions": [
+        {
+          "var": "indicator.bp_diastolic.latest",
+          "op": ">=",
+          "value": 110
+        },
+        {
+          "var": "flag.end_organ_symptom",
+          "op": "==",
+          "value": false
+        }
+      ]
+    },
+    "HTN-R33": {
+      "conditions": [
+        {
+          "var": "flag.potassium_gt_5_5",
+          "op": "truthy"
+        }
+      ]
+    },
+    "HTN-R34": {
+      "conditions": [
+        {
+          "var": "flag.symptomatic_orthostatic_hypotension",
+          "op": "truthy"
+        }
+      ]
+    },
+    "HTN-R35": {
+      "conditions": [
+        {
+          "var": "flag.hypertension",
+          "op": "truthy"
+        }
+      ]
+    },
+    "HTN-R36": {
+      "conditions": [
+        {
+          "var": "indicator.bmi.latest",
+          "op": ">=",
+          "value": 25
+        }
+      ]
+    },
+    "HTN-R37": {
+      "conditions": [
+        {
+          "var": "flag.hypertension",
+          "op": "truthy"
+        }
+      ]
+    },
+    "HTN-R38": {
+      "conditions": [
+        {
+          "var": "flag.smoker_or_alcohol_excess",
+          "op": "truthy"
+        }
+      ]
+    }
+  },
+  "rules": [
+    {
+      "schema_version": "2.0",
+      "dsl_version": "2.0",
+      "rule_code": "HTN-R01A",
+      "version": "0.1.0-draft",
+      "title": "Stage 2 ACC/AHA — سیستولیک ≥۱۴۰",
+      "phase": "ROUTINE",
+      "action_type": "classify",
+      "severity": "URGENT",
+      "priority": 1000,
+      "semantic_key": "htn-core-v1.HTN-R01A",
+      "scope": {
+        "population": "adults_with_recorded_bp",
+        "care_settings": [
+          "specialty_clinic"
+        ],
+        "encounter_types": [
+          "chronic_followup"
+        ]
+      },
+      "required_facts": [
+        {
+          "key": "observation.bp_systolic",
+          "criticality": "CRITICAL",
+          "on_unusable": "NEEDS_DATA"
+        }
+      ],
+      "eligibility": {
+        "node_id": "HTN-R01A-e1",
+        "fact": "observation.bp_systolic",
+        "op": "exists"
+      },
+      "condition": {
+        "node_id": "HTN-R01A-c1",
+        "fact": "observation.bp_systolic",
+        "op": ">=",
+        "value": 140,
+        "selector": {
+          "aggregation": "latest"
+        }
+      },
+      "safety": {
+        "redflag_exclusions": [],
+        "hard_exclusions": [],
+        "on_safety_error": "BLOCK_ROUTINE_OUTPUTS"
+      },
+      "recommendation": {
+        "text_fa": "«سیستولیک ≥۱۴۰ ثبت شده — محدودهٔ Stage 2 راهنمای ACC/AHA. تشخیص نیازمند چند اندازه‌گیری در ≥۲ ویزیت یا تأیید خارج از مطب است؛ ارزیابی پزشک و برنامهٔ درمان لازم است.»",
+        "suggestion_only": true,
+        "requires_clinician_confirmation": true,
+        "may_create_internal_task": false,
+        "params": {
+          "label": "htn_stage_2_acc_aha"
+        }
+      },
+      "evidence": {
+        "source_title": "2017 ACC/AHA Guideline for the Prevention, Detection, Evaluation, and Management of High Blood Pressure in Adults — Blood Pressure Categories",
+        "issuing_organization": "American College of Cardiology / American Heart Association",
+        "publication_date": null,
+        "source_version": "2017",
+        "source_locator": "Hypertension 2018;71:e13–e115 / JACC 2018;71:e127–e248 — جدول BP Categories: Stage 2 = SBP ≥140 یا DBP ≥90.",
+        "source_url": "https://www.ahajournals.org/journal/hyp",
+        "evidence_certainty": "NOT_GRADED",
+        "recommendation_strength": "NOT_GRADED",
+        "local_validation_status": "NOT_REVIEWED",
+        "local_adaptation_note": "URL صفحهٔ فرود ژورنال است؛ نشانی دقیق مقاله باید در بازبینی تکمیل شود (داسیه DOI/PMID نداده)."
+      },
+      "governance": {
+        "status": "DRAFT",
+        "author": "research-dossier-conversion",
+        "clinical_reviewer": null,
+        "review_due_date": "2026-11-21",
+        "change_note": "تبدیل خودکار از GUIDELINE_DOSSIER_FA v1.0.0 (بخش ۱، HTN-R01a). پسوند a→A طبق الگوی rule_code اسکیما."
+      }
+    },
+    {
+      "schema_version": "2.0",
+      "dsl_version": "2.0",
+      "rule_code": "HTN-R01B",
+      "version": "0.1.0-draft",
+      "title": "Stage 2 ACC/AHA — دیاستولیک ≥۹۰",
+      "phase": "ROUTINE",
+      "action_type": "classify",
+      "severity": "URGENT",
+      "priority": 1000,
+      "semantic_key": "htn-core-v1.HTN-R01B",
+      "scope": {
+        "population": "adults_with_recorded_bp",
+        "care_settings": [
+          "specialty_clinic"
+        ],
+        "encounter_types": [
+          "chronic_followup"
+        ]
+      },
+      "required_facts": [
+        {
+          "key": "observation.bp_diastolic",
+          "criticality": "CRITICAL",
+          "on_unusable": "NEEDS_DATA"
+        }
+      ],
+      "eligibility": {
+        "node_id": "HTN-R01B-e1",
+        "fact": "observation.bp_diastolic",
+        "op": "exists"
+      },
+      "condition": {
+        "node_id": "HTN-R01B-c1",
+        "fact": "observation.bp_diastolic",
+        "op": ">=",
+        "value": 90,
+        "selector": {
+          "aggregation": "latest"
+        }
+      },
+      "safety": {
+        "redflag_exclusions": [],
+        "hard_exclusions": [],
+        "on_safety_error": "BLOCK_ROUTINE_OUTPUTS"
+      },
+      "recommendation": {
+        "text_fa": "«دیاستولیک ≥۹۰ ثبت شده — محدودهٔ Stage 2 راهنمای ACC/AHA. تشخیص نیازمند چند اندازه‌گیری در ≥۲ ویزیت یا تأیید خارج از مطب است؛ ارزیابی پزشک و برنامهٔ درمان لازم است.»",
+        "suggestion_only": true,
+        "requires_clinician_confirmation": true,
+        "may_create_internal_task": false,
+        "params": {
+          "label": "htn_stage_2_acc_aha"
+        }
+      },
+      "evidence": {
+        "source_title": "2017 ACC/AHA Guideline — Blood Pressure Categories",
+        "issuing_organization": "American College of Cardiology / American Heart Association",
+        "publication_date": null,
+        "source_version": "2017",
+        "source_locator": "Hypertension 2018;71:e13–e115 — Stage 2 = SBP ≥140 یا DBP ≥90.",
+        "source_url": "https://www.ahajournals.org/journal/hyp",
+        "evidence_certainty": "NOT_GRADED",
+        "recommendation_strength": "NOT_GRADED",
+        "local_validation_status": "NOT_REVIEWED",
+        "local_adaptation_note": "URL صفحهٔ فرود ژورنال است؛ نشانی دقیق مقاله باید در بازبینی تکمیل شود."
+      },
+      "governance": {
+        "status": "DRAFT",
+        "author": "research-dossier-conversion",
+        "clinical_reviewer": null,
+        "review_due_date": "2026-11-21",
+        "change_note": "تبدیل خودکار از GUIDELINE_DOSSIER_FA v1.0.0 (بخش ۱، HTN-R01b). پسوند b→B طبق الگوی rule_code اسکیما."
+      }
+    },
+    {
+      "schema_version": "2.0",
+      "dsl_version": "2.0",
+      "rule_code": "HTN-R02A",
+      "version": "0.1.0-draft",
+      "title": "Stage 1 ACC/AHA — سیستولیک ۱۳۰–۱۳۹",
+      "phase": "ROUTINE",
+      "action_type": "classify",
+      "severity": "WARN",
+      "priority": 1200,
+      "semantic_key": "htn-core-v1.HTN-R02A",
+      "scope": {
+        "population": "adults_with_recorded_bp",
+        "care_settings": [
+          "specialty_clinic"
+        ],
+        "encounter_types": [
+          "chronic_followup"
+        ]
+      },
+      "required_facts": [
+        {
+          "key": "observation.bp_systolic",
+          "criticality": "CRITICAL",
+          "on_unusable": "NEEDS_DATA"
+        }
+      ],
+      "eligibility": {
+        "node_id": "HTN-R02A-e1",
+        "fact": "observation.bp_systolic",
+        "op": "exists"
+      },
+      "condition": {
+        "node_id": "HTN-R02A-c1",
+        "fact": "observation.bp_systolic",
+        "op": "between",
+        "value": [
+          130,
+          139
+        ],
+        "selector": {
+          "aggregation": "latest"
+        }
+      },
+      "safety": {
+        "redflag_exclusions": [],
+        "hard_exclusions": [],
+        "on_safety_error": "BLOCK_ROUTINE_OUTPUTS"
+      },
+      "recommendation": {
+        "text_fa": "«سیستولیک ۱۳۰–۱۳۹ ثبت شده — محدودهٔ Stage 1 راهنمای ACC/AHA. تصمیم درمان بر اساس ریسک قلبی-عروقی و تأیید خارج از مطب با پزشک بررسی شود.»",
+        "suggestion_only": true,
+        "requires_clinician_confirmation": true,
+        "may_create_internal_task": false,
+        "params": {
+          "label": "htn_stage_1_acc_aha"
+        }
+      },
+      "evidence": {
+        "source_title": "2017 ACC/AHA Guideline — Blood Pressure Categories",
+        "issuing_organization": "American College of Cardiology / American Heart Association",
+        "publication_date": null,
+        "source_version": "2017",
+        "source_locator": "Hypertension 2018;71:e13–e115 — Stage 1 = SBP 130–139 یا DBP 80–89.",
+        "source_url": "https://www.ahajournals.org/journal/hyp",
+        "evidence_certainty": "NOT_GRADED",
+        "recommendation_strength": "NOT_GRADED",
+        "local_validation_status": "NOT_REVIEWED",
+        "local_adaptation_note": "URL صفحهٔ فرود ژورنال است؛ نشانی دقیق مقاله باید در بازبینی تکمیل شود."
+      },
+      "governance": {
+        "status": "DRAFT",
+        "author": "research-dossier-conversion",
+        "clinical_reviewer": null,
+        "review_due_date": "2026-11-21",
+        "change_note": "تبدیل خودکار از GUIDELINE_DOSSIER_FA v1.0.0 (بخش ۱، HTN-R02a). پسوند a→A طبق الگوی rule_code اسکیما."
+      }
+    },
+    {
+      "schema_version": "2.0",
+      "dsl_version": "2.0",
+      "rule_code": "HTN-R02B",
+      "version": "0.1.0-draft",
+      "title": "Stage 1 ACC/AHA — دیاستولیک ۸۰–۸۹",
+      "phase": "ROUTINE",
+      "action_type": "classify",
+      "severity": "WARN",
+      "priority": 1200,
+      "semantic_key": "htn-core-v1.HTN-R02B",
+      "scope": {
+        "population": "adults_with_recorded_bp",
+        "care_settings": [
+          "specialty_clinic"
+        ],
+        "encounter_types": [
+          "chronic_followup"
+        ]
+      },
+      "required_facts": [
+        {
+          "key": "observation.bp_diastolic",
+          "criticality": "CRITICAL",
+          "on_unusable": "NEEDS_DATA"
+        }
+      ],
+      "eligibility": {
+        "node_id": "HTN-R02B-e1",
+        "fact": "observation.bp_diastolic",
+        "op": "exists"
+      },
+      "condition": {
+        "node_id": "HTN-R02B-c1",
+        "fact": "observation.bp_diastolic",
+        "op": "between",
+        "value": [
+          80,
+          89
+        ],
+        "selector": {
+          "aggregation": "latest"
+        }
+      },
+      "safety": {
+        "redflag_exclusions": [],
+        "hard_exclusions": [],
+        "on_safety_error": "BLOCK_ROUTINE_OUTPUTS"
+      },
+      "recommendation": {
+        "text_fa": "«دیاستولیک ۸۰–۸۹ ثبت شده — محدودهٔ Stage 1 راهنمای ACC/AHA. تصمیم درمان بر اساس ریسک قلبی-عروقی و تأیید خارج از مطب با پزشک بررسی شود.»",
+        "suggestion_only": true,
+        "requires_clinician_confirmation": true,
+        "may_create_internal_task": false,
+        "params": {
+          "label": "htn_stage_1_acc_aha"
+        }
+      },
+      "evidence": {
+        "source_title": "2017 ACC/AHA Guideline — Blood Pressure Categories",
+        "issuing_organization": "American College of Cardiology / American Heart Association",
+        "publication_date": null,
+        "source_version": "2017",
+        "source_locator": "Hypertension 2018;71:e13–e115 — Stage 1 = SBP 130–139 یا DBP 80–89.",
+        "source_url": "https://www.ahajournals.org/journal/hyp",
+        "evidence_certainty": "NOT_GRADED",
+        "recommendation_strength": "NOT_GRADED",
+        "local_validation_status": "NOT_REVIEWED",
+        "local_adaptation_note": "URL صفحهٔ فرود ژورنال است؛ نشانی دقیق مقاله باید در بازبینی تکمیل شود."
+      },
+      "governance": {
+        "status": "DRAFT",
+        "author": "research-dossier-conversion",
+        "clinical_reviewer": null,
+        "review_due_date": "2026-11-21",
+        "change_note": "تبدیل خودکار از GUIDELINE_DOSSIER_FA v1.0.0 (بخش ۱، HTN-R02b). پسوند b→B طبق الگوی rule_code اسکیما."
+      }
+    },
+    {
+      "schema_version": "2.0",
+      "dsl_version": "2.0",
+      "rule_code": "HTN-R03",
+      "version": "0.1.0-draft",
+      "title": "Elevated BP (۱۲۰–۱۲۹ با دیاستولیک <۸۰) — آموزش سبک زندگی",
+      "phase": "ROUTINE",
+      "action_type": "educate",
+      "severity": "INFO",
+      "priority": 1400,
+      "semantic_key": "htn-core-v1.HTN-R03",
+      "scope": {
+        "population": "adults_with_recorded_bp",
+        "care_settings": [
+          "specialty_clinic"
+        ],
+        "encounter_types": [
+          "chronic_followup"
+        ]
+      },
+      "required_facts": [
+        {
+          "key": "observation.bp_systolic",
+          "criticality": "CRITICAL",
+          "on_unusable": "CONTINUE_WITH_WARNING"
+        },
+        {
+          "key": "observation.bp_diastolic",
+          "criticality": "CRITICAL",
+          "on_unusable": "CONTINUE_WITH_WARNING"
+        }
+      ],
+      "eligibility": {
+        "node_id": "HTN-R03-e1",
+        "any": [
+          {
+            "node_id": "HTN-R03-e2",
+            "fact": "observation.bp_systolic",
+            "op": "exists"
+          },
+          {
+            "node_id": "HTN-R03-e3",
+            "fact": "observation.bp_diastolic",
+            "op": "exists"
+          }
+        ]
+      },
+      "condition": {
+        "node_id": "HTN-R03-c1",
+        "all": [
+          {
+            "node_id": "HTN-R03-c2",
+            "fact": "observation.bp_systolic",
+            "op": "between",
+            "value": [
+              120,
+              129
+            ],
+            "selector": {
+              "aggregation": "latest"
+            }
+          },
+          {
+            "node_id": "HTN-R03-c3",
+            "fact": "observation.bp_diastolic",
+            "op": "<",
+            "value": 80,
+            "selector": {
+              "aggregation": "latest"
+            }
+          }
+        ]
+      },
+      "safety": {
+        "redflag_exclusions": [],
+        "hard_exclusions": [],
+        "on_safety_error": "BLOCK_ROUTINE_OUTPUTS"
+      },
+      "recommendation": {
+        "text_fa": "«فشار در محدودهٔ Elevated (۱۲۰–۱۲۹ با دیاستولیک <۸۰) است؛ هنوز دارو لازم نیست. مداخلات غیردارویی و پروتکل HBPM هفت‌روزه (۷ روز × ۲ قرائت، حذف روز اول، میانگین ≥۱۲ قرائت) توصیه می‌شود.»",
+        "suggestion_only": true,
+        "requires_clinician_confirmation": true,
+        "may_create_internal_task": false,
+        "params": {
+          "topic": "lifestyle_elevated_bp",
+          "note": "Non-pharmacologic + HBPM 7-day protocol"
+        }
+      },
+      "evidence": {
+        "source_title": "2017 ACC/AHA Guideline — Blood Pressure Categories & Lifestyle Management",
+        "issuing_organization": "American College of Cardiology / American Heart Association",
+        "publication_date": null,
+        "source_version": "2017",
+        "source_locator": "Hypertension 2018;71:e13–e115 — Elevated = SBP 120–129 و DBP <80؛ مدیریت غیردارویی + پایش خارج از مطب.",
+        "source_url": "https://www.ahajournals.org/journal/hyp",
+        "evidence_certainty": "NOT_GRADED",
+        "recommendation_strength": "NOT_GRADED",
+        "local_validation_status": "NOT_REVIEWED",
+        "local_adaptation_note": "URL صفحهٔ فرود ژورنال است؛ نشانی دقیق مقاله باید در بازبینی تکمیل شود."
+      },
+      "governance": {
+        "status": "DRAFT",
+        "author": "research-dossier-conversion",
+        "clinical_reviewer": null,
+        "review_due_date": "2026-11-21",
+        "change_note": "تبدیل خودکار از GUIDELINE_DOSSIER_FA v1.0.0 (بخش ۱، HTN-R03)."
+      }
+    },
+    {
+      "schema_version": "2.0",
+      "dsl_version": "2.0",
+      "rule_code": "HTN-R04",
+      "version": "0.1.0-draft",
+      "title": "فشار نرمال (<۱۲۰/<۸۰)",
+      "phase": "ROUTINE",
+      "action_type": "classify",
+      "severity": "INFO",
+      "priority": 9900,
+      "semantic_key": "htn-core-v1.HTN-R04",
+      "scope": {
+        "population": "adults_with_recorded_bp",
+        "care_settings": [
+          "specialty_clinic"
+        ],
+        "encounter_types": [
+          "chronic_followup"
+        ]
+      },
+      "required_facts": [
+        {
+          "key": "observation.bp_systolic",
+          "criticality": "CRITICAL",
+          "on_unusable": "CONTINUE_WITH_WARNING"
+        },
+        {
+          "key": "observation.bp_diastolic",
+          "criticality": "CRITICAL",
+          "on_unusable": "CONTINUE_WITH_WARNING"
+        }
+      ],
+      "eligibility": {
+        "node_id": "HTN-R04-e1",
+        "any": [
+          {
+            "node_id": "HTN-R04-e2",
+            "fact": "observation.bp_systolic",
+            "op": "exists"
+          },
+          {
+            "node_id": "HTN-R04-e3",
+            "fact": "observation.bp_diastolic",
+            "op": "exists"
+          }
+        ]
+      },
+      "condition": {
+        "node_id": "HTN-R04-c1",
+        "all": [
+          {
+            "node_id": "HTN-R04-c2",
+            "fact": "observation.bp_systolic",
+            "op": "<",
+            "value": 120,
+            "selector": {
+              "aggregation": "latest"
+            }
+          },
+          {
+            "node_id": "HTN-R04-c3",
+            "fact": "observation.bp_diastolic",
+            "op": "<",
+            "value": 80,
+            "selector": {
+              "aggregation": "latest"
+            }
+          }
+        ]
+      },
+      "safety": {
+        "redflag_exclusions": [],
+        "hard_exclusions": [],
+        "on_safety_error": "BLOCK_ROUTINE_OUTPUTS"
+      },
+      "recommendation": {
+        "text_fa": "«فشار در محدودهٔ نرمال (<۱۲۰/<۸۰) است؛ ادامهٔ پایش معمول توصیه می‌شود.»",
+        "suggestion_only": true,
+        "requires_clinician_confirmation": true,
+        "may_create_internal_task": false,
+        "params": {
+          "label": "bp_normal"
+        }
+      },
+      "evidence": {
+        "source_title": "2017 ACC/AHA Guideline — Blood Pressure Categories",
+        "issuing_organization": "American College of Cardiology / American Heart Association",
+        "publication_date": null,
+        "source_version": "2017",
+        "source_locator": "Hypertension 2018;71:e13–e115 — Normal = SBP <120 و DBP <80.",
+        "source_url": "https://www.ahajournals.org/journal/hyp",
+        "evidence_certainty": "NOT_GRADED",
+        "recommendation_strength": "NOT_GRADED",
+        "local_validation_status": "NOT_REVIEWED",
+        "local_adaptation_note": "URL صفحهٔ فرود ژورنال است؛ نشانی دقیق مقاله باید در بازبینی تکمیل شود."
+      },
+      "governance": {
+        "status": "DRAFT",
+        "author": "research-dossier-conversion",
+        "clinical_reviewer": null,
+        "review_due_date": "2026-11-21",
+        "change_note": "تبدیل خودکار از GUIDELINE_DOSSIER_FA v1.0.0 (بخش ۱، HTN-R04)."
+      }
+    },
+    {
+      "schema_version": "2.0",
+      "dsl_version": "2.0",
+      "rule_code": "HTN-R05A",
+      "version": "0.1.0-draft",
+      "title": "SBP ≥۱۸۰ — دروازهٔ پرچم سرخ (بازبینی هم‌روز)",
+      "phase": "PREFLIGHT",
+      "action_type": "create_followup",
+      "severity": "CRITICAL",
+      "priority": 100,
+      "semantic_key": "htn-core-v1.HTN-R05A",
+      "scope": {
+        "population": "adults_with_recorded_bp",
+        "care_settings": [
+          "specialty_clinic"
+        ],
+        "encounter_types": [
+          "chronic_followup"
+        ]
+      },
+      "required_facts": [
+        {
+          "key": "observation.bp_systolic",
+          "criticality": "CRITICAL",
+          "on_unusable": "NEEDS_DATA"
+        }
+      ],
+      "eligibility": {
+        "node_id": "HTN-R05A-e1",
+        "fact": "observation.bp_systolic",
+        "op": "exists"
+      },
+      "condition": {
+        "node_id": "HTN-R05A-c1",
+        "fact": "observation.bp_systolic",
+        "op": ">=",
+        "value": 180,
+        "selector": {
+          "aggregation": "latest"
+        }
+      },
+      "safety": {
+        "redflag_exclusions": [],
+        "hard_exclusions": [],
+        "on_safety_error": "BLOCK_ROUTINE_OUTPUTS"
+      },
+      "recommendation": {
+        "text_fa": "«سیستولیک ≥۱۸۰ ثبت شده — دروازهٔ فشار کنترل‌نشدهٔ شدید ESH 2023 §11. اندازه‌گیری مجدد پس از ۵ دقیقه استراحت و بازبینی پزشکی ظرف ۲۴ ساعت لازم است؛ در صورت علامت خطر، اورژانس.»",
+        "suggestion_only": true,
+        "requires_clinician_confirmation": true,
+        "may_create_internal_task": true,
+        "params": {
+          "kind": "severe_htn_review",
+          "due_in_hours": 24
+        }
+      },
+      "evidence": {
+        "source_title": "2023 ESH Guidelines for the management of arterial hypertension — Severe uncontrolled hypertension",
+        "issuing_organization": "European Society of Hypertension",
+        "publication_date": null,
+        "source_version": "2023",
+        "source_locator": "J Hypertens 2023;41(12):1874–2071, §11 — SBP≥180 یا DBP≥110 به‌عنوان دروازهٔ severe uncontrolled hypertension.",
+        "source_url": "https://journals.lww.com/journalhypertension",
+        "evidence_certainty": "NOT_GRADED",
+        "recommendation_strength": "NOT_GRADED",
+        "local_validation_status": "NOT_REVIEWED",
+        "local_adaptation_note": "URL صفحهٔ فرود ژورنال است؛ نشانی دقیق مقاله باید در بازبینی تکمیل شود (شماره بخش‌های ESH طبق شکاف #۱۱ داسیه یک بار با PDF رسمی چک شود)."
+      },
+      "governance": {
+        "status": "DRAFT",
+        "author": "research-dossier-conversion",
+        "clinical_reviewer": null,
+        "review_due_date": "2026-11-21",
+        "change_note": "تبدیل خودکار از GUIDELINE_DOSSIER_FA v1.0.0 (بخش ۱، HTN-R05a). due_in_hours=24 عیناً از داسیه. پسوند a→A طبق الگوی rule_code اسکیما."
+      }
+    },
+    {
+      "schema_version": "2.0",
+      "dsl_version": "2.0",
+      "rule_code": "HTN-R05B",
+      "version": "0.1.0-draft",
+      "title": "DBP ≥۱۱۰ — دروازهٔ پرچم سرخ (بازبینی هم‌روز)",
+      "phase": "PREFLIGHT",
+      "action_type": "create_followup",
+      "severity": "CRITICAL",
+      "priority": 100,
+      "semantic_key": "htn-core-v1.HTN-R05B",
+      "scope": {
+        "population": "adults_with_recorded_bp",
+        "care_settings": [
+          "specialty_clinic"
+        ],
+        "encounter_types": [
+          "chronic_followup"
+        ]
+      },
+      "required_facts": [
+        {
+          "key": "observation.bp_diastolic",
+          "criticality": "CRITICAL",
+          "on_unusable": "NEEDS_DATA"
+        }
+      ],
+      "eligibility": {
+        "node_id": "HTN-R05B-e1",
+        "fact": "observation.bp_diastolic",
+        "op": "exists"
+      },
+      "condition": {
+        "node_id": "HTN-R05B-c1",
+        "fact": "observation.bp_diastolic",
+        "op": ">=",
+        "value": 110,
+        "selector": {
+          "aggregation": "latest"
+        }
+      },
+      "safety": {
+        "redflag_exclusions": [],
+        "hard_exclusions": [],
+        "on_safety_error": "BLOCK_ROUTINE_OUTPUTS"
+      },
+      "recommendation": {
+        "text_fa": "«دیاستولیک ≥۱۱۰ ثبت شده — دروازهٔ فشار کنترل‌نشدهٔ شدید ESH 2023 §11. اندازه‌گیری مجدد پس از ۵ دقیقه استراحت و بازبینی پزشکی ظرف ۲۴ ساعت لازم است؛ در صورت علامت خطر، اورژانس.»",
+        "suggestion_only": true,
+        "requires_clinician_confirmation": true,
+        "may_create_internal_task": true,
+        "params": {
+          "kind": "severe_htn_review",
+          "due_in_hours": 24
+        }
+      },
+      "evidence": {
+        "source_title": "2023 ESH Guidelines — Severe uncontrolled hypertension",
+        "issuing_organization": "European Society of Hypertension",
+        "publication_date": null,
+        "source_version": "2023",
+        "source_locator": "J Hypertens 2023;41(12):1874–2071, §11 — SBP≥180 یا DBP≥110.",
+        "source_url": "https://journals.lww.com/journalhypertension",
+        "evidence_certainty": "NOT_GRADED",
+        "recommendation_strength": "NOT_GRADED",
+        "local_validation_status": "NOT_REVIEWED",
+        "local_adaptation_note": "URL صفحهٔ فرود ژورنال است؛ نشانی دقیق مقاله باید در بازبینی تکمیل شود."
+      },
+      "governance": {
+        "status": "DRAFT",
+        "author": "research-dossier-conversion",
+        "clinical_reviewer": null,
+        "review_due_date": "2026-11-21",
+        "change_note": "تبدیل خودکار از GUIDELINE_DOSSIER_FA v1.0.0 (بخش ۱، HTN-R05b). پسوند b→B طبق الگوی rule_code اسکیما."
+      }
+    },
+    {
+      "schema_version": "2.0",
+      "dsl_version": "2.0",
+      "rule_code": "HTN-R06",
+      "version": "0.1.0-draft",
+      "title": "هدف درمانی عمومی <۱۳۰/۸۰",
+      "phase": "ROUTINE",
+      "action_type": "set_target",
+      "severity": "WARN",
+      "priority": 2000,
+      "semantic_key": "htn-core-v1.HTN-R06",
+      "scope": {
+        "population": "adults_with_hypertension",
+        "care_settings": [
+          "specialty_clinic"
+        ],
+        "encounter_types": [
+          "chronic_followup"
+        ],
+        "condition_codes": [
+          "hypertension"
+        ]
+      },
+      "required_facts": [
+        {
+          "key": "condition.hypertension",
+          "criticality": "REQUIRED",
+          "on_unusable": "NOT_APPLICABLE"
+        }
+      ],
+      "eligibility": {
+        "node_id": "HTN-R06-e1",
+        "fact": "condition.hypertension",
+        "op": "truthy"
+      },
+      "condition": {
+        "node_id": "HTN-R06-c1",
+        "fact": "condition.hypertension",
+        "op": "truthy"
+      },
+      "safety": {
+        "redflag_exclusions": [],
+        "hard_exclusions": [],
+        "on_safety_error": "BLOCK_ROUTINE_OUTPUTS"
+      },
+      "recommendation": {
+        "text_fa": "«هدف درمانی برای بزرگسال عمومی تحت درمان <۱۳۰/۸۰ توصیه می‌شود (ACC/AHA 2017). اگر فشار بیش از ۲۰/۱۰ بالاتر از هدف باشد، شروع با دو دارو مطرح است.»",
+        "suggestion_only": true,
+        "requires_clinician_confirmation": true,
+        "may_create_internal_task": false,
+        "params": {
+          "systolic": 130,
+          "diastolic": 80,
+          "population": "general",
+          "citation": "ACC/AHA 2017"
+        }
+      },
+      "evidence": {
+        "source_title": "2017 ACC/AHA Guideline — Treatment Targets",
+        "issuing_organization": "American College of Cardiology / American Heart Association",
+        "publication_date": null,
+        "source_version": "2017",
+        "source_locator": "Hypertension 2018;71:e13–e115 — هدف BP <130/80 برای بزرگسالان تحت درمان؛ مبنای شواهد SPRINT (NEJM 2015;373:2103–16، PMID 26551272).",
+        "source_url": "https://www.ahajournals.org/journal/hyp",
+        "evidence_certainty": "NOT_GRADED",
+        "recommendation_strength": "NOT_GRADED",
+        "local_validation_status": "NOT_REVIEWED",
+        "local_adaptation_note": "URL صفحهٔ فرود ژورنال است؛ نشانی دقیق مقاله باید در بازبینی تکمیل شود."
+      },
+      "governance": {
+        "status": "DRAFT",
+        "author": "research-dossier-conversion",
+        "clinical_reviewer": null,
+        "review_due_date": "2026-11-21",
+        "change_note": "تبدیل خودکار از GUIDELINE_DOSSIER_FA v1.0.0 (بخش ۲، HTN-R06). flag.hypertension → condition.hypertension."
+      }
+    },
+    {
+      "schema_version": "2.0",
+      "dsl_version": "2.0",
+      "rule_code": "HTN-R07",
+      "version": "0.1.0-draft",
+      "title": "هدف درمانی دیابت <۱۳۰/۸۰",
+      "phase": "ROUTINE",
+      "action_type": "set_target",
+      "severity": "URGENT",
+      "priority": 1800,
+      "semantic_key": "htn-core-v1.HTN-R07",
+      "scope": {
+        "population": "adults_with_diabetes",
+        "care_settings": [
+          "specialty_clinic"
+        ],
+        "encounter_types": [
+          "chronic_followup"
+        ],
+        "condition_codes": [
+          "diabetes"
+        ]
+      },
+      "required_facts": [
+        {
+          "key": "condition.diabetes",
+          "criticality": "REQUIRED",
+          "on_unusable": "NOT_APPLICABLE"
+        }
+      ],
+      "eligibility": {
+        "node_id": "HTN-R07-e1",
+        "fact": "condition.diabetes",
+        "op": "truthy"
+      },
+      "condition": {
+        "node_id": "HTN-R07-c1",
+        "fact": "condition.diabetes",
+        "op": "truthy"
+      },
+      "safety": {
+        "redflag_exclusions": [],
+        "hard_exclusions": [],
+        "on_safety_error": "BLOCK_ROUTINE_OUTPUTS"
+      },
+      "recommendation": {
+        "text_fa": "«در بیمار دیابتی هدف فشار خون <۱۳۰/۸۰ توصیه می‌شود (ADA Standards of Care 2025 §10.4a).»",
+        "suggestion_only": true,
+        "requires_clinician_confirmation": true,
+        "may_create_internal_task": false,
+        "params": {
+          "systolic": 130,
+          "diastolic": 80,
+          "population": "diabetes",
+          "citation": "ADA Standards of Care 2025 §10.4a"
+        }
+      },
+      "evidence": {
+        "source_title": "ADA Standards of Care in Diabetes—2025, §10 Cardiovascular Disease and Risk Management",
+        "issuing_organization": "American Diabetes Association",
+        "publication_date": null,
+        "source_version": "2025",
+        "source_locator": "Diabetes Care 2025;48(Suppl 1), §10.4a — هدف BP <130/80 در دیابت.",
+        "source_url": "https://diabetesjournals.org/care/issue/48/Supplement_1",
+        "evidence_certainty": "NOT_GRADED",
+        "recommendation_strength": "NOT_GRADED",
+        "local_validation_status": "NOT_REVIEWED"
+      },
+      "governance": {
+        "status": "DRAFT",
+        "author": "research-dossier-conversion",
+        "clinical_reviewer": null,
+        "review_due_date": "2026-11-21",
+        "change_note": "تبدیل خودکار از GUIDELINE_DOSSIER_FA v1.0.0 (بخش ۲، HTN-R07). flag.diabetes → condition.diabetes."
+      }
+    },
+    {
+      "schema_version": "2.0",
+      "dsl_version": "2.0",
+      "rule_code": "HTN-R08",
+      "version": "0.1.0-draft",
+      "title": "هدف درمانی CKD — SBP<120 (اندازه‌گیری استانداردشده)",
+      "phase": "ROUTINE",
+      "action_type": "set_target",
+      "severity": "URGENT",
+      "priority": 1600,
+      "semantic_key": "htn-core-v1.HTN-R08",
+      "scope": {
+        "population": "adults_with_ckd",
+        "care_settings": [
+          "specialty_clinic"
+        ],
+        "encounter_types": [
+          "chronic_followup"
+        ],
+        "condition_codes": [
+          "ckd"
+        ]
+      },
+      "required_facts": [
+        {
+          "key": "condition.ckd",
+          "criticality": "REQUIRED",
+          "on_unusable": "NOT_APPLICABLE"
+        }
+      ],
+      "eligibility": {
+        "node_id": "HTN-R08-e1",
+        "fact": "condition.ckd",
+        "op": "truthy"
+      },
+      "condition": {
+        "node_id": "HTN-R08-c1",
+        "fact": "condition.ckd",
+        "op": "truthy"
+      },
+      "safety": {
+        "redflag_exclusions": [],
+        "hard_exclusions": [],
+        "on_safety_error": "BLOCK_ROUTINE_OUTPUTS"
+      },
+      "recommendation": {
+        "text_fa": "«در CKD غیردیالیزی هدف سیستولیک <۱۲۰ با اندازه‌گیری دفتری استانداردشده است (KDIGO 2021 Rec 3.4.1)؛ در سالمند/شکننده/کوموربید فردی‌سازی و افت سریع ممنوع.»",
+        "suggestion_only": true,
+        "requires_clinician_confirmation": true,
+        "may_create_internal_task": false,
+        "params": {
+          "systolic": 120,
+          "diastolic": null,
+          "population": "ckd",
+          "note": "KDIGO standardized-office SBP<120; individualize if frail",
+          "citation": "KDIGO 2021 Rec 3.4.1"
+        }
+      },
+      "evidence": {
+        "source_title": "KDIGO 2021 Clinical Practice Guideline for the Management of Blood Pressure in Chronic Kidney Disease",
+        "issuing_organization": "Kidney Disease: Improving Global Outcomes (KDIGO)",
+        "publication_date": null,
+        "source_version": "2021",
+        "source_locator": "Kidney Int 2021;99(3S):S1–S87, Rec 3.4.1 (Grade 2B) — standardized office SBP <120 در CKD غیردیالیزی؛ پیوست احتیاط برای سالمند/شکننده.",
+        "source_url": "https://www.kidney-international.org",
+        "evidence_certainty": "NOT_GRADED",
+        "recommendation_strength": "NOT_GRADED",
+        "local_validation_status": "NOT_REVIEWED",
+        "local_adaptation_note": "URL صفحهٔ فرود ژورنال است؛ نشانی دقیق مقاله باید در بازبینی تکمیل شود (داسیه DOI/PMID نداده)."
+      },
+      "governance": {
+        "status": "DRAFT",
+        "author": "research-dossier-conversion",
+        "clinical_reviewer": null,
+        "review_due_date": "2026-11-21",
+        "change_note": "تبدیل خودکار از GUIDELINE_DOSSIER_FA v1.0.0 (بخش ۲، HTN-R08). flag.ckd → condition.ckd."
+      }
+    },
+    {
+      "schema_version": "2.0",
+      "dsl_version": "2.0",
+      "rule_code": "HTN-R09",
+      "version": "0.1.0-draft",
+      "title": "سالمند ≥۶۵ — هدف پله‌ای ۱۴۰/۹۰ سپس ۱۳۰",
+      "phase": "ROUTINE",
+      "action_type": "set_target",
+      "severity": "WARN",
+      "priority": 1700,
+      "semantic_key": "htn-core-v1.HTN-R09",
+      "scope": {
+        "population": "adults_aged_65_plus",
+        "age_min": 65,
+        "care_settings": [
+          "specialty_clinic"
+        ],
+        "encounter_types": [
+          "chronic_followup"
+        ]
+      },
+      "required_facts": [
+        {
+          "key": "patient.age",
+          "criticality": "CRITICAL",
+          "on_unusable": "NEEDS_DATA"
+        }
+      ],
+      "eligibility": {
+        "node_id": "HTN-R09-e1",
+        "fact": "patient.age",
+        "op": "exists"
+      },
+      "condition": {
+        "node_id": "HTN-R09-c1",
+        "fact": "patient.age",
+        "op": ">=",
+        "value": 65
+      },
+      "safety": {
+        "redflag_exclusions": [],
+        "hard_exclusions": [],
+        "on_safety_error": "BLOCK_ROUTINE_OUTPUTS"
+      },
+      "recommendation": {
+        "text_fa": "«در سالمندان ≥۶۵ سال ابتدا هدف <۱۴۰/۹۰ و در صورت تحمل به سمت <۱۳۰؛ سیستولیک زیر ۱۲۰ توصیه نمی‌شود (ESH 2023 §7.4.2؛ HYVET در ≥۸۰ سال هدف 150/80).»",
+        "suggestion_only": true,
+        "requires_clinician_confirmation": true,
+        "may_create_internal_task": false,
+        "params": {
+          "systolic": 140,
+          "diastolic": 90,
+          "population": "elderly_step1",
+          "note": "then toward 130 if tolerated; avoid SBP<120",
+          "citation": "ESH 2023 §7.4.2"
+        }
+      },
+      "evidence": {
+        "source_title": "2023 ESH Guidelines — Treatment targets in older adults (§7.4.2) + HYVET",
+        "issuing_organization": "European Society of Hypertension",
+        "publication_date": null,
+        "source_version": "2023",
+        "source_locator": "J Hypertens 2023;41(12):1874–2071, §7.4.2 — پله‌ای 140 سپس 130 اگر تحمل شد؛ SBP<120 توصیه نمی‌شود؛ HYVET (Beckett NS, NEJM 2008;358:1887–98) هدف 150/80 در ≥80 سال.",
+        "source_url": "https://journals.lww.com/journalhypertension",
+        "evidence_certainty": "NOT_GRADED",
+        "recommendation_strength": "NOT_GRADED",
+        "local_validation_status": "NOT_REVIEWED",
+        "local_adaptation_note": "URL صفحهٔ فرود ژورنال است؛ نشانی دقیق مقاله/HYVET باید در بازبینی تکمیل شود (داسیه PMID نداده)."
+      },
+      "governance": {
+        "status": "DRAFT",
+        "author": "research-dossier-conversion",
+        "clinical_reviewer": null,
+        "review_due_date": "2026-11-21",
+        "change_note": "تبدیل خودکار از GUIDELINE_DOSSIER_FA v1.0.0 (بخش ۲، HTN-R09). var=age → patient.age + scope.age_min=65 (طبق شکاف #۲ داسیه، age در DSL فعلی موجود است)."
+      }
+    },
+    {
+      "schema_version": "2.0",
+      "dsl_version": "2.0",
+      "rule_code": "HTN-R10",
+      "version": "0.1.0-draft",
+      "title": "شکننده/افت وضعیتی — چک افت وضعیتی قبل از تشدید",
+      "phase": "SAFETY",
+      "action_type": "create_followup",
+      "severity": "URGENT",
+      "priority": 800,
+      "semantic_key": "htn-core-v1.HTN-R10",
+      "scope": {
+        "population": "adults_frail_or_orthostatic",
+        "care_settings": [
+          "specialty_clinic"
+        ],
+        "encounter_types": [
+          "chronic_followup"
+        ]
+      },
+      "required_facts": [
+        {
+          "key": "flag.frail_or_orthostatic",
+          "criticality": "REQUIRED",
+          "on_unusable": "CONTINUE_WITH_WARNING"
+        }
+      ],
+      "eligibility": {
+        "node_id": "HTN-R10-e1",
+        "fact": "flag.frail_or_orthostatic",
+        "op": "exists"
+      },
+      "condition": {
+        "node_id": "HTN-R10-c1",
+        "fact": "flag.frail_or_orthostatic",
+        "op": "truthy"
+      },
+      "safety": {
+        "redflag_exclusions": [],
+        "hard_exclusions": [],
+        "on_safety_error": "BLOCK_ROUTINE_OUTPUTS"
+      },
+      "recommendation": {
+        "text_fa": "«بیمار شکننده/با افت وضعیتی ثبت‌شده. قبل از هر تشدید درمان، افت فشار وضعیتی بررسی شود؛ در صورت لزوم هدف تا ۱۴۰–۱۵۰ سیستولیک شل شود (ESH 2023 §7.5).»",
+        "suggestion_only": true,
+        "requires_clinician_confirmation": true,
+        "may_create_internal_task": true,
+        "params": {
+          "kind": "orthostatic_bp_check_before_intensification",
+          "due_in_days": 14,
+          "citation": "ESH 2023 §7.5"
+        }
+      },
+      "evidence": {
+        "source_title": "2023 ESH Guidelines — Frailty and orthostatic hypotension (§7.5)",
+        "issuing_organization": "European Society of Hypertension",
+        "publication_date": null,
+        "source_version": "2023",
+        "source_locator": "J Hypertens 2023;41(12):1874–2071, §7.5 — بررسی افت وضعیتی قبل از تشدید؛ شل‌کردن هدف تا 140–150 سیستولیک در شکننده.",
+        "source_url": "https://journals.lww.com/journalhypertension",
+        "evidence_certainty": "NOT_GRADED",
+        "recommendation_strength": "NOT_GRADED",
+        "local_validation_status": "NOT_REVIEWED",
+        "local_adaptation_note": "URL صفحهٔ فرود ژورنال است؛ نشانی دقیق مقاله باید در بازبینی تکمیل شود."
+      },
+      "governance": {
+        "status": "DRAFT",
+        "author": "research-dossier-conversion",
+        "clinical_reviewer": null,
+        "review_due_date": "2026-11-21",
+        "change_note": "تبدیل خودکار از GUIDELINE_DOSSIER_FA v1.0.0 (بخش ۲، HTN-R10). ⚠️ flag.frail_or_orthostatic طبق شکاف #۲ داسیه هنوز در fact snapshot نیست — قبل از فعال‌سازی باید تأمین شود."
+      }
+    },
+    {
+      "schema_version": "2.0",
+      "dsl_version": "2.0",
+      "rule_code": "HTN-R11",
+      "version": "0.1.0-draft",
+      "title": "شروع مونوتراپی انالاپریل ۵→۴۰ (بدون اندیکاسیون الزامی)",
+      "phase": "ROUTINE",
+      "action_type": "suggest_med",
+      "severity": "URGENT",
+      "priority": 2200,
+      "semantic_key": "htn-core-v1.HTN-R11",
+      "scope": {
+        "population": "adults_with_hypertension",
+        "care_settings": [
+          "specialty_clinic"
+        ],
+        "encounter_types": [
+          "chronic_followup"
+        ],
+        "condition_codes": [
+          "hypertension"
+        ]
+      },
+      "required_facts": [
+        {
+          "key": "condition.hypertension",
+          "criticality": "REQUIRED",
+          "on_unusable": "NOT_APPLICABLE"
+        },
+        {
+          "key": "medication.acei",
+          "criticality": "REQUIRED",
+          "on_unusable": "NEEDS_DATA"
+        },
+        {
+          "key": "medication.arb",
+          "criticality": "REQUIRED",
+          "on_unusable": "NEEDS_DATA"
+        },
+        {
+          "key": "medication.ccb",
+          "criticality": "REQUIRED",
+          "on_unusable": "NEEDS_DATA"
+        },
+        {
+          "key": "medication.thiazide",
+          "criticality": "REQUIRED",
+          "on_unusable": "NEEDS_DATA"
+        }
+      ],
+      "eligibility": {
+        "node_id": "HTN-R11-e1",
+        "fact": "condition.hypertension",
+        "op": "truthy"
+      },
+      "condition": {
+        "node_id": "HTN-R11-c1",
+        "all": [
+          {
+            "node_id": "HTN-R11-c2",
+            "fact": "condition.hypertension",
+            "op": "truthy"
+          },
+          {
+            "node_id": "HTN-R11-c3",
+            "not": {
+              "node_id": "HTN-R11-c4",
+              "fact": "medication.acei",
+              "op": "truthy"
+            }
+          },
+          {
+            "node_id": "HTN-R11-c5",
+            "not": {
+              "node_id": "HTN-R11-c6",
+              "fact": "medication.arb",
+              "op": "truthy"
+            }
+          },
+          {
+            "node_id": "HTN-R11-c7",
+            "not": {
+              "node_id": "HTN-R11-c8",
+              "fact": "medication.ccb",
+              "op": "truthy"
+            }
+          },
+          {
+            "node_id": "HTN-R11-c9",
+            "not": {
+              "node_id": "HTN-R11-c10",
+              "fact": "medication.thiazide",
+              "op": "truthy"
+            }
+          }
+        ]
+      },
+      "safety": {
+        "redflag_exclusions": [],
+        "hard_exclusions": [],
+        "on_safety_error": "BLOCK_ROUTINE_OUTPUTS"
+      },
+      "recommendation": {
+        "text_fa": "«بیمار HTN بدون هیچ داروی ضدفشار فعال. پیشنهاد: شروع انالاپریل ۵ mg روزانه (۲٫۵ در سن بالا یا eGFR<30)، دوبرابر کردن دوز هر ۲–۴ هفته تا رسیدن به هدف یا حداکثر ۴۰ mg؛ پایش K و کراتینین (افزایش ≤۳۰٪ قابل قبول). تصمیم با پزشک.»",
+        "suggestion_only": true,
+        "requires_clinician_confirmation": true,
+        "may_create_internal_task": false,
+        "params": {
+          "class": "acei",
+          "drug": "enalapril",
+          "start_mg": 5,
+          "frequency": "daily",
+          "max_mg_per_day": 40,
+          "titration": {
+            "interval_weeks": 4,
+            "step": "double until target or max"
+          },
+          "cautions": [
+            "k_up",
+            "creatinine_rise_le_30pct_acceptable"
+          ],
+          "citation": "ACC/AHA 2017 first-line classes"
+        }
+      },
+      "evidence": {
+        "source_title": "2017 ACC/AHA Guideline — First-line drug classes and dosing",
+        "issuing_organization": "American College of Cardiology / American Heart Association",
+        "publication_date": null,
+        "source_version": "2017",
+        "source_locator": "Hypertension 2018;71:e13–e115 — چهار کلاس خط اول (ACEi/ARB/CCB/دیورتیک تیازیدی)؛ دوز انالاپریل 5→40 mg؛ تیتراسیون هر ۲–۴ هفته.",
+        "source_url": "https://www.ahajournals.org/journal/hyp",
+        "evidence_certainty": "NOT_GRADED",
+        "recommendation_strength": "NOT_GRADED",
+        "local_validation_status": "NOT_REVIEWED",
+        "local_adaptation_note": "URL صفحهٔ فرود ژورنال است؛ نشانی دقیق مقاله باید در بازبینی تکمیل شود."
+      },
+      "governance": {
+        "status": "DRAFT",
+        "author": "research-dossier-conversion",
+        "clinical_reviewer": null,
+        "review_due_date": "2026-11-21",
+        "change_note": "تبدیل خودکار از GUIDELINE_DOSSIER_FA v1.0.0 (بخش ۳، HTN-R11). med.class not_has ×۴ → چهار برگ not{truthy}؛ شرایط منفی fail-closed (REQUIRED/NEEDS_DATA)."
+      }
+    },
+    {
+      "schema_version": "2.0",
+      "dsl_version": "2.0",
+      "rule_code": "HTN-R12",
+      "version": "0.1.0-draft",
+      "title": "تیتراسیون داروی موجود زیر حداکثر (انالاپریل →۱۰)",
+      "phase": "ROUTINE",
+      "action_type": "suggest_med",
+      "severity": "WARN",
+      "priority": 2400,
+      "semantic_key": "htn-core-v1.HTN-R12",
+      "scope": {
+        "population": "adults_with_hypertension_on_monotherapy",
+        "care_settings": [
+          "specialty_clinic"
+        ],
+        "encounter_types": [
+          "chronic_followup"
+        ]
+      },
+      "required_facts": [
+        {
+          "key": "observation.bp_systolic",
+          "criticality": "CRITICAL",
+          "on_unusable": "NEEDS_DATA"
+        },
+        {
+          "key": "flag.on_single_agent_below_max",
+          "criticality": "REQUIRED",
+          "on_unusable": "CONTINUE_WITH_WARNING"
+        }
+      ],
+      "eligibility": {
+        "node_id": "HTN-R12-e1",
+        "fact": "observation.bp_systolic",
+        "op": "exists"
+      },
+      "condition": {
+        "node_id": "HTN-R12-c1",
+        "all": [
+          {
+            "node_id": "HTN-R12-c2",
+            "fact": "observation.bp_systolic",
+            "op": ">=",
+            "value": 130,
+            "selector": {
+              "aggregation": "latest"
+            }
+          },
+          {
+            "node_id": "HTN-R12-c3",
+            "fact": "flag.on_single_agent_below_max",
+            "op": "truthy"
+          }
+        ]
+      },
+      "safety": {
+        "redflag_exclusions": [],
+        "hard_exclusions": [],
+        "on_safety_error": "BLOCK_ROUTINE_OUTPUTS"
+      },
+      "recommendation": {
+        "text_fa": "«فشار ≥۱۳۰ با تک‌داروی زیر حداکثر دوز. پیشنهاد: تیتراسیون انالاپریل به ۱۰ mg (حداکثر ۴۰) و کنترل مجدد فشار ۲–۴ هفته پس از هر تغییر — تصمیم با پزشک.»",
+        "suggestion_only": true,
+        "requires_clinician_confirmation": true,
+        "may_create_internal_task": false,
+        "params": {
+          "class": "acei",
+          "drug": "enalapril",
+          "titrate_to_mg": 10,
+          "max_mg_per_day": 40,
+          "note": "recheck BP in 2-4 weeks after each titration",
+          "citation": "ACC/AHA 2017 titration cadence"
+        }
+      },
+      "evidence": {
+        "source_title": "2017 ACC/AHA Guideline — Titration cadence",
+        "issuing_organization": "American College of Cardiology / American Heart Association",
+        "publication_date": null,
+        "source_version": "2017",
+        "source_locator": "Hypertension 2018;71:e13–e115 — بازبینی/تیتراسیون هر ۲–۴ هفته تا هدف.",
+        "source_url": "https://www.ahajournals.org/journal/hyp",
+        "evidence_certainty": "NOT_GRADED",
+        "recommendation_strength": "NOT_GRADED",
+        "local_validation_status": "NOT_REVIEWED",
+        "local_adaptation_note": "URL صفحهٔ فرود ژورنال است؛ نشانی دقیق مقاله باید در بازبینی تکمیل شود."
+      },
+      "governance": {
+        "status": "DRAFT",
+        "author": "research-dossier-conversion",
+        "clinical_reviewer": null,
+        "review_due_date": "2026-11-21",
+        "change_note": "تبدیل خودکار از GUIDELINE_DOSSIER_FA v1.0.0 (بخش ۳، HTN-R12). ⚠️ شرط واقعی «زیر max بودن دوز فعلی» به med.dose_mg/at_max_dose نیاز دارد (شکاف #۳ داسیه)؛ شرط جانشین flag.on_single_agent_below_max عیناً از داسیه است و تا تأمین فکت دوز نباید فعال شود."
+      }
+    },
+    {
+      "schema_version": "2.0",
+      "dsl_version": "2.0",
+      "rule_code": "HTN-R13",
+      "version": "0.1.0-draft",
+      "title": "جایگزینی CCB در سرفهٔ ACEi (آملودیپین ۵→۱۰)",
+      "phase": "ROUTINE",
+      "action_type": "suggest_med",
+      "severity": "WARN",
+      "priority": 2300,
+      "semantic_key": "htn-core-v1.HTN-R13",
+      "scope": {
+        "population": "adults_with_acei_cough_intolerance",
+        "care_settings": [
+          "specialty_clinic"
+        ],
+        "encounter_types": [
+          "chronic_followup"
+        ]
+      },
+      "required_facts": [
+        {
+          "key": "flag.acei_cough_intolerant",
+          "criticality": "REQUIRED",
+          "on_unusable": "CONTINUE_WITH_WARNING"
+        },
+        {
+          "key": "medication.ccb",
+          "criticality": "REQUIRED",
+          "on_unusable": "NEEDS_DATA"
+        }
+      ],
+      "eligibility": {
+        "node_id": "HTN-R13-e1",
+        "fact": "flag.acei_cough_intolerant",
+        "op": "exists"
+      },
+      "condition": {
+        "node_id": "HTN-R13-c1",
+        "all": [
+          {
+            "node_id": "HTN-R13-c2",
+            "fact": "flag.acei_cough_intolerant",
+            "op": "truthy"
+          },
+          {
+            "node_id": "HTN-R13-c3",
+            "not": {
+              "node_id": "HTN-R13-c4",
+              "fact": "medication.ccb",
+              "op": "truthy"
+            }
+          }
+        ]
+      },
+      "safety": {
+        "redflag_exclusions": [],
+        "hard_exclusions": [],
+        "on_safety_error": "BLOCK_ROUTINE_OUTPUTS"
+      },
+      "recommendation": {
+        "text_fa": "«سرفهٔ ناشی از ACEi ثبت شده و بیمار روی CCB نیست. پیشنهاد: آملودیپین ۵ mg روزانه، افزایش به ۱۰ پس از ۲–۴ هفته (حداکثر ۱۰) — تصمیم با پزشک.»",
+        "suggestion_only": true,
+        "requires_clinician_confirmation": true,
+        "may_create_internal_task": false,
+        "params": {
+          "class": "ccb",
+          "drug": "amlodipine",
+          "start_mg": 5,
+          "max_mg_per_day": 10,
+          "titration": {
+            "interval_weeks": 4,
+            "step": "5->10"
+          },
+          "citation": "ACC/AHA 2017; ESH 2023 §7.6"
+        }
+      },
+      "evidence": {
+        "source_title": "2017 ACC/AHA Guideline + 2023 ESH Guidelines — Class substitution after ACEi cough (§7.6)",
+        "issuing_organization": "American College of Cardiology / American Heart Association / European Society of Hypertension",
+        "publication_date": null,
+        "source_version": "2017/2023",
+        "source_locator": "Hypertension 2018;71:e13–e115 (جایگزینی کلاس)؛ J Hypertens 2023;41(12):1874–2071, §7.6 — آملودیپین 5→10.",
+        "source_url": "https://www.ahajournals.org/journal/hyp",
+        "evidence_certainty": "NOT_GRADED",
+        "recommendation_strength": "NOT_GRADED",
+        "local_validation_status": "NOT_REVIEWED",
+        "local_adaptation_note": "URL صفحهٔ فرود ژورنال است؛ نشانی دقیق مقالات باید در بازبینی تکمیل شود."
+      },
+      "governance": {
+        "status": "DRAFT",
+        "author": "research-dossier-conversion",
+        "clinical_reviewer": null,
+        "review_due_date": "2026-11-21",
+        "change_note": "تبدیل خودکار از GUIDELINE_DOSSIER_FA v1.0.0 (بخش ۳، HTN-R13). flag.acei_cough_intolerant فکت ثبت‌شدهٔ بالینی است — منبع ثبت آن باید در بازبینی مشخص شود."
+      }
+    },
+    {
+      "schema_version": "2.0",
+      "dsl_version": "2.0",
+      "rule_code": "HTN-R14",
+      "version": "0.1.0-draft",
+      "title": "تیازیدمانند دوم/سوم — اینداپامید SR ۱٫۵",
+      "phase": "ROUTINE",
+      "action_type": "suggest_med",
+      "severity": "WARN",
+      "priority": 2600,
+      "semantic_key": "htn-core-v1.HTN-R14",
+      "scope": {
+        "population": "adults_with_uncontrolled_hypertension",
+        "care_settings": [
+          "specialty_clinic"
+        ],
+        "encounter_types": [
+          "chronic_followup"
+        ]
+      },
+      "required_facts": [
+        {
+          "key": "flag.hypertension_uncontrolled",
+          "criticality": "REQUIRED",
+          "on_unusable": "CONTINUE_WITH_WARNING"
+        },
+        {
+          "key": "medication.thiazide",
+          "criticality": "REQUIRED",
+          "on_unusable": "NEEDS_DATA"
+        }
+      ],
+      "eligibility": {
+        "node_id": "HTN-R14-e1",
+        "fact": "flag.hypertension_uncontrolled",
+        "op": "exists"
+      },
+      "condition": {
+        "node_id": "HTN-R14-c1",
+        "all": [
+          {
+            "node_id": "HTN-R14-c2",
+            "fact": "flag.hypertension_uncontrolled",
+            "op": "truthy"
+          },
+          {
+            "node_id": "HTN-R14-c3",
+            "not": {
+              "node_id": "HTN-R14-c4",
+              "fact": "medication.thiazide",
+              "op": "truthy"
+            }
+          }
+        ]
+      },
+      "safety": {
+        "redflag_exclusions": [],
+        "hard_exclusions": [],
+        "on_safety_error": "BLOCK_ROUTINE_OUTPUTS"
+      },
+      "recommendation": {
+        "text_fa": "«فشار کنترل‌نشده بدون تیازید. پیشنهاد: افزودن اینداپامید SR ۱٫۵ mg صبح (تیازیدمانند در شواهد پیامد ارجح است)؛ چک Na/K/Cr چهار هفته بعد — تصمیم با پزشک.»",
+        "suggestion_only": true,
+        "requires_clinician_confirmation": true,
+        "may_create_internal_task": false,
+        "params": {
+          "class": "thiazide",
+          "drug": "indapamide_sr",
+          "start_mg": 1.5,
+          "max_mg_per_day": 1.5,
+          "labs_after_weeks": 4,
+          "lab_keys": [
+            "sodium",
+            "potassium",
+            "creatinine"
+          ],
+          "citation": "ESH 2023 §7.6 (thiazide-like preferred)"
+        }
+      },
+      "evidence": {
+        "source_title": "2023 ESH Guidelines — Combination therapy with thiazide-like diuretics (§7.6)",
+        "issuing_organization": "European Society of Hypertension",
+        "publication_date": null,
+        "source_version": "2023",
+        "source_locator": "J Hypertens 2023;41(12):1874–2071, §7.6 — ارجحیت thiazide-like (indapamide/chlorthalidone)؛ چک Na/K/Cr طی ۲–۴ هفته.",
+        "source_url": "https://journals.lww.com/journalhypertension",
+        "evidence_certainty": "NOT_GRADED",
+        "recommendation_strength": "NOT_GRADED",
+        "local_validation_status": "NOT_REVIEWED",
+        "local_adaptation_note": "URL صفحهٔ فرود ژورنال است؛ نشانی دقیق مقاله باید در بازبینی تکمیل شود."
+      },
+      "governance": {
+        "status": "DRAFT",
+        "author": "research-dossier-conversion",
+        "clinical_reviewer": null,
+        "review_due_date": "2026-11-21",
+        "change_note": "تبدیل خودکار از GUIDELINE_DOSSIER_FA v1.0.0 (بخش ۳، HTN-R14)."
+      }
+    },
+    {
+      "schema_version": "2.0",
+      "dsl_version": "2.0",
+      "rule_code": "HTN-R15",
+      "version": "0.1.0-draft",
+      "title": "eGFR<۳۰ — لوپ دیورتیک جایگزین تیازید (فوروزماید)",
+      "phase": "SAFETY",
+      "action_type": "suggest_med",
+      "severity": "URGENT",
+      "priority": 1500,
+      "semantic_key": "htn-core-v1.HTN-R15",
+      "scope": {
+        "population": "adults_with_advanced_ckd_on_thiazide",
+        "care_settings": [
+          "specialty_clinic"
+        ],
+        "encounter_types": [
+          "chronic_followup"
+        ]
+      },
+      "required_facts": [
+        {
+          "key": "lab.egfr",
+          "criticality": "CRITICAL",
+          "on_unusable": "NEEDS_DATA"
+        },
+        {
+          "key": "medication.thiazide",
+          "criticality": "REQUIRED",
+          "on_unusable": "NOT_APPLICABLE"
+        }
+      ],
+      "eligibility": {
+        "node_id": "HTN-R15-e1",
+        "fact": "lab.egfr",
+        "op": "exists"
+      },
+      "condition": {
+        "node_id": "HTN-R15-c1",
+        "all": [
+          {
+            "node_id": "HTN-R15-c2",
+            "fact": "lab.egfr",
+            "op": "<",
+            "value": 30,
+            "selector": {
+              "aggregation": "latest"
+            }
+          },
+          {
+            "node_id": "HTN-R15-c3",
+            "fact": "medication.thiazide",
+            "op": "truthy"
+          }
+        ]
+      },
+      "safety": {
+        "redflag_exclusions": [],
+        "hard_exclusions": [],
+        "on_safety_error": "BLOCK_ROUTINE_OUTPUTS"
+      },
+      "recommendation": {
+        "text_fa": "«eGFR زیر ۳۰ با تیازید فعال — تیازید در این محدوده بی‌اثر است. پیشنهاد: جایگزینی با فوروزماید ۲۰ mg دو بار/روز بر اساس حجم؛ تصمیم با پزشک.»",
+        "suggestion_only": true,
+        "requires_clinician_confirmation": true,
+        "may_create_internal_task": false,
+        "params": {
+          "class": "loop_diuretic",
+          "drug": "furosemide",
+          "start_mg": 20,
+          "frequency": "bid",
+          "replace_class": "thiazide",
+          "citation": "KDIGO 2021; ESH 2023 (thiazides ineffective eGFR<30)"
+        }
+      },
+      "evidence": {
+        "source_title": "KDIGO 2021 BP in CKD Guideline + 2023 ESH Guidelines — Diuretic choice at low eGFR",
+        "issuing_organization": "Kidney Disease: Improving Global Outcomes (KDIGO) / European Society of Hypertension",
+        "publication_date": null,
+        "source_version": "2021/2023",
+        "source_locator": "Kidney Int 2021;99(3S):S1–S87 (لوپ دیورتیک در eGFR پایین)؛ J Hypertens 2023;41(12):1874–2071 — بی‌اثری تیازید در eGFR<30.",
+        "source_url": "https://www.kidney-international.org",
+        "evidence_certainty": "NOT_GRADED",
+        "recommendation_strength": "NOT_GRADED",
+        "local_validation_status": "NOT_REVIEWED",
+        "local_adaptation_note": "URL صفحهٔ فرود ژورنال است؛ نشانی دقیق مقالات باید در بازبینی تکمیل شود."
+      },
+      "governance": {
+        "status": "DRAFT",
+        "author": "research-dossier-conversion",
+        "clinical_reviewer": null,
+        "review_due_date": "2026-11-21",
+        "change_note": "تبدیل خودکار از GUIDELINE_DOSSIER_FA v1.0.0 (بخش ۳، HTN-R15). med.class has thiazide → medication.thiazide truthy."
+      }
+    },
+    {
+      "schema_version": "2.0",
+      "dsl_version": "2.0",
+      "rule_code": "HTN-R16A",
+      "version": "0.1.0-draft",
+      "title": "Grade 2 سیستولیک ≥۱۶۰ — شروع ترکیب دو دارویی ACEi+CCB",
+      "phase": "ROUTINE",
+      "action_type": "suggest_med",
+      "severity": "URGENT",
+      "priority": 2100,
+      "semantic_key": "htn-core-v1.HTN-R16A",
+      "scope": {
+        "population": "adults_with_grade2_hypertension",
+        "care_settings": [
+          "specialty_clinic"
+        ],
+        "encounter_types": [
+          "chronic_followup"
+        ]
+      },
+      "required_facts": [
+        {
+          "key": "observation.bp_systolic",
+          "criticality": "CRITICAL",
+          "on_unusable": "NEEDS_DATA"
+        },
+        {
+          "key": "medication.acei",
+          "criticality": "REQUIRED",
+          "on_unusable": "NEEDS_DATA"
+        },
+        {
+          "key": "medication.arb",
+          "criticality": "REQUIRED",
+          "on_unusable": "NEEDS_DATA"
+        }
+      ],
+      "eligibility": {
+        "node_id": "HTN-R16A-e1",
+        "fact": "observation.bp_systolic",
+        "op": "exists"
+      },
+      "condition": {
+        "node_id": "HTN-R16A-c1",
+        "all": [
+          {
+            "node_id": "HTN-R16A-c2",
+            "fact": "observation.bp_systolic",
+            "op": ">=",
+            "value": 160,
+            "selector": {
+              "aggregation": "latest"
+            }
+          },
+          {
+            "node_id": "HTN-R16A-c3",
+            "not": {
+              "node_id": "HTN-R16A-c4",
+              "fact": "medication.acei",
+              "op": "truthy"
+            }
+          },
+          {
+            "node_id": "HTN-R16A-c5",
+            "not": {
+              "node_id": "HTN-R16A-c6",
+              "fact": "medication.arb",
+              "op": "truthy"
+            }
+          }
+        ]
+      },
+      "safety": {
+        "redflag_exclusions": [],
+        "hard_exclusions": [],
+        "on_safety_error": "BLOCK_ROUTINE_OUTPUTS"
+      },
+      "recommendation": {
+        "text_fa": "«سیستولیک ≥۱۶۰ بدون RASi — کاندید شروع ترکیب دو دارویی. پیشنهاد: انالاپریل ۵ + آملودیپین ۵ mg، ترجیحاً تک‌قرص ترکیبی (ESH 2023 §7.2؛ مبنای پیامد ACCOMPLISH) — تصمیم با پزشک.»",
+        "suggestion_only": true,
+        "requires_clinician_confirmation": true,
+        "may_create_internal_task": false,
+        "params": {
+          "class": "acei",
+          "drug": "enalapril",
+          "start_mg": 5,
+          "combo_with_class": "ccb",
+          "combo_drug": "amlodipine",
+          "combo_start_mg": 5,
+          "form": "single_pill_preferred",
+          "citation": "ESH 2023 §7.2; ACCOMPLISH NEJM 2008;359:2417"
+        }
+      },
+      "evidence": {
+        "source_title": "ACCOMPLISH Trial (NEJM 2008;359:2417–28) + 2023 ESH Guidelines §7.2",
+        "issuing_organization": "New England Journal of Medicine / European Society of Hypertension",
+        "publication_date": null,
+        "source_version": "2008/2023",
+        "source_locator": "Jamerson K et al., NEJM 2008;359:2417–28, PMID 19092151 — benazepril+amlodipine بر benazepril+HCTZ برتری پیامد CV (HR 0.80)؛ ESH 2023 §7.2 — شروع SPC دو دارویی در Grade 2+.",
+        "source_url": "https://pubmed.ncbi.nlm.nih.gov/19092151/",
+        "evidence_certainty": "NOT_GRADED",
+        "recommendation_strength": "NOT_GRADED",
+        "local_validation_status": "NOT_REVIEWED"
+      },
+      "governance": {
+        "status": "DRAFT",
+        "author": "research-dossier-conversion",
+        "clinical_reviewer": null,
+        "review_due_date": "2026-11-21",
+        "change_note": "تبدیل خودکار از GUIDELINE_DOSSIER_FA v1.0.0 (بخش ۴، HTN-R16a). پسوند a→A طبق الگوی rule_code اسکیما."
+      }
+    },
+    {
+      "schema_version": "2.0",
+      "dsl_version": "2.0",
+      "rule_code": "HTN-R16B",
+      "version": "0.1.0-draft",
+      "title": "Grade 2 دیاستولیک ≥۱۰۰ — شروع ترکیب دو دارویی ACEi+CCB",
+      "phase": "ROUTINE",
+      "action_type": "suggest_med",
+      "severity": "URGENT",
+      "priority": 2100,
+      "semantic_key": "htn-core-v1.HTN-R16B",
+      "scope": {
+        "population": "adults_with_grade2_hypertension",
+        "care_settings": [
+          "specialty_clinic"
+        ],
+        "encounter_types": [
+          "chronic_followup"
+        ]
+      },
+      "required_facts": [
+        {
+          "key": "observation.bp_diastolic",
+          "criticality": "CRITICAL",
+          "on_unusable": "NEEDS_DATA"
+        },
+        {
+          "key": "medication.acei",
+          "criticality": "REQUIRED",
+          "on_unusable": "NEEDS_DATA"
+        },
+        {
+          "key": "medication.arb",
+          "criticality": "REQUIRED",
+          "on_unusable": "NEEDS_DATA"
+        }
+      ],
+      "eligibility": {
+        "node_id": "HTN-R16B-e1",
+        "fact": "observation.bp_diastolic",
+        "op": "exists"
+      },
+      "condition": {
+        "node_id": "HTN-R16B-c1",
+        "all": [
+          {
+            "node_id": "HTN-R16B-c2",
+            "fact": "observation.bp_diastolic",
+            "op": ">=",
+            "value": 100,
+            "selector": {
+              "aggregation": "latest"
+            }
+          },
+          {
+            "node_id": "HTN-R16B-c3",
+            "not": {
+              "node_id": "HTN-R16B-c4",
+              "fact": "medication.acei",
+              "op": "truthy"
+            }
+          },
+          {
+            "node_id": "HTN-R16B-c5",
+            "not": {
+              "node_id": "HTN-R16B-c6",
+              "fact": "medication.arb",
+              "op": "truthy"
+            }
+          }
+        ]
+      },
+      "safety": {
+        "redflag_exclusions": [],
+        "hard_exclusions": [],
+        "on_safety_error": "BLOCK_ROUTINE_OUTPUTS"
+      },
+      "recommendation": {
+        "text_fa": "«دیاستولیک ≥۱۰۰ بدون RASi — کاندید شروع ترکیب دو دارویی. پیشنهاد: انالاپریل ۵ + آملودیپین ۵ mg (ESH 2023 §7.2) — تصمیم با پزشک.»",
+        "suggestion_only": true,
+        "requires_clinician_confirmation": true,
+        "may_create_internal_task": false,
+        "params": {
+          "class": "acei",
+          "drug": "enalapril",
+          "start_mg": 5,
+          "combo_with_class": "ccb",
+          "combo_drug": "amlodipine",
+          "combo_start_mg": 5,
+          "citation": "ESH 2023 §7.2"
+        }
+      },
+      "evidence": {
+        "source_title": "2023 ESH Guidelines — Initial two-drug combination (§7.2)",
+        "issuing_organization": "European Society of Hypertension",
+        "publication_date": null,
+        "source_version": "2023",
+        "source_locator": "J Hypertens 2023;41(12):1874–2071, §7.2 — شروع SPC دو دارویی در Grade 2+ یا فشار >20/10 بالاتر از هدف.",
+        "source_url": "https://journals.lww.com/journalhypertension",
+        "evidence_certainty": "NOT_GRADED",
+        "recommendation_strength": "NOT_GRADED",
+        "local_validation_status": "NOT_REVIEWED",
+        "local_adaptation_note": "URL صفحهٔ فرود ژورنال است؛ نشانی دقیق مقاله باید در بازبینی تکمیل شود."
+      },
+      "governance": {
+        "status": "DRAFT",
+        "author": "research-dossier-conversion",
+        "clinical_reviewer": null,
+        "review_due_date": "2026-11-21",
+        "change_note": "تبدیل خودکار از GUIDELINE_DOSSIER_FA v1.0.0 (بخش ۴، HTN-R16b). پسوند b→B طبق الگوی rule_code اسکیما."
+      }
+    },
+    {
+      "schema_version": "2.0",
+      "dsl_version": "2.0",
+      "rule_code": "HTN-R17",
+      "version": "0.1.0-draft",
+      "title": "ممنوعیت همزمان ACEi+ARB (حفاظت ONTARGET)",
+      "phase": "SAFETY",
+      "action_type": "create_followup",
+      "severity": "CRITICAL",
+      "priority": 500,
+      "semantic_key": "htn-core-v1.HTN-R17",
+      "scope": {
+        "population": "adults_on_dual_ras_blockade",
+        "care_settings": [
+          "specialty_clinic"
+        ],
+        "encounter_types": [
+          "chronic_followup"
+        ]
+      },
+      "required_facts": [
+        {
+          "key": "medication.acei",
+          "criticality": "REQUIRED",
+          "on_unusable": "NOT_APPLICABLE"
+        },
+        {
+          "key": "medication.arb",
+          "criticality": "REQUIRED",
+          "on_unusable": "NOT_APPLICABLE"
+        }
+      ],
+      "eligibility": {
+        "node_id": "HTN-R17-e1",
+        "any": [
+          {
+            "node_id": "HTN-R17-e2",
+            "fact": "medication.acei",
+            "op": "exists"
+          },
+          {
+            "node_id": "HTN-R17-e3",
+            "fact": "medication.arb",
+            "op": "exists"
+          }
+        ]
+      },
+      "condition": {
+        "node_id": "HTN-R17-c1",
+        "all": [
+          {
+            "node_id": "HTN-R17-c2",
+            "fact": "medication.acei",
+            "op": "truthy"
+          },
+          {
+            "node_id": "HTN-R17-c3",
+            "fact": "medication.arb",
+            "op": "truthy"
+          }
+        ]
+      },
+      "safety": {
+        "redflag_exclusions": [],
+        "hard_exclusions": [],
+        "on_safety_error": "BLOCK_ROUTINE_OUTPUTS"
+      },
+      "recommendation": {
+        "text_fa": "«مهار همزمان ACEi+ARB ثبت شده — ممنوع مطلق (ONTARGET: بدون کاهش پیامد + افزایش AKI، هایپرکالمی و افت وضعیتی). بازبینی فوری رژیم دارویی توسط پزشک لازم است.»",
+        "suggestion_only": true,
+        "requires_clinician_confirmation": true,
+        "may_create_internal_task": true,
+        "params": {
+          "kind": "physician_alert_dual_ras_blockade",
+          "due_in_hours": 24,
+          "citation": "ONTARGET NEJM 2008;358:1547 — harm, never combine"
+        }
+      },
+      "evidence": {
+        "source_title": "ONTARGET Trial — Telmisartan, Ramipril, or Both in Patients at High Vascular Risk (NEJM 2008;358:1547–59)",
+        "issuing_organization": "New England Journal of Medicine",
+        "publication_date": null,
+        "source_version": "2008",
+        "source_locator": "Yusuf S et al., NEJM 2008;358:1547–59, PMID 18378519 — dual RAS blockade بدون سود پیامد و افزایش AKI/هایپرکالمی/افت وضعیتی.",
+        "source_url": "https://pubmed.ncbi.nlm.nih.gov/18378519/",
+        "evidence_certainty": "NOT_GRADED",
+        "recommendation_strength": "NOT_GRADED",
+        "local_validation_status": "NOT_REVIEWED"
+      },
+      "governance": {
+        "status": "DRAFT",
+        "author": "research-dossier-conversion",
+        "clinical_reviewer": null,
+        "review_due_date": "2026-11-21",
+        "change_note": "تبدیل خودکار از GUIDELINE_DOSSIER_FA v1.0.0 (بخش ۴، HTN-R17)."
+      }
+    },
+    {
+      "schema_version": "2.0",
+      "dsl_version": "2.0",
+      "rule_code": "HTN-R18",
+      "version": "0.1.0-draft",
+      "title": "داروی چهارم مقاوم — اسپیرونولاکتون ۲۵→۵۰ (PATHWAY-2)",
+      "phase": "ROUTINE",
+      "action_type": "suggest_med",
+      "severity": "URGENT",
+      "priority": 1900,
+      "semantic_key": "htn-core-v1.HTN-R18",
+      "scope": {
+        "population": "adults_with_resistant_hypertension",
+        "care_settings": [
+          "specialty_clinic"
+        ],
+        "encounter_types": [
+          "chronic_followup"
+        ]
+      },
+      "required_facts": [
+        {
+          "key": "flag.resistant_htn_3drugs_with_diuretic",
+          "criticality": "REQUIRED",
+          "on_unusable": "CONTINUE_WITH_WARNING"
+        },
+        {
+          "key": "medication.mra",
+          "criticality": "REQUIRED",
+          "on_unusable": "NEEDS_DATA"
+        }
+      ],
+      "eligibility": {
+        "node_id": "HTN-R18-e1",
+        "fact": "flag.resistant_htn_3drugs_with_diuretic",
+        "op": "exists"
+      },
+      "condition": {
+        "node_id": "HTN-R18-c1",
+        "all": [
+          {
+            "node_id": "HTN-R18-c2",
+            "fact": "flag.resistant_htn_3drugs_with_diuretic",
+            "op": "truthy"
+          },
+          {
+            "node_id": "HTN-R18-c3",
+            "not": {
+              "node_id": "HTN-R18-c4",
+              "fact": "medication.mra",
+              "op": "truthy"
+            }
+          }
+        ]
+      },
+      "safety": {
+        "redflag_exclusions": [],
+        "hard_exclusions": [],
+        "on_safety_error": "BLOCK_ROUTINE_OUTPUTS"
+      },
+      "recommendation": {
+        "text_fa": "«HTN مقاوم (۳ دارو شامل دیورتیک) بدون MRA. پیشنهاد: اسپیرونولاکتون ۲۵→۵۰ mg روزانه (بهترین داروی چهارم، PATHWAY-2)؛ چک K در هفتهٔ ۱ و ۴؛ قطع در K>5.0؛ احتیاط eGFR<30؛ جایگزین کلرتالیدون ۱۲٫۵ — تصمیم با پزشک.»",
+        "suggestion_only": true,
+        "requires_clinician_confirmation": true,
+        "may_create_internal_task": false,
+        "params": {
+          "class": "mra",
+          "drug": "spironolactone",
+          "start_mg": 25,
+          "titrate_to_mg": 50,
+          "max_mg_per_day": 50,
+          "labs_weeks": [
+            1,
+            4
+          ],
+          "lab_keys": [
+            "potassium",
+            "creatinine"
+          ],
+          "stop_if_k_gt": 5.0,
+          "alternatives": [
+            {
+              "class": "thiazide",
+              "drug": "chlorthalidone",
+              "start_mg": 12.5
+            }
+          ],
+          "citation": "PATHWAY-2 Lancet 2015;386:2059 (PMID 26414968)"
+        }
+      },
+      "evidence": {
+        "source_title": "PATHWAY-2 Trial (Lancet 2015;386:2059–68)",
+        "issuing_organization": "The Lancet",
+        "publication_date": null,
+        "source_version": "2015",
+        "source_locator": "Williams B et al., Lancet 2015;386:2059–68, PMID 26414968 — spironolactone 25→50 بهترین داروی چهارم (برتری بر placebo، bisoprolol 5→10، doxazosin 4→8)؛ پروتکل چک K هفتهٔ ۱ و ۴.",
+        "source_url": "https://pubmed.ncbi.nlm.nih.gov/26414968/",
+        "evidence_certainty": "NOT_GRADED",
+        "recommendation_strength": "NOT_GRADED",
+        "local_validation_status": "NOT_REVIEWED"
+      },
+      "governance": {
+        "status": "DRAFT",
+        "author": "research-dossier-conversion",
+        "clinical_reviewer": null,
+        "review_due_date": "2026-11-21",
+        "change_note": "تبدیل خودکار از GUIDELINE_DOSSIER_FA v1.0.0 (بخش ۴، HTN-R18). ⚠️ flag.resistant_htn_3drugs_with_diuretic طبق شکاف #۲ داسیه هنوز در fact snapshot نیست (تعریف دقیق مقاوم نیازمند تأیید پایبندی و شمارش داروست) — قبل از فعال‌سازی باید تأمین شود."
+      }
+    },
+    {
+      "schema_version": "2.0",
+      "dsl_version": "2.0",
+      "rule_code": "HTN-R19",
+      "version": "0.1.0-draft",
+      "title": "چک پتاسیم/کراتینین هفتهٔ ۱ و ۴ پس از شروع/تیتراسیون MRA",
+      "phase": "SAFETY",
+      "action_type": "schedule_screening",
+      "severity": "CRITICAL",
+      "priority": 600,
+      "semantic_key": "htn-core-v1.HTN-R19",
+      "scope": {
+        "population": "adults_on_mra",
+        "care_settings": [
+          "specialty_clinic"
+        ],
+        "encounter_types": [
+          "chronic_followup"
+        ]
+      },
+      "required_facts": [
+        {
+          "key": "medication.mra",
+          "criticality": "REQUIRED",
+          "on_unusable": "NOT_APPLICABLE"
+        },
+        {
+          "key": "flag.mra_started_or_titrated_within_4w",
+          "criticality": "REQUIRED",
+          "on_unusable": "CONTINUE_WITH_WARNING"
+        }
+      ],
+      "eligibility": {
+        "node_id": "HTN-R19-e1",
+        "fact": "medication.mra",
+        "op": "exists"
+      },
+      "condition": {
+        "node_id": "HTN-R19-c1",
+        "all": [
+          {
+            "node_id": "HTN-R19-c2",
+            "fact": "medication.mra",
+            "op": "truthy"
+          },
+          {
+            "node_id": "HTN-R19-c3",
+            "fact": "flag.mra_started_or_titrated_within_4w",
+            "op": "truthy"
+          }
+        ]
+      },
+      "safety": {
+        "redflag_exclusions": [],
+        "hard_exclusions": [],
+        "on_safety_error": "BLOCK_ROUTINE_OUTPUTS"
+      },
+      "recommendation": {
+        "text_fa": "«MRA در ۴ هفتهٔ اخیر شروع/تیتره شده است. غربالگری پتاسیم/کراتینین/eGFR در هفتهٔ ۱ و تکرار در هفتهٔ ۴ برنامه‌ریزی شود (PATHWAY-2 protocol؛ ESH 2023 §7.9).»",
+        "suggestion_only": true,
+        "requires_clinician_confirmation": true,
+        "may_create_internal_task": false,
+        "params": {
+          "panel": [
+            "potassium",
+            "creatinine",
+            "egfr"
+          ],
+          "due_in_days": 7,
+          "repeat_due_days": 28,
+          "citation": "PATHWAY-2 protocol; ESH 2023 §7.9"
+        }
+      },
+      "evidence": {
+        "source_title": "PATHWAY-2 protocol (Lancet 2015;386:2059–68) + 2023 ESH Guidelines §7.9",
+        "issuing_organization": "The Lancet / European Society of Hypertension",
+        "publication_date": null,
+        "source_version": "2015/2023",
+        "source_locator": "Williams B et al., Lancet 2015;386:2059–68, PMID 26414968 — چک K در هفتهٔ ۱ و ۴ پس از شروع/تیتراسیون spironolactone؛ ESH 2023 §7.9 پایش آزمایشگاهی MRA.",
+        "source_url": "https://pubmed.ncbi.nlm.nih.gov/26414968/",
+        "evidence_certainty": "NOT_GRADED",
+        "recommendation_strength": "NOT_GRADED",
+        "local_validation_status": "NOT_REVIEWED"
+      },
+      "governance": {
+        "status": "DRAFT",
+        "author": "research-dossier-conversion",
+        "clinical_reviewer": null,
+        "review_due_date": "2026-11-21",
+        "change_note": "تبدیل خودکار از GUIDELINE_DOSSIER_FA v1.0.0 (بخش ۴، HTN-R19). ⚠️ شرط «۴ هفتهٔ اخیر» به timestamp آخرین تغییر دوز نیاز دارد (شکاف #۳ داسیه — DSL gap)؛ شرط جانشین flag.mra_started_or_titrated_within_4w عیناً از داسیه است."
+      }
+    },
+    {
+      "schema_version": "2.0",
+      "dsl_version": "2.0",
+      "rule_code": "HTN-R20",
+      "version": "0.1.0-draft",
+      "title": "مقاوم واقعی روی ۴ دارو — ارجاع بررسی HTN ثانویه",
+      "phase": "ROUTINE",
+      "action_type": "create_followup",
+      "severity": "URGENT",
+      "priority": 1300,
+      "semantic_key": "htn-core-v1.HTN-R20",
+      "scope": {
+        "population": "adults_with_refractory_resistant_htn",
+        "care_settings": [
+          "specialty_clinic"
+        ],
+        "encounter_types": [
+          "chronic_followup"
+        ]
+      },
+      "required_facts": [
+        {
+          "key": "flag.resistant_htn_on_4drugs_uncontrolled",
+          "criticality": "REQUIRED",
+          "on_unusable": "CONTINUE_WITH_WARNING"
+        }
+      ],
+      "eligibility": {
+        "node_id": "HTN-R20-e1",
+        "fact": "flag.resistant_htn_on_4drugs_uncontrolled",
+        "op": "exists"
+      },
+      "condition": {
+        "node_id": "HTN-R20-c1",
+        "fact": "flag.resistant_htn_on_4drugs_uncontrolled",
+        "op": "truthy"
+      },
+      "safety": {
+        "redflag_exclusions": [],
+        "hard_exclusions": [],
+        "on_safety_error": "BLOCK_ROUTINE_OUTPUTS"
+      },
+      "recommendation": {
+        "text_fa": "«کنترل‌نشده حتی با ۴ دارو — HTN مقاوم واقعی. ارجاع برای بررسی علل ثانویه (نسبت آلدوسترون/رنین، تصویربرداری شریان کلیه، غربالگری OSA، ABPM) ظرف ۳۰ روز (ESH 2023 §7.9).»",
+        "suggestion_only": true,
+        "requires_clinician_confirmation": true,
+        "may_create_internal_task": true,
+        "params": {
+          "kind": "specialist_referral_secondary_htn_workup",
+          "due_in_days": 30,
+          "workup": [
+            "aldosterone_renin_ratio",
+            "renal_imaging",
+            "osa_screening",
+            "abpm"
+          ],
+          "citation": "ESH 2023 §7.9; PATHWAY-2 post-trial guidance"
+        }
+      },
+      "evidence": {
+        "source_title": "2023 ESH Guidelines — Resistant hypertension workup (§7.9)",
+        "issuing_organization": "European Society of Hypertension",
+        "publication_date": null,
+        "source_version": "2023",
+        "source_locator": "J Hypertens 2023;41(12):1874–2071, §7.9 — ارجاع برای بررسی HTN ثانویه (آلدوسترون/رنین، تنگی شریان کلیه، OSA، فئوکروموسیتوم) و ABPM؛ PATHWAY-2 post-trial guidance.",
+        "source_url": "https://journals.lww.com/journalhypertension",
+        "evidence_certainty": "NOT_GRADED",
+        "recommendation_strength": "NOT_GRADED",
+        "local_validation_status": "NOT_REVIEWED",
+        "local_adaptation_note": "URL صفحهٔ فرود ژورنال است؛ نشانی دقیق مقاله باید در بازبینی تکمیل شود."
+      },
+      "governance": {
+        "status": "DRAFT",
+        "author": "research-dossier-conversion",
+        "clinical_reviewer": null,
+        "review_due_date": "2026-11-21",
+        "change_note": "تبدیل خودکار از GUIDELINE_DOSSIER_FA v1.0.0 (بخش ۴، HTN-R20). ⚠️ flag.resistant_htn_on_4drugs_uncontrolled طبق شکاف #۲ داسیه هنوز در fact snapshot نیست."
+      }
+    },
+    {
+      "schema_version": "2.0",
+      "dsl_version": "2.0",
+      "rule_code": "HTN-R21",
+      "version": "0.1.0-draft",
+      "title": "دیابت → خط اول ACEi/ARB",
+      "phase": "ROUTINE",
+      "action_type": "suggest_med",
+      "severity": "URGENT",
+      "priority": 1400,
+      "semantic_key": "htn-core-v1.HTN-R21",
+      "scope": {
+        "population": "adults_with_diabetes",
+        "care_settings": [
+          "specialty_clinic"
+        ],
+        "encounter_types": [
+          "chronic_followup"
+        ],
+        "condition_codes": [
+          "diabetes"
+        ]
+      },
+      "required_facts": [
+        {
+          "key": "condition.diabetes",
+          "criticality": "REQUIRED",
+          "on_unusable": "NOT_APPLICABLE"
+        },
+        {
+          "key": "medication.acei",
+          "criticality": "REQUIRED",
+          "on_unusable": "NEEDS_DATA"
+        },
+        {
+          "key": "medication.arb",
+          "criticality": "REQUIRED",
+          "on_unusable": "NEEDS_DATA"
+        }
+      ],
+      "eligibility": {
+        "node_id": "HTN-R21-e1",
+        "fact": "condition.diabetes",
+        "op": "truthy"
+      },
+      "condition": {
+        "node_id": "HTN-R21-c1",
+        "all": [
+          {
+            "node_id": "HTN-R21-c2",
+            "fact": "condition.diabetes",
+            "op": "truthy"
+          },
+          {
+            "node_id": "HTN-R21-c3",
+            "not": {
+              "node_id": "HTN-R21-c4",
+              "fact": "medication.acei",
+              "op": "truthy"
+            }
+          },
+          {
+            "node_id": "HTN-R21-c5",
+            "not": {
+              "node_id": "HTN-R21-c6",
+              "fact": "medication.arb",
+              "op": "truthy"
+            }
+          }
+        ]
+      },
+      "safety": {
+        "redflag_exclusions": [],
+        "hard_exclusions": [],
+        "on_safety_error": "BLOCK_ROUTINE_OUTPUTS"
+      },
+      "recommendation": {
+        "text_fa": "«بیمار دیابتی بدون RASi. پیشنهاد: انالاپریل ۵ mg روزانه (حداکثر ۴۰)؛ در سرفهٔ ACEi، لوزارتان ۵۰→۱۰۰ (ADA 2025 §10.4b) — تصمیم با پزشک.»",
+        "suggestion_only": true,
+        "requires_clinician_confirmation": true,
+        "may_create_internal_task": false,
+        "params": {
+          "class": "acei",
+          "drug": "enalapril",
+          "start_mg": 5,
+          "max_mg_per_day": 40,
+          "note": "ARB (losartan 50->100) if ACEi cough",
+          "citation": "ADA 2025 §10.4b"
+        }
+      },
+      "evidence": {
+        "source_title": "ADA Standards of Care in Diabetes—2025, §10.4b",
+        "issuing_organization": "American Diabetes Association",
+        "publication_date": null,
+        "source_version": "2025",
+        "source_locator": "Diabetes Care 2025;48(Suppl 1), §10.4b — ACEi/ARB خط اول در دیابت با فشار بالا.",
+        "source_url": "https://diabetesjournals.org/care/issue/48/Supplement_1",
+        "evidence_certainty": "NOT_GRADED",
+        "recommendation_strength": "NOT_GRADED",
+        "local_validation_status": "NOT_REVIEWED"
+      },
+      "governance": {
+        "status": "DRAFT",
+        "author": "research-dossier-conversion",
+        "clinical_reviewer": null,
+        "review_due_date": "2026-11-21",
+        "change_note": "تبدیل خودکار از GUIDELINE_DOSSIER_FA v1.0.0 (بخش ۵، HTN-R21). flag.diabetes → condition.diabetes."
+      }
+    },
+    {
+      "schema_version": "2.0",
+      "dsl_version": "2.0",
+      "rule_code": "HTN-R22",
+      "version": "0.1.0-draft",
+      "title": "آلبومینوری ≥۳۰۰ → RASi با حداکثر دوز تحمل‌شده",
+      "phase": "ROUTINE",
+      "action_type": "suggest_med",
+      "severity": "URGENT",
+      "priority": 1100,
+      "semantic_key": "htn-core-v1.HTN-R22",
+      "scope": {
+        "population": "adults_with_albuminuria",
+        "care_settings": [
+          "specialty_clinic"
+        ],
+        "encounter_types": [
+          "chronic_followup"
+        ]
+      },
+      "required_facts": [
+        {
+          "key": "lab.uacr",
+          "criticality": "CRITICAL",
+          "on_unusable": "NEEDS_DATA"
+        },
+        {
+          "key": "medication.acei",
+          "criticality": "REQUIRED",
+          "on_unusable": "NEEDS_DATA"
+        },
+        {
+          "key": "medication.arb",
+          "criticality": "REQUIRED",
+          "on_unusable": "NEEDS_DATA"
+        }
+      ],
+      "eligibility": {
+        "node_id": "HTN-R22-e1",
+        "fact": "lab.uacr",
+        "op": "exists"
+      },
+      "condition": {
+        "node_id": "HTN-R22-c1",
+        "all": [
+          {
+            "node_id": "HTN-R22-c2",
+            "fact": "lab.uacr",
+            "op": ">=",
+            "value": 300,
+            "selector": {
+              "aggregation": "latest"
+            }
+          },
+          {
+            "node_id": "HTN-R22-c3",
+            "not": {
+              "node_id": "HTN-R22-c4",
+              "fact": "medication.acei",
+              "op": "truthy"
+            }
+          },
+          {
+            "node_id": "HTN-R22-c5",
+            "not": {
+              "node_id": "HTN-R22-c6",
+              "fact": "medication.arb",
+              "op": "truthy"
+            }
+          }
+        ]
+      },
+      "safety": {
+        "redflag_exclusions": [],
+        "hard_exclusions": [],
+        "on_safety_error": "BLOCK_ROUTINE_OUTPUTS"
+      },
+      "recommendation": {
+        "text_fa": "«UACR ≥۳۰۰ (A3) بدون RASi. پیشنهاد: شروع ACEi/ARB و تیتراسیون تا حداکثر دوز تحمل‌شده (انالاپریل ۵ شروع) — KDIGO 2021 Rec 3.7.1؛ ADA 2025 §10.4c. نسخهٔ A2 قاعده (UACR ۳۰–۲۹۹ در دیابت) نیز در داسیه ذکر شده است.»",
+        "suggestion_only": true,
+        "requires_clinician_confirmation": true,
+        "may_create_internal_task": false,
+        "params": {
+          "class": "acei",
+          "drug": "enalapril",
+          "start_mg": 5,
+          "target": "max_tolerated_dose",
+          "max_mg_per_day": 40,
+          "citation": "KDIGO 2021 Rec 3.7.1; ADA 2025 §10.4c"
+        }
+      },
+      "evidence": {
+        "source_title": "KDIGO 2021 BP in CKD Guideline Rec 3.7.1 + ADA Standards of Care 2025 §10.4c",
+        "issuing_organization": "Kidney Disease: Improving Global Outcomes (KDIGO) / American Diabetes Association",
+        "publication_date": null,
+        "source_version": "2021/2025",
+        "source_locator": "Kidney Int 2021;99(3S):S1–S87, Rec 3.7.1 — RASi با حداکثر دوز تحمل‌شده در albuminuria (A2/A3)؛ Diabetes Care 2025;48(Suppl 1) §10.4c — ACEi/ARB با UACR≥300 یا eGFR 30–60.",
+        "source_url": "https://diabetesjournals.org/care/issue/48/Supplement_1",
+        "evidence_certainty": "NOT_GRADED",
+        "recommendation_strength": "NOT_GRADED",
+        "local_validation_status": "NOT_REVIEWED",
+        "local_adaptation_note": "واحد UACR باید mg/g نرمال‌سازی شود (شکاف #۴ داسیه)؛ نسخهٔ A2 قاعده به‌عنوان قاعدهٔ جداگانه ساخته نشد تا عدد جدید اختراع نشود."
+      },
+      "governance": {
+        "status": "DRAFT",
+        "author": "research-dossier-conversion",
+        "clinical_reviewer": null,
+        "review_due_date": "2026-11-21",
+        "change_note": "تبدیل خودکار از GUIDELINE_DOSSIER_FA v1.0.0 (بخش ۵، HTN-R22)."
+      }
+    },
+    {
+      "schema_version": "2.0",
+      "dsl_version": "2.0",
+      "rule_code": "HTN-R23",
+      "version": "0.1.0-draft",
+      "title": "T2D+CKD → فینرنون ۱۰→۲۰",
+      "phase": "ROUTINE",
+      "action_type": "suggest_med",
+      "severity": "WARN",
+      "priority": 2700,
+      "semantic_key": "htn-core-v1.HTN-R23",
+      "scope": {
+        "population": "adults_with_diabetic_ckd",
+        "care_settings": [
+          "specialty_clinic"
+        ],
+        "encounter_types": [
+          "chronic_followup"
+        ],
+        "condition_codes": [
+          "diabetes",
+          "ckd"
+        ]
+      },
+      "required_facts": [
+        {
+          "key": "condition.diabetes",
+          "criticality": "REQUIRED",
+          "on_unusable": "NOT_APPLICABLE"
+        },
+        {
+          "key": "condition.ckd",
+          "criticality": "REQUIRED",
+          "on_unusable": "NOT_APPLICABLE"
+        },
+        {
+          "key": "lab.egfr",
+          "criticality": "CRITICAL",
+          "on_unusable": "NEEDS_DATA"
+        },
+        {
+          "key": "lab.uacr",
+          "criticality": "CRITICAL",
+          "on_unusable": "NEEDS_DATA"
+        },
+        {
+          "key": "medication.finerenone",
+          "criticality": "REQUIRED",
+          "on_unusable": "NEEDS_DATA"
+        }
+      ],
+      "eligibility": {
+        "node_id": "HTN-R23-e1",
+        "fact": "condition.diabetes",
+        "op": "truthy"
+      },
+      "condition": {
+        "node_id": "HTN-R23-c1",
+        "all": [
+          {
+            "node_id": "HTN-R23-c2",
+            "fact": "condition.diabetes",
+            "op": "truthy"
+          },
+          {
+            "node_id": "HTN-R23-c3",
+            "fact": "condition.ckd",
+            "op": "truthy"
+          },
+          {
+            "node_id": "HTN-R23-c4",
+            "fact": "lab.egfr",
+            "op": "between",
+            "value": [
+              25,
+              75
+            ],
+            "selector": {
+              "aggregation": "latest"
+            }
+          },
+          {
+            "node_id": "HTN-R23-c5",
+            "fact": "lab.uacr",
+            "op": ">=",
+            "value": 30,
+            "selector": {
+              "aggregation": "latest"
+            }
+          },
+          {
+            "node_id": "HTN-R23-c6",
+            "not": {
+              "node_id": "HTN-R23-c7",
+              "fact": "medication.finerenone",
+              "op": "truthy"
+            }
+          }
+        ]
+      },
+      "safety": {
+        "redflag_exclusions": [],
+        "hard_exclusions": [],
+        "on_safety_error": "BLOCK_ROUTINE_OUTPUTS"
+      },
+      "recommendation": {
+        "text_fa": "«T2D+CKD (eGFR ۲۵–۷۵، UACR≥۳۰) بدون فینرنون. پیشنهاد: فینرنون ۱۰ mg روزانه (۲۰ اگر eGFR≥60 و K≤5.0)، پس از ۴ هفته → ۲۰ mg؛ وقفه در K>5.5؛ منع مصرف eGFR<25 یا K پایه >5.0 (FIDELIO-DKD) — تصمیم با پزشک.»",
+        "suggestion_only": true,
+        "requires_clinician_confirmation": true,
+        "may_create_internal_task": false,
+        "params": {
+          "class": "finerenone",
+          "drug": "finerenone",
+          "start_mg": 10,
+          "start_mg_20_if_egfr_ge": 60,
+          "titrate_after_weeks": 4,
+          "target_mg": 20,
+          "max_mg_per_day": 20,
+          "hold_if_k_gt": 5.5,
+          "contraindicated_if": {
+            "egfr_lt": 25,
+            "k_gt": 5.0
+          },
+          "citation": "FIDELIO-DKD NEJM 2020;383:2219 (PMID 33264825); FLOW NEJM 2024"
+        }
+      },
+      "evidence": {
+        "source_title": "FIDELIO-DKD Trial (NEJM 2020;383:2219–29)",
+        "issuing_organization": "New England Journal of Medicine",
+        "publication_date": null,
+        "source_version": "2020",
+        "source_locator": "Bakris GL et al., NEJM 2020;383:2219–29, PMID 33264825 — HR 0.63 ترکیب کلیوی؛ قطع به‌علت هایپرکالمی 2.3% vs 0.9%؛ شرایط شروع 10/20 mg و hold در K>5.5. FLOW (NEJM 2024) طبق شکاف #۱ داسیه عدد دقیق تأییدنشده دارد و استناد تولیدی نیست.",
+        "source_url": "https://pubmed.ncbi.nlm.nih.gov/33264825/",
+        "evidence_certainty": "NOT_GRADED",
+        "recommendation_strength": "NOT_GRADED",
+        "local_validation_status": "NOT_REVIEWED"
+      },
+      "governance": {
+        "status": "DRAFT",
+        "author": "research-dossier-conversion",
+        "clinical_reviewer": null,
+        "review_due_date": "2026-11-21",
+        "change_note": "تبدیل خودکار از GUIDELINE_DOSSIER_FA v1.0.0 (بخش ۵، HTN-R23). flag.diabetes/flag.ckd → condition.diabetes/condition.ckd. دسترس‌پذیری ژنریک فینرنون در ایران طبق شکاف #۸ داسیه نامطمئن است."
+      }
+    },
+    {
+      "schema_version": "2.0",
+      "dsl_version": "2.0",
+      "rule_code": "HTN-R24",
+      "version": "0.1.0-draft",
+      "title": "ASCVD → لینک استاتین/آسپیرین پیشگیری ثانویه",
+      "phase": "ROUTINE",
+      "action_type": "educate",
+      "severity": "URGENT",
+      "priority": 1200,
+      "semantic_key": "htn-core-v1.HTN-R24",
+      "scope": {
+        "population": "adults_with_ascvd",
+        "care_settings": [
+          "specialty_clinic"
+        ],
+        "encounter_types": [
+          "chronic_followup"
+        ]
+      },
+      "required_facts": [
+        {
+          "key": "flag.ascvd",
+          "criticality": "REQUIRED",
+          "on_unusable": "NOT_APPLICABLE"
+        }
+      ],
+      "eligibility": {
+        "node_id": "HTN-R24-e1",
+        "fact": "flag.ascvd",
+        "op": "exists"
+      },
+      "condition": {
+        "node_id": "HTN-R24-c1",
+        "fact": "flag.ascvd",
+        "op": "truthy"
+      },
+      "safety": {
+        "redflag_exclusions": [],
+        "hard_exclusions": [],
+        "on_safety_error": "BLOCK_ROUTINE_OUTPUTS"
+      },
+      "recommendation": {
+        "text_fa": "«ASCVD ثبت شده. استاتین شدید (اگر سن ≤۷۵ سال) و آسپیرین پیشگیری ثانویه مطرح است؛ بتابلاکر پس از MI — هر سه با تصمیم پزشک (ACC/AHA Cholesterol 2018؛ ESH 2023 §8).»",
+        "suggestion_only": true,
+        "requires_clinician_confirmation": true,
+        "may_create_internal_task": false,
+        "params": {
+          "topic": "statin_secondary_prevention",
+          "note": "High-intensity statin if age<=75; aspirin secondary prevention — physician decision",
+          "citation": "ACC/AHA Cholesterol 2018; ESH 2023 §8"
+        }
+      },
+      "evidence": {
+        "source_title": "2018 AHA/ACC Multisociety Cholesterol Guideline + 2023 ESH Guidelines §8",
+        "issuing_organization": "American Heart Association / American College of Cardiology / European Society of Hypertension",
+        "publication_date": null,
+        "source_version": "2018/2023",
+        "source_locator": "Circulation 2019;139:e1082 (ACC/AHA Cholesterol 2018) — استاتین شدید در ASCVD ≤۷۵ سال؛ ESH 2023 §8 — مدیریت ریسک ASCVD در HTN. کلاس statin در enum کلاس‌های دارویی نیست (شکاف #۱۰ داسیه) — لذا educate نه suggest_med.",
+        "source_url": "https://www.ahajournals.org/journal/circ",
+        "evidence_certainty": "NOT_GRADED",
+        "recommendation_strength": "NOT_GRADED",
+        "local_validation_status": "NOT_REVIEWED",
+        "local_adaptation_note": "URL صفحهٔ فرود ژورنال است؛ نشانی دقیق مقاله باید در بازبینی تکمیل شود."
+      },
+      "governance": {
+        "status": "DRAFT",
+        "author": "research-dossier-conversion",
+        "clinical_reviewer": null,
+        "review_due_date": "2026-11-21",
+        "change_note": "تبدیل خودکار از GUIDELINE_DOSSIER_FA v1.0.0 (بخش ۵، HTN-R24). flag.ascvd مطابق قرارداد RED FLAGS به‌صورت flag fact ماند."
+      }
+    },
+    {
+      "schema_version": "2.0",
+      "dsl_version": "2.0",
+      "rule_code": "HTN-R25",
+      "version": "0.1.0-draft",
+      "title": "واکسن آنفلوانزای سالانه (بیماری مزمن)",
+      "phase": "ROUTINE",
+      "action_type": "vaccine",
+      "severity": "INFO",
+      "priority": 6000,
+      "semantic_key": "htn-core-v1.HTN-R25",
+      "scope": {
+        "population": "adults_with_chronic_disease",
+        "care_settings": [
+          "specialty_clinic"
+        ],
+        "encounter_types": [
+          "chronic_followup"
+        ]
+      },
+      "required_facts": [
+        {
+          "key": "flag.chronic_disease",
+          "criticality": "REQUIRED",
+          "on_unusable": "NOT_APPLICABLE"
+        }
+      ],
+      "eligibility": {
+        "node_id": "HTN-R25-e1",
+        "fact": "flag.chronic_disease",
+        "op": "exists"
+      },
+      "condition": {
+        "node_id": "HTN-R25-c1",
+        "fact": "flag.chronic_disease",
+        "op": "truthy"
+      },
+      "safety": {
+        "redflag_exclusions": [],
+        "hard_exclusions": [],
+        "on_safety_error": "BLOCK_ROUTINE_OUTPUTS"
+      },
+      "recommendation": {
+        "text_fa": "«بیماری مزمن فعال — واکسن آنفلوانزای سالانه مطابق سیاست کلینیک پیشنهاد می‌شود؛ تأیید نهایی با پزشک/سیاست واکسیناسیون مرکز.»",
+        "suggestion_only": true,
+        "requires_clinician_confirmation": true,
+        "may_create_internal_task": false,
+        "params": {
+          "vaccine": "influenza_annual",
+          "citation": "ESC/ESH chronic-disease prevention practice; confirm with clinic policy"
+        }
+      },
+      "evidence": {
+        "source_title": "ESC/ESH chronic-disease prevention practice (per dossier citation)",
+        "issuing_organization": "European Society of Cardiology / European Society of Hypertension",
+        "publication_date": null,
+        "source_version": "practice",
+        "source_locator": "ارجاع عمومی داسیه («ESC/ESH chronic-disease prevention practice») — استناد دقیق بخش/مقاله در داسیه داده نشده؛ سیاست واکسیناسیون کلینیک باید در بازبینی تأیید شود.",
+        "source_url": "https://journals.lww.com/journalhypertension",
+        "evidence_certainty": "NOT_GRADED",
+        "recommendation_strength": "NOT_GRADED",
+        "local_validation_status": "NOT_REVIEWED",
+        "local_adaptation_note": "استناد دقیق باید در بازبینی تکمیل شود؛ URL فعلی صفحهٔ فرود ژورنال J Hypertens است."
+      },
+      "governance": {
+        "status": "DRAFT",
+        "author": "research-dossier-conversion",
+        "clinical_reviewer": null,
+        "review_due_date": "2026-11-21",
+        "change_note": "تبدیل خودکار از GUIDELINE_DOSSIER_FA v1.0.0 (بخش ۵، HTN-R25)."
+      }
+    },
+    {
+      "schema_version": "2.0",
+      "dsl_version": "2.0",
+      "rule_code": "HTN-R26",
+      "version": "0.1.0-draft",
+      "title": "آزمایش پایه قبل از شروع RASi",
+      "phase": "SAFETY",
+      "action_type": "schedule_screening",
+      "severity": "URGENT",
+      "priority": 900,
+      "semantic_key": "htn-core-v1.HTN-R26",
+      "scope": {
+        "population": "adults_starting_rasi",
+        "care_settings": [
+          "specialty_clinic"
+        ],
+        "encounter_types": [
+          "chronic_followup"
+        ]
+      },
+      "required_facts": [
+        {
+          "key": "flag.rasi_about_to_start",
+          "criticality": "REQUIRED",
+          "on_unusable": "CONTINUE_WITH_WARNING"
+        },
+        {
+          "key": "flag.baseline_labs_current",
+          "criticality": "REQUIRED",
+          "on_unusable": "CONTINUE_WITH_WARNING"
+        }
+      ],
+      "eligibility": {
+        "node_id": "HTN-R26-e1",
+        "fact": "flag.rasi_about_to_start",
+        "op": "exists"
+      },
+      "condition": {
+        "node_id": "HTN-R26-c1",
+        "all": [
+          {
+            "node_id": "HTN-R26-c2",
+            "fact": "flag.rasi_about_to_start",
+            "op": "truthy"
+          },
+          {
+            "node_id": "HTN-R26-c3",
+            "fact": "flag.baseline_labs_current",
+            "op": "==",
+            "value": false
+          }
+        ]
+      },
+      "safety": {
+        "redflag_exclusions": [],
+        "hard_exclusions": [],
+        "on_safety_error": "BLOCK_ROUTINE_OUTPUTS"
+      },
+      "recommendation": {
+        "text_fa": "«شروع RASi در پیش است ولی آزمایش پایه به‌روز نیست. پنل پایه (کراتینین/eGFR، پتاسیم، UACR، FBS/HbA1c، لیپیدها) قبل از شروع دارو لازم است — مسدودکننده تا تکمیل (ESH 2023 §4.5؛ KDIGO 2021 §3.7).»",
+        "suggestion_only": true,
+        "requires_clinician_confirmation": true,
+        "may_create_internal_task": false,
+        "params": {
+          "panel": [
+            "creatinine",
+            "egfr",
+            "potassium",
+            "uacr",
+            "fbs",
+            "hba1c",
+            "ldl"
+          ],
+          "due_in_days": 0,
+          "blocking": true,
+          "citation": "ESH 2023 §4.5; KDIGO 2021 §3.7"
+        }
+      },
+      "evidence": {
+        "source_title": "2023 ESH Guidelines §4.5 + KDIGO 2021 BP in CKD Guideline §3.7 — Baseline labs before RASi",
+        "issuing_organization": "European Society of Hypertension / Kidney Disease: Improving Global Outcomes (KDIGO)",
+        "publication_date": null,
+        "source_version": "2023/2021",
+        "source_locator": "J Hypertens 2023;41(12):1874–2071, §4.5 — آزمایش پایه قبل از شروع ضدفشار (به‌ویژه RASi/MRA/دیورتیک)؛ Kidney Int 2021;99(3S):S1–S87, §3.7.",
+        "source_url": "https://journals.lww.com/journalhypertension",
+        "evidence_certainty": "NOT_GRADED",
+        "recommendation_strength": "NOT_GRADED",
+        "local_validation_status": "NOT_REVIEWED",
+        "local_adaptation_note": "URL صفحهٔ فرود ژورنال است؛ نشانی دقیق مقالات باید در بازبینی تکمیل شود."
+      },
+      "governance": {
+        "status": "DRAFT",
+        "author": "research-dossier-conversion",
+        "clinical_reviewer": null,
+        "review_due_date": "2026-11-21",
+        "change_note": "تبدیل خودکار از GUIDELINE_DOSSIER_FA v1.0.0 (بخش ۶، HTN-R26). flag.rasi_about_to_start/flag.baseline_labs_current فکت‌های عملیاتی هستند که باید در snapshot تأمین شوند."
+      }
+    },
+    {
+      "schema_version": "2.0",
+      "dsl_version": "2.0",
+      "rule_code": "HTN-R27",
+      "version": "0.1.0-draft",
+      "title": "چک K/Cr در ۲–۴ هفته پس از شروع/تیتراسیون RASi",
+      "phase": "SAFETY",
+      "action_type": "schedule_screening",
+      "severity": "CRITICAL",
+      "priority": 700,
+      "semantic_key": "htn-core-v1.HTN-R27",
+      "scope": {
+        "population": "adults_on_rasi_recent_change",
+        "care_settings": [
+          "specialty_clinic"
+        ],
+        "encounter_types": [
+          "chronic_followup"
+        ]
+      },
+      "required_facts": [
+        {
+          "key": "flag.rasi_started_or_titrated_within_4w",
+          "criticality": "REQUIRED",
+          "on_unusable": "CONTINUE_WITH_WARNING"
+        },
+        {
+          "key": "flag.post_change_labs_done",
+          "criticality": "REQUIRED",
+          "on_unusable": "CONTINUE_WITH_WARNING"
+        }
+      ],
+      "eligibility": {
+        "node_id": "HTN-R27-e1",
+        "fact": "flag.rasi_started_or_titrated_within_4w",
+        "op": "exists"
+      },
+      "condition": {
+        "node_id": "HTN-R27-c1",
+        "all": [
+          {
+            "node_id": "HTN-R27-c2",
+            "fact": "flag.rasi_started_or_titrated_within_4w",
+            "op": "truthy"
+          },
+          {
+            "node_id": "HTN-R27-c3",
+            "fact": "flag.post_change_labs_done",
+            "op": "==",
+            "value": false
+          }
+        ]
+      },
+      "safety": {
+        "redflag_exclusions": [],
+        "hard_exclusions": [],
+        "on_safety_error": "BLOCK_ROUTINE_OUTPUTS"
+      },
+      "recommendation": {
+        "text_fa": "«RASi در ۴ هفتهٔ اخیر شروع/تیتره شده و آزمایش پس از تغییر انجام نشده. چک K/کراتینین/eGFR در پنجرهٔ ۱۴–۲۸ روز؛ افزایش کراتینین تا ≤۳۰٪ قابل قبول، بیش از آن بررسی تنگی شریان کلیه/کاهش دوز (KDIGO 2021 §3.7.2).»",
+        "suggestion_only": true,
+        "requires_clinician_confirmation": true,
+        "may_create_internal_task": false,
+        "params": {
+          "panel": [
+            "potassium",
+            "creatinine",
+            "egfr"
+          ],
+          "due_in_days": 14,
+          "window_days": [
+            14,
+            28
+          ],
+          "accept_creatinine_rise_pct_max": 30,
+          "citation": "KDIGO 2021 §3.7.2"
+        }
+      },
+      "evidence": {
+        "source_title": "KDIGO 2021 BP in CKD Guideline §3.7.2 — Post-RASi lab monitoring",
+        "issuing_organization": "Kidney Disease: Improving Global Outcomes (KDIGO)",
+        "publication_date": null,
+        "source_version": "2021",
+        "source_locator": "Kidney Int 2021;99(3S):S1–S87, §3.7.2 — چک K/Cr طی ۲–۴ هفته پس از شروع/تیتراسیون؛ افزایش Cr ≤30% قابل قبول؛ >30% → بررسی تنگی شریان کلیه/کاهش دوز.",
+        "source_url": "https://www.kidney-international.org",
+        "evidence_certainty": "NOT_GRADED",
+        "recommendation_strength": "NOT_GRADED",
+        "local_validation_status": "NOT_REVIEWED",
+        "local_adaptation_note": "URL صفحهٔ فرود ژورنال است؛ نشانی دقیق مقاله باید در بازبینی تکمیل شود."
+      },
+      "governance": {
+        "status": "DRAFT",
+        "author": "research-dossier-conversion",
+        "clinical_reviewer": null,
+        "review_due_date": "2026-11-21",
+        "change_note": "تبدیل خودکار از GUIDELINE_DOSSIER_FA v1.0.0 (بخش ۶، HTN-R27). ⚠️ flag.rasi_started_or_titrated_within_4w طبق شکاف #۲ داسیه هنوز در fact snapshot نیست؛ شرط «۴ هفتهٔ اخیر» به timestamp آخرین تغییر دوز نیاز دارد (شکاف #۳ — DSL gap)."
+      }
+    },
+    {
+      "schema_version": "2.0",
+      "dsl_version": "2.0",
+      "rule_code": "HTN-R28",
+      "version": "0.1.0-draft",
+      "title": "UACR سالانه در دیابت",
+      "phase": "ROUTINE",
+      "action_type": "schedule_screening",
+      "severity": "WARN",
+      "priority": 3000,
+      "semantic_key": "htn-core-v1.HTN-R28",
+      "scope": {
+        "population": "adults_with_diabetes",
+        "care_settings": [
+          "specialty_clinic"
+        ],
+        "encounter_types": [
+          "chronic_followup"
+        ],
+        "condition_codes": [
+          "diabetes"
+        ]
+      },
+      "required_facts": [
+        {
+          "key": "condition.diabetes",
+          "criticality": "REQUIRED",
+          "on_unusable": "NOT_APPLICABLE"
+        },
+        {
+          "key": "flag.uacr_done_within_days",
+          "criticality": "REQUIRED",
+          "on_unusable": "CONTINUE_WITH_WARNING"
+        }
+      ],
+      "eligibility": {
+        "node_id": "HTN-R28-e1",
+        "fact": "condition.diabetes",
+        "op": "truthy"
+      },
+      "condition": {
+        "node_id": "HTN-R28-c1",
+        "all": [
+          {
+            "node_id": "HTN-R28-c2",
+            "fact": "condition.diabetes",
+            "op": "truthy"
+          },
+          {
+            "node_id": "HTN-R28-c3",
+            "fact": "flag.uacr_done_within_days",
+            "op": "<",
+            "value": 365
+          }
+        ]
+      },
+      "safety": {
+        "redflag_exclusions": [],
+        "hard_exclusions": [],
+        "on_safety_error": "BLOCK_ROUTINE_OUTPUTS"
+      },
+      "recommendation": {
+        "text_fa": "«در بیمار دیابتی، UACR سالانه طبق ADA 2025 §11 در تقویم پایش قرار گیرد.»",
+        "suggestion_only": true,
+        "requires_clinician_confirmation": true,
+        "may_create_internal_task": false,
+        "params": {
+          "panel": [
+            "uacr"
+          ],
+          "cadence": "annual",
+          "citation": "ADA 2025 §11 (annual UACR in diabetes)"
+        }
+      },
+      "evidence": {
+        "source_title": "ADA Standards of Care in Diabetes—2025, §11 Chronic Kidney Disease and Risk Management",
+        "issuing_organization": "American Diabetes Association",
+        "publication_date": null,
+        "source_version": "2025",
+        "source_locator": "Diabetes Care 2025;48(Suppl 1), §11 — UACR سالانه در بیمار دیابتی.",
+        "source_url": "https://diabetesjournals.org/care/issue/48/Supplement_1",
+        "evidence_certainty": "NOT_GRADED",
+        "recommendation_strength": "NOT_GRADED",
+        "local_validation_status": "NOT_REVIEWED"
+      },
+      "governance": {
+        "status": "DRAFT",
+        "author": "research-dossier-conversion",
+        "clinical_reviewer": null,
+        "review_due_date": "2026-11-21",
+        "change_note": "تبدیل خودکار از GUIDELINE_DOSSIER_FA v1.0.0 (بخش ۶، HTN-R28). ⚠️ تریگر داسیه (uacr_done_within_days < 365 یعنی «UACR اخیراً انجام شده») ظاهراً وارونهٔ هدف سالانه است — عیناً حفظ شد و باید در بازبینی پزشک اصلاح شود (احتمالاً منظور NOT done بوده). هیچ اصلاح منطقی انجام نشد."
+      }
+    },
+    {
+      "schema_version": "2.0",
+      "dsl_version": "2.0",
+      "rule_code": "HTN-R29",
+      "version": "0.1.0-draft",
+      "title": "پنل آزمایش سالانهٔ بیمار HTN تحت درمان",
+      "phase": "ROUTINE",
+      "action_type": "schedule_screening",
+      "severity": "INFO",
+      "priority": 4000,
+      "semantic_key": "htn-core-v1.HTN-R29",
+      "scope": {
+        "population": "adults_with_treated_hypertension",
+        "care_settings": [
+          "specialty_clinic"
+        ],
+        "encounter_types": [
+          "chronic_followup"
+        ]
+      },
+      "required_facts": [
+        {
+          "key": "flag.hypertension_on_treatment",
+          "criticality": "REQUIRED",
+          "on_unusable": "NOT_APPLICABLE"
+        }
+      ],
+      "eligibility": {
+        "node_id": "HTN-R29-e1",
+        "fact": "flag.hypertension_on_treatment",
+        "op": "exists"
+      },
+      "condition": {
+        "node_id": "HTN-R29-c1",
+        "fact": "flag.hypertension_on_treatment",
+        "op": "truthy"
+      },
+      "safety": {
+        "redflag_exclusions": [],
+        "hard_exclusions": [],
+        "on_safety_error": "BLOCK_ROUTINE_OUTPUTS"
+      },
+      "recommendation": {
+        "text_fa": "«پنل سالانهٔ بیمار HTN تحت درمان: کراتینین/eGFR، پتاسیم، UACR، LDL، FBS (ESH 2023 §8.1.2) برنامه‌ریزی شود.»",
+        "suggestion_only": true,
+        "requires_clinician_confirmation": true,
+        "may_create_internal_task": false,
+        "params": {
+          "panel": [
+            "creatinine",
+            "egfr",
+            "potassium",
+            "uacr",
+            "ldl",
+            "fbs"
+          ],
+          "cadence": "annual",
+          "citation": "ESH 2023 §8.1.2"
+        }
+      },
+      "evidence": {
+        "source_title": "2023 ESH Guidelines — Annual laboratory follow-up in treated hypertension (§8.1.2)",
+        "issuing_organization": "European Society of Hypertension",
+        "publication_date": null,
+        "source_version": "2023",
+        "source_locator": "J Hypertens 2023;41(12):1874–2071, §8.1.2 — پایش سالانهٔ آزمایشگاهی بیمار تحت درمان.",
+        "source_url": "https://journals.lww.com/journalhypertension",
+        "evidence_certainty": "NOT_GRADED",
+        "recommendation_strength": "NOT_GRADED",
+        "local_validation_status": "NOT_REVIEWED",
+        "local_adaptation_note": "URL صفحهٔ فرود ژورنال است؛ نشانی دقیق مقاله باید در بازبینی تکمیل شود."
+      },
+      "governance": {
+        "status": "DRAFT",
+        "author": "research-dossier-conversion",
+        "clinical_reviewer": null,
+        "review_due_date": "2026-11-21",
+        "change_note": "تبدیل خودکار از GUIDELINE_DOSSIER_FA v1.0.0 (بخش ۶، HTN-R29)."
+      }
+    },
+    {
+      "schema_version": "2.0",
+      "dsl_version": "2.0",
+      "rule_code": "HTN-R30",
+      "version": "0.1.0-draft",
+      "title": "پروتکل HBPM هفت‌روزه (تشخیص تأییدنشده/کت سفید)",
+      "phase": "ROUTINE",
+      "action_type": "educate",
+      "severity": "INFO",
+      "priority": 4500,
+      "semantic_key": "htn-core-v1.HTN-R30",
+      "scope": {
+        "population": "adults_with_unconfirmed_bp",
+        "care_settings": [
+          "specialty_clinic"
+        ],
+        "encounter_types": [
+          "chronic_followup"
+        ]
+      },
+      "required_facts": [
+        {
+          "key": "flag.bp_unconfirmed_or_white_coat_suspect",
+          "criticality": "REQUIRED",
+          "on_unusable": "NOT_APPLICABLE"
+        }
+      ],
+      "eligibility": {
+        "node_id": "HTN-R30-e1",
+        "fact": "flag.bp_unconfirmed_or_white_coat_suspect",
+        "op": "exists"
+      },
+      "condition": {
+        "node_id": "HTN-R30-c1",
+        "fact": "flag.bp_unconfirmed_or_white_coat_suspect",
+        "op": "truthy"
+      },
+      "safety": {
+        "redflag_exclusions": [],
+        "hard_exclusions": [],
+        "on_safety_error": "BLOCK_ROUTINE_OUTPUTS"
+      },
+      "recommendation": {
+        "text_fa": "«برای تأیید تشخیص، پروتکل HBPM: ۷ روز × ۲ قرائت (صبح قبل از دارو + شب)، حذف روز اول، میانگین ≥۱۲ قرائت (ESH 2023 §3.5). آستانهٔ HBPM ≥135/85 است.»",
+        "suggestion_only": true,
+        "requires_clinician_confirmation": true,
+        "may_create_internal_task": false,
+        "params": {
+          "topic": "hbpm_protocol",
+          "days": 7,
+          "readings_per_day": 2,
+          "discard_day1": true,
+          "min_readings": 12,
+          "citation": "ESH 2023 §3.5"
+        }
+      },
+      "evidence": {
+        "source_title": "2023 ESH Guidelines — Home BP monitoring protocol (§3.5)",
+        "issuing_organization": "European Society of Hypertension",
+        "publication_date": null,
+        "source_version": "2023",
+        "source_locator": "J Hypertens 2023;41(12):1874–2071, §3.5 — پروتکل HBPM: ۷ روز × ۲ قرائت صبح/شب، حذف روز اول، میانگین ≥12 قرائت؛ آستانهٔ ≥135/85.",
+        "source_url": "https://journals.lww.com/journalhypertension",
+        "evidence_certainty": "NOT_GRADED",
+        "recommendation_strength": "NOT_GRADED",
+        "local_validation_status": "NOT_REVIEWED",
+        "local_adaptation_note": "URL صفحهٔ فرود ژورنال است؛ نشانی دقیق مقاله باید در بازبینی تکمیل شود. دادهٔ HBPM به کلیدهای جداگانه نیاز دارد (شکاف #۹ داسیه)."
+      },
+      "governance": {
+        "status": "DRAFT",
+        "author": "research-dossier-conversion",
+        "clinical_reviewer": null,
+        "review_due_date": "2026-11-21",
+        "change_note": "تبدیل خودکار از GUIDELINE_DOSSIER_FA v1.0.0 (بخش ۶، HTN-R30)."
+      }
+    },
+    {
+      "schema_version": "2.0",
+      "dsl_version": "2.0",
+      "rule_code": "HTN-R31A",
+      "version": "0.1.0-draft",
+      "title": "اورژانس فشاری — SBP≥۱۸۰ و DBP≥۱۲۰ با علامت اندام هدف",
+      "phase": "PREFLIGHT",
+      "action_type": "create_followup",
+      "severity": "CRITICAL",
+      "priority": 200,
+      "semantic_key": "htn-core-v1.HTN-R31A",
+      "scope": {
+        "population": "adults_with_severe_bp_and_symptoms",
+        "care_settings": [
+          "specialty_clinic"
+        ],
+        "encounter_types": [
+          "chronic_followup"
+        ]
+      },
+      "required_facts": [
+        {
+          "key": "observation.bp_systolic",
+          "criticality": "CRITICAL",
+          "on_unusable": "CONTINUE_WITH_WARNING"
+        },
+        {
+          "key": "observation.bp_diastolic",
+          "criticality": "CRITICAL",
+          "on_unusable": "CONTINUE_WITH_WARNING"
+        },
+        {
+          "key": "flag.end_organ_symptom",
+          "criticality": "REQUIRED",
+          "on_unusable": "CONTINUE_WITH_WARNING"
+        }
+      ],
+      "eligibility": {
+        "node_id": "HTN-R31A-e1",
+        "fact": "observation.bp_systolic",
+        "op": "exists"
+      },
+      "condition": {
+        "node_id": "HTN-R31A-c1",
+        "all": [
+          {
+            "node_id": "HTN-R31A-c2",
+            "fact": "observation.bp_systolic",
+            "op": ">=",
+            "value": 180,
+            "selector": {
+              "aggregation": "latest"
+            }
+          },
+          {
+            "node_id": "HTN-R31A-c3",
+            "fact": "observation.bp_diastolic",
+            "op": ">=",
+            "value": 120,
+            "selector": {
+              "aggregation": "latest"
+            }
+          },
+          {
+            "node_id": "HTN-R31A-c4",
+            "fact": "flag.end_organ_symptom",
+            "op": "in",
+            "value": [
+              "chest_pain",
+              "dyspnea",
+              "neuro_deficit",
+              "vision_loss",
+              "seizure",
+              "oliguria"
+            ]
+          }
+        ]
+      },
+      "safety": {
+        "redflag_exclusions": [],
+        "hard_exclusions": [],
+        "on_safety_error": "BLOCK_ROUTINE_OUTPUTS"
+      },
+      "recommendation": {
+        "text_fa": "«فشار بسیار بالا همراه با علامت خطر — مراجعهٔ فوری به اورژانس»",
+        "suggestion_only": true,
+        "requires_clinician_confirmation": true,
+        "may_create_internal_task": true,
+        "params": {
+          "kind": "emergency_referral_ed_now",
+          "due_in_hours": 0,
+          "citation": "ACC/AHA 2017 §7.4; ESH 2023 §11"
+        }
+      },
+      "evidence": {
+        "source_title": "2017 ACC/AHA Guideline §7.4 (Hypertensive crises) + 2023 ESH Guidelines §11",
+        "issuing_organization": "American College of Cardiology / American Heart Association / European Society of Hypertension",
+        "publication_date": null,
+        "source_version": "2017/2023",
+        "source_locator": "Hypertension 2018;71:e13–e115, §7.4 — hypertensive crises ≥180/120 با آسیب اندام هدف جدید → ارجاع فوری اورژانس؛ J Hypertens 2023;41(12):1874–2071, §11 — تعریف emergency = BP بالا + HMOD حاد.",
+        "source_url": "https://www.ahajournals.org/journal/hyp",
+        "evidence_certainty": "NOT_GRADED",
+        "recommendation_strength": "NOT_GRADED",
+        "local_validation_status": "NOT_REVIEWED",
+        "local_adaptation_note": "URL صفحهٔ فرود ژورنال است؛ نشانی دقیق مقالات باید در بازبینی تکمیل شود."
+      },
+      "governance": {
+        "status": "DRAFT",
+        "author": "research-dossier-conversion",
+        "clinical_reviewer": null,
+        "review_due_date": "2026-11-21",
+        "change_note": "تبدیل خودکار از GUIDELINE_DOSSIER_FA v1.0.0 (بخش ۷، HTN-R31a). message_fa داسیه عیناً در text_fa حفظ شد. ⚠️ flag.end_organ_symptom طبق شکاف #۲ داسیه هنوز در fact snapshot نیست — علائم فقط با ثبت دستی/PATIENT_REPORTED قابل تأمین است. پسوند a→A طبق الگوی rule_code اسکیما."
+      }
+    },
+    {
+      "schema_version": "2.0",
+      "dsl_version": "2.0",
+      "rule_code": "HTN-R31B",
+      "version": "0.1.0-draft",
+      "title": "اورژانس فشاری — SBP≥۱۸۰ با علامت اندام هدف",
+      "phase": "PREFLIGHT",
+      "action_type": "create_followup",
+      "severity": "CRITICAL",
+      "priority": 200,
+      "semantic_key": "htn-core-v1.HTN-R31B",
+      "scope": {
+        "population": "adults_with_severe_bp_and_symptoms",
+        "care_settings": [
+          "specialty_clinic"
+        ],
+        "encounter_types": [
+          "chronic_followup"
+        ]
+      },
+      "required_facts": [
+        {
+          "key": "observation.bp_systolic",
+          "criticality": "CRITICAL",
+          "on_unusable": "CONTINUE_WITH_WARNING"
+        },
+        {
+          "key": "flag.end_organ_symptom",
+          "criticality": "REQUIRED",
+          "on_unusable": "CONTINUE_WITH_WARNING"
+        }
+      ],
+      "eligibility": {
+        "node_id": "HTN-R31B-e1",
+        "fact": "observation.bp_systolic",
+        "op": "exists"
+      },
+      "condition": {
+        "node_id": "HTN-R31B-c1",
+        "all": [
+          {
+            "node_id": "HTN-R31B-c2",
+            "fact": "observation.bp_systolic",
+            "op": ">=",
+            "value": 180,
+            "selector": {
+              "aggregation": "latest"
+            }
+          },
+          {
+            "node_id": "HTN-R31B-c3",
+            "fact": "flag.end_organ_symptom",
+            "op": "in",
+            "value": [
+              "chest_pain",
+              "dyspnea",
+              "neuro_deficit",
+              "vision_loss",
+              "seizure",
+              "oliguria"
+            ]
+          }
+        ]
+      },
+      "safety": {
+        "redflag_exclusions": [],
+        "hard_exclusions": [],
+        "on_safety_error": "BLOCK_ROUTINE_OUTPUTS"
+      },
+      "recommendation": {
+        "text_fa": "«سیستولیک ≥۱۸۰ همراه با علامت اندام هدف (درد قفسهٔ سینه، تنگی نفس، نقص نورولوژیک، افت بینایی، تشنج، کاهش ادرار) — اورژانس فشاری محتمل؛ ارجاع فوری به اورژانس.»",
+        "suggestion_only": true,
+        "requires_clinician_confirmation": true,
+        "may_create_internal_task": true,
+        "params": {
+          "kind": "emergency_referral_ed_now",
+          "due_in_hours": 0
+        }
+      },
+      "evidence": {
+        "source_title": "2017 ACC/AHA Guideline §7.4 (Hypertensive crises) + 2023 ESH Guidelines §11",
+        "issuing_organization": "American College of Cardiology / American Heart Association / European Society of Hypertension",
+        "publication_date": null,
+        "source_version": "2017/2023",
+        "source_locator": "Hypertension 2018;71:e13–e115, §7.4 — hypertensive crises ≥180/120 با HMOD حاد؛ J Hypertens 2023;41(12):1874–2071, §11.",
+        "source_url": "https://www.ahajournals.org/journal/hyp",
+        "evidence_certainty": "NOT_GRADED",
+        "recommendation_strength": "NOT_GRADED",
+        "local_validation_status": "NOT_REVIEWED",
+        "local_adaptation_note": "URL صفحهٔ فرود ژورنال است؛ نشانی دقیق مقالات باید در بازبینی تکمیل شود."
+      },
+      "governance": {
+        "status": "DRAFT",
+        "author": "research-dossier-conversion",
+        "clinical_reviewer": null,
+        "review_due_date": "2026-11-21",
+        "change_note": "تبدیل خودکار از GUIDELINE_DOSSIER_FA v1.0.0 (بخش ۷، HTN-R31b). پسوند b→B طبق الگوی rule_code اسکیما."
+      }
+    },
+    {
+      "schema_version": "2.0",
+      "dsl_version": "2.0",
+      "rule_code": "HTN-R31C",
+      "version": "0.1.0-draft",
+      "title": "اورژانس فشاری — DBP≥۱۲۰ با علامت اندام هدف",
+      "phase": "PREFLIGHT",
+      "action_type": "create_followup",
+      "severity": "CRITICAL",
+      "priority": 200,
+      "semantic_key": "htn-core-v1.HTN-R31C",
+      "scope": {
+        "population": "adults_with_severe_bp_and_symptoms",
+        "care_settings": [
+          "specialty_clinic"
+        ],
+        "encounter_types": [
+          "chronic_followup"
+        ]
+      },
+      "required_facts": [
+        {
+          "key": "observation.bp_diastolic",
+          "criticality": "CRITICAL",
+          "on_unusable": "CONTINUE_WITH_WARNING"
+        },
+        {
+          "key": "flag.end_organ_symptom",
+          "criticality": "REQUIRED",
+          "on_unusable": "CONTINUE_WITH_WARNING"
+        }
+      ],
+      "eligibility": {
+        "node_id": "HTN-R31C-e1",
+        "fact": "observation.bp_diastolic",
+        "op": "exists"
+      },
+      "condition": {
+        "node_id": "HTN-R31C-c1",
+        "all": [
+          {
+            "node_id": "HTN-R31C-c2",
+            "fact": "observation.bp_diastolic",
+            "op": ">=",
+            "value": 120,
+            "selector": {
+              "aggregation": "latest"
+            }
+          },
+          {
+            "node_id": "HTN-R31C-c3",
+            "fact": "flag.end_organ_symptom",
+            "op": "in",
+            "value": [
+              "chest_pain",
+              "dyspnea",
+              "neuro_deficit",
+              "vision_loss",
+              "seizure",
+              "oliguria"
+            ]
+          }
+        ]
+      },
+      "safety": {
+        "redflag_exclusions": [],
+        "hard_exclusions": [],
+        "on_safety_error": "BLOCK_ROUTINE_OUTPUTS"
+      },
+      "recommendation": {
+        "text_fa": "«دیاستولیک ≥۱۲۰ همراه با علامت اندام هدف — اورژانس فشاری محتمل؛ ارجاع فوری به اورژانس.»",
+        "suggestion_only": true,
+        "requires_clinician_confirmation": true,
+        "may_create_internal_task": true,
+        "params": {
+          "kind": "emergency_referral_ed_now",
+          "due_in_hours": 0
+        }
+      },
+      "evidence": {
+        "source_title": "2017 ACC/AHA Guideline §7.4 (Hypertensive crises) + 2023 ESH Guidelines §11",
+        "issuing_organization": "American College of Cardiology / American Heart Association / European Society of Hypertension",
+        "publication_date": null,
+        "source_version": "2017/2023",
+        "source_locator": "Hypertension 2018;71:e13–e115, §7.4 — hypertensive crises ≥180/120 با HMOD حاد؛ J Hypertens 2023;41(12):1874–2071, §11.",
+        "source_url": "https://www.ahajournals.org/journal/hyp",
+        "evidence_certainty": "NOT_GRADED",
+        "recommendation_strength": "NOT_GRADED",
+        "local_validation_status": "NOT_REVIEWED",
+        "local_adaptation_note": "URL صفحهٔ فرود ژورنال است؛ نشانی دقیق مقالات باید در بازبینی تکمیل شود."
+      },
+      "governance": {
+        "status": "DRAFT",
+        "author": "research-dossier-conversion",
+        "clinical_reviewer": null,
+        "review_due_date": "2026-11-21",
+        "change_note": "تبدیل خودکار از GUIDELINE_DOSSIER_FA v1.0.0 (بخش ۷، HTN-R31c). پسوند c→C طبق الگوی rule_code اسکیما."
+      }
+    },
+    {
+      "schema_version": "2.0",
+      "dsl_version": "2.0",
+      "rule_code": "HTN-R32A",
+      "version": "0.1.0-draft",
+      "title": "فوریت بدون علامت — SBP≥۱۸۰ (پنجرهٔ ۲۴–۷۲ ساعت)",
+      "phase": "PREFLIGHT",
+      "action_type": "create_followup",
+      "severity": "URGENT",
+      "priority": 300,
+      "semantic_key": "htn-core-v1.HTN-R32A",
+      "scope": {
+        "population": "adults_with_severe_bp_asymptomatic",
+        "care_settings": [
+          "specialty_clinic"
+        ],
+        "encounter_types": [
+          "chronic_followup"
+        ]
+      },
+      "required_facts": [
+        {
+          "key": "observation.bp_systolic",
+          "criticality": "CRITICAL",
+          "on_unusable": "CONTINUE_WITH_WARNING"
+        },
+        {
+          "key": "flag.end_organ_symptom",
+          "criticality": "REQUIRED",
+          "on_unusable": "CONTINUE_WITH_WARNING"
+        }
+      ],
+      "eligibility": {
+        "node_id": "HTN-R32A-e1",
+        "fact": "observation.bp_systolic",
+        "op": "exists"
+      },
+      "condition": {
+        "node_id": "HTN-R32A-c1",
+        "all": [
+          {
+            "node_id": "HTN-R32A-c2",
+            "fact": "observation.bp_systolic",
+            "op": ">=",
+            "value": 180,
+            "selector": {
+              "aggregation": "latest"
+            }
+          },
+          {
+            "node_id": "HTN-R32A-c3",
+            "fact": "flag.end_organ_symptom",
+            "op": "==",
+            "value": false
+          }
+        ]
+      },
+      "safety": {
+        "redflag_exclusions": [],
+        "hard_exclusions": [],
+        "on_safety_error": "BLOCK_ROUTINE_OUTPUTS"
+      },
+      "recommendation": {
+        "text_fa": "«سیستولیک ≥۱۸۰ بدون علامت ثبت‌شده. اندازه‌گیری مجدد پس از ۵ دقیقه استراحت ×۲، تنظیم داروی خوراکی و پیگیری طی ۲۴–۷۲ ساعت؛ درمان وریدی ممنوع (ESH 2023 §11؛ ACC/AHA 2017 §7.4).»",
+        "suggestion_only": true,
+        "requires_clinician_confirmation": true,
+        "may_create_internal_task": true,
+        "params": {
+          "kind": "asymptomatic_severe_bp_recheck_and_oral_adjustment",
+          "due_in_hours": 24,
+          "max_due_hours": 72,
+          "protocol": [
+            "repeat_after_rest_5min_x2",
+            "adjust_oral_meds",
+            "no_iv_therapy"
+          ],
+          "citation": "ESH 2023 §11; ACC/AHA 2017 §7.4"
+        }
+      },
+      "evidence": {
+        "source_title": "2023 ESH Guidelines §11 + 2017 ACC/AHA Guideline §7.4 — Asymptomatic severe BP (urgency)",
+        "issuing_organization": "European Society of Hypertension / American College of Cardiology / American Heart Association",
+        "publication_date": null,
+        "source_version": "2023/2017",
+        "source_locator": "J Hypertens 2023;41(12):1874–2071, §11 — فوریت بدون علامت: BP ≥180/110–120 بدون HMOD → اندازه‌گیری مجدد ×۲، تنظیم خوراکی، پیگیری ۲۴–۷۲ ساعت، درمان وریدی ممنوع؛ ACC/AHA 2017 §7.4 hypertensive crises.",
+        "source_url": "https://journals.lww.com/journalhypertension",
+        "evidence_certainty": "NOT_GRADED",
+        "recommendation_strength": "NOT_GRADED",
+        "local_validation_status": "NOT_REVIEWED",
+        "local_adaptation_note": "URL صفحهٔ فرود ژورنال است؛ نشانی دقیق مقالات باید در بازبینی تکمیل شود."
+      },
+      "governance": {
+        "status": "DRAFT",
+        "author": "research-dossier-conversion",
+        "clinical_reviewer": null,
+        "review_due_date": "2026-11-21",
+        "change_note": "تبدیل خودکار از GUIDELINE_DOSSIER_FA v1.0.0 (بخش ۷، HTN-R32a). due_in_hours=24/max_due_hours=72/protocol عیناً از داسیه. پسوند a→A طبق الگوی rule_code اسکیما."
+      }
+    },
+    {
+      "schema_version": "2.0",
+      "dsl_version": "2.0",
+      "rule_code": "HTN-R32B",
+      "version": "0.1.0-draft",
+      "title": "فوریت بدون علامت — DBP≥۱۱۰ (پنجرهٔ ۲۴–۷۲ ساعت)",
+      "phase": "PREFLIGHT",
+      "action_type": "create_followup",
+      "severity": "URGENT",
+      "priority": 300,
+      "semantic_key": "htn-core-v1.HTN-R32B",
+      "scope": {
+        "population": "adults_with_severe_bp_asymptomatic",
+        "care_settings": [
+          "specialty_clinic"
+        ],
+        "encounter_types": [
+          "chronic_followup"
+        ]
+      },
+      "required_facts": [
+        {
+          "key": "observation.bp_diastolic",
+          "criticality": "CRITICAL",
+          "on_unusable": "CONTINUE_WITH_WARNING"
+        },
+        {
+          "key": "flag.end_organ_symptom",
+          "criticality": "REQUIRED",
+          "on_unusable": "CONTINUE_WITH_WARNING"
+        }
+      ],
+      "eligibility": {
+        "node_id": "HTN-R32B-e1",
+        "fact": "observation.bp_diastolic",
+        "op": "exists"
+      },
+      "condition": {
+        "node_id": "HTN-R32B-c1",
+        "all": [
+          {
+            "node_id": "HTN-R32B-c2",
+            "fact": "observation.bp_diastolic",
+            "op": ">=",
+            "value": 110,
+            "selector": {
+              "aggregation": "latest"
+            }
+          },
+          {
+            "node_id": "HTN-R32B-c3",
+            "fact": "flag.end_organ_symptom",
+            "op": "==",
+            "value": false
+          }
+        ]
+      },
+      "safety": {
+        "redflag_exclusions": [],
+        "hard_exclusions": [],
+        "on_safety_error": "BLOCK_ROUTINE_OUTPUTS"
+      },
+      "recommendation": {
+        "text_fa": "«دیاستولیک ≥۱۱۰ بدون علامت ثبت‌شده. اندازه‌گیری مجدد پس از ۵ دقیقه استراحت ×۲، تنظیم داروی خوراکی و پیگیری طی ۲۴–۷۲ ساعت؛ درمان وریدی ممنوع.»",
+        "suggestion_only": true,
+        "requires_clinician_confirmation": true,
+        "may_create_internal_task": true,
+        "params": {
+          "kind": "asymptomatic_severe_bp_recheck_and_oral_adjustment",
+          "due_in_hours": 24,
+          "max_due_hours": 72,
+          "protocol": [
+            "repeat_after_rest_5min_x2",
+            "adjust_oral_meds",
+            "no_iv_therapy"
+          ],
+          "citation": "ESH 2023 §11; ACC/AHA 2017 §7.4"
+        }
+      },
+      "evidence": {
+        "source_title": "2023 ESH Guidelines §11 + 2017 ACC/AHA Guideline §7.4 — Asymptomatic severe BP (urgency)",
+        "issuing_organization": "European Society of Hypertension / American College of Cardiology / American Heart Association",
+        "publication_date": null,
+        "source_version": "2023/2017",
+        "source_locator": "J Hypertens 2023;41(12):1874–2071, §11 — فوریت بدون علامت: BP ≥180/110–120 بدون HMOD؛ ACC/AHA 2017 §7.4 hypertensive crises.",
+        "source_url": "https://journals.lww.com/journalhypertension",
+        "evidence_certainty": "NOT_GRADED",
+        "recommendation_strength": "NOT_GRADED",
+        "local_validation_status": "NOT_REVIEWED",
+        "local_adaptation_note": "URL صفحهٔ فرود ژورنال است؛ نشانی دقیق مقالات باید در بازبینی تکمیل شود."
+      },
+      "governance": {
+        "status": "DRAFT",
+        "author": "research-dossier-conversion",
+        "clinical_reviewer": null,
+        "review_due_date": "2026-11-21",
+        "change_note": "تبدیل خودکار از GUIDELINE_DOSSIER_FA v1.0.0 (بخش ۷، HTN-R32b). پسوند b→B طبق الگوی rule_code اسکیما."
+      }
+    },
+    {
+      "schema_version": "2.0",
+      "dsl_version": "2.0",
+      "rule_code": "HTN-R33",
+      "version": "0.1.0-draft",
+      "title": "هایپرکالمی (>۵٫۵) — وقفهٔ RASi/MRA و هشدار پزشک",
+      "phase": "SAFETY",
+      "action_type": "create_followup",
+      "severity": "CRITICAL",
+      "priority": 400,
+      "semantic_key": "htn-core-v1.HTN-R33",
+      "scope": {
+        "population": "adults_with_hyperkalemia",
+        "care_settings": [
+          "specialty_clinic"
+        ],
+        "encounter_types": [
+          "chronic_followup"
+        ]
+      },
+      "required_facts": [
+        {
+          "key": "flag.potassium_gt_5_5",
+          "criticality": "REQUIRED",
+          "on_unusable": "CONTINUE_WITH_WARNING"
+        }
+      ],
+      "eligibility": {
+        "node_id": "HTN-R33-e1",
+        "fact": "flag.potassium_gt_5_5",
+        "op": "exists"
+      },
+      "condition": {
+        "node_id": "HTN-R33-c1",
+        "fact": "flag.potassium_gt_5_5",
+        "op": "truthy"
+      },
+      "safety": {
+        "redflag_exclusions": [],
+        "hard_exclusions": [],
+        "on_safety_error": "BLOCK_ROUTINE_OUTPUTS"
+      },
+      "recommendation": {
+        "text_fa": "«پتاسیم >۵٫۵ ثبت شده. وقفه/بازنگری RASi/MRA و هشدار به پزشک ظرف ۲۴ ساعت لازم است (KDIGO 2021 §3.7.2؛ پروتکل FIDELIO-DKD). در صورت K+≥6 یا تغییرات ECG اقدام فوری.»",
+        "suggestion_only": true,
+        "requires_clinician_confirmation": true,
+        "may_create_internal_task": true,
+        "params": {
+          "kind": "physician_alert_hyperkalemia_hold_raasi_mra",
+          "due_in_hours": 24,
+          "citation": "KDIGO 2021 §3.7.2; FIDELIO-DKD protocol"
+        }
+      },
+      "evidence": {
+        "source_title": "KDIGO 2021 BP in CKD Guideline §3.7.2 + FIDELIO-DKD protocol (NEJM 2020;383:2219–29)",
+        "issuing_organization": "Kidney Disease: Improving Global Outcomes (KDIGO) / New England Journal of Medicine",
+        "publication_date": null,
+        "source_version": "2021/2020",
+        "source_locator": "Kidney Int 2021;99(3S):S1–S87, §3.7.2 — پایش K/Cr پس از RASi؛ Bakris GL et al., NEJM 2020;383:2219–29, PMID 33264825 — وقفهٔ فینرنون در K>5.5 طبق پروتکل FIDELIO-DKD.",
+        "source_url": "https://pubmed.ncbi.nlm.nih.gov/33264825/",
+        "evidence_certainty": "NOT_GRADED",
+        "recommendation_strength": "NOT_GRADED",
+        "local_validation_status": "NOT_REVIEWED"
+      },
+      "governance": {
+        "status": "DRAFT",
+        "author": "research-dossier-conversion",
+        "clinical_reviewer": null,
+        "review_due_date": "2026-11-21",
+        "change_note": "تبدیل خودکار از GUIDELINE_DOSSIER_FA v1.0.0 (بخش ۷، HTN-R33). ⚠️ flag.potassium_gt_5_5 طبق شکاف #۲ داسیه هنوز در fact snapshot نیست؛ قاعدهٔ ماشینی مستقیم روی lab.potassium در بستهٔ RED FLAGS (SF-LAB-01) موجود است."
+      }
+    },
+    {
+      "schema_version": "2.0",
+      "dsl_version": "2.0",
+      "rule_code": "HTN-R34",
+      "version": "0.1.0-draft",
+      "title": "افت وضعیتی علامت‌دار — بازبینی کاهش درمان",
+      "phase": "SAFETY",
+      "action_type": "create_followup",
+      "severity": "URGENT",
+      "priority": 1000,
+      "semantic_key": "htn-core-v1.HTN-R34",
+      "scope": {
+        "population": "adults_with_symptomatic_orthostasis",
+        "care_settings": [
+          "specialty_clinic"
+        ],
+        "encounter_types": [
+          "chronic_followup"
+        ]
+      },
+      "required_facts": [
+        {
+          "key": "flag.symptomatic_orthostatic_hypotension",
+          "criticality": "REQUIRED",
+          "on_unusable": "CONTINUE_WITH_WARNING"
+        }
+      ],
+      "eligibility": {
+        "node_id": "HTN-R34-e1",
+        "fact": "flag.symptomatic_orthostatic_hypotension",
+        "op": "exists"
+      },
+      "condition": {
+        "node_id": "HTN-R34-c1",
+        "fact": "flag.symptomatic_orthostatic_hypotension",
+        "op": "truthy"
+      },
+      "safety": {
+        "redflag_exclusions": [],
+        "hard_exclusions": [],
+        "on_safety_error": "BLOCK_ROUTINE_OUTPUTS"
+      },
+      "recommendation": {
+        "text_fa": "«افت وضعیتی علامت‌دار ثبت شده. بازبینی پزشکی برای کاهش/deintensification درمان ظرف یک هفته لازم است — پرهیز از overtreatment در سالمند/شکننده (ESH 2023 §7.5).»",
+        "suggestion_only": true,
+        "requires_clinician_confirmation": true,
+        "may_create_internal_task": true,
+        "params": {
+          "kind": "physician_review_deintensification",
+          "due_in_days": 7,
+          "citation": "ESH 2023 §7.5 (avoid overtreatment in elderly/frail)"
+        }
+      },
+      "evidence": {
+        "source_title": "2023 ESH Guidelines — Overtreatment and orthostatic hypotension (§7.5)",
+        "issuing_organization": "European Society of Hypertension",
+        "publication_date": null,
+        "source_version": "2023",
+        "source_locator": "J Hypertens 2023;41(12):1874–2071, §7.5 — پرهیز از overtreatment در سالمند/شکننده؛ بررسی افت وضعیتی قبل از تشدید.",
+        "source_url": "https://journals.lww.com/journalhypertension",
+        "evidence_certainty": "NOT_GRADED",
+        "recommendation_strength": "NOT_GRADED",
+        "local_validation_status": "NOT_REVIEWED",
+        "local_adaptation_note": "URL صفحهٔ فرود ژورنال است؛ نشانی دقیق مقاله باید در بازبینی تکمیل شود."
+      },
+      "governance": {
+        "status": "DRAFT",
+        "author": "research-dossier-conversion",
+        "clinical_reviewer": null,
+        "review_due_date": "2026-11-21",
+        "change_note": "تبدیل خودکار از GUIDELINE_DOSSIER_FA v1.0.0 (بخش ۷، HTN-R34). flag.symptomatic_orthostatic_hypotension نیازمند ثبت بالینی دستی است."
+      }
+    },
+    {
+      "schema_version": "2.0",
+      "dsl_version": "2.0",
+      "rule_code": "HTN-R35",
+      "version": "0.1.0-draft",
+      "title": "آموزش رژیم DASH و سدیم <۲۳۰۰ mg/روز",
+      "phase": "ROUTINE",
+      "action_type": "educate",
+      "severity": "WARN",
+      "priority": 3500,
+      "semantic_key": "htn-core-v1.HTN-R35",
+      "scope": {
+        "population": "adults_with_hypertension",
+        "care_settings": [
+          "specialty_clinic"
+        ],
+        "encounter_types": [
+          "chronic_followup"
+        ],
+        "condition_codes": [
+          "hypertension"
+        ]
+      },
+      "required_facts": [
+        {
+          "key": "condition.hypertension",
+          "criticality": "REQUIRED",
+          "on_unusable": "NOT_APPLICABLE"
+        }
+      ],
+      "eligibility": {
+        "node_id": "HTN-R35-e1",
+        "fact": "condition.hypertension",
+        "op": "truthy"
+      },
+      "condition": {
+        "node_id": "HTN-R35-c1",
+        "fact": "condition.hypertension",
+        "op": "truthy"
+      },
+      "safety": {
+        "redflag_exclusions": [],
+        "hard_exclusions": [],
+        "on_safety_error": "BLOCK_ROUTINE_OUTPUTS"
+      },
+      "recommendation": {
+        "text_fa": "«رژیم DASH (میوه/سبزیجات/لبنیات کم‌چرب/غلات کامل) اثر تقریبی −۱۱ mmHg دارد؛ سدیم <۲۳۰۰ mg/روز (~۵ گرم نمک)، ایده‌آل ۱۵۰۰ mg (AHA 2018؛ ACC/AHA 2017 lifestyle).»",
+        "suggestion_only": true,
+        "requires_clinician_confirmation": true,
+        "may_create_internal_task": false,
+        "params": {
+          "topic": "dash_diet_sodium",
+          "sodium_mg_per_day_max": 2300,
+          "ideal_mg_per_day": 1500,
+          "salt_g_per_day_max": 5,
+          "expected_sbp_reduction_mmhg": 11,
+          "citation": "AHA 2018 DASH advisory; ACC/AHA 2017 lifestyle"
+        }
+      },
+      "evidence": {
+        "source_title": "AHA Scientific Statement 2018 (DASH dietary pattern) + ACC/AHA 2017 lifestyle management",
+        "issuing_organization": "American Heart Association / American College of Cardiology",
+        "publication_date": null,
+        "source_version": "2018/2017",
+        "source_locator": "AHA Scientific Statement 2018 — DASH −11 mmHg؛ Filippou CD et al., Adv Nutr 2020 (meta)؛ ACC/AHA 2017 lifestyle — سدیم <2300 mg/روز، ایده‌آل 1500.",
+        "source_url": "https://www.ahajournals.org/journal/hyp",
+        "evidence_certainty": "NOT_GRADED",
+        "recommendation_strength": "NOT_GRADED",
+        "local_validation_status": "NOT_REVIEWED",
+        "local_adaptation_note": "URL صفحهٔ فرود ژورنال است؛ نشانی دقیق مقاله باید در بازبینی تکمیل شود."
+      },
+      "governance": {
+        "status": "DRAFT",
+        "author": "research-dossier-conversion",
+        "clinical_reviewer": null,
+        "review_due_date": "2026-11-21",
+        "change_note": "تبدیل خودکار از GUIDELINE_DOSSIER_FA v1.0.0 (بخش ۸، HTN-R35). flag.hypertension → condition.hypertension."
+      }
+    },
+    {
+      "schema_version": "2.0",
+      "dsl_version": "2.0",
+      "rule_code": "HTN-R36",
+      "version": "0.1.0-draft",
+      "title": "BMI ≥۲۵ — آموزش کاهش وزن (~۱ mmHg به‌ازای هر kg)",
+      "phase": "ROUTINE",
+      "action_type": "educate",
+      "severity": "WARN",
+      "priority": 3600,
+      "semantic_key": "htn-core-v1.HTN-R36",
+      "scope": {
+        "population": "adults_with_bmi_25_plus",
+        "care_settings": [
+          "specialty_clinic"
+        ],
+        "encounter_types": [
+          "chronic_followup"
+        ]
+      },
+      "required_facts": [
+        {
+          "key": "observation.bmi",
+          "criticality": "CRITICAL",
+          "on_unusable": "NEEDS_DATA"
+        }
+      ],
+      "eligibility": {
+        "node_id": "HTN-R36-e1",
+        "fact": "observation.bmi",
+        "op": "exists"
+      },
+      "condition": {
+        "node_id": "HTN-R36-c1",
+        "fact": "observation.bmi",
+        "op": ">=",
+        "value": 25,
+        "selector": {
+          "aggregation": "latest"
+        }
+      },
+      "safety": {
+        "redflag_exclusions": [],
+        "hard_exclusions": [],
+        "on_safety_error": "BLOCK_ROUTINE_OUTPUTS"
+      },
+      "recommendation": {
+        "text_fa": "«BMI ≥۲۵ ثبت شده. هر ۱ kg کاهش وزن تقریباً ۱ mmHg سیستولیک کاهش می‌دهد؛ هدف BMI<25 (Neter 2003 meta).»",
+        "suggestion_only": true,
+        "requires_clinician_confirmation": true,
+        "may_create_internal_task": false,
+        "params": {
+          "topic": "weight_loss",
+          "sbp_mmhg_per_kg_lost": 1,
+          "target_bmi_lt": 25,
+          "citation": "Neter 2003 Hypertension;42:878 meta"
+        }
+      },
+      "evidence": {
+        "source_title": "Neter JE et al., Influence of weight reduction on blood pressure: a meta-analysis (Hypertension 2003;42:878–84)",
+        "issuing_organization": "American Heart Association (journal Hypertension)",
+        "publication_date": null,
+        "source_version": "2003",
+        "source_locator": "Hypertension 2003;42:878–84 — ~1 mmHg SBP به‌ازای هر ۱ kg کاهش وزن (meta-analysis).",
+        "source_url": "https://www.ahajournals.org/journal/hyp",
+        "evidence_certainty": "NOT_GRADED",
+        "recommendation_strength": "NOT_GRADED",
+        "local_validation_status": "NOT_REVIEWED",
+        "local_adaptation_note": "URL صفحهٔ فرود ژورنال است؛ نشانی دقیق مقاله باید در بازبینی تکمیل شود (داسیه PMID نداده)."
+      },
+      "governance": {
+        "status": "DRAFT",
+        "author": "research-dossier-conversion",
+        "clinical_reviewer": null,
+        "review_due_date": "2026-11-21",
+        "change_note": "تبدیل خودکار از GUIDELINE_DOSSIER_FA v1.0.0 (بخش ۸، HTN-R36). indicator.bmi.latest → observation.bmi latest."
+      }
+    },
+    {
+      "schema_version": "2.0",
+      "dsl_version": "2.0",
+      "rule_code": "HTN-R37",
+      "version": "0.1.0-draft",
+      "title": "نسخهٔ فعالیت بدنی (هوازی ۹۰–۱۵۰ دقیقه/هفته + مقاومتی)",
+      "phase": "ROUTINE",
+      "action_type": "educate",
+      "severity": "INFO",
+      "priority": 3800,
+      "semantic_key": "htn-core-v1.HTN-R37",
+      "scope": {
+        "population": "adults_with_hypertension",
+        "care_settings": [
+          "specialty_clinic"
+        ],
+        "encounter_types": [
+          "chronic_followup"
+        ],
+        "condition_codes": [
+          "hypertension"
+        ]
+      },
+      "required_facts": [
+        {
+          "key": "condition.hypertension",
+          "criticality": "REQUIRED",
+          "on_unusable": "NOT_APPLICABLE"
+        }
+      ],
+      "eligibility": {
+        "node_id": "HTN-R37-e1",
+        "fact": "condition.hypertension",
+        "op": "truthy"
+      },
+      "condition": {
+        "node_id": "HTN-R37-c1",
+        "fact": "condition.hypertension",
+        "op": "truthy"
+      },
+      "safety": {
+        "redflag_exclusions": [],
+        "hard_exclusions": [],
+        "on_safety_error": "BLOCK_ROUTINE_OUTPUTS"
+      },
+      "recommendation": {
+        "text_fa": "«فعالیت هوازی ۹۰–۱۵۰ دقیقه/هفته شدت متوسط (−۵ تا −۸ mmHg) + تمرین مقاومتی ۲–۳ جلسه/هفته (−۲ تا −۴ mmHg) توصیه می‌شود (2019 ACC/AHA Lifestyle Guideline).»",
+        "suggestion_only": true,
+        "requires_clinician_confirmation": true,
+        "may_create_internal_task": false,
+        "params": {
+          "topic": "exercise_prescription",
+          "aerobic_min_per_week": [
+            90,
+            150
+          ],
+          "resistance_sessions_per_week": [
+            2,
+            3
+          ],
+          "citation": "2019 ACC/AHA Lifestyle Guideline"
+        }
+      },
+      "evidence": {
+        "source_title": "2019 ACC/AHA Guideline on Physical Activity as a Component of Lifestyle Management (Circulation 2019;140:e796–e846)",
+        "issuing_organization": "American Heart Association / American College of Cardiology",
+        "publication_date": null,
+        "source_version": "2019",
+        "source_locator": "Circulation 2019;140:e796–e846 — هوازی 90–150 دقیقه/هفته شدت متوسط (−5 تا −8 mmHg)؛ مقاومتی ۲–۳ جلسه/هفته (−2 تا −4 mmHg).",
+        "source_url": "https://www.ahajournals.org/journal/circ",
+        "evidence_certainty": "NOT_GRADED",
+        "recommendation_strength": "NOT_GRADED",
+        "local_validation_status": "NOT_REVIEWED",
+        "local_adaptation_note": "URL صفحهٔ فرود ژورنال است؛ نشانی دقیق مقاله باید در بازبینی تکمیل شود."
+      },
+      "governance": {
+        "status": "DRAFT",
+        "author": "research-dossier-conversion",
+        "clinical_reviewer": null,
+        "review_due_date": "2026-11-21",
+        "change_note": "تبدیل خودکار از GUIDELINE_DOSSIER_FA v1.0.0 (بخش ۸، HTN-R37). flag.hypertension → condition.hypertension."
+      }
+    },
+    {
+      "schema_version": "2.0",
+      "dsl_version": "2.0",
+      "rule_code": "HTN-R38",
+      "version": "0.1.0-draft",
+      "title": "ترک سیگار و محدودیت الکل (≤۲/≤۱ واحد در روز)",
+      "phase": "ROUTINE",
+      "action_type": "educate",
+      "severity": "WARN",
+      "priority": 3700,
+      "semantic_key": "htn-core-v1.HTN-R38",
+      "scope": {
+        "population": "adults_smoker_or_alcohol_excess",
+        "care_settings": [
+          "specialty_clinic"
+        ],
+        "encounter_types": [
+          "chronic_followup"
+        ]
+      },
+      "required_facts": [
+        {
+          "key": "flag.smoker_or_alcohol_excess",
+          "criticality": "REQUIRED",
+          "on_unusable": "NOT_APPLICABLE"
+        }
+      ],
+      "eligibility": {
+        "node_id": "HTN-R38-e1",
+        "fact": "flag.smoker_or_alcohol_excess",
+        "op": "exists"
+      },
+      "condition": {
+        "node_id": "HTN-R38-c1",
+        "fact": "flag.smoker_or_alcohol_excess",
+        "op": "truthy"
+      },
+      "safety": {
+        "redflag_exclusions": [],
+        "hard_exclusions": [],
+        "on_safety_error": "BLOCK_ROUTINE_OUTPUTS"
+      },
+      "recommendation": {
+        "text_fa": "«ترک سیگار و محدودیت الکل: ≤۲ واحد/روز مردان، ≤۱ زنان (اثر تقریبی −۴ mmHg) — ACC/AHA 2017 lifestyle.»",
+        "suggestion_only": true,
+        "requires_clinician_confirmation": true,
+        "may_create_internal_task": false,
+        "params": {
+          "topic": "smoking_cessation_alcohol_limits",
+          "alcohol_units_per_day": {
+            "male_max": 2,
+            "female_max": 1
+          },
+          "citation": "ACC/AHA 2017 lifestyle"
+        }
+      },
+      "evidence": {
+        "source_title": "2017 ACC/AHA Guideline — Lifestyle Management (smoking cessation, alcohol limits)",
+        "issuing_organization": "American College of Cardiology / American Heart Association",
+        "publication_date": null,
+        "source_version": "2017",
+        "source_locator": "Hypertension 2018;71:e13–e115 — الکل ≤2 واحد/روز مردان، ≤1 زنان (−4 mmHg)؛ ترک سیگار برای کاهش ریسک کلی CV.",
+        "source_url": "https://www.ahajournals.org/journal/hyp",
+        "evidence_certainty": "NOT_GRADED",
+        "recommendation_strength": "NOT_GRADED",
+        "local_validation_status": "NOT_REVIEWED",
+        "local_adaptation_note": "URL صفحهٔ فرود ژورنال است؛ نشانی دقیق مقاله باید در بازبینی تکمیل شود."
+      },
+      "governance": {
+        "status": "DRAFT",
+        "author": "research-dossier-conversion",
+        "clinical_reviewer": null,
+        "review_due_date": "2026-11-21",
+        "change_note": "تبدیل خودکار از GUIDELINE_DOSSIER_FA v1.0.0 (بخش ۸، HTN-R38). flag.smoker_or_alcohol_excess نیازمند ثبت سبک زندگی است."
+      }
+    }
+  ]
+}

@@ -1,3 +1,5 @@
+import logging
+
 from flask import Blueprint, render_template, request, redirect, url_for, flash, g
 from src.api.auth import login_required, manager_required
 from src.security.permissions import Permission, has_permission, permission_required
@@ -5,6 +7,7 @@ from src.adapters.sqlite.core import get_db
 from src.adapters.sqlite.sms_repo import SmsRepository
 from src.services.auth_service import AuthService
 from src.services.activity_logger import log_activity
+from src.services.automation_health_service import AutomationHealthService
 from src.common.network import get_network_info
 from src.config.settings import Config
 from src.common.utils import iran_now
@@ -14,12 +17,38 @@ from src.services.clinical_engine.activation import (
 
 bp = Blueprint("manager", __name__, url_prefix="/manager")
 
+logger = logging.getLogger(__name__)
+
 
 @bp.route("/")
 @manager_required
 def index():
-    """Single home for configuration; operational metrics live on the dashboard."""
-    return render_template("manager/index.html", active_page='manager')
+    """Single home for configuration; operational metrics live on the control room."""
+    # Automation (scheduler) liveness — manager-only, engine-independent. Wrapped
+    # defensively: a failure here must never blank the page, so it degrades to an
+    # explicit "unknown" surface rather than a false-healthy or a zero.
+    automation_health = None
+    if has_permission(Permission.OPERATIONAL_HEALTH_VIEW):
+        try:
+            automation_health = AutomationHealthService().snapshot()
+        except Exception:  # pragma: no cover - defensive
+            logger.exception("manager automation health error")
+            automation_health = {
+                "status": "unknown",
+                "status_fa": "نامشخص",
+                "tone": "muted",
+                "message_fa": "وضعیت زمان‌بند قابل خواندن نیست.",
+                "last_seen": None,
+                "age_seconds": None,
+                "owner_id": None,
+                "jobs_count": 0,
+                "last_job": None,
+                "last_failure": None,
+            }
+    return render_template(
+        "manager/index.html", active_page='manager',
+        automation_health=automation_health,
+    )
 
 
 @bp.route("/clinical-engine")
@@ -51,6 +80,7 @@ def clinical_engine_action(action):
     if action in {
         "activate-selected", "verify-selected", "promote-ruleset",
         "activate-global", "rollback", "reset-workflow", "freeze-rules",
+        "activate-simple",
     }:
         required = Permission.RULE_ACTIVATE
     elif action in {"approve", "review-rules"} and request.form.get("role") == "technical":
@@ -177,6 +207,17 @@ def clinical_engine_action(action):
         elif action == "activate-global":
             service.activate("on", activated_by=actor)
             flash("موتور v2 برای همهٔ بیماران فعال شد.", "success")
+        elif action == "activate-simple":
+            service.simple_activate(
+                request.form.get("mode", "on"),
+                actor=actor,
+                display_name=reviewer,
+                note=note,
+            )
+            flash(
+                "کل تشریفات فعال‌سازی به‌نام شما کامل شد و موتور بالینی v2 فعال است.",
+                "success",
+            )
         elif action == "rollback":
             service.rollback(rolled_back_by=actor, reason=note)
             flash("موتور فوراً خاموش شد؛ تاریخچهٔ ممیزی حفظ شده است.", "success")

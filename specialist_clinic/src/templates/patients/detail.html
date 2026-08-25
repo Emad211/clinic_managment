@@ -55,7 +55,7 @@
             <small>{{ next_action.detail }}{% if next_action.date %} · {{ next_action.date|jalali_date }}{% endif %}</small>
         </div>
         {% if next_action.target == 'worklist' %}
-        <a class="btn btn-sm" href="{{ url_for('followups.worklist') }}">مشاهده پیگیری</a>
+        <a class="btn btn-sm" href="{{ url_for('unified_followups.index') }}">مرکز کارها</a>
         {% elif next_action.target == 'appointment' %}
         <a class="btn btn-sm" href="{{ url_for('appointments.new_appointment', patient_link_id=patient.id) }}">ثبت نوبت</a>
         {% else %}
@@ -133,7 +133,7 @@
             <span class="muted" style="font-size:11px;">{{ f.due_date|jalali_date if f.due_date else '' }}</span>
         </div>
         {% endfor %}
-        <a class="btn btn-sm btn-ghost mt-3" href="{{ url_for('followups.worklist') }}"><svg class="icon icon-sm"><use href="#i-list-checks"></use></svg> لیست کامل پیگیری</a>
+        <a class="btn btn-sm btn-ghost mt-3" href="{{ url_for('unified_followups.index') }}"><svg class="icon icon-sm"><use href="#i-list-checks"></use></svg> مرکز کارها</a>
     </div>
     {% endif %}
 

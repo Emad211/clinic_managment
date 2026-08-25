@@ -310,7 +310,8 @@ def test_routes_are_flag_gated_get_only_and_cache_disabled(monkeypatch):
     )
 
     disabled = _minimal_route_app(db, enabled=False).test_client()
-    assert disabled.get("/followups/unified/").status_code == 404
+    assert disabled.get("/followups/unified/").status_code == 200
+    assert disabled.post("/followups/unified/fuep_none/claim").status_code == 404
 
     enabled = _minimal_route_app(db, enabled=True).test_client()
     response = enabled.get("/followups/unified/")
@@ -386,8 +387,8 @@ def test_templates_and_registration_preserve_read_only_boundary():
     assert "دریافت برای رسیدگی" in detail_page
     assert "هیچ تغییری در پرونده یا تسک ایجاد نمی‌کند" in detail_page
     assert "هیچ داده، رابطه یا وضعیت بالینی حدس زده نشده است" in unavailable_page
-    assert "config.get('FOLLOWUP_UNIFIED_WORKLIST_READONLY')" in hub
-    assert "url_for('unified_followups.index')" in hub
+    assert "config.get('FOLLOWUP_UNIFIED_WORKLIST_READONLY')" not in hub
+    assert "url_for('unified_followups.index')" not in hub
 
 
 def test_invalid_filters_fail_closed_to_unfiltered_values():

@@ -64,6 +64,18 @@
     {% endfor %}
 </ol>
 
+{% if engine.rule_review_permissions.activate and engine.effective_mode != 'on' %}
+<section class="card engine-task-card engine-quick-toggle" aria-labelledby="quick-title">
+    <div class="engine-task-number">میان‌بر تک‌اپراتور</div>
+    <div class="engine-section-head"><div><span class="engine-section-icon"><svg class="icon"><use href="#i-zap"></use></svg></span><div><h2 id="quick-title">فعال‌سازی سریع با یک دکمه</h2><p>این کار کل تشریفات را یک‌جا و به‌نام شما انجام می‌دهد: بازسازی پرونده‌های نمونه، اعتبارسنجی golden-case، ثبت هر دو تأیید بالینی و فنی، انتشار محدود و سپس انتشار عمومی.</p></div></div></div>
+    <form method="post" action="{{ url_for('manager.clinical_engine_action', action='activate-simple') }}" onsubmit="return confirm('هشدار: این عملیات تمام مراحل فعال‌سازی (آزمون ۱۰ بیمار نمونه، دو تأیید، انتشار محدود و انتشار عمومی) را یک‌جا و به‌نام کاربر فعلی اجرا می‌کند. ادامه می‌دهید؟')">
+        <input type="hidden" name="mode" value="on">
+        <button class="btn btn-success btn-lg engine-primary-action" type="submit"><svg class="icon"><use href="#i-zap"></use></svg> فعال‌سازی سریع موتور (تک‌اپراتور)</button>
+    </form>
+    <small class="engine-safe-note"><svg class="icon icon-sm"><use href="#i-shield"></use></svg> همهٔ مراحل ایمنی مثل مسیر قدم‌به‌قدم اجرا می‌شوند؛ فقط هر دو امضا به‌نام همین حساب ثبت می‌شود.</small>
+</section>
+{% endif %}
+
 <div class="engine-wizard" id="engine-actions">
 <nav class="engine-step-nav" aria-label="جابجایی بین مراحل">
     {% if view_step > 1 %}<a class="btn btn-ghost" href="{{ url_for('manager.clinical_engine', step=view_step - 1) }}#engine-actions"><svg class="icon"><use href="#i-chevron-left"></use></svg> مرحلهٔ قبل</a>{% endif %}
@@ -133,7 +145,7 @@
     {% set review = package.review %}
     <section class="card engine-review-card" aria-labelledby="task-title">
         <div class="engine-task-number">مرحلهٔ ۲ از ۷</div>
-        <div class="engine-section-head"><div><span class="engine-section-icon"><svg class="icon"><use href="#i-stethoscope"></use></svg></span><div><h2 id="task-title">بازبینی مستقل بالینی و فنی</h2><p>هر قاعده باید توسط دو حساب کاربری مستقل، با تصمیم صریح و ثبت append-only بررسی شود. هیچ فرم تک‌نفره‌ای بسته را فریز نمی‌کند.</p></div></div></div>
+        <div class="engine-section-head"><div><span class="engine-section-icon"><svg class="icon"><use href="#i-stethoscope"></use></svg></span><div><h2 id="task-title">بازبینی مستقل بالینی و فنی</h2><p>هر قاعده باید برای هر دو نقش با تصمیم صریح و ثبت append-only بررسی شود. در حالت تک‌اپراتور یک حساب می‌تواند هر دو نقش را ثبت کند.</p></div></div></div>
         <div class="engine-result-summary">
             <span><b>{{ review.roles.technical.approved_count|fa_num }}/{{ review.roles.technical.total|fa_num }}</b> تأیید فنی</span>
             <span><b>{{ review.roles.clinical.approved_count|fa_num }}/{{ review.roles.clinical.total|fa_num }}</b> تأیید بالینی</span>
@@ -203,7 +215,7 @@
         {% else %}
         <div class="engine-inline-problems" role="alert"><b>فریز مسدود است:</b><ul>{% for blocker in review.blockers %}<li>{{ blocker }}</li>{% endfor %}</ul></div>
         {% endif %}
-        <small class="engine-safe-note"><svg class="icon icon-sm"><use href="#i-shield"></use></svg>یک حساب نمی‌تواند هر دو نقش را ثبت کند؛ نام نمایشی فرم قابل ویرایش نیست و هویت username در رویداد ذخیره می‌شود.</small>
+        <small class="engine-safe-note"><svg class="icon icon-sm"><use href="#i-shield"></use></svg>هر دو نقش باید کامل ثبت شود؛ در حالت تک‌اپراتور یک حساب مجاز است هر دو را ثبت کند. نام نمایشی فرم قابل ویرایش نیست و هویت username در رویداد ذخیره می‌شود.</small>
     </section>
 
 {% elif not engine.report_ok %}

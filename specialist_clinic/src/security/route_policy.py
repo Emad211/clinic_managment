@@ -40,6 +40,7 @@ def _manager_action_permission() -> Permission:
         "verify-selected",
         "promote-ruleset",
         "activate-global",
+        "activate-simple",
         "rollback",
         "reset-workflow",
     }:

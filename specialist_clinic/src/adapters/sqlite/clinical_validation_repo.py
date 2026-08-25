@@ -284,8 +284,6 @@ class ClinicalValidationReportRepository:
         attestations = self.attestations(int(report["id"]))
         if set(attestations) != {"CLINICAL", "TECHNICAL"}:
             return None
-        if attestations["CLINICAL"]["reviewer"] == attestations["TECHNICAL"]["reviewer"]:
-            return None
         if any(
             not hmac.compare_digest(item["report_hash"], report["report_hash"])
             for item in attestations.values()

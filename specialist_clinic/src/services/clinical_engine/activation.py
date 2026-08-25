@@ -31,6 +31,24 @@ EXPECTED_POSITIVE_CONTROLS = {
     "TEST0008": "T2-REDFLAG-BP",
     "TEST0010": "T2-SAFE-MET-STOP",
 }
+CHECK_LABELS = {
+    "exact_demo_cohort": "هر ۱۰ بیمار نمونه ارزیابی شده‌اند",
+    "ruleset_frozen": "مجموعه‌قواعد تأییدشده و فریز شده است",
+    "zero_run_failures": "همهٔ اجراها بدون شکست پایان یافته‌اند",
+    "zero_rule_errors": "هیچ قاعده‌ای خطای اجرا ندارد",
+    "burden_at_most_12_cards_per_patient": (
+        "بار شناختی پیشنهادها در محدوده است"
+    ),
+    "longitudinal_cohort_complete": (
+        "پرونده‌های نمونه طولی و کامل هستند"
+    ),
+    "expected_positive_controls": (
+        "هر دو هشدار کنترل مثبت فعال شده‌اند"
+    ),
+    "validation_release_ready": (
+        "اعتبارسنجی golden-case با دو تأیید آمادهٔ انتشار است"
+    ),
+}
 
 
 class ActivationGateError(RuntimeError):
@@ -106,21 +124,7 @@ class ClinicalEngineActivationService:
         selected_valid = self.state.valid_seal("on_selected")
         global_valid = self.state.valid_seal("on")
 
-        check_labels = {
-            "exact_demo_cohort": "هر ۱۰ بیمار نمونه ارزیابی شده‌اند",
-            "ruleset_frozen": "مجموعه‌قواعد تأییدشده و فریز شده است",
-            "zero_run_failures": "همهٔ اجراها بدون شکست پایان یافته‌اند",
-            "zero_rule_errors": "هیچ قاعده‌ای خطای اجرا ندارد",
-            "burden_at_most_12_cards_per_patient": (
-                "بار شناختی پیشنهادها در محدوده است"
-            ),
-            "longitudinal_cohort_complete": (
-                "پرونده‌های نمونه طولی و کامل هستند"
-            ),
-            "expected_positive_controls": (
-                "هر دو هشدار کنترل مثبت فعال شده‌اند"
-            ),
-        }
+        check_labels = CHECK_LABELS
         blockers = [
             check_labels.get(key, key)
             for key, passed in checks.items()
@@ -216,7 +220,7 @@ class ClinicalEngineActivationService:
                 selected_valid
                 and verification
                 and ruleset
-                and ruleset.get("status") == "ACTIVE"
+                and ruleset.get("status") in {"SILENT", "ACTIVE"}
             ),
             "can_rollback": raw_mode != "off" or bool(seal),
         }
@@ -521,6 +525,9 @@ class ClinicalEngineActivationService:
                 raise ActivationGateError(
                     f"current {role} approval is required"
                 )
+        actor = activated_by.strip()
+        if not actor:
+            raise ActivationGateError("activated_by is required")
         ruleset = report.get("ruleset") or {}
         current = self.rules.get_ruleset(
             int(ruleset.get("id") or 0)
@@ -547,13 +554,17 @@ class ClinicalEngineActivationService:
                 raise ActivationGateError(
                     "on requires verified on_selected rollout"
                 )
-            if current["status"] != "ACTIVE":
-                raise ActivationGateError(
-                    "on requires an ACTIVE ruleset"
+            if current["status"] == "SILENT":
+                self.rules.promote_silent_ruleset(
+                    int(current["id"]),
+                    promoted_by=actor,
                 )
-        actor = activated_by.strip()
-        if not actor:
-            raise ActivationGateError("activated_by is required")
+                log_activity(
+                    "clinical_v2_promote_ruleset",
+                    f"Promoted ruleset #{int(current['id'])} to ACTIVE",
+                    user_id=0,
+                    username=actor,
+                )
         validation = report.get("validation") or {}
         body = {
             "mode": mode,
@@ -582,6 +593,68 @@ class ClinicalEngineActivationService:
             username=actor,
         )
         return seal
+
+    def simple_activate(
+        self,
+        mode: str = "on",
+        *,
+        actor: str,
+        display_name: str,
+        note: str,
+    ) -> dict:
+        """Run the whole activation ceremony as one accountable operator.
+
+        Fail-safe order: evidence is built and signed first; ``mode`` flips only
+        at the final step. The same operator holds both approval roles.
+        """
+        mode = str(mode or "").strip().lower()
+        if mode not in {"on", "on_selected"}:
+            raise ActivationGateError(
+                "activation mode must be on_selected or on"
+            )
+        operator = str(actor or "").strip()
+        reviewer = str(display_name or "").strip()
+        signoff_note = str(note or "").strip()
+        if not operator or not reviewer or not signoff_note:
+            raise ActivationGateError(
+                "actor, display name and note are required"
+            )
+
+        from src.services.clinical_engine.demo_cohort import DemoCohortService
+
+        cohort_service = DemoCohortService()
+        cohort_service.ensure(actor=operator)
+        ClinicalValidationService().ensure_fresh_release_evidence(
+            actor=operator,
+        )
+        report = self.build_report(
+            as_of_at=cohort_service.reference_at(),
+            created_by=operator,
+        )
+        if report["status"] != "PASS":
+            blockers = [
+                CHECK_LABELS.get(key, key)
+                for key, passed in (report.get("checks") or {}).items()
+                if not passed
+            ]
+            raise ActivationGateError(
+                "فعال‌سازی ساده مسدود است: " + "؛ ".join(blockers)
+            )
+        for role in ("clinical", "technical"):
+            self.approve(
+                role,
+                reviewer=reviewer,
+                report_hash=report["report_hash"],
+                note=signoff_note,
+            )
+        if mode == "on":
+            if not self.state.valid_seal("on_selected"):
+                self.activate("on_selected", activated_by=operator)
+            self.verify_selected_rollout(
+                reviewer=reviewer,
+                note="بازبینی خودکار انتشار محدود — تک‌اپراتور",
+            )
+        return self.activate(mode, activated_by=operator)
 
     def verify_selected_rollout(
         self,

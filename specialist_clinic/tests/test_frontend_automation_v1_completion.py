@@ -22,17 +22,15 @@ def test_completion_report_records_deliberate_frontend_boundaries():
         assert value in report
 
 
-def test_home_is_action_first_and_uses_existing_workflows():
-    page = read("src/templates/dashboard_v1.html")
+def test_home_is_action_first_doctor_queue_reached_from_root():
+    page = read("src/templates/doctor_queue/queue.html")
     route = read("src/api/dashboard.py")
-    assert '{% extends "automation_base.html" %}' in page
-    assert "الان چه کاری لازم است؟" in page
-    assert "شروع کارهای امروز" in page
-    assert "unified_followups.index" in page
-    assert "doctor_queue.index" in page
-    assert "appointments.list_appointments" in page
-    assert "patients.list_patients" in page
-    assert 'render_template(\n        "dashboard_v1.html"' in route
+    assert '{% extends "base.html" %}' in page
+    assert "صف پزشک" in page
+    assert "شروع ویزیت" in page
+    assert "doctor_queue.start" in page
+    assert "doctor_queue.visit" in page
+    assert "redirect(url_for(\"doctor_queue.index\"))" in route or "redirect(url_for('doctor_queue.index'))" in route
 
 
 def test_settings_preserve_all_existing_post_contracts_without_extra_confirmation():
@@ -56,11 +54,13 @@ def test_settings_preserve_all_existing_post_contracts_without_extra_confirmatio
 
 def test_message_center_has_no_duplicate_followup_destinations():
     page = read("src/templates/sms/_hub_tabs.html")
-    assert page.count("hub-nav-btn") == 4
+    assert page.count("hub-nav-btn") == 3
     assert "clinical_alerts.index" not in page
     assert "نمای یکپارچه" not in page
     assert "ورک‌لیستِ تماس" not in page
-    assert "مرکز کارها" in page
+    assert "مرکز کارها" not in page
+    assert "url_for('followups.worklist')" not in page
+    assert "url_for('unified_followups.index')" not in page
 
 
 def test_finance_review_keeps_readonly_accounting_and_confirms_only_reversal():

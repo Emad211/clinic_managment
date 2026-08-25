@@ -315,8 +315,8 @@ def create_app(test_config=None):
             "effective_mode": ClinicalEngineFactRepository().get_mode(),
             "raw_mode": state.raw_mode(),
             "report": state.get_json("last_report"),
-            "clinical_approval": state.get_json("mapproval_clinical"),
-            "technical_approval": state.get_json("mapproval_technical"),
+            "clinical_approval": state.get_json("approval_clinical"),
+            "technical_approval": state.get_json("approval_technical"),
             "seal": state.get_json("seal"),
             "rollback": state.get_json("last_rollback"),
         }
@@ -521,8 +521,8 @@ def create_app(test_config=None):
                 app.logger.warning(
                     "[scheduler] suspended until secure first-run is complete"
                 )
-        except Exception as exc:
-            print(f"[scheduler] not started: {exc}")
+        except Exception:
+            app.logger.exception("[scheduler] not started")
 
     return app
 

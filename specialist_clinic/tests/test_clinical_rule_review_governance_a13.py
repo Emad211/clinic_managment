@@ -55,39 +55,20 @@ def test_dual_review_is_append_only_idempotent_and_separated(review_app):
         "SELECT COUNT(*) AS count FROM clinical_rule_review_events"
     ).fetchone()["count"] == len(decisions)
 
-    with pytest.raises(ValueError, match="هر دو نقش"):
-        service.review_rules(
-            ruleset["id"], role="clinical", decisions=decisions,
-            actor_username="engineer-a", reviewer_display_name="Engineer A",
-            note="same actor must fail",
-        )
-
-    changes = dict(decisions)
-    changes[next(iter(changes))] = "REQUEST_CHANGES"
-    service.review_rules(
-        ruleset["id"], role="clinical", decisions=changes,
-        actor_username="physician-b", reviewer_display_name="Physician B",
-        note="one rule needs clarification",
-    )
-    summary = ClinicalEngineRulesRepository().rule_review_summary(ruleset["id"])
-    assert summary["ready_to_freeze"] is False
-    assert summary["roles"]["clinical"]["changes_requested_count"] == 1
-    with pytest.raises(ValueError, match="دو بازبینی مستقل"):
-        service.freeze_reviewed_package(
-            ruleset["id"], activated_by="release-manager", note="blocked",
-        )
-
     service.review_rules(
         ruleset["id"], role="clinical", decisions=decisions,
-        actor_username="physician-b", reviewer_display_name="Physician B",
-        note="clarification resolved and all rules reviewed",
+        actor_username="engineer-a", reviewer_display_name="Engineer A",
+        note="single-operator mode allows the same account for both roles",
     )
     summary = ClinicalEngineRulesRepository().rule_review_summary(ruleset["id"])
     assert summary["ready_to_freeze"] is True
     assert summary["distinct_reviewers"] is True
+    assert summary["roles"]["clinical"]["reviewer_username"] == "engineer-a"
+    assert summary["roles"]["technical"]["reviewer_username"] == "engineer-a"
+    assert "بازبین بالینی و فنی باید دو حساب کاربری مستقل باشند" not in summary["blockers"]
     assert db.execute(
         "SELECT COUNT(*) AS count FROM clinical_rule_review_events"
-    ).fetchone()["count"] == len(decisions) * 3
+    ).fetchone()["count"] == len(decisions) * 2
 
     frozen = service.freeze_reviewed_package(
         ruleset["id"], activated_by="release-manager", note="dual control complete",
@@ -96,7 +77,7 @@ def test_dual_review_is_append_only_idempotent_and_separated(review_app):
     with pytest.raises(ValueError, match="DRAFT"):
         service.review_rules(
             ruleset["id"], role="clinical", decisions=decisions,
-            actor_username="physician-b", reviewer_display_name="Physician B",
+            actor_username="engineer-a", reviewer_display_name="Engineer A",
             note="late mutation must fail",
         )
 

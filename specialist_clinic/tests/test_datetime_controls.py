@@ -11,9 +11,8 @@ def _read(relative_path: str) -> str:
 def test_all_user_facing_clock_fields_use_native_time_picker():
     expected_fields = {
         "src/templates/appointments/new.html": 'type="time" class="time-input" name="time"',
-        "src/templates/followups/worklist.html": 'type="time" class="time-input" name="scheduled_time"',
         "src/templates/sms/campaigns.html": 'type="time" class="time-input" name="scheduled_time"',
-        "src/templates/manager/engagement.html": 'type="time" class="time-input" name="quiet_start"',
+        "src/templates/manager/settings.html": 'type="time" class="time-input" name="quiet_start"',
     }
 
     for template, control in expected_fields.items():
@@ -22,7 +21,7 @@ def test_all_user_facing_clock_fields_use_native_time_picker():
         assert 'step="900"' in markup
 
     assert 'type="time" class="time-input" name="quiet_end"' in _read(
-        "src/templates/manager/engagement.html"
+        "src/templates/manager/settings.html"
     )
 
 

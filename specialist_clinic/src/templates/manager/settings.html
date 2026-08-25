@@ -1,6 +1,6 @@
-{% extends "automation_base.html" %}
+{% extends "base.html" %}
 {% block title %}تنظیمات{% endblock %}
-{% block head %}{{ super() }}<link rel="stylesheet" href="{{ url_for('static', filename='css/settings-automation-v1.css') }}">{% endblock %}
+{% block head %}{{ super() }}<link rel="stylesheet" href="{{ url_for('static', filename='css/settings-automation-v1.css') }}">{% if request.endpoint == 'manager.settings' %}<meta name="clinic-kavenegar-api-key-source" content="CLINIC_KAVENEGAR_API_KEY">{% endif %}{% endblock %}
 {% block content %}
 <header class="auto-page-header">
     <div class="auto-page-header__copy">
@@ -93,6 +93,7 @@
         <a href="#settings-costs"><svg class="icon icon-sm"><use href="#i-banknote"></use></svg> هزینه و متن‌ها</a>
         <a href="#settings-card"><svg class="icon icon-sm"><use href="#i-user"></use></svg> کارت بیمار</a>
         <a href="#settings-prescription"><svg class="icon icon-sm"><use href="#i-clipboard"></use></svg> نسخه و سربرگ</a>
+        <a href="#settings-engagement"><svg class="icon icon-sm"><use href="#i-shield"></use></svg> یادآوری و پیگیری</a>
     </nav>
 
     <div class="settings-content">
@@ -187,6 +188,27 @@
         <div class="settings-savebar"><span class="muted text-sm">تمام بخش‌های باز و بسته در یک ذخیره ثبت می‌شوند.</span><button class="btn" type="submit"><svg class="icon"><use href="#i-save"></use></svg> ذخیره تنظیمات</button></div>
     </div>
 </form>
+
+<section id="settings-engagement" class="card" aria-labelledby="settings-engagement-title">
+    <div class="section-title">
+        <svg class="icon"><use href="#i-shield"></use></svg>
+        <span id="settings-engagement-title">یادآوری و پیگیریِ خودکار</span>
+        <span class="section-sub">گاردریل‌های پیامکِ خودکار و مسیریابی رویدادها</span>
+    </div>
+    <form method="post" action="{{ url_for('manager.engagement_settings') }}">
+        <div class="grid grid-4" style="align-items:flex-end;">
+            <div class="fld"><label>شروع ساعتِ مجاز</label><input type="time" class="time-input" name="quiet_start" value="{{ settings.quiet_start if settings is defined else '08:00' }}" step="900" lang="fa-IR" required></div>
+            <div class="fld"><label>پایان ساعتِ مجاز</label><input type="time" class="time-input" name="quiet_end" value="{{ settings.quiet_end if settings is defined else '21:00' }}" step="900" lang="fa-IR" required></div>
+            <div class="fld"><label>سقفِ پیامک در روز (هر بیمار)</label><input type="number" name="daily_cap" min="1" max="10" value="{{ settings.daily_cap if settings is defined else 1 }}"></div>
+            <button class="btn" type="submit"><svg class="icon"><use href="#i-save"></use></svg> ذخیرهٔ گاردریل‌ها</button>
+        </div>
+        <div class="help" style="margin-top:var(--s2);">
+            <svg class="icon icon-sm"><use href="#i-info"></use></svg>
+            خارج از ساعتِ مجاز، پیامک‌ها تا ورود به بازه به تعویق می‌افتند. بیمارانی که انصراف داده‌اند هرگز پیامکِ خودکار نمی‌گیرند.
+        </div>
+    </form>
+    <a class="btn btn-ghost nav-tile" href="{{ url_for('manager.engagement') }}"><svg class="icon icon-sm"><use href="#i-list-checks"></use></svg> ماتریس مسیریابی رویدادها</a>
+</section>
 
 <div id="copy-feedback" class="settings-copy-feedback" role="status" aria-live="polite"></div>
 <script>

@@ -151,7 +151,6 @@ def disable_shared_caching(response):
 @bp.get("/")
 @permission_required(Permission.CLINICAL_TASK_VIEW)
 def index():
-    _require_flag()
     db = get_db()
     model = FollowupUnifiedReadModelService(db).list_items(
         page=request.args.get("page", 1),
@@ -195,7 +194,6 @@ def index():
 @bp.get("/<episode_id>")
 @permission_required(Permission.CLINICAL_TASK_VIEW)
 def detail(episode_id: str):
-    _require_flag()
     db = get_db()
     read_model = FollowupUnifiedReadModelService(db)
     result = read_model.get_item_result(

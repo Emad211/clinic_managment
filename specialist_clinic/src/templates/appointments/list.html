@@ -1,4 +1,4 @@
-{% extends "automation_base.html" %}
+{% extends "base.html" %}
 {% block title %}نوبت‌ها{% endblock %}
 {% block head %}{{ super() }}<link rel="stylesheet" href="{{ url_for('static', filename='css/appointments-automation-v1.css') }}">{% endblock %}
 {% block content %}
@@ -18,6 +18,24 @@
     <div class="work-center-kpi"><b>{{ summary.done|fa_num }}</b><span>انجام‌شده</span></div>
     <div class="work-center-kpi"><b>{{ summary.no_show|fa_num }}</b><span>غیبت</span></div>
 </section>
+
+{% if summary.needs_invoice %}
+<div class="appt-invoice-callout appt-invoice-callout--warn" role="status">
+    <svg class="icon"><use href="#i-alert"></use></svg>
+    <div class="appt-invoice-callout__body">
+        <b>{{ summary.needs_invoice|fa_num }} نوبت امروز هنوز فاکتور باز حسابداری ندارد.</b>
+        <span class="muted text-xs">برای اینکه ویزیت به صف پزشک برسد، اول در برنامه حسابداری برای بیمار فاکتور (ویزیت) باز کنید. این صفحه چیزی در حسابداری ثبت یا تغییر نمی‌دهد.</span>
+    </div>
+</div>
+{% elif summary.invoice_unknown %}
+<div class="appt-invoice-callout" role="status">
+    <svg class="icon"><use href="#i-info"></use></svg>
+    <div class="appt-invoice-callout__body">
+        <b>وضعیت فاکتور نوبت‌های امروز نامشخص است.</b>
+        <span class="muted text-xs">ارتباط خواندنی با حسابداری فعلاً برقرار نیست؛ نمی‌توان تعیین کرد کدام نوبت فاکتور باز دارد.</span>
+    </div>
+</div>
+{% endif %}
 
 <section class="auto-filter-bar" aria-label="فیلتر نوبت‌ها">
     <form class="appointment-filter-grid" method="get">
@@ -49,6 +67,11 @@
                 {% if a.is_today %}<span class="badge badge-info">امروز</span>{% endif %}
                 <b>{{ a.scheduled_fa }}</b>
                 <span class="muted text-xs">{{ a.type_fa }}{% if a.recurrence_months %} · هر {{ a.recurrence_months|fa_num }} ماه{% endif %}</span>
+                {% if a.is_today and a.status=='scheduled' and a.invoice_visibility %}
+                    {% if a.invoice_visibility=='none' %}<span class="badge badge-warn appt-invoice-flag" title="اول در برنامه حسابداری فاکتور (ویزیت) باز کنید تا ویزیت به صف پزشک برسد">بدون فاکتور باز</span>
+                    {% elif a.invoice_visibility=='unknown' %}<span class="badge appt-invoice-flag" title="ارتباط خواندنی با حسابداری برقرار نیست؛ وضعیت فاکتور قابل تعیین نیست">فاکتور: نامشخص</span>
+                    {% elif a.invoice_visibility=='has' %}<span class="badge badge-ok appt-invoice-flag">فاکتور باز ✓</span>{% endif %}
+                {% endif %}
             </div>
             <div class="appointment-card__status">
                 {% if a.status=='scheduled' %}<span class="badge badge-warn">{{ a.status_fa }}</span>{% elif a.status=='done' %}<span class="badge badge-ok">{{ a.status_fa }}</span>{% else %}<span class="badge badge-danger">{{ a.status_fa }}</span>{% endif %}

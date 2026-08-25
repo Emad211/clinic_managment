@@ -113,7 +113,6 @@ def test_administrative_automation_never_interprets_high_readings():
 def test_control_room_and_dashboard_are_administrative_only():
     service = source("services/control_room_service.py")
     room = source("templates/control_room.html")
-    dashboard = source("templates/dashboard.html")
     route = source("api/dashboard.py")
     for token in (
         "CONTROL_VITALS",
@@ -125,7 +124,7 @@ def test_control_room_and_dashboard_are_administrative_only():
         "نرخ کنترل بیماری",
         "خارج از محدوده",
     ):
-        assert token not in service + room + dashboard + route
+        assert token not in service + room + route
     assert '"projection_policy": "ADMINISTRATIVE_ONLY"' in service
 
 

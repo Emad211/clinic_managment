@@ -1,0 +1,1852 @@
+{
+  "package_format": "clinical-rule-package.draft/0.1",
+  "ruleset_code": "lipid-core-v1",
+  "version": "0.1.0-draft",
+  "status": "DRAFT",
+  "clinical_use": "NOT_APPROVED_HISTORICAL_REGRESSION_ONLY",
+  "source_dossier": "GUIDELINE_DOSSIER_FA (lipid) — docs/clinical_rule_research/lipid/GUIDELINE_DOSSIER_FA.md (2026-08-23, sketches LIPID_R01..R24)",
+  "generated_at": "2026-08-23T12:00:00+03:30",
+  "schema_version": "2.0",
+  "dsl_version": "2.0",
+  "rule_schema_ref": "src/domain/clinical_engine/schemas/clinical-rule.schema.json",
+  "validation": {
+    "method": "jsonschema.Draft202012Validator with FormatChecker against clinical-rule.schema.json (internal refs only; no external registry needed)",
+    "validated_at": "2026-08-23T12:30:00+03:30",
+    "rules_total": 24,
+    "rules_valid": 24,
+    "result": "ALL_VALID",
+    "validator_version_note": "jsonschema library in specialist_clinic/.venv; each entry of rules[] validated as a standalone RuleDefinition"
+  },
+  "authoring_notes": [
+    "STRUCTURAL MAPPING (per dossier §0/§8): indicator.X.latest → lab.X با selector.aggregation=latest؛ med.class → medication.<class_key>؛ condition → condition.<code>؛ flag.<key> → fact کاتالوگ فلگ. هر گرهٔ expression node_id قطعی <CODE>-e*/c* دارد.",
+    "OPERATORS: op=has روی condition/med.class → truthy؛ op=not_has → گرهٔ not{truthy} (نه not_has، تا معنا بدون ابهام value کامپایل شود). between/>=/</exists/in همه در SUPPORTED_OPERATORS کامپایلر هستند.",
+    "PRIORITY ×100 طبق قرارداد بستهٔ redflags (۱..۵ داسیه → 100..500) داخل بازهٔ 0–10000 اسکیما.",
+    "SEVERITY mapping: critical→CRITICAL، high→URGENT، medium→WARN، low→INFO (همان قرارداد redflags).",
+    "PHASE mapping: routine→ROUTINE؛ safety→SAFETY (R19–R22)؛ redflag→PREFLIGHT (فقط R15).",
+    "AGE ATOM GAP (G2): DSL 2.0 اتم سن ندارد. طبق دستور کار، سن به required_facts به‌صورت fact کلید 'patient.age_years' با on_unusable=NEEDS_DATA منتقل شد (fail-closed: بدون تأمین سن از سوی evaluator قاعده اجرا نمی‌شود) و مقایسهٔ واقعی سن عیناً در شرط نوشته شده است — هیچ placeholder ای که بتواند misfire کند ساخته نشد. scope.age_min/age_max فقط فرادادهٔ اعلامی است و جای gating اجرایی را نمی‌گیرد. پیامد محافظه‌کارانه: در نبود سن، کل قاعده متوقف می‌شود حتی برای مسیرهای مستقل از سن (مثل شاخهٔ cvd_high_risk در R02) — عمدی و fail-closed.",
+    "FACT-KEY CONTRACTS: برای تریگرهای بیان‌ناپذیر در DSL 2.0 (رویدادهای زمانی G5، دوز/شدت دارو G4، پایبندی G6، عوامل خطر افزاینده G9، علائم G10، مولکول فعال G11، تشخیص جدید G12، فلگ عدم تحمل استاتین G13، تاریخ آخرین پنل G5) کلیدهای fact آینده به‌صورت صریح در required_facts (NEEDS_DATA) و در شرط واقعی آمده‌اند. فهرست کامل این کلیدها در AUTHORING_NOTES_FA.md §۳ ثبت است؛ evaluator باید پیش از فعال‌سازی هرکدام را تأمین کند. برخلاف الگوی SILENT+condition جانشینِ redflags، اینجا هیچ شرط جانشینی که misfire کند وجود ندارد.",
+    "BASELINE-LDL GAP (G1): الزام «کاهش ≥50٪ از baseline» در R01/R02 قابل ارزیابی نیست (indicator.latest فقط آخرین مقدار). عدد 50 عیناً در params.pct_reduction_min حفظ شده و به‌عنوان شکاف DSL در یادداشت‌ها ثبت شده است؛ هیچ شرط جانشین ساخته نشد.",
+    "FIRST-MATCH-WINS: ترتیب ارزیابی R01→R02→R03→R04 باید first-match-wins باشد (طبق نکتهٔ خود داسیه) تا نبود op منفی روی condition جبران شود؛ R04 (fallback) با gate واقعی condition.hyperlipidemia وارد شده است.",
+    "CKD DIALYSIS EXCLUSION: حذف بیماران دیالیزی (G5D) در R09 نیازمند flag.ckd_stage_g است که در واژگان این بسته نیست (خارج فهرست مجاز facts)؛ پیش از فعال‌سازی باید افزوده شود — در change_note ثبت شده است.",
+    "may_create_internal_task=true فقط برای action_type های create_followup/schedule_screening (R10,R11,R12,R17,R19,R20,R21,R22,R23,R24)؛ بقیه false.",
+    "requires_clinician_confirmation=true برای همهٔ ۲۴ قاعده (فراتر از CONFIRMATION_REQUIRED کامپایلر که suggest_med/set_target/classify را می‌پوشاند).",
+    "EVIDENCE URLs: فقط از DOI/PMID ارجاع داسیه یا صفحهٔ فرود ژورنال به‌صورت مکانیکی ساخته شده‌اند ([4] AACE از Article ID خود داسیه). مورد FDA سیمواستاتین [13] به بخش عمومی Drug Safety اشاره دارد و نشانی دقیق باید در بازبینی تکمیل شود (local_adaptation_note).",
+    "evidence_certainty/recommendation_strength = NOT_GRADED برای همه (اطلاعات Class I/LOE داخل source_locator حفظ شده)؛ local_validation_status = NOT_REVIEWED برای همه.",
+    "review_due_date = 2026-11-21 (پیش‌فرض عملیاتی ۹۰ روزه؛ مالک می‌تواند تغییر دهد).",
+    "UNITS: همهٔ thresholds بر حسب mg/dL ذخیره شده‌اند (تعهد G3)؛ mmol/L فقط نمایشی در متن/params است.",
+    "OVERLAP: R15 (TG≥500) با SF-LAB-02 بستهٔ redflags همپوشانی دارد؛ تصمیم dedupe بین دو ruleset با مالک.",
+    "OUT OF SCOPE عمداً نگه داشته شده: PCSK9i (G8)، قاعدهٔ exclusion بارداری (G16)، TSH علل ثانویه (G17)، خروجی SMS educate governed (G18).",
+    "فعال‌سازی این بسته مستلزم package_contract validation + بازبینی بالینی مستقل + کلیک مالک است؛ این فایل به runtime/compiler متصل نیست."
+  ],
+  "dossier_triggers": {
+    "LIPID-R01": {
+      "all": [
+        { "flag": "ascvd", "op": "truthy" }
+      ]
+    },
+    "LIPID-R02": {
+      "any": [
+        { "flag": "cvd_high_risk", "op": "truthy" },
+        { "all": [
+          { "condition": "diabetes", "op": "has" },
+          { "ext_patient_attr": { "age_gte": 40 }, "note": "G2: نیاز به اتم سن در DSL" }
+        ]}
+      ]
+    },
+    "LIPID-R03": {
+      "note": "دیابت بدون ASCVD - first-match-wins پس از R01/R02"
+    },
+    "LIPID-R04": {
+      "note": "fallback نهایی پس از R01-R03 (first-match-wins)"
+    },
+    "LIPID-R05": {
+      "all": [
+        { "flag": "ascvd", "op": "truthy" },
+        { "med_class": "statin", "op": "not_has" }
+      ]
+    },
+    "LIPID-R06": {
+      "flag": "cvd_high_risk",
+      "op": "truthy"
+    },
+    "LIPID-R07": {
+      "all": [
+        { "condition": "diabetes", "op": "has" },
+        { "ext_patient_attr": { "age_between": [40, 75] }, "note": "G2" },
+        { "med_class": "statin", "op": "not_has" }
+      ]
+    },
+    "LIPID-R08": {
+      "all": [
+        { "indicator": "ldl", "latest": ">=", "value": 100 },
+        { "med_class": "statin", "op": "not_has" }
+      ],
+      "note": "first-match-wins بعد از R01-R04؛ lifestyle 3 ماهه ناموفق"
+    },
+    "LIPID-R09": {
+      "all": [
+        { "indicator": "egfr", "latest": "<", "value": 60 },
+        { "flag": "ckd_stage_g", "op": "in", "values": ["G3a", "G3b", "G4", "G5nd"] },
+        { "ext_patient_attr": { "age_gte": 50 }, "note": "G2" },
+        { "med_class": "statin", "op": "not_has" }
+      ]
+    },
+    "LIPID-R10": {
+      "all": [
+        { "med_class": "statin", "op": "has" },
+        { "ext_statin_changed_within_weeks": 12, "note": "G5: نیاز به رویداد تغییر دارو" }
+      ]
+    },
+    "LIPID-R11": {
+      "all": [
+        { "med_class": "statin", "op": "has" },
+        { "indicator": "ldl", "latest": ">=", "value": 70 },
+        { "ext_adherence_confirmed": true, "note": "G6: منبع دادهٔ پایبندی تعریف نشده" }
+      ]
+    },
+    "LIPID-R12": {
+      "all": [
+        { "med_class": "statin", "op": "has" },
+        { "indicator": "ldl", "latest": "<", "value": 70 }
+      ]
+    },
+    "LIPID-R13": {
+      "all": [
+        { "med_class": "statin", "op": "has" },
+        { "med_class": "ezetimibe", "op": "not_has" },
+        { "indicator": "ldl", "latest": ">=", "value": 55 },
+        { "ext_on_max_tolerated_statin": true, "note": "G4: DSL دوز دارو را نمی‌بیند" }
+      ]
+    },
+    "LIPID-R14": {
+      "all": [
+        { "flag": "statin_intolerance_documented", "op": "truthy", "note": "فلگ جدید پیشنهادی - G13" },
+        { "indicator": "ldl", "latest": ">=", "value": 70 }
+      ]
+    },
+    "LIPID-R15": {
+      "all": [
+        { "indicator": "trig", "latest": ">=", "value": 500 }
+      ]
+    },
+    "LIPID-R16": {
+      "all": [
+        { "flag": "ascvd", "op": "truthy" },
+        { "indicator": "trig", "latest": "between", "values": [200, 499] },
+        { "med_class": "statin", "op": "has" }
+      ]
+    },
+    "LIPID-R17": {
+      "all": [
+        { "condition": "diabetes", "op": "has" },
+        { "ext_patient_attr": { "age_between": [20, 39] }, "note": "G2" },
+        { "ext_any_risk_enhancer": ["diabetes_duration_gte_10y", "acr_gte_30", "retinopathy", "neuropathy"], "note": "G9" },
+        { "med_class": "statin", "op": "not_has" }
+      ]
+    },
+    "LIPID-R18": {
+      "all": [
+        { "condition": "diabetes", "op": "has" },
+        { "any": [
+          { "indicator": "egfr", "latest": "<", "value": 60 },
+          { "flag": "ckd_stage_a", "op": "in", "values": ["A2", "A3"] }
+        ]},
+        { "med_class": "statin", "op": "has" },
+        { "ext_current_intensity_lt_high": true, "note": "G4: شدت فعلی از دوز قابل استخراج نیست" }
+      ]
+    },
+    "LIPID-R19": {
+      "all": [
+        { "med_class": "statin", "op": "not_has" },
+        { "ext_statin_start_planned": true, "note": "G5: رویداد پیشنهاد دارو" }
+      ]
+    },
+    "LIPID-R20": {
+      "all": [
+        { "med_class": "statin", "op": "has" },
+        { "ext_symptom_reported": "muscle_pain_weakness_dark_urine", "note": "G10: منبع گزارش علامت تعریف نشده" }
+      ]
+    },
+    "LIPID-R21": {
+      "all": [
+        { "med_class": "statin", "op": "has" },
+        { "ext_active_molecule": "amlodipine", "note": "G11: DSL فقط med.class دارد، مولکول نمی‌بیند" },
+        { "ext_simvastatin_dose_gt": 20, "note": "G4" }
+      ]
+    },
+    "LIPID-R22": {
+      "all": [
+        { "flag": "statin_intolerance_documented", "op": "truthy", "note": "G13" }
+      ]
+    },
+    "LIPID-R23": {
+      "any": [
+        { "ext_newly_diagnosed_condition": ["diabetes", "hypertension"], "note": "G12: op جدید" },
+        { "flag": "ascvd", "op": "truthy" }
+      ]
+    },
+    "LIPID-R24": {
+      "all": [
+        { "ext_last_lipid_panel_months_ago": 12, "note": "G5" }
+      ]
+    }
+  },
+  "rules": [
+    {
+      "schema_version": "2.0",
+      "dsl_version": "2.0",
+      "rule_code": "LIPID-R01",
+      "version": "0.1.0-draft",
+      "title": "هدف LDL-C برای ASCVD (very-high): <55 + کاهش ≥50٪",
+      "phase": "ROUTINE",
+      "action_type": "set_target",
+      "severity": "URGENT",
+      "priority": 100,
+      "semantic_key": "lipid-core-v1.LIPID-R01",
+      "scope": {
+        "population": "adults_with_documented_ascvd",
+        "care_settings": ["specialty_clinic"],
+        "encounter_types": ["outpatient_chronic_care"]
+      },
+      "required_facts": [
+        { "key": "flag.ascvd", "criticality": "REQUIRED", "on_unusable": "NOT_APPLICABLE" }
+      ],
+      "eligibility": {
+        "node_id": "LIPID-R01-e1",
+        "fact": "flag.ascvd",
+        "op": "truthy"
+      },
+      "condition": {
+        "node_id": "LIPID-R01-c1",
+        "fact": "flag.ascvd",
+        "op": "truthy"
+      },
+      "safety": {
+        "redflag_exclusions": [],
+        "hard_exclusions": [],
+        "on_safety_error": "BLOCK_ROUTINE_OUTPUTS"
+      },
+      "recommendation": {
+        "text_fa": "«هدف LDL-C برای بیمار با ASCVD مستند: کمتر از ۵۵ mg/dL (۱٫۴ mmol/L) به‌همراه کاهش حداقل ۵۰٪ نسبت به baseline. مبنا، استاتین پرشدت در حداکثر دوز قابل تحمل است. تصمیم درمانی با پزشک.»",
+        "suggestion_only": true,
+        "requires_clinician_confirmation": true,
+        "may_create_internal_task": false,
+        "params": {
+          "ldl_mgdl_max": 55,
+          "ldl_mmoll_max": 1.4,
+          "pct_reduction_min": 50
+        }
+      },
+      "evidence": {
+        "source_title": "2019 ESC/EAS Guidelines for the management of dyslipidaemias",
+        "issuing_organization": "European Society of Cardiology / European Atherosclerosis Society",
+        "publication_date": null,
+        "source_version": "2019",
+        "source_locator": "Eur Heart J 2020;41(1):111-188, PMID 31504418, doi:10.1093/eurheartj/ehz455 — جدول اهداف: very-high → LDL-C <55 mg/dL (1.4 mmol/L) + کاهش ≥50% از baseline؛ ESC 2021 Prevention [2] همین اهداف را حفظ کرده است.",
+        "source_url": "https://doi.org/10.1093/eurheartj/ehz455",
+        "evidence_certainty": "NOT_GRADED",
+        "recommendation_strength": "NOT_GRADED",
+        "local_validation_status": "NOT_REVIEWED"
+      },
+      "governance": {
+        "status": "DRAFT",
+        "author": "clinical_rule_research/lipid pipeline",
+        "clinical_reviewer": null,
+        "review_due_date": "2026-11-21",
+        "change_note": "تبدیل خودکار از GUIDELINE_DOSSIER_FA (§۱.۳ LIPID_R01). ⚠️ G1: «کاهش ≥50% از baseline» در DSL 2.0 ارزیابی‌پذیر نیست (baseline LDL وجود ندارد)؛ عدد 50 عیناً در params حفظ شد و هیچ شرط جانشینی ساخته نشد — پیش از فعال‌سازی نیازمند extension baseline fact است."
+      }
+    },
+    {
+      "schema_version": "2.0",
+      "dsl_version": "2.0",
+      "rule_code": "LIPID-R02",
+      "version": "0.1.0-draft",
+      "title": "هدف LDL-C برای ریسک بالا: <70 + کاهش ≥50٪",
+      "phase": "ROUTINE",
+      "action_type": "set_target",
+      "severity": "URGENT",
+      "priority": 100,
+      "semantic_key": "lipid-core-v1.LIPID-R02",
+      "scope": {
+        "population": "adults_at_high_cv_risk_or_diabetes_40plus",
+        "age_min": 40,
+        "care_settings": ["specialty_clinic"],
+        "encounter_types": ["outpatient_chronic_care"],
+        "condition_codes": ["diabetes"]
+      },
+      "required_facts": [
+        { "key": "flag.cvd_high_risk", "criticality": "OPTIONAL", "on_unusable": "CONTINUE_WITH_WARNING" },
+        { "key": "condition.diabetes", "criticality": "REQUIRED", "on_unusable": "NOT_APPLICABLE" },
+        { "key": "patient.age_years", "criticality": "CRITICAL", "on_unusable": "NEEDS_DATA", "prompt_fa": "سن بیمار (سال)" }
+      ],
+      "eligibility": {
+        "node_id": "LIPID-R02-e1",
+        "any": [
+          { "node_id": "LIPID-R02-e2", "fact": "flag.cvd_high_risk", "op": "truthy" },
+          { "node_id": "LIPID-R02-e3", "fact": "condition.diabetes", "op": "truthy" }
+        ]
+      },
+      "condition": {
+        "node_id": "LIPID-R02-c1",
+        "any": [
+          { "node_id": "LIPID-R02-c2", "fact": "flag.cvd_high_risk", "op": "truthy" },
+          { "node_id": "LIPID-R02-c3", "all": [
+            { "node_id": "LIPID-R02-c4", "fact": "condition.diabetes", "op": "truthy" },
+            { "node_id": "LIPID-R02-c5", "fact": "patient.age_years", "op": ">=", "value": 40 }
+          ]}
+        ]
+      },
+      "safety": {
+        "redflag_exclusions": [],
+        "hard_exclusions": [],
+        "on_safety_error": "BLOCK_ROUTINE_OUTPUTS"
+      },
+      "recommendation": {
+        "text_fa": "«هدف LDL-C برای طبقهٔ ریسک بالا (نشانگر ریسک قلبی‌عروقی بالا، یا دیابت در سن ۴۰ سال و بالاتر): کمتر از ۷۰ mg/dL (۱٫۸ mmol/L) به‌همراه کاهش ≥۵۰٪ نسبت به baseline. تصمیم درمانی با پزشک.»",
+        "suggestion_only": true,
+        "requires_clinician_confirmation": true,
+        "may_create_internal_task": false,
+        "params": {
+          "ldl_mgdl_max": 70,
+          "ldl_mmoll_max": 1.8,
+          "pct_reduction_min": 50
+        }
+      },
+      "evidence": {
+        "source_title": "2019 ESC/EAS Guidelines for the management of dyslipidaemias (+ ESC 2021 Prevention)",
+        "issuing_organization": "European Society of Cardiology / European Atherosclerosis Society",
+        "publication_date": null,
+        "source_version": "2019",
+        "source_locator": "Eur Heart J 2020;41(1):111-188, PMID 31504418 — high risk → LDL-C <70 mg/dL (1.8 mmol/L) + کاهش ≥50%؛ Eur Heart J 2021;42(34):3227-3337, PMID 34458905 (ESC 2021) جزئیات دیابت/CKD.",
+        "source_url": "https://doi.org/10.1093/eurheartj/ehz455",
+        "evidence_certainty": "NOT_GRADED",
+        "recommendation_strength": "NOT_GRADED",
+        "local_validation_status": "NOT_REVIEWED"
+      },
+      "governance": {
+        "status": "DRAFT",
+        "author": "clinical_rule_research/lipid pipeline",
+        "clinical_reviewer": null,
+        "review_due_date": "2026-11-21",
+        "change_note": "تبدیل خودکار از GUIDELINE_DOSSIER_FA (§۱.۳ LIPID_R02). ⚠️ G2: اتم سن در DSL نیست — سن به‌صورت fact کلید 'patient.age_years' (NEEDS_DATA، fail-closed) در required_facts و به‌صورت واقعی در شرط آمده؛ scope.age_min=40 فقط فراداده است. requires age atom extension قبل از فعال‌سازی. ⚠️ G1: pct_reduction_min=50 ارزیابی‌پذیر نیست."
+      }
+    },
+    {
+      "schema_version": "2.0",
+      "dsl_version": "2.0",
+      "rule_code": "LIPID-R03",
+      "version": "0.1.0-draft",
+      "title": "هدف LDL-C برای ریسک متوسط: <100",
+      "phase": "ROUTINE",
+      "action_type": "set_target",
+      "severity": "WARN",
+      "priority": 200,
+      "semantic_key": "lipid-core-v1.LIPID-R03",
+      "scope": {
+        "population": "adults_at_moderate_cv_risk",
+        "care_settings": ["specialty_clinic"],
+        "encounter_types": ["outpatient_chronic_care"],
+        "condition_codes": ["diabetes"]
+      },
+      "required_facts": [
+        { "key": "condition.diabetes", "criticality": "REQUIRED", "on_unusable": "NOT_APPLICABLE" },
+        { "key": "flag.masld", "criticality": "OPTIONAL", "on_unusable": "CONTINUE_WITH_WARNING" }
+      ],
+      "eligibility": {
+        "node_id": "LIPID-R03-e1",
+        "any": [
+          { "node_id": "LIPID-R03-e2", "fact": "condition.diabetes", "op": "truthy" },
+          { "node_id": "LIPID-R03-e3", "fact": "flag.masld", "op": "truthy" }
+        ]
+      },
+      "condition": {
+        "node_id": "LIPID-R03-c1",
+        "any": [
+          { "node_id": "LIPID-R03-c2", "fact": "condition.diabetes", "op": "truthy" },
+          { "node_id": "LIPID-R03-c3", "fact": "flag.masld", "op": "truthy" }
+        ]
+      },
+      "safety": {
+        "redflag_exclusions": [],
+        "hard_exclusions": [],
+        "on_safety_error": "BLOCK_ROUTINE_OUTPUTS"
+      },
+      "recommendation": {
+        "text_fa": "«هدف LDL-C برای طبقهٔ ریسک متوسط: کمتر از ۱۰۰ mg/dL (۲٫۶ mmol/L). ابتدا اصلاح سبک زندگی؛ تصمیم دارویی با پزشک. (این قاعده پس از R01/R02 با ترتیب first-match-wins ارزیابی شود.)»",
+        "suggestion_only": true,
+        "requires_clinician_confirmation": true,
+        "may_create_internal_task": false,
+        "params": {
+          "ldl_mgdl_max": 100,
+          "ldl_mmoll_max": 2.6
+        }
+      },
+      "evidence": {
+        "source_title": "2019 ESC/EAS Guidelines for the management of dyslipidaemias",
+        "issuing_organization": "European Society of Cardiology / European Atherosclerosis Society",
+        "publication_date": null,
+        "source_version": "2019",
+        "source_locator": "Eur Heart J 2020;41(1):111-188, PMID 31504418 — moderate risk → LDL-C <100 mg/dL (2.6 mmol/L)؛ نگاشت §۱.۲ داسیه: MASLD با سندرم متابولیک نیز moderate است.",
+        "source_url": "https://doi.org/10.1093/eurheartj/ehz455",
+        "evidence_certainty": "NOT_GRADED",
+        "recommendation_strength": "NOT_GRADED",
+        "local_validation_status": "NOT_REVIEWED"
+      },
+      "governance": {
+        "status": "DRAFT",
+        "author": "clinical_rule_research/lipid pipeline",
+        "clinical_reviewer": null,
+        "review_due_date": "2026-11-21",
+        "change_note": "تبدیل خودکار از GUIDELINE_DOSSIER_FA (§۱.۳ LIPID_R03). trigger داسیه فقط note بود؛ gate مثبت معادل (دیابت ∨ MASLD) طبق جدول نگاشت §۱.۲ ساخته شد. «سندرم متابولیک» برای MASLD و CKD G1-G2 در واژگان این بسته بیان‌پذیر نیستند. ترتیب first-match-wins پس از R01/R02 الزامی است."
+      }
+    },
+    {
+      "schema_version": "2.0",
+      "dsl_version": "2.0",
+      "rule_code": "LIPID-R04",
+      "version": "0.1.0-draft",
+      "title": "هدف LDL-C ریسک پایین + آموزش سبک زندگی",
+      "phase": "ROUTINE",
+      "action_type": "educate",
+      "severity": "INFO",
+      "priority": 400,
+      "semantic_key": "lipid-core-v1.LIPID-R04",
+      "scope": {
+        "population": "adults_at_low_cv_risk_with_hyperlipidemia",
+        "care_settings": ["specialty_clinic"],
+        "encounter_types": ["outpatient_chronic_care"],
+        "condition_codes": ["hyperlipidemia"]
+      },
+      "required_facts": [
+        { "key": "condition.hyperlipidemia", "criticality": "REQUIRED", "on_unusable": "NOT_APPLICABLE" }
+      ],
+      "eligibility": {
+        "node_id": "LIPID-R04-e1",
+        "fact": "condition.hyperlipidemia",
+        "op": "truthy"
+      },
+      "condition": {
+        "node_id": "LIPID-R04-c1",
+        "fact": "condition.hyperlipidemia",
+        "op": "truthy"
+      },
+      "safety": {
+        "redflag_exclusions": [],
+        "hard_exclusions": [],
+        "on_safety_error": "BLOCK_ROUTINE_OUTPUTS"
+      },
+      "recommendation": {
+        "text_fa": "«مدیریت لیپید در ریسک پایین: هدف LDL-C کمتر از ۱۱۶ mg/dL (۳٫۰ mmol/L). مداخلهٔ خط اول تغییر سبک زندگی است: تغذیهٔ سالم، فعالیت بدنی منظم، ترک سیگار. (fallback پس از R01–R03 با ترتیب first-match-wins.)»",
+        "suggestion_only": true,
+        "requires_clinician_confirmation": true,
+        "may_create_internal_task": false,
+        "params": {
+          "topic_fa": "تغذیهٔ سالم، فعالیت بدنی منظم، ترک سیگار",
+          "target_ldl_mgdl": 116,
+          "ldl_mmoll_max": 3.0
+        }
+      },
+      "evidence": {
+        "source_title": "2019 ESC/EAS Guidelines (+ ESC 2021 Prevention) — low risk targets and lifestyle",
+        "issuing_organization": "European Society of Cardiology / European Atherosclerosis Society",
+        "publication_date": null,
+        "source_version": "2019",
+        "source_locator": "Eur Heart J 2020;41(1):111-188, PMID 31504418 — low risk → LDL-C <116 mg/dL (3.0 mmol/L)؛ lifestyle خط اول؛ ESC 2021 [2] (PMID 34458905) همین چارچوب.",
+        "source_url": "https://doi.org/10.1093/eurheartj/ehz455",
+        "evidence_certainty": "NOT_GRADED",
+        "recommendation_strength": "NOT_GRADED",
+        "local_validation_status": "NOT_REVIEWED"
+      },
+      "governance": {
+        "status": "DRAFT",
+        "author": "clinical_rule_research/lipid pipeline",
+        "clinical_reviewer": null,
+        "review_due_date": "2026-11-21",
+        "change_note": "تبدیل خودکار از GUIDELINE_DOSSIER_FA (§۱.۳ LIPID_R04). trigger داسیه fallback خالص بود («سایر») که در DSL بیان‌پذیر نیست؛ gate واقعی condition.hyperlipidemia گذاشته شد و صحت آن به ترتیب first-match-wins R01→R02→R03→R04 وابسته است."
+      }
+    },
+    {
+      "schema_version": "2.0",
+      "dsl_version": "2.0",
+      "rule_code": "LIPID-R05",
+      "version": "0.1.0-draft",
+      "title": "استاتین پرشدت برای ASCVD",
+      "phase": "ROUTINE",
+      "action_type": "suggest_med",
+      "severity": "URGENT",
+      "priority": 100,
+      "semantic_key": "lipid-core-v1.LIPID-R05",
+      "scope": {
+        "population": "adults_with_ascvd_not_on_statin",
+        "care_settings": ["specialty_clinic"],
+        "encounter_types": ["outpatient_chronic_care"]
+      },
+      "required_facts": [
+        { "key": "flag.ascvd", "criticality": "REQUIRED", "on_unusable": "NOT_APPLICABLE" },
+        { "key": "medication.statin", "criticality": "REQUIRED", "on_unusable": "NOT_APPLICABLE" }
+      ],
+      "eligibility": {
+        "node_id": "LIPID-R05-e1",
+        "fact": "flag.ascvd",
+        "op": "truthy"
+      },
+      "condition": {
+        "node_id": "LIPID-R05-c1",
+        "all": [
+          { "node_id": "LIPID-R05-c2", "fact": "flag.ascvd", "op": "truthy" },
+          { "node_id": "LIPID-R05-c3", "not": { "node_id": "LIPID-R05-c4", "fact": "medication.statin", "op": "truthy" } }
+        ]
+      },
+      "safety": {
+        "redflag_exclusions": [],
+        "hard_exclusions": [],
+        "on_safety_error": "BLOCK_ROUTINE_OUTPUTS"
+      },
+      "recommendation": {
+        "text_fa": "«بیمار ASCVD بدون استاتین. شروع استاتین پرشدت توصیه می‌شود: آتورواستاتین 40–80 یا روزوواستاتین 20–40 میلی‌گرم در روز، در حداکثر دوز قابل تحمل. تصمیم نهایی با پزشک.»",
+        "suggestion_only": true,
+        "requires_clinician_confirmation": true,
+        "may_create_internal_task": false,
+        "params": {
+          "drug_class": "statin",
+          "intensity": "high-intensity",
+          "options_fa": ["atorvastatin 40–80 mg/day", "rosuvastatin 20–40 mg/day"],
+          "note_fa": "حداکثر دوز قابل تحمل؛ تصمیم نهایی با پزشک"
+        }
+      },
+      "evidence": {
+        "source_title": "2019 ESC/EAS Guidelines (Class I) + 2018 AHA/ACC/Multisociety Cholesterol Guideline",
+        "issuing_organization": "European Society of Cardiology / American College of Cardiology Foundation and American Heart Association",
+        "publication_date": null,
+        "source_version": "2018",
+        "source_locator": "ESC/EAS 2019 [1] PMID 31504418 — very-high: high-intensity statin Class I؛ ACC/AHA 2018 [3] Circulation 2019;139(25):e1082-e1143, doi:10.1161/CIR.0000000000000625, Table 5 — atorvastatin 40-80 / rosuvastatin 20-40 (کاهش LDL ≥50%).",
+        "source_url": "https://doi.org/10.1161/CIR.0000000000000625",
+        "evidence_certainty": "NOT_GRADED",
+        "recommendation_strength": "NOT_GRADED",
+        "local_validation_status": "NOT_REVIEWED"
+      },
+      "governance": {
+        "status": "DRAFT",
+        "author": "clinical_rule_research/lipid pipeline",
+        "clinical_reviewer": null,
+        "review_due_date": "2026-11-21",
+        "change_note": "تبدیل خودکار از GUIDELINE_DOSSIER_FA (§۲.۳ LIPID_R05). med.class not_has → گرهٔ not{truthy} روی medication.statin."
+      }
+    },
+    {
+      "schema_version": "2.0",
+      "dsl_version": "2.0",
+      "rule_code": "LIPID-R06",
+      "version": "0.1.0-draft",
+      "title": "استاتین پرشدت برای ریسک بالا",
+      "phase": "ROUTINE",
+      "action_type": "suggest_med",
+      "severity": "URGENT",
+      "priority": 100,
+      "semantic_key": "lipid-core-v1.LIPID-R06",
+      "scope": {
+        "population": "adults_at_high_cv_risk",
+        "care_settings": ["specialty_clinic"],
+        "encounter_types": ["outpatient_chronic_care"]
+      },
+      "required_facts": [
+        { "key": "flag.cvd_high_risk", "criticality": "REQUIRED", "on_unusable": "NOT_APPLICABLE" }
+      ],
+      "eligibility": {
+        "node_id": "LIPID-R06-e1",
+        "fact": "flag.cvd_high_risk",
+        "op": "truthy"
+      },
+      "condition": {
+        "node_id": "LIPID-R06-c1",
+        "fact": "flag.cvd_high_risk",
+        "op": "truthy"
+      },
+      "safety": {
+        "redflag_exclusions": [],
+        "hard_exclusions": [],
+        "on_safety_error": "BLOCK_ROUTINE_OUTPUTS"
+      },
+      "recommendation": {
+        "text_fa": "«بیمار با ریسک قلبی‌عروقی بالا. استاتین پرشدت مطرح است: آتورواستاتین 40–80 یا روزوواستاتین 20–40 میلی‌گرم در روز. تصمیم با پزشک.»",
+        "suggestion_only": true,
+        "requires_clinician_confirmation": true,
+        "may_create_internal_task": false,
+        "params": {
+          "drug_class": "statin",
+          "intensity": "high-intensity",
+          "options_fa": ["atorvastatin 40–80 mg/day", "rosuvastatin 20–40 mg/day"]
+        }
+      },
+      "evidence": {
+        "source_title": "2019 ESC/EAS Guidelines + ADA Standards of Care in Diabetes—2025 (§10)",
+        "issuing_organization": "European Society of Cardiology / American Diabetes Association",
+        "publication_date": null,
+        "source_version": "2025",
+        "source_locator": "ESC/EAS 2019 [1] PMID 31504418 — high risk → high-intensity statin؛ ADA SoC 2025 [12] Diabetes Care 2025;48(Suppl 1), PMID 39651989 — بخش ۱۰ مدیریت ریسک قلبی‌عروقی.",
+        "source_url": "https://pubmed.ncbi.nlm.nih.gov/39651989/",
+        "evidence_certainty": "NOT_GRADED",
+        "recommendation_strength": "NOT_GRADED",
+        "local_validation_status": "NOT_REVIEWED"
+      },
+      "governance": {
+        "status": "DRAFT",
+        "author": "clinical_rule_research/lipid pipeline",
+        "clinical_reviewer": null,
+        "review_due_date": "2026-11-21",
+        "change_note": "تبدیل خودکار از GUIDELINE_DOSSIER_FA (§۲.۳ LIPID_R06). trigger داسیه تک‌اتمی است (بدون ¬statin) — عیناً حفظ شد."
+      }
+    },
+    {
+      "schema_version": "2.0",
+      "dsl_version": "2.0",
+      "rule_code": "LIPID-R07",
+      "version": "0.1.0-draft",
+      "title": "استاتین متوسط پیش‌فرض برای T2D سنین 40–75",
+      "phase": "ROUTINE",
+      "action_type": "suggest_med",
+      "severity": "WARN",
+      "priority": 200,
+      "semantic_key": "lipid-core-v1.LIPID-R07",
+      "scope": {
+        "population": "adults_with_t2d_40_75",
+        "age_min": 40,
+        "age_max": 75,
+        "care_settings": ["specialty_clinic"],
+        "encounter_types": ["outpatient_chronic_care"],
+        "condition_codes": ["diabetes"]
+      },
+      "required_facts": [
+        { "key": "condition.diabetes", "criticality": "REQUIRED", "on_unusable": "NOT_APPLICABLE" },
+        { "key": "patient.age_years", "criticality": "CRITICAL", "on_unusable": "NEEDS_DATA", "prompt_fa": "سن بیمار (سال)" },
+        { "key": "medication.statin", "criticality": "REQUIRED", "on_unusable": "NOT_APPLICABLE" }
+      ],
+      "eligibility": {
+        "node_id": "LIPID-R07-e1",
+        "fact": "condition.diabetes",
+        "op": "truthy"
+      },
+      "condition": {
+        "node_id": "LIPID-R07-c1",
+        "all": [
+          { "node_id": "LIPID-R07-c2", "fact": "condition.diabetes", "op": "truthy" },
+          { "node_id": "LIPID-R07-c3", "fact": "patient.age_years", "op": "between", "value": [40, 75] },
+          { "node_id": "LIPID-R07-c4", "not": { "node_id": "LIPID-R07-c5", "fact": "medication.statin", "op": "truthy" } }
+        ]
+      },
+      "safety": {
+        "redflag_exclusions": [],
+        "hard_exclusions": [],
+        "on_safety_error": "BLOCK_ROUTINE_OUTPUTS"
+      },
+      "recommendation": {
+        "text_fa": "«دیابت نوع ۲ در سنین ۴۰–۷۵ بدون استاتین: استاتین با شدت متوسط پیش‌فرض است — آتورواستاتین 10–20، روزوواستاتین 5–10 یا سیمواستاتین 20–40 میلی‌گرم در روز (شروع/افزایش سیمواستاتین 80mg ممنوع است — FDA 2011). تصمیم با پزشک.»",
+        "suggestion_only": true,
+        "requires_clinician_confirmation": true,
+        "may_create_internal_task": false,
+        "params": {
+          "drug_class": "statin",
+          "intensity": "moderate-intensity",
+          "options_fa": [
+            "atorvastatin 10–20 mg/day",
+            "rosuvastatin 5–10 mg/day",
+            "simvastatin 20–40 mg/day (80 mg ممنوع — FDA 2011)"
+          ]
+        }
+      },
+      "evidence": {
+        "source_title": "ADA Standards of Care in Diabetes—2025 (§10) + ACC/AHA 2018 Table 5",
+        "issuing_organization": "American Diabetes Association / American College of Cardiology Foundation and American Heart Association",
+        "publication_date": null,
+        "source_version": "2025",
+        "source_locator": "ADA SoC 2025 [12] PMID 39651989 — T2D سن 40-75 بدون ASCVD → استاتین متوسط پیش‌فرض؛ ACC/AHA 2018 [3] doi:10.1161/CIR.0000000000000625 Table 5 — دوزهای دقیق شدت متوسط؛ FDA 2011 [13] — ممنوعیت سیمواستاتین 80.",
+        "source_url": "https://pubmed.ncbi.nlm.nih.gov/39651989/",
+        "evidence_certainty": "NOT_GRADED",
+        "recommendation_strength": "NOT_GRADED",
+        "local_validation_status": "NOT_REVIEWED"
+      },
+      "governance": {
+        "status": "DRAFT",
+        "author": "clinical_rule_research/lipid pipeline",
+        "clinical_reviewer": null,
+        "review_due_date": "2026-11-21",
+        "change_note": "تبدیل خودکار از GUIDELINE_DOSSIER_FA (§۲.۳ LIPID_R07). ⚠️ G2: سن 40-75 از طریق 'patient.age_years' (NEEDS_DATA) + between واقعی در شرط؛ scope.age_min/max فراداده. requires age atom extension قبل از فعال‌سازی."
+      }
+    },
+    {
+      "schema_version": "2.0",
+      "dsl_version": "2.0",
+      "rule_code": "LIPID-R08",
+      "version": "0.1.0-draft",
+      "title": "استاتین متوسط برای ریسک متوسط پس از شکست lifestyle",
+      "phase": "ROUTINE",
+      "action_type": "suggest_med",
+      "severity": "WARN",
+      "priority": 300,
+      "semantic_key": "lipid-core-v1.LIPID-R08",
+      "scope": {
+        "population": "adults_at_moderate_risk_ldl_above_100",
+        "care_settings": ["specialty_clinic"],
+        "encounter_types": ["outpatient_chronic_care"]
+      },
+      "required_facts": [
+        { "key": "lab.ldl", "criticality": "CRITICAL", "on_unusable": "NEEDS_DATA" },
+        { "key": "medication.statin", "criticality": "REQUIRED", "on_unusable": "NOT_APPLICABLE" }
+      ],
+      "eligibility": {
+        "node_id": "LIPID-R08-e1",
+        "fact": "lab.ldl",
+        "op": "exists"
+      },
+      "condition": {
+        "node_id": "LIPID-R08-c1",
+        "all": [
+          { "node_id": "LIPID-R08-c2", "fact": "lab.ldl", "op": ">=", "value": 100, "selector": { "aggregation": "latest" } },
+          { "node_id": "LIPID-R08-c3", "not": { "node_id": "LIPID-R08-c4", "fact": "medication.statin", "op": "truthy" } }
+        ]
+      },
+      "safety": {
+        "redflag_exclusions": [],
+        "hard_exclusions": [],
+        "on_safety_error": "BLOCK_ROUTINE_OUTPUTS"
+      },
+      "recommendation": {
+        "text_fa": "«LDL ≥۱۰۰ بدون استاتین در بیمار ریسک متوسط (پس از شکست lifestyle سه‌ماهه): استاتین با شدت متوسط مطرح است — آتورواستاتین 10–20، روزوواستاتین 5–10 یا سیمواستاتین 20–40 میلی‌گرم در روز. تصمیم با پزشک.»",
+        "suggestion_only": true,
+        "requires_clinician_confirmation": true,
+        "may_create_internal_task": false,
+        "params": {
+          "drug_class": "statin",
+          "intensity": "moderate-intensity",
+          "options_fa": [
+            "atorvastatin 10–20 mg/day",
+            "rosuvastatin 5–10 mg/day",
+            "simvastatin 20–40 mg/day"
+          ]
+        }
+      },
+      "evidence": {
+        "source_title": "2019 ESC/EAS Guidelines + AACE Clinical Practice Guideline: Pharmacologic Management of Adults with Dyslipidemia",
+        "issuing_organization": "European Society of Cardiology / American Association of Clinical Endocrinology",
+        "publication_date": null,
+        "source_version": "2025",
+        "source_locator": "ESC/EAS 2019 [1] PMID 31504418 — moderate: statin پس از شکست lifestyle؛ AACE 2025 [4] Endocr Pract, Article ID S1530-891X(24)00691-8.",
+        "source_url": "https://www.endocrinepractice.org/article/S1530-891X(24)00691-8/fulltext",
+        "evidence_certainty": "NOT_GRADED",
+        "recommendation_strength": "NOT_GRADED",
+        "local_validation_status": "NOT_REVIEWED"
+      },
+      "governance": {
+        "status": "DRAFT",
+        "author": "clinical_rule_research/lipid pipeline",
+        "clinical_reviewer": null,
+        "review_due_date": "2026-11-21",
+        "change_note": "تبدیل خودکار از GUIDELINE_DOSSIER_FA (§۲.۳ LIPID_R08). ⚠️ «lifestyle ۳ ماهه ناموفق» رویداد زمانی است و در DSL 2.0 بیان‌پذیر نیست (G5) — در متن/notes حفظ شد، شرط ماشینی جایگزین ساخته نشد. ترتیب first-match-wins پس از R01-R04 الزامی است."
+      }
+    },
+    {
+      "schema_version": "2.0",
+      "dsl_version": "2.0",
+      "rule_code": "LIPID-R09",
+      "version": "0.1.0-draft",
+      "title": "استاتین CKD (سن ≥50، eGFR<60، غیردیالیزی)",
+      "phase": "ROUTINE",
+      "action_type": "suggest_med",
+      "severity": "URGENT",
+      "priority": 200,
+      "semantic_key": "lipid-core-v1.LIPID-R09",
+      "scope": {
+        "population": "adults_ckd_g3_g5_non_dialysis_50plus",
+        "age_min": 50,
+        "care_settings": ["specialty_clinic"],
+        "encounter_types": ["outpatient_chronic_care"]
+      },
+      "required_facts": [
+        { "key": "lab.egfr", "criticality": "CRITICAL", "on_unusable": "NEEDS_DATA" },
+        { "key": "patient.age_years", "criticality": "CRITICAL", "on_unusable": "NEEDS_DATA", "prompt_fa": "سن بیمار (سال)" },
+        { "key": "medication.statin", "criticality": "REQUIRED", "on_unusable": "NOT_APPLICABLE" }
+      ],
+      "eligibility": {
+        "node_id": "LIPID-R09-e1",
+        "fact": "lab.egfr",
+        "op": "exists"
+      },
+      "condition": {
+        "node_id": "LIPID-R09-c1",
+        "all": [
+          { "node_id": "LIPID-R09-c2", "fact": "lab.egfr", "op": "<", "value": 60, "selector": { "aggregation": "latest" } },
+          { "node_id": "LIPID-R09-c3", "fact": "patient.age_years", "op": ">=", "value": 50 },
+          { "node_id": "LIPID-R09-c4", "not": { "node_id": "LIPID-R09-c5", "fact": "medication.statin", "op": "truthy" } }
+        ]
+      },
+      "safety": {
+        "redflag_exclusions": [],
+        "hard_exclusions": [],
+        "on_safety_error": "BLOCK_ROUTINE_OUTPUTS"
+      },
+      "recommendation": {
+        "text_fa": "«CKD (eGFR<60، سن ≥۵۰ سال، غیردیالیزی): استاتین یا ترکیب دوز ثابت استاتین/ezetimibe بدون تیتراسیون بر اساس LDL توصیهٔ KDIGO است — آتورواستاتین 20 یا روزوواستاتین 10 میلی‌گرم در روز؛ گزینهٔ ترکیبی سیمواستاتین 20 + ezetimibe 10. در بیمار دیالیزی شروع جدید توصیه نمی‌شود (ادامهٔ درمان موجود بلامانع). تصمیم با پزشک.»",
+        "suggestion_only": true,
+        "requires_clinician_confirmation": true,
+        "may_create_internal_task": false,
+        "params": {
+          "drug_class": "statin",
+          "mode": "fixed_dose_no_titration",
+          "options_fa": ["atorvastatin 20 mg/day", "rosuvastatin 10 mg/day"],
+          "combo_option_fa": "simvastatin 20 mg + ezetimibe 10 mg"
+        }
+      },
+      "evidence": {
+        "source_title": "KDIGO Clinical Practice Guideline for Lipid Management in Chronic Kidney Disease (2013) + KDIGO 2024 CKD",
+        "issuing_organization": "Kidney Disease: Improving Global Outcomes (KDIGO)",
+        "publication_date": null,
+        "source_version": "2013",
+        "source_locator": "Kidney Int Suppl 2013;3(3):259-305 [5]؛ synopsis: Ann Intern Med 2014;160(3):182, PMID 24323134 [6]؛ summary: Kidney Int 2014;85(6):1303-1309, PMID 24552851 [7] — بزرگسالان ≥50 سال با eGFR<60 و غیردیالیزی → statin یا statin/ezetimibe دوز ثابت؛ دیالیز: شروع جدید توصیه نمی‌شود؛ KDIGO 2024 [15] (PMID 38490803) چارچوب را تأیید می‌کند.",
+        "source_url": "https://pubmed.ncbi.nlm.nih.gov/24323134/",
+        "evidence_certainty": "NOT_GRADED",
+        "recommendation_strength": "NOT_GRADED",
+        "local_validation_status": "NOT_REVIEWED"
+      },
+      "governance": {
+        "status": "DRAFT",
+        "author": "clinical_rule_research/lipid pipeline",
+        "clinical_reviewer": null,
+        "review_due_date": "2026-11-21",
+        "change_note": "تبدیل خودکار از GUIDELINE_DOSSIER_FA (§۲.۳ LIPID_R09). ⚠️ G2: سن ≥50 از طریق 'patient.age_years' NEEDS_DATA. ⚠️ حذف بیماران دیالیزی (G5D) نیازمند flag.ckd_stage_g است که در واژگان این بسته نیست — پیش از فعال‌سازی افزوده شود؛ تا آن زمان متن توصیه هشدار دیالیز را حمل می‌کند."
+      }
+    },
+    {
+      "schema_version": "2.0",
+      "dsl_version": "2.0",
+      "rule_code": "LIPID-R10",
+      "version": "0.1.0-draft",
+      "title": "پایش لیپید 4–12 هفته پس از شروع/تغییر استاتین",
+      "phase": "ROUTINE",
+      "action_type": "schedule_screening",
+      "severity": "WARN",
+      "priority": 200,
+      "semantic_key": "lipid-core-v1.LIPID-R10",
+      "scope": {
+        "population": "adults_on_statin_recent_start_or_change",
+        "care_settings": ["specialty_clinic"],
+        "encounter_types": ["outpatient_chronic_care"]
+      },
+      "required_facts": [
+        { "key": "medication.statin", "criticality": "REQUIRED", "on_unusable": "NOT_APPLICABLE" },
+        { "key": "medication.statin_change_weeks_ago", "criticality": "CRITICAL", "on_unusable": "NEEDS_DATA" }
+      ],
+      "eligibility": {
+        "node_id": "LIPID-R10-e1",
+        "fact": "medication.statin",
+        "op": "truthy"
+      },
+      "condition": {
+        "node_id": "LIPID-R10-c1",
+        "all": [
+          { "node_id": "LIPID-R10-c2", "fact": "medication.statin", "op": "truthy" },
+          { "node_id": "LIPID-R10-c3", "fact": "medication.statin_change_weeks_ago", "op": "<=", "value": 12 }
+        ]
+      },
+      "safety": {
+        "redflag_exclusions": [],
+        "hard_exclusions": [],
+        "on_safety_error": "BLOCK_ROUTINE_OUTPUTS"
+      },
+      "recommendation": {
+        "text_fa": "«استاتین به‌تازگی شروع یا تغییر دوز شده است: پنل لیپید ۴ تا ۱۲ هفته پس از شروع/تغییر تکرار شود (ناشتا بودن الزامی نیست)؛ سپس پایش دوره‌ای طبق وضعیت هدف.»",
+        "suggestion_only": true,
+        "requires_clinician_confirmation": true,
+        "may_create_internal_task": true,
+        "params": {
+          "test": "lipid_panel",
+          "window_weeks": [4, 12],
+          "fasting_required": false,
+          "due_period": "4-12 weeks after statin start or dose change"
+        }
+      },
+      "evidence": {
+        "source_title": "2018 AHA/ACC Cholesterol Guideline + 2019 ESC/EAS Guidelines (retesting interval)",
+        "issuing_organization": "American College of Cardiology Foundation and American Heart Association / European Society of Cardiology",
+        "publication_date": null,
+        "source_version": "2018",
+        "source_locator": "ACC/AHA 2018 [3] doi:10.1161/CIR.0000000000000625 — تکرار پنل لیپید 4-12 هفته پس از شروع/تغییر استاتین، سپس هر 3-12 ماه؛ ESC/EAS 2019 [1] PMID 31504418 — 8±4 هفته + ALT، سپس هر 6-12 ماه.",
+        "source_url": "https://doi.org/10.1161/CIR.0000000000000625",
+        "evidence_certainty": "NOT_GRADED",
+        "recommendation_strength": "NOT_GRADED",
+        "local_validation_status": "NOT_REVIEWED"
+      },
+      "governance": {
+        "status": "DRAFT",
+        "author": "clinical_rule_research/lipid pipeline",
+        "clinical_reviewer": null,
+        "review_due_date": "2026-11-21",
+        "change_note": "تبدیل خودکار از GUIDELINE_DOSSIER_FA (§۳ LIPID_R10). ⚠️ G5: رویداد «تغییر استاتین در ۱۲ هفتهٔ اخیر» در DSL نیست — قرارداد fact کلید 'medication.statin_change_weeks_ago' (NEEDS_DATA)؛ evaluator باید پیش از فعال‌سازی آن را تأمین کند. در نبود آن قاعده fail-closed اجرا نمی‌شود."
+      }
+    },
+    {
+      "schema_version": "2.0",
+      "dsl_version": "2.0",
+      "rule_code": "LIPID-R11",
+      "version": "0.1.0-draft",
+      "title": "عدم رسیدن به هدف روی استاتین (با تأیید پایبندی)",
+      "phase": "ROUTINE",
+      "action_type": "create_followup",
+      "severity": "URGENT",
+      "priority": 200,
+      "semantic_key": "lipid-core-v1.LIPID-R11",
+      "scope": {
+        "population": "adults_on_statin_above_ldl_goal",
+        "care_settings": ["specialty_clinic"],
+        "encounter_types": ["outpatient_chronic_care"]
+      },
+      "required_facts": [
+        { "key": "medication.statin", "criticality": "REQUIRED", "on_unusable": "NOT_APPLICABLE" },
+        { "key": "lab.ldl", "criticality": "CRITICAL", "on_unusable": "NEEDS_DATA" },
+        { "key": "patient.adherence_confirmed", "criticality": "CRITICAL", "on_unusable": "NEEDS_DATA" }
+      ],
+      "eligibility": {
+        "node_id": "LIPID-R11-e1",
+        "fact": "medication.statin",
+        "op": "truthy"
+      },
+      "condition": {
+        "node_id": "LIPID-R11-c1",
+        "all": [
+          { "node_id": "LIPID-R11-c2", "fact": "medication.statin", "op": "truthy" },
+          { "node_id": "LIPID-R11-c3", "fact": "lab.ldl", "op": ">=", "value": 70, "selector": { "aggregation": "latest" } },
+          { "node_id": "LIPID-R11-c4", "fact": "patient.adherence_confirmed", "op": "truthy" }
+        ]
+      },
+      "safety": {
+        "redflag_exclusions": [],
+        "hard_exclusions": [],
+        "on_safety_error": "BLOCK_ROUTINE_OUTPUTS"
+      },
+      "recommendation": {
+        "text_fa": "«LDL بالای هدف با وجود استاتین (با تأیید پایبندی): گام‌ها — تأیید پایبندی، افزایش شدت استاتین تا حداکثر دوز قابل تحمل، و در صورت عدم دستیابی افزودن ezetimibe. تصمیم با پزشک.»",
+        "suggestion_only": true,
+        "requires_clinician_confirmation": true,
+        "may_create_internal_task": true,
+        "params": {
+          "title_fa": "بررسی تیتراسیون استاتین",
+          "steps_fa": ["تأیید پایبندی", "افزایش شدت تا max tolerated", "در صورت عدم دستیابی: افزودن ezetimibe"],
+          "due_in_days": 30
+        }
+      },
+      "evidence": {
+        "source_title": "2019 ESC/EAS Guidelines (adherence before escalation) + ACC/AHA 2018",
+        "issuing_organization": "European Society of Cardiology / American College of Cardiology Foundation and American Heart Association",
+        "publication_date": null,
+        "source_version": "2019",
+        "source_locator": "ESC/EAS 2019 [1] PMID 31504418 — بررسی پایبندی پیش از هر escalation (رایج‌ترین دلیل عدم رسیدن به هدف)؛ مسیر intensification/add-on؛ ACC/AHA 2018 [3] doi:10.1161/CIR.0000000000000625.",
+        "source_url": "https://doi.org/10.1093/eurheartj/ehz455",
+        "evidence_certainty": "NOT_GRADED",
+        "recommendation_strength": "NOT_GRADED",
+        "local_validation_status": "NOT_REVIEWED"
+      },
+      "governance": {
+        "status": "DRAFT",
+        "author": "clinical_rule_research/lipid pipeline",
+        "clinical_reviewer": null,
+        "review_due_date": "2026-11-21",
+        "change_note": "تبدیل خودکار از GUIDELINE_DOSSIER_FA (§۳ LIPID_R11). ⚠️ G6: منبع دادهٔ پایبندی تعریف نشده — قرارداد fact کلید 'patient.adherence_confirmed' (NEEDS_DATA)؛ قرارداد refill/self-report ساختاریافته باید پیش از فعال‌سازی تعیین شود."
+      }
+    },
+    {
+      "schema_version": "2.0",
+      "dsl_version": "2.0",
+      "rule_code": "LIPID-R12",
+      "version": "0.1.0-draft",
+      "title": "پایش سالانه در صورت رسیدن به هدف",
+      "phase": "ROUTINE",
+      "action_type": "create_followup",
+      "severity": "INFO",
+      "priority": 400,
+      "semantic_key": "lipid-core-v1.LIPID-R12",
+      "scope": {
+        "population": "adults_on_statin_at_ldl_goal",
+        "care_settings": ["specialty_clinic"],
+        "encounter_types": ["outpatient_chronic_care"]
+      },
+      "required_facts": [
+        { "key": "medication.statin", "criticality": "REQUIRED", "on_unusable": "NOT_APPLICABLE" },
+        { "key": "lab.ldl", "criticality": "CRITICAL", "on_unusable": "NEEDS_DATA" }
+      ],
+      "eligibility": {
+        "node_id": "LIPID-R12-e1",
+        "fact": "medication.statin",
+        "op": "truthy"
+      },
+      "condition": {
+        "node_id": "LIPID-R12-c1",
+        "all": [
+          { "node_id": "LIPID-R12-c2", "fact": "medication.statin", "op": "truthy" },
+          { "node_id": "LIPID-R12-c3", "fact": "lab.ldl", "op": "<", "value": 70, "selector": { "aggregation": "latest" } }
+        ]
+      },
+      "safety": {
+        "redflag_exclusions": [],
+        "hard_exclusions": [],
+        "on_safety_error": "BLOCK_ROUTINE_OUTPUTS"
+      },
+      "recommendation": {
+        "text_fa": "«LDL روی هدف است: پنل لیپید سالانه کافی است (ACC/AHA: هر ۳–۱۲ ماه؛ ESC: هر ۶–۱۲ ماه). ادامهٔ درمان فعلی با پایش تحمل.»",
+        "suggestion_only": true,
+        "requires_clinician_confirmation": true,
+        "may_create_internal_task": true,
+        "params": {
+          "title_fa": "پنل لیپید سالانه",
+          "interval_months": 12,
+          "due_in_days": 365
+        }
+      },
+      "evidence": {
+        "source_title": "2018 AHA/ACC Cholesterol Guideline + 2019 ESC/EAS Guidelines (monitoring cadence)",
+        "issuing_organization": "American College of Cardiology Foundation and American Heart Association / European Society of Cardiology",
+        "publication_date": null,
+        "source_version": "2018",
+        "source_locator": "ACC/AHA 2018 [3] doi:10.1161/CIR.0000000000000625 — on-target: repeat every 3-12 months؛ ESC/EAS 2019 [1] PMID 31504418 — every 6-12 months.",
+        "source_url": "https://doi.org/10.1161/CIR.0000000000000625",
+        "evidence_certainty": "NOT_GRADED",
+        "recommendation_strength": "NOT_GRADED",
+        "local_validation_status": "NOT_REVIEWED"
+      },
+      "governance": {
+        "status": "DRAFT",
+        "author": "clinical_rule_research/lipid pipeline",
+        "clinical_reviewer": null,
+        "review_due_date": "2026-11-21",
+        "change_note": "تبدیل خودکار از GUIDELINE_DOSSIER_FA (§۳ LIPID_R12). آستانهٔ <70 عیناً از داسیه (تفکیک per-target با R01/R02 در نسخه‌های بعد قابل دقیق‌شدن است)."
+      }
+    },
+    {
+      "schema_version": "2.0",
+      "dsl_version": "2.0",
+      "rule_code": "LIPID-R13",
+      "version": "0.1.0-draft",
+      "title": "افزودن ezetimibe به استاتین حداکثر قابل تحمل",
+      "phase": "ROUTINE",
+      "action_type": "suggest_med",
+      "severity": "URGENT",
+      "priority": 200,
+      "semantic_key": "lipid-core-v1.LIPID-R13",
+      "scope": {
+        "population": "adults_on_max_statin_above_goal",
+        "care_settings": ["specialty_clinic"],
+        "encounter_types": ["outpatient_chronic_care"]
+      },
+      "required_facts": [
+        { "key": "medication.statin", "criticality": "REQUIRED", "on_unusable": "NOT_APPLICABLE" },
+        { "key": "medication.ezetimibe", "criticality": "REQUIRED", "on_unusable": "NOT_APPLICABLE" },
+        { "key": "lab.ldl", "criticality": "CRITICAL", "on_unusable": "NEEDS_DATA" },
+        { "key": "medication.statin_max_tolerated_confirmed", "criticality": "CRITICAL", "on_unusable": "NEEDS_DATA" }
+      ],
+      "eligibility": {
+        "node_id": "LIPID-R13-e1",
+        "fact": "medication.statin",
+        "op": "truthy"
+      },
+      "condition": {
+        "node_id": "LIPID-R13-c1",
+        "all": [
+          { "node_id": "LIPID-R13-c2", "fact": "medication.statin", "op": "truthy" },
+          { "node_id": "LIPID-R13-c3", "not": { "node_id": "LIPID-R13-c4", "fact": "medication.ezetimibe", "op": "truthy" } },
+          { "node_id": "LIPID-R13-c5", "fact": "lab.ldl", "op": ">=", "value": 55, "selector": { "aggregation": "latest" } },
+          { "node_id": "LIPID-R13-c6", "fact": "medication.statin_max_tolerated_confirmed", "op": "truthy" }
+        ]
+      },
+      "safety": {
+        "redflag_exclusions": [],
+        "hard_exclusions": [],
+        "on_safety_error": "BLOCK_ROUTINE_OUTPUTS"
+      },
+      "recommendation": {
+        "text_fa": "«با وجود استاتین در حداکثر دوز قابل تحمل، LDL بالای هدف است: افزودن ezetimibe 10 mg روزانه (Class I در ESC/EAS 2019 برای very-high/high؛ شواهد IMPROVE-IT). تصمیم با پزشک.»",
+        "suggestion_only": true,
+        "requires_clinician_confirmation": true,
+        "may_create_internal_task": false,
+        "params": {
+          "drug": "ezetimibe",
+          "dose_fa": "ezetimibe 10 mg روزانه"
+        }
+      },
+      "evidence": {
+        "source_title": "2019 ESC/EAS Guidelines (Class I add-on) + IMPROVE-IT Trial",
+        "issuing_organization": "European Society of Cardiology / IMPROVE-IT Study Investigators (N Engl J Med)",
+        "publication_date": null,
+        "source_version": "2015",
+        "source_locator": "ESC/EAS 2019 [1] PMID 31504418 — ezetimibe 10 mg وقتی با max tolerated statin به هدف نرسید (Class I very-high/high)؛ IMPROVE-IT [8] N Engl J Med 2015;372(25):2387-2397, PMID 26039521, doi:10.1056/NEJMoa1410489 — کاهش رویدادهای CV (HR 0.936).",
+        "source_url": "https://doi.org/10.1056/NEJMoa1410489",
+        "evidence_certainty": "NOT_GRADED",
+        "recommendation_strength": "NOT_GRADED",
+        "local_validation_status": "NOT_REVIEWED"
+      },
+      "governance": {
+        "status": "DRAFT",
+        "author": "clinical_rule_research/lipid pipeline",
+        "clinical_reviewer": null,
+        "review_due_date": "2026-11-21",
+        "change_note": "تبدیل خودکار از GUIDELINE_DOSSIER_FA (§۴.۱ LIPID_R13). ⚠️ G4: «max tolerated statin» نیازمند دید دوز مولکول است — قرارداد fact کلید 'medication.statin_max_tolerated_confirmed' (NEEDS_DATA)؛ evaluator باید پیش از فعال‌سازی تأمین کند."
+      }
+    },
+    {
+      "schema_version": "2.0",
+      "dsl_version": "2.0",
+      "rule_code": "LIPID-R14",
+      "version": "0.1.0-draft",
+      "title": "bempedoic acid در عدم تحمل مستند استاتین",
+      "phase": "ROUTINE",
+      "action_type": "suggest_med",
+      "severity": "WARN",
+      "priority": 300,
+      "semantic_key": "lipid-core-v1.LIPID-R14",
+      "scope": {
+        "population": "adults_with_documented_statin_intolerance",
+        "care_settings": ["specialty_clinic"],
+        "encounter_types": ["outpatient_chronic_care"]
+      },
+      "required_facts": [
+        { "key": "flag.statin_intolerance_documented", "criticality": "CRITICAL", "on_unusable": "NEEDS_DATA" },
+        { "key": "lab.ldl", "criticality": "CRITICAL", "on_unusable": "NEEDS_DATA" }
+      ],
+      "eligibility": {
+        "node_id": "LIPID-R14-e1",
+        "fact": "flag.statin_intolerance_documented",
+        "op": "truthy"
+      },
+      "condition": {
+        "node_id": "LIPID-R14-c1",
+        "all": [
+          { "node_id": "LIPID-R14-c2", "fact": "flag.statin_intolerance_documented", "op": "truthy" },
+          { "node_id": "LIPID-R14-c3", "fact": "lab.ldl", "op": ">=", "value": 70, "selector": { "aggregation": "latest" } }
+        ]
+      },
+      "safety": {
+        "redflag_exclusions": [],
+        "hard_exclusions": [],
+        "on_safety_error": "BLOCK_ROUTINE_OUTPUTS"
+      },
+      "recommendation": {
+        "text_fa": "«عدم تحمل مستند استاتین با LDL ≥۷۰: bempedoic acid 180 mg روزانه گزینهٔ مبتنی بر شواهد است (CLEAR Outcomes، HR 0.87؛ زیرگروه پیشگیری اولیه نیز سود نشان داد). فراهمی دارو در ایران بررسی شود؛ تصمیم با پزشک.»",
+        "suggestion_only": true,
+        "requires_clinician_confirmation": true,
+        "may_create_internal_task": false,
+        "params": {
+          "drug": "bempedoic acid",
+          "dose_fa": "bempedoic acid 180 mg روزانه",
+          "decision_owner": "physician",
+          "availability_check_fa": "فراهمی دارو در ایران بررسی شود"
+        }
+      },
+      "evidence": {
+        "source_title": "CLEAR Outcomes (N Engl J Med) + CLEAR primary-prevention subgroup (JAMA)",
+        "issuing_organization": "CLEAR Outcomes Investigators (N Engl J Med) / Nissen et al. (JAMA)",
+        "publication_date": null,
+        "source_version": "2023",
+        "source_locator": "CLEAR Outcomes [10] N Engl J Med 2023;388(15):1353-1364, PMID 36876740, doi:10.1056/NEJMoa2215024 — bempedoic acid 180 mg/day در statin-intolerant، MACE ↓ (HR 0.87)؛ زیرگروه پیشگیری اولیه [11] JAMA 2023;330(2):131-140, PMID 37354546.",
+        "source_url": "https://doi.org/10.1056/NEJMoa2215024",
+        "evidence_certainty": "NOT_GRADED",
+        "recommendation_strength": "NOT_GRADED",
+        "local_validation_status": "NOT_REVIEWED"
+      },
+      "governance": {
+        "status": "DRAFT",
+        "author": "clinical_rule_research/lipid pipeline",
+        "clinical_reviewer": null,
+        "review_due_date": "2026-11-21",
+        "change_note": "تبدیل خودکار از GUIDELINE_DOSSIER_FA (§۴.۲ LIPID_R14). ⚠️ G13: فلگ 'statin_intolerance_documented' جدید است و باید additive به کاتالوگ فلگ‌ها اضافه شود (اینجا به‌صورت fact کلید NEEDS_DATA قرارداد شده). ⚠️ G7: فراهمی bempedoic acid در فرمولاری محلی نامطمئن است."
+      }
+    },
+    {
+      "schema_version": "2.0",
+      "dsl_version": "2.0",
+      "rule_code": "LIPID-R15",
+      "version": "0.1.0-draft",
+      "title": "تری‌گلیسرید ≥500 — فنوفیبرات و ارجاع فوری",
+      "phase": "PREFLIGHT",
+      "action_type": "suggest_med",
+      "severity": "CRITICAL",
+      "priority": 100,
+      "semantic_key": "lipid-core-v1.LIPID-R15",
+      "scope": {
+        "population": "adults_with_severe_hypertriglyceridemia",
+        "care_settings": ["specialty_clinic"],
+        "encounter_types": ["outpatient_chronic_care"]
+      },
+      "required_facts": [
+        { "key": "lab.triglyceride", "criticality": "CRITICAL", "on_unusable": "NEEDS_DATA" }
+      ],
+      "eligibility": {
+        "node_id": "LIPID-R15-e1",
+        "fact": "lab.triglyceride",
+        "op": "exists"
+      },
+      "condition": {
+        "node_id": "LIPID-R15-c1",
+        "fact": "lab.triglyceride",
+        "op": ">=",
+        "value": 500,
+        "selector": { "aggregation": "latest" }
+      },
+      "safety": {
+        "redflag_exclusions": [],
+        "hard_exclusions": [],
+        "on_safety_error": "BLOCK_ROUTINE_OUTPUTS"
+      },
+      "recommendation": {
+        "text_fa": "«تری‌گلیسرید ≥۵۰۰ mg/dL: خطر پانکراتیت حاد. هدف اولیه کاهش سریع TG به زیر ۵۰۰ با فیبرات و اصلاح lifestyle است نه استاتین به‌تنهایی — فنوفیبرات 145–160 میلی‌گرم در روز (gemfibrozil با استاتین تداخل میوپاتی دارد و همزمان ممنوع است). علل ثانویه بررسی شود: دیابت کنترل‌نشده، الکل، هیپوتیروئیدی، داروها. ارجاع فوری به پزشک.»",
+        "suggestion_only": true,
+        "requires_clinician_confirmation": true,
+        "may_create_internal_task": false,
+        "params": {
+          "drug": "fenofibrate",
+          "dose_fa": "fenofibrate 145–160 mg روزانه",
+          "goal_fa": "کاهش سریع TG به زیر 500 برای پیشگیری از پانکراتیت",
+          "escalate_fa": "ارجاع فوری به پزشک؛ بررسی علل ثانویه (دیابت کنترل‌نشده، الکل، هیپوتیروئیدی، داروها)"
+        }
+      },
+      "evidence": {
+        "source_title": "AACE 2025 Dyslipidemia Pharmacologic Management + ACC/AHA 2018 (severe hypertriglyceridemia)",
+        "issuing_organization": "American Association of Clinical Endocrinology / American College of Cardiology Foundation and American Heart Association",
+        "publication_date": null,
+        "source_version": "2025",
+        "source_locator": "AACE 2025 [4] Article ID S1530-891X(24)00691-8 — TG≥500: هدف اولیه TG<500 با فیبرات/lifestyle؛ ACC/AHA 2018 [3] doi:10.1161/CIR.0000000000000625 — fenofibrate ترجیحی، gemfibrozil+statin پرهیز؛ FDA 2011 [13] تداخلات.",
+        "source_url": "https://www.endocrinepractice.org/article/S1530-891X(24)00691-8/fulltext",
+        "evidence_certainty": "NOT_GRADED",
+        "recommendation_strength": "NOT_GRADED",
+        "local_validation_status": "NOT_REVIEWED"
+      },
+      "governance": {
+        "status": "DRAFT",
+        "author": "clinical_rule_research/lipid pipeline",
+        "clinical_reviewer": null,
+        "review_due_date": "2026-11-21",
+        "change_note": "تبدیل خودکار از GUIDELINE_DOSSIER_FA (§۴.۳ LIPID_R15). phase redflag داسیه → PREFLIGHT. ⚠️ همپوشانی با SF-LAB-02 بستهٔ redflags-cross-v1 — تصمیم dedupe با مالک."
+      }
+    },
+    {
+      "schema_version": "2.0",
+      "dsl_version": "2.0",
+      "rule_code": "LIPID-R16",
+      "version": "0.1.0-draft",
+      "title": "icosapent ethyl اختیاری برای ASCVD با TG 200–499",
+      "phase": "ROUTINE",
+      "action_type": "suggest_med",
+      "severity": "WARN",
+      "priority": 300,
+      "semantic_key": "lipid-core-v1.LIPID-R16",
+      "scope": {
+        "population": "adults_with_ascvd_and_moderate_htg",
+        "care_settings": ["specialty_clinic"],
+        "encounter_types": ["outpatient_chronic_care"]
+      },
+      "required_facts": [
+        { "key": "flag.ascvd", "criticality": "REQUIRED", "on_unusable": "NOT_APPLICABLE" },
+        { "key": "lab.triglyceride", "criticality": "CRITICAL", "on_unusable": "NEEDS_DATA" },
+        { "key": "medication.statin", "criticality": "REQUIRED", "on_unusable": "NOT_APPLICABLE" }
+      ],
+      "eligibility": {
+        "node_id": "LIPID-R16-e1",
+        "fact": "flag.ascvd",
+        "op": "truthy"
+      },
+      "condition": {
+        "node_id": "LIPID-R16-c1",
+        "all": [
+          { "node_id": "LIPID-R16-c2", "fact": "flag.ascvd", "op": "truthy" },
+          { "node_id": "LIPID-R16-c3", "fact": "lab.triglyceride", "op": "between", "value": [200, 499], "selector": { "aggregation": "latest" } },
+          { "node_id": "LIPID-R16-c4", "fact": "medication.statin", "op": "truthy" }
+        ]
+      },
+      "safety": {
+        "redflag_exclusions": [],
+        "hard_exclusions": [],
+        "on_safety_error": "BLOCK_ROUTINE_OUTPUTS"
+      },
+      "recommendation": {
+        "text_fa": "«ASCVD با تری‌گلیسرید ۲۰۰–۴۹۹ تحت استاتین: icosapent ethyl 2 g دو بار در روز (مجموع 4 g/day) به‌صورت اختیاری قابل طرح است (REDUCE-IT: کاهش ۲۵٪ رویدادهای ایسکمیک). فقط فراوردهٔ EPA خالص؛ ترکیبات عمومی omega-3 جایگزین نیستند. تصمیم و بررسی فراهمی با پزشک.»",
+        "suggestion_only": true,
+        "requires_clinician_confirmation": true,
+        "may_create_internal_task": false,
+        "params": {
+          "drug": "icosapent ethyl",
+          "dose_fa": "icosapent ethyl 2 g BID (مجموع 4 g/day)",
+          "optional": true,
+          "decision_owner": "physician",
+          "evidence_fa": "REDUCE-IT HR 0.75",
+          "note_fa": "فقط EPA خالص؛ ترکیبات عمومی omega-3 جایگزین نیستند"
+        }
+      },
+      "evidence": {
+        "source_title": "REDUCE-IT (N Engl J Med) + ACC/AHA 2018 (pure EPA only)",
+        "issuing_organization": "REDUCE-IT Collaborators (N Engl J Med) / American College of Cardiology Foundation and American Heart Association",
+        "publication_date": null,
+        "source_version": "2019",
+        "source_locator": "REDUCE-IT [9] N Engl J Med 2019;380(1):11-22, PMID 30415628, doi:10.1056/NEJMoa1812792 — icosapent ethyl 2 g BID در ASCVD (یا DM با RF) با TG 200-499 روی استاتین → HR 0.75؛ ACC/AHA 2018 [3] — فقط EPA خالص.",
+        "source_url": "https://doi.org/10.1056/NEJMoa1812792",
+        "evidence_certainty": "NOT_GRADED",
+        "recommendation_strength": "NOT_GRADED",
+        "local_validation_status": "NOT_REVIEWED"
+      },
+      "governance": {
+        "status": "DRAFT",
+        "author": "clinical_rule_research/lipid pipeline",
+        "clinical_reviewer": null,
+        "review_due_date": "2026-11-21",
+        "change_note": "تبدیل خودکار از GUIDELINE_DOSSIER_FA (§۴.۴ LIPID_R16). optional=true و decision_owner=physician عیناً از داسیه. PCSK9i مرحلهٔ سوم خارج از دامنهٔ این بسته است (G8)."
+      }
+    },
+    {
+      "schema_version": "2.0",
+      "dsl_version": "2.0",
+      "rule_code": "LIPID-R17",
+      "version": "0.1.0-draft",
+      "title": "ارزیابی استاتین در T2D سنین 20–39 با عامل خطر",
+      "phase": "ROUTINE",
+      "action_type": "create_followup",
+      "severity": "WARN",
+      "priority": 300,
+      "semantic_key": "lipid-core-v1.LIPID-R17",
+      "scope": {
+        "population": "adults_with_t2d_20_39_with_risk_enhancers",
+        "age_min": 20,
+        "age_max": 39,
+        "care_settings": ["specialty_clinic"],
+        "encounter_types": ["outpatient_chronic_care"],
+        "condition_codes": ["diabetes"]
+      },
+      "required_facts": [
+        { "key": "condition.diabetes", "criticality": "REQUIRED", "on_unusable": "NOT_APPLICABLE" },
+        { "key": "patient.age_years", "criticality": "CRITICAL", "on_unusable": "NEEDS_DATA", "prompt_fa": "سن بیمار (سال)" },
+        { "key": "patient.diabetes_risk_enhancer_present", "criticality": "CRITICAL", "on_unusable": "NEEDS_DATA" },
+        { "key": "medication.statin", "criticality": "REQUIRED", "on_unusable": "NOT_APPLICABLE" }
+      ],
+      "eligibility": {
+        "node_id": "LIPID-R17-e1",
+        "fact": "condition.diabetes",
+        "op": "truthy"
+      },
+      "condition": {
+        "node_id": "LIPID-R17-c1",
+        "all": [
+          { "node_id": "LIPID-R17-c2", "fact": "condition.diabetes", "op": "truthy" },
+          { "node_id": "LIPID-R17-c3", "fact": "patient.age_years", "op": "between", "value": [20, 39] },
+          { "node_id": "LIPID-R17-c4", "fact": "patient.diabetes_risk_enhancer_present", "op": "truthy" },
+          { "node_id": "LIPID-R17-c5", "not": { "node_id": "LIPID-R17-c6", "fact": "medication.statin", "op": "truthy" } }
+        ]
+      },
+      "safety": {
+        "redflag_exclusions": [],
+        "hard_exclusions": [],
+        "on_safety_error": "BLOCK_ROUTINE_OUTPUTS"
+      },
+      "recommendation": {
+        "text_fa": "«دیابت در سنین ۲۰–۳۹ با عامل خطر افزاینده (مدت دیابت ≥۱۰ سال، ACR ≥30، رتینوپاتی، نوروپاتی و ...) و بدون استاتین: ارزیابی شروع استاتین توسط پزشک توصیه می‌شود (ADA SoC 2025 — reasonable).»",
+        "suggestion_only": true,
+        "requires_clinician_confirmation": true,
+        "may_create_internal_task": true,
+        "params": {
+          "title_fa": "ارزیابی شروع استاتین در دیابت جوان با عامل خطر",
+          "owner": "physician"
+        }
+      },
+      "evidence": {
+        "source_title": "ADA Standards of Care in Diabetes—2025, §10 Cardiovascular Disease and Risk Management",
+        "issuing_organization": "American Diabetes Association",
+        "publication_date": null,
+        "source_version": "2025",
+        "source_locator": "Diabetes Care 2025;48(Suppl 1), PMID 39651989 [12] — سن 20-39 با عوامل خطر افزاینده → استاتین reasonable؛ فهرست عوامل خطر: مدت طولانی دیابت (T2D ≥10 سال)، آلبومینوری ACR ≥30، eGFR<60، رتینوپاتی، نوروپاتی، ABI<0.9.",
+        "source_url": "https://pubmed.ncbi.nlm.nih.gov/39651989/",
+        "evidence_certainty": "NOT_GRADED",
+        "recommendation_strength": "NOT_GRADED",
+        "local_validation_status": "NOT_REVIEWED"
+      },
+      "governance": {
+        "status": "DRAFT",
+        "author": "clinical_rule_research/lipid pipeline",
+        "clinical_reviewer": null,
+        "review_due_date": "2026-11-21",
+        "change_note": "تبدیل خودکار از GUIDELINE_DOSSIER_FA (§۵ LIPID_R17). ⚠️ G2: سن 20-39 از طریق 'patient.age_years' NEEDS_DATA. ⚠️ G9: عوامل خطر افزایندهٔ ADA کلید flag ندارند — قرارداد fact تجمیعی 'patient.diabetes_risk_enhancer_present' (NEEDS_DATA) که evaluator باید از duration/ACR/exam استخراج کند."
+      }
+    },
+    {
+      "schema_version": "2.0",
+      "dsl_version": "2.0",
+      "rule_code": "LIPID-R18",
+      "version": "0.1.0-draft",
+      "title": "ارتقای شدت استاتین در دیابت با CKD/آلبومینوری",
+      "phase": "ROUTINE",
+      "action_type": "suggest_med",
+      "severity": "URGENT",
+      "priority": 200,
+      "semantic_key": "lipid-core-v1.LIPID-R18",
+      "scope": {
+        "population": "adults_with_diabetes_and_ckd_or_albuminuria",
+        "care_settings": ["specialty_clinic"],
+        "encounter_types": ["outpatient_chronic_care"],
+        "condition_codes": ["diabetes"]
+      },
+      "required_facts": [
+        { "key": "condition.diabetes", "criticality": "REQUIRED", "on_unusable": "NOT_APPLICABLE" },
+        { "key": "lab.egfr", "criticality": "CRITICAL", "on_unusable": "CONTINUE_WITH_WARNING" },
+        { "key": "patient.albuminuria_a2_a3_present", "criticality": "OPTIONAL", "on_unusable": "CONTINUE_WITH_WARNING" },
+        { "key": "medication.statin", "criticality": "REQUIRED", "on_unusable": "NOT_APPLICABLE" },
+        { "key": "medication.current_intensity_below_high", "criticality": "CRITICAL", "on_unusable": "NEEDS_DATA" }
+      ],
+      "eligibility": {
+        "node_id": "LIPID-R18-e1",
+        "fact": "condition.diabetes",
+        "op": "truthy"
+      },
+      "condition": {
+        "node_id": "LIPID-R18-c1",
+        "all": [
+          { "node_id": "LIPID-R18-c2", "fact": "condition.diabetes", "op": "truthy" },
+          { "node_id": "LIPID-R18-c3", "any": [
+            { "node_id": "LIPID-R18-c4", "fact": "lab.egfr", "op": "<", "value": 60, "selector": { "aggregation": "latest" } },
+            { "node_id": "LIPID-R18-c5", "fact": "patient.albuminuria_a2_a3_present", "op": "truthy" }
+          ]},
+          { "node_id": "LIPID-R18-c6", "fact": "medication.statin", "op": "truthy" },
+          { "node_id": "LIPID-R18-c7", "fact": "medication.current_intensity_below_high", "op": "truthy" }
+        ]
+      },
+      "safety": {
+        "redflag_exclusions": [],
+        "hard_exclusions": [],
+        "on_safety_error": "BLOCK_ROUTINE_OUTPUTS"
+      },
+      "recommendation": {
+        "text_fa": "«دیابت با CKD (eGFR<60) یا آلبومینوری A2/A3 که روی استاتین با شدت زیر پرشدت است: ارتقا به استاتین پرشدت مطرح است — آتورواستاتین 40–80 یا روزوواستاتین 20–40 میلی‌گرم در روز. تصمیم با پزشک.»",
+        "suggestion_only": true,
+        "requires_clinician_confirmation": true,
+        "may_create_internal_task": false,
+        "params": {
+          "intensity_upgrade_to": "high-intensity",
+          "options_fa": ["atorvastatin 40–80 mg/day", "rosuvastatin 20–40 mg/day"]
+        }
+      },
+      "evidence": {
+        "source_title": "ADA Standards of Care in Diabetes—2025 (risk enhancers → high-intensity) + KDIGO 2013",
+        "issuing_organization": "American Diabetes Association / Kidney Disease: Improving Global Outcomes (KDIGO)",
+        "publication_date": null,
+        "source_version": "2025",
+        "source_locator": "ADA SoC 2025 [12] PMID 39651989 — عوامل خطر افزاینده (آلبومینوری ACR ≥30، eGFR<60) → ارتقا به پرشدت؛ KDIGO 2013 [5][6] (PMID 24323134) — دیابتی ≥50 با eGFR<60 → استاتین.",
+        "source_url": "https://pubmed.ncbi.nlm.nih.gov/39651989/",
+        "evidence_certainty": "NOT_GRADED",
+        "recommendation_strength": "NOT_GRADED",
+        "local_validation_status": "NOT_REVIEWED"
+      },
+      "governance": {
+        "status": "DRAFT",
+        "author": "clinical_rule_research/lipid pipeline",
+        "clinical_reviewer": null,
+        "review_due_date": "2026-11-21",
+        "change_note": "تبدیل خودکار از GUIDELINE_DOSSIER_FA (§۵ LIPID_R18). ⚠️ G9: flag.ckd_stage_a در واژگان این بسته نیست — جایگزین: قرارداد fact مشتق 'patient.albuminuria_a2_a3_present'. ⚠️ G4: «شدت فعلی زیر پرشدت» از دوز قابل استخراج نیست — قرارداد fact 'medication.current_intensity_below_high' (NEEDS_DATA)."
+      }
+    },
+    {
+      "schema_version": "2.0",
+      "dsl_version": "2.0",
+      "rule_code": "LIPID-R19",
+      "version": "0.1.0-draft",
+      "title": "ALT پایه پیش از شروع استاتین",
+      "phase": "SAFETY",
+      "action_type": "schedule_screening",
+      "severity": "WARN",
+      "priority": 200,
+      "semantic_key": "lipid-core-v1.LIPID-R19",
+      "scope": {
+        "population": "adults_before_statin_initiation",
+        "care_settings": ["specialty_clinic"],
+        "encounter_types": ["outpatient_chronic_care"]
+      },
+      "required_facts": [
+        { "key": "medication.statin", "criticality": "REQUIRED", "on_unusable": "NOT_APPLICABLE" },
+        { "key": "medication.statin_start_planned", "criticality": "CRITICAL", "on_unusable": "NEEDS_DATA" }
+      ],
+      "eligibility": {
+        "node_id": "LIPID-R19-e1",
+        "not": { "node_id": "LIPID-R19-e2", "fact": "medication.statin", "op": "truthy" }
+      },
+      "condition": {
+        "node_id": "LIPID-R19-c1",
+        "all": [
+          { "node_id": "LIPID-R19-c2", "not": { "node_id": "LIPID-R19-c3", "fact": "medication.statin", "op": "truthy" } },
+          { "node_id": "LIPID-R19-c4", "fact": "medication.statin_start_planned", "op": "truthy" }
+        ]
+      },
+      "safety": {
+        "redflag_exclusions": [],
+        "hard_exclusions": [],
+        "on_safety_error": "BLOCK_ROUTINE_OUTPUTS"
+      },
+      "recommendation": {
+        "text_fa": "«پیش از شروع استاتین، ALT پایه ثبت شود. پایش روتین ALT بعدی لازم نیست — فقط در صورت علائم (خستگی، بی‌اشتهایی، تهوع، زردی، ادرار تیره). شروع دارو پس از ثبت ALT پایه انجام شود.»",
+        "suggestion_only": true,
+        "requires_clinician_confirmation": true,
+        "may_create_internal_task": true,
+        "params": {
+          "test": "alt_baseline",
+          "gate_fa": "شروع استاتین پس از ثبت ALT پایه"
+        }
+      },
+      "evidence": {
+        "source_title": "2018 AHA/ACC/Multisociety Guideline on the Management of Blood Cholesterol",
+        "issuing_organization": "American College of Cardiology Foundation and American Heart Association",
+        "publication_date": null,
+        "source_version": "2018",
+        "source_locator": "ACC/AHA 2018 [3] Circulation 2019;139(25):e1082-e1143, doi:10.1161/CIR.0000000000000625 — ALT پایه پیش از شروع؛ پایش روتین کبدی لازم نیست، فقط در صورت علائم.",
+        "source_url": "https://doi.org/10.1161/CIR.0000000000000625",
+        "evidence_certainty": "NOT_GRADED",
+        "recommendation_strength": "NOT_GRADED",
+        "local_validation_status": "NOT_REVIEWED"
+      },
+      "governance": {
+        "status": "DRAFT",
+        "author": "clinical_rule_research/lipid pipeline",
+        "clinical_reviewer": null,
+        "review_due_date": "2026-11-21",
+        "change_note": "تبدیل خودکار از GUIDELINE_DOSSIER_FA (§۶ LIPID_R19). ⚠️ G5: رویداد «شروع استاتین برنامه‌ریزی/پیشنهاد شده» در DSL نیست — قرارداد fact کلید 'medication.statin_start_planned' (NEEDS_DATA) که از صف پیشنهادهای تأییدشده قابل مشتق‌سازی است."
+      }
+    },
+    {
+      "schema_version": "2.0",
+      "dsl_version": "2.0",
+      "rule_code": "LIPID-R20",
+      "version": "0.1.0-draft",
+      "title": "علائم عضلانی روی استاتین → CK",
+      "phase": "SAFETY",
+      "action_type": "schedule_screening",
+      "severity": "URGENT",
+      "priority": 100,
+      "semantic_key": "lipid-core-v1.LIPID-R20",
+      "scope": {
+        "population": "adults_on_statin_with_muscle_symptoms",
+        "care_settings": ["specialty_clinic"],
+        "encounter_types": ["outpatient_chronic_care"]
+      },
+      "required_facts": [
+        { "key": "medication.statin", "criticality": "REQUIRED", "on_unusable": "NOT_APPLICABLE" },
+        { "key": "symptom.muscle_pain_weakness_dark_urine", "criticality": "CRITICAL", "on_unusable": "NEEDS_DATA" }
+      ],
+      "eligibility": {
+        "node_id": "LIPID-R20-e1",
+        "fact": "medication.statin",
+        "op": "truthy"
+      },
+      "condition": {
+        "node_id": "LIPID-R20-c1",
+        "all": [
+          { "node_id": "LIPID-R20-c2", "fact": "medication.statin", "op": "truthy" },
+          { "node_id": "LIPID-R20-c3", "fact": "symptom.muscle_pain_weakness_dark_urine", "op": "truthy" }
+        ]
+      },
+      "safety": {
+        "redflag_exclusions": [],
+        "hard_exclusions": [],
+        "on_safety_error": "BLOCK_ROUTINE_OUTPUTS"
+      },
+      "recommendation": {
+        "text_fa": "«علائم عضلانی (میالژی، ضعف، ادرار تیره) در بیمار روی استاتین: CK درخواست شود. در صورت CK بیش از ۱۰ برابر ULN یا علائم شدید، قطع موقت استاتین و ارجاع فوری. پایش روتین CK بی‌فایده است و لازم نیست.»",
+        "suggestion_only": true,
+        "requires_clinician_confirmation": true,
+        "may_create_internal_task": true,
+        "params": {
+          "test": "ck",
+          "action_fa": "در صورت CK>10x ULN یا علائم شدید: قطع موقت استاتین و ارجاع فوری"
+        }
+      },
+      "evidence": {
+        "source_title": "2018 AHA/ACC Cholesterol Guideline + 2019 ESC/EAS Guidelines (muscle symptoms / CK)",
+        "issuing_organization": "American College of Cardiology Foundation and American Heart Association / European Society of Cardiology",
+        "publication_date": null,
+        "source_version": "2018",
+        "source_locator": "ACC/AHA 2018 [3] doi:10.1161/CIR.0000000000000625 — CK فقط در صورت علائم عضلانی؛ پایش روتین CK بی‌فایده؛ ESC/EAS 2019 [1] PMID 31504418 همان رویکرد.",
+        "source_url": "https://doi.org/10.1161/CIR.0000000000000625",
+        "evidence_certainty": "NOT_GRADED",
+        "recommendation_strength": "NOT_GRADED",
+        "local_validation_status": "NOT_REVIEWED"
+      },
+      "governance": {
+        "status": "DRAFT",
+        "author": "clinical_rule_research/lipid pipeline",
+        "clinical_reviewer": null,
+        "review_due_date": "2026-11-21",
+        "change_note": "تبدیل خودکار از GUIDELINE_DOSSIER_FA (§۶ LIPID_R20). ⚠️ G10: ورودی علائم بیمار در DSL نیست — قرارداد fact کلید 'symptom.muscle_pain_weakness_dark_urine' (NEEDS_DATA) که باید به followup responses / symptom log متصل شود."
+      }
+    },
+    {
+      "schema_version": "2.0",
+      "dsl_version": "2.0",
+      "rule_code": "LIPID-R21",
+      "version": "0.1.0-draft",
+      "title": "سقف سیمواستاتین با آملودیپین (≤20 mg)",
+      "phase": "SAFETY",
+      "action_type": "create_followup",
+      "severity": "CRITICAL",
+      "priority": 100,
+      "semantic_key": "lipid-core-v1.LIPID-R21",
+      "scope": {
+        "population": "adults_on_simvastatin_with_amlodipine",
+        "care_settings": ["specialty_clinic"],
+        "encounter_types": ["outpatient_chronic_care"]
+      },
+      "required_facts": [
+        { "key": "medication.statin", "criticality": "REQUIRED", "on_unusable": "NOT_APPLICABLE" },
+        { "key": "medication.amlodipine", "criticality": "CRITICAL", "on_unusable": "NEEDS_DATA" },
+        { "key": "medication.simvastatin_dose_mg", "criticality": "CRITICAL", "on_unusable": "NEEDS_DATA" }
+      ],
+      "eligibility": {
+        "node_id": "LIPID-R21-e1",
+        "fact": "medication.statin",
+        "op": "truthy"
+      },
+      "condition": {
+        "node_id": "LIPID-R21-c1",
+        "all": [
+          { "node_id": "LIPID-R21-c2", "fact": "medication.statin", "op": "truthy" },
+          { "node_id": "LIPID-R21-c3", "fact": "medication.amlodipine", "op": "truthy" },
+          { "node_id": "LIPID-R21-c4", "fact": "medication.simvastatin_dose_mg", "op": ">", "value": 20 }
+        ]
+      },
+      "safety": {
+        "redflag_exclusions": [],
+        "hard_exclusions": [],
+        "on_safety_error": "BLOCK_ROUTINE_OUTPUTS"
+      },
+      "recommendation": {
+        "text_fa": "«تداخل سیمواستاتین با آملودیپین: سقف دوز سیمواستاتین ۲۰ میلی‌گرم در روز است (FDA 2011). کاهش دوز سیمواستاتین به ≤20 mg یا تعویض به آتورواستاتین/روزوواستاتین — اصلاح فوری توسط پزشک. سایر سقف‌ها: دیلتیازم/وراپامیل/دروندارون 10 mg، آمیودارون 20 mg.»",
+        "suggestion_only": true,
+        "requires_clinician_confirmation": true,
+        "may_create_internal_task": true,
+        "params": {
+          "title_fa": "تداخل سیمواستاتین/آملودیپین",
+          "fix_fa": "کاهش سیمواستاتین به ≤20 mg یا تعویض به آتورواستاتین/روزوواستاتین",
+          "owner": "physician"
+        }
+      },
+      "evidence": {
+        "source_title": "FDA Drug Safety Communication (June 2011): Simvastatin dose limits with interacting drugs",
+        "issuing_organization": "U.S. Food and Drug Administration",
+        "publication_date": null,
+        "source_version": "2011",
+        "source_locator": "FDA Drug Safety Communication June 2011 [13] — با آملودیپین حداکثر سیمواستاتین 20 mg/day؛ دیلتیازم/وراپامیل/دروندارون 10 mg؛ آمیودارون 20 mg؛ ACC/AHA 2018 [3] — پرهیز gemfibrozil همزمان با استاتین.",
+        "source_url": "https://www.fda.gov/drugs/drug-safety-and-availability",
+        "evidence_certainty": "NOT_GRADED",
+        "recommendation_strength": "NOT_GRADED",
+        "local_validation_status": "NOT_REVIEWED",
+        "local_adaptation_note": "نشانی دقیق صفحهٔ FDA 2011 سیمواستاتین باید در بازبینی تکمیل شود؛ URL فعلی بخش عمومی Drug Safety است."
+      },
+      "governance": {
+        "status": "DRAFT",
+        "author": "clinical_rule_research/lipid pipeline",
+        "clinical_reviewer": null,
+        "review_due_date": "2026-11-21",
+        "change_note": "تبدیل خودکار از GUIDELINE_DOSSIER_FA (§۶ LIPID_R21). ⚠️ G11: DSL فقط med.class دارد — قرارداد fact مولکول‌محور 'medication.amlodipine' (NEEDS_DATA؛ medication list باید مولکول‌محور تأیید شود). ⚠️ G4: دوز مولکول — قرارداد fact عددی 'medication.simvastatin_dose_mg' (NEEDS_DATA). بدون این دو، قاعده fail-closed اجرا نمی‌شود."
+      }
+    },
+    {
+      "schema_version": "2.0",
+      "dsl_version": "2.0",
+      "rule_code": "LIPID-R22",
+      "version": "0.1.0-draft",
+      "title": "مسیر گام‌به‌گام عدم تحمل استاتین",
+      "phase": "SAFETY",
+      "action_type": "create_followup",
+      "severity": "WARN",
+      "priority": 200,
+      "semantic_key": "lipid-core-v1.LIPID-R22",
+      "scope": {
+        "population": "adults_with_statin_intolerance",
+        "care_settings": ["specialty_clinic"],
+        "encounter_types": ["outpatient_chronic_care"]
+      },
+      "required_facts": [
+        { "key": "flag.statin_intolerance_documented", "criticality": "CRITICAL", "on_unusable": "NEEDS_DATA" }
+      ],
+      "eligibility": {
+        "node_id": "LIPID-R22-e1",
+        "fact": "flag.statin_intolerance_documented",
+        "op": "truthy"
+      },
+      "condition": {
+        "node_id": "LIPID-R22-c1",
+        "fact": "flag.statin_intolerance_documented",
+        "op": "truthy"
+      },
+      "safety": {
+        "redflag_exclusions": [],
+        "hard_exclusions": [],
+        "on_safety_error": "BLOCK_ROUTINE_OUTPUTS"
+      },
+      "recommendation": {
+        "text_fa": "«مسیر گام‌به‌گام عدم تحمل استاتین: ۱) تأیید واقعی علائم و کنار گذاشتن علل ثانویه (هیپوتیروئیدی/TSH، کوفتگی، درد مفصلی) ± CK؛ ۲) کاهش دوز همان استاتین و rechallenge؛ ۳) دوزگذاری یک‌روزدرمیان با روزوواستاتین 5–10 یا آتورواستاتین؛ ۴) تعویض مولکول (پراواستاتین/روزوواستاتین/فلوواستاتین)؛ ۵) افزودن درمان غیراستاتینی (ezetimibe ± bempedoic acid). همهٔ گام‌ها با تصمیم پزشک.»",
+        "suggestion_only": true,
+        "requires_clinician_confirmation": true,
+        "may_create_internal_task": true,
+        "params": {
+          "pathway_fa": [
+            "تأیید علائم و علل ثانویه (TSH، کوفتگی)",
+            "کاهش دوز + rechallenge",
+            "دوز یک‌روزدرمیان روزوواستاتین 5-10",
+            "تعویض مولکول",
+            "افزودن ezetimibe ± bempedoic acid"
+          ],
+          "owner": "physician"
+        }
+      },
+      "evidence": {
+        "source_title": "Statin intolerance pathway — ESC/EAS 2019 + ACC/AHA 2018 + AACE 2025 + CLEAR Outcomes",
+        "issuing_organization": "European Society of Cardiology / American College of Cardiology Foundation and American Heart Association / American Association of Clinical Endocrinology",
+        "publication_date": null,
+        "source_version": "2019",
+        "source_locator": "ESC/EAS 2019 [1] PMID 31504418 §statin intolerance؛ ACC/AHA 2018 [3] doi:10.1161/CIR.0000000000000625؛ AACE 2025 [4] S1530-891X(24)00691-8؛ CLEAR Outcomes [10] PMID 36876740 — bempedoic acid در گام غیراستاتینی.",
+        "source_url": "https://doi.org/10.1093/eurheartj/ehz455",
+        "evidence_certainty": "NOT_GRADED",
+        "recommendation_strength": "NOT_GRADED",
+        "local_validation_status": "NOT_REVIEWED"
+      },
+      "governance": {
+        "status": "DRAFT",
+        "author": "clinical_rule_research/lipid pipeline",
+        "clinical_reviewer": null,
+        "review_due_date": "2026-11-21",
+        "change_note": "تبدیل خودکار از GUIDELINE_DOSSIER_FA (§۶ LIPID_R22). ⚠️ G13: فلگ 'statin_intolerance_documented' جدید است — fact کلید NEEDS_DATA؛ additive migration + governance پیش از فعال‌سازی لازم است."
+      }
+    },
+    {
+      "schema_version": "2.0",
+      "dsl_version": "2.0",
+      "rule_code": "LIPID-R23",
+      "version": "0.1.0-draft",
+      "title": "پنل لیپید اولیه هنگام تشخیص جدید",
+      "phase": "ROUTINE",
+      "action_type": "schedule_screening",
+      "severity": "WARN",
+      "priority": 200,
+      "semantic_key": "lipid-core-v1.LIPID-R23",
+      "scope": {
+        "population": "adults_with_new_diagnosis_or_ascvd",
+        "care_settings": ["specialty_clinic"],
+        "encounter_types": ["outpatient_chronic_care"]
+      },
+      "required_facts": [
+        { "key": "flag.ascvd", "criticality": "REQUIRED", "on_unusable": "NOT_APPLICABLE" },
+        { "key": "patient.newly_diagnosed_dm_or_htn", "criticality": "OPTIONAL", "on_unusable": "CONTINUE_WITH_WARNING" }
+      ],
+      "eligibility": {
+        "node_id": "LIPID-R23-e1",
+        "any": [
+          { "node_id": "LIPID-R23-e2", "fact": "patient.newly_diagnosed_dm_or_htn", "op": "truthy" },
+          { "node_id": "LIPID-R23-e3", "fact": "flag.ascvd", "op": "truthy" }
+        ]
+      },
+      "condition": {
+        "node_id": "LIPID-R23-c1",
+        "any": [
+          { "node_id": "LIPID-R23-c2", "fact": "patient.newly_diagnosed_dm_or_htn", "op": "truthy" },
+          { "node_id": "LIPID-R23-c3", "fact": "flag.ascvd", "op": "truthy" }
+        ]
+      },
+      "safety": {
+        "redflag_exclusions": [],
+        "hard_exclusions": [],
+        "on_safety_error": "BLOCK_ROUTINE_OUTPUTS"
+      },
+      "recommendation": {
+        "text_fa": "«تشخیص جدید دیابت یا فشار خون، یا ASCVD مستند: پنل لیپید اولیه ثبت شود (ناشتا بودن الزامی نیست؛ شامل LDL، HDL، تری‌گلیسرید و کلسترول کل). در صورت TG غیرناشتا >400، ناشتا تکرار شود.»",
+        "suggestion_only": true,
+        "requires_clinician_confirmation": true,
+        "may_create_internal_task": true,
+        "params": {
+          "test": "lipid_panel_full",
+          "fasting_required": false,
+          "includes": ["ldl", "hdl", "trig", "total_cholesterol"]
+        }
+      },
+      "evidence": {
+        "source_title": "ACC/AHA 2018 + ESC/EAS 2019 + ESC 2021 Prevention (initial lipid panel, non-fasting acceptable)",
+        "issuing_organization": "American College of Cardiology Foundation and American Heart Association / European Society of Cardiology",
+        "publication_date": null,
+        "source_version": "2018",
+        "source_locator": "ACC/AHA 2018 [3] doi:10.1161/CIR.0000000000000625 — پنل اولیه در تشخیص جدید؛ non-fasting قابل قبول؛ ESC/EAS 2019 [1] PMID 31504418؛ ESC 2021 [2] PMID 34458905.",
+        "source_url": "https://doi.org/10.1161/CIR.0000000000000625",
+        "evidence_certainty": "NOT_GRADED",
+        "recommendation_strength": "NOT_GRADED",
+        "local_validation_status": "NOT_REVIEWED"
+      },
+      "governance": {
+        "status": "DRAFT",
+        "author": "clinical_rule_research/lipid pipeline",
+        "clinical_reviewer": null,
+        "review_due_date": "2026-11-21",
+        "change_note": "تبدیل خودکار از GUIDELINE_DOSSIER_FA (§۷ LIPID_R23). ⚠️ G12: op «newly_diagnosed» در DSL نیست — قرارداد fact OPTIONAL 'patient.newly_diagnosed_dm_or_htn' (CONTINUE_WITH_WARNING) تا مسیر ascvd مستقل از آن کار کند؛ در نبود کلید، فقط شاخهٔ ASCVD ارزیابی می‌شود (بدون misfire)."
+      }
+    },
+    {
+      "schema_version": "2.0",
+      "dsl_version": "2.0",
+      "rule_code": "LIPID-R24",
+      "version": "0.1.0-draft",
+      "title": "دورهٔ پایش پنل لیپید بر اساس وضعیت هدف",
+      "phase": "ROUTINE",
+      "action_type": "schedule_screening",
+      "severity": "INFO",
+      "priority": 400,
+      "semantic_key": "lipid-core-v1.LIPID-R24",
+      "scope": {
+        "population": "adults_due_for_lipid_panel",
+        "care_settings": ["specialty_clinic"],
+        "encounter_types": ["outpatient_chronic_care"]
+      },
+      "required_facts": [
+        { "key": "screening.last_lipid_panel_months_ago", "criticality": "CRITICAL", "on_unusable": "NEEDS_DATA" }
+      ],
+      "eligibility": {
+        "node_id": "LIPID-R24-e1",
+        "fact": "screening.last_lipid_panel_months_ago",
+        "op": "exists"
+      },
+      "condition": {
+        "node_id": "LIPID-R24-c1",
+        "fact": "screening.last_lipid_panel_months_ago",
+        "op": ">=",
+        "value": 12
+      },
+      "safety": {
+        "redflag_exclusions": [],
+        "hard_exclusions": [],
+        "on_safety_error": "BLOCK_ROUTINE_OUTPUTS"
+      },
+      "recommendation": {
+        "text_fa": "«بیش از ۱۲ ماه از آخرین پنل لیپید گذشته است: تکرار پنل (ناشتا الزامی نیست). دورهٔ پایش: on-target سالانه؛ off-target طبق برنامهٔ تیتراسیون (R10/R11).»",
+        "suggestion_only": true,
+        "requires_clinician_confirmation": true,
+        "may_create_internal_task": true,
+        "params": {
+          "test": "lipid_panel",
+          "fasting_required": false,
+          "cadence_rule_fa": "on-target: سالانه؛ off-target: طبق R10/R11"
+        }
+      },
+      "evidence": {
+        "source_title": "ACC/AHA 2018 + ESC/EAS 2019 (lipid panel cadence)",
+        "issuing_organization": "American College of Cardiology Foundation and American Heart Association / European Society of Cardiology",
+        "publication_date": null,
+        "source_version": "2018",
+        "source_locator": "ACC/AHA 2018 [3] doi:10.1161/CIR.0000000000000625 — every 3-12 months؛ ESC/EAS 2019 [1] PMID 31504418 — every 6-12 months؛ non-fasting قابل قبول.",
+        "source_url": "https://doi.org/10.1161/CIR.0000000000000625",
+        "evidence_certainty": "NOT_GRADED",
+        "recommendation_strength": "NOT_GRADED",
+        "local_validation_status": "NOT_REVIEWED"
+      },
+      "governance": {
+        "status": "DRAFT",
+        "author": "clinical_rule_research/lipid pipeline",
+        "clinical_reviewer": null,
+        "review_due_date": "2026-11-21",
+        "change_note": "تبدیل خودکار از GUIDELINE_DOSSIER_FA (§۷ LIPID_R24). ⚠️ G5: «۱۲ ماه از آخرین پنل گذشته» رویداد زمانی است — قرارداد fact کلید 'screening.last_lipid_panel_months_ago' (NEEDS_DATA)؛ در نبود آن قاعده fail-closed اجرا نمی‌شود و هیچ شرط جانشینی که misfire کند ساخته نشده است."
+      }
+    }
+  ]
+}

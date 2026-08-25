@@ -1,4 +1,4 @@
-{% extends "automation_base.html" %}
+{% extends "base.html" %}
 {% block title %}صف پزشک{% endblock %}
 {% block content %}
 {% set queue_ns = namespace(in_progress=0) %}
@@ -10,6 +10,7 @@
         <p class="muted">{{ work_date|jalali_date }} · بیمار بعدی را شروع کنید؛ اطلاعات تکمیلی فقط در صورت نیاز باز می‌شود.</p>
     </div>
     <div class="auto-page-header__actions">
+        <a class="btn btn-ghost" href="{{ url_for('unified_followups.index') }}"><svg class="icon icon-sm"><use href="#i-list-checks"></use></svg> مرکز کارها</a>
         <a class="btn btn-ghost" href="{{ url_for('doctor_queue.index') }}">تازه‌سازی</a>
     </div>
 </header>
@@ -57,7 +58,7 @@
 
             <div class="doctor-queue-card__action">
                 {% if not p.enrolled %}
-                <span class="muted text-sm">ابتدا بیمار را وارد برنامه تخصصی کنید.</span>
+                <a class="btn btn-ghost" href="{{ url_for('patients.enroll', q=p.national_id) }}"><svg class="icon icon-sm"><use href="#i-user"></use></svg> ثبت در برنامه تخصصی</a>
                 {% elif p.status == 'in_progress' %}
                 <a class="btn" href="{{ url_for('doctor_queue.visit', invoice_id=p.invoice_id) }}"><svg class="icon icon-sm"><use href="#i-edit"></use></svg> ادامه مستندسازی</a>
                 {% else %}

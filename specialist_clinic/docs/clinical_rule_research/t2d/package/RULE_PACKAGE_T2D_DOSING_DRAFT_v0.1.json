@@ -1,0 +1,3950 @@
+{
+  "package_format": "clinical-rule-package.draft/0.1",
+  "ruleset_code": "t2d-dosing-v1",
+  "version": "0.1.0-draft",
+  "status": "DRAFT",
+  "clinical_use": "NOT_APPROVED_HISTORICAL_REGRESSION_ONLY",
+  "source_dossier": "DOSING_REFRESH_VS_FROZEN_DOC_FA (راستی‌آزمایی ada_t2_rules.md v0.9.4، تاریخ راستی‌آزمایی 2026-08-23)",
+  "generated_at": "2026-08-23T12:00:00+03:30",
+  "schema_version": "2.0",
+  "dsl_version": "2.0",
+  "rule_schema_ref": "src/domain/clinical_engine/schemas/clinical-rule.schema.json",
+  "validation": {
+    "method": "jsonschema.Draft202012Validator with FormatChecker against clinical-rule.schema.json (internal refs only; no external registry needed)",
+    "validated_at": "2026-08-23T18:30:05+03:30",
+    "rules_total": 35,
+    "rules_valid": 35,
+    "result": "ALL_VALID",
+    "validator_version_note": "jsonschema library in specialist_clinic/.venv; each entry of rules[] validated as a standalone RuleDefinition"
+  },
+  "authoring_notes": [
+    "STRUCTURAL MAPPING (per dossier §7): condition → condition.diabetes truthy؛ med.class → medication.<class_key> truthy (metformin/sglt2i/glp1_ra/dpp4i/tzd/su/insulin_basal/insulin_bolus)؛ indicator.X.latest → lab.X با selector.aggregation=latest؛ flag.hypo_risk فقط در قواعد هیپو طبق داسیه. هر گرهٔ expression node_id قطعی <CODE>-e*/c* دارد.",
+    "TRIGGER CONVENTION: همهٔ قواعد دوز «کارت مرجع» هستند و روی دیابت + مصرفِ کلاس (+ برگ lab وقتی داسیه باند/هدف صریح داده) fire می‌کنند؛ تفکیک initiation vs titration در متن/params است نه شرط ماشینی — چون fact «insulin-naïve / dose-in-flight» در کاتالوگ نیست.",
+    "VERBATIM DOSE STRINGS: چون اسکیما additionalProperties:false دارد ولی recommendationParams باز است، رشته‌های شروع/تیتراسیون/سقف عیناً از ستون «مقدار تأییدشدهٔ فعلی» جدول‌های داسیه در params نگهداری می‌شوند (dose_start_fa/dose_titration_fa/dose_max_fa/renal_adjustment_fa + label_ref). هیچ عددی از خود اختراع نشده است.",
+    "DELTA NUMBERS: اعداد DELTA-marked (empagliflozin max 25، semaglutide PO 3→7→14، sitagliptin 50 در 30–<45، ISF 1800/1500) از ستون CURRENT داسیه با citation همان سطر حمل شده و در delta_note هر قاعده علامت خورده‌اند.",
+    "PHASE mapping طبق دستور کار: hypo-treatment (T2-HYPO-TX-*)، sick-day (T2-SICKDAY-01) و T2-INS-CORR-01 → SAFETY؛ بقیه (۳۱ قاعده) → ROUTINE.",
+    "PRIORITY: داسیه ستون priority نداشت؛ مقادیر 3000–9400 تألیفی‌اند (SAFETY بالاتر از ROUTINE، گیت‌های کلیوی بالاتر از کارت‌های مرجع) و باید در بازبینی مالک تأیید شوند.",
+    "DSL GAPS (غیربیان‌پذیرها): (۱) زمان‌بندی فواصل تیتراسیون (هفتگی/q3d/q4w) — aggregation زمانی برای schedule ندارد، فقط متن؛ (۲) محاسبهٔ دوز وزن‌محور در runtime (0.1–0.2 U/kg، >0.5 U/kg/day) — fact وزن/دوز ساختاریافته نیست؛ T2-INS-BASAL-05 با الگوی SILENTِ بستهٔ redflags وارد شده؛ (۳) ISF وابسته به TDD — TDD fact نیست، فرمول فقط متن estimate؛ (۴) ALT>2.5×ULN (TZD-02) — lab.alt در کاتالوگ facts این موج نیست؛ (۵) مهارکنندهٔ قوی CYP3A4/5 (DPP4-02) — fact تداخل دارویی نیست؛ (۶) NYHA class (TZD-01) — flag HF در فهرست facts این موج نیست؛ (۷) تفکیک agent درون کلاس (glyburide در SU، lixi/exenatide در GLP-1، empa/dapa/cana در SGLT2i) — fact سطح کلاس است، نام agent فقط در متن/params.",
+    "SILENT RULE: T2-INS-BASAL-05 تریگر واقعی‌اش basal_dose_per_kg > 0.5 است که در DSL 2.0 بیان‌پذیر نیست → governance.status=SILENT + condition جانشین exists + هشدار صریح در change_note؛ SILENT هرگز اجرا نمی‌شود.",
+    "NON-GUIDELINE MARKING: T2-INS-CORR-01 قرارداد Walsh/Roberts (1800/TDD آنالوگ سریع، 1500/TDD regular) خارج از ADA است؛ در عنوان، متن، params و evidence صریحاً NON-GUIDELINE علامت خورده و اجرای آن منوط به تأیید پزشک روی TDD پایدار است.",
+    "may_create_internal_task=true فقط برای T2-DOS-MET-04 است که داسیه صراحتاً «+B12 monitoring followup» داده (اکشن ثانویهٔ create_followup در params)؛ بقیه false.",
+    "requires_clinician_confirmation=true برای همهٔ ۳۵ قاعده (فراتر از CONFIRMATION_REQUIRED کامپایلر که فقط suggest_med/set_target/classify را می‌پوشاند).",
+    "evidence_certainty/recommendation_strength = NOT_GRADED برای همه؛ local_validation_status = NOT_REVIEWED؛ review_due_date = 2026-11-21 (۹۰ روزه).",
+    "source_urlها: ADA 2026 → صفحهٔ فرود Diabetes Care 49(Suppl.1)؛ FDA PIها → نمایهٔ Drugs@FDA/DailyMed با local_adaptation_note مبنی بر تکمیل نشانی دقیق label در بازبینی (الگوی RF-GLY-03 بستهٔ redflags). در داسیه DOI/PMID موجود نبود.",
+    "فعال‌سازی این بسته مستلزم package_contract validation + بازبینی بالینی مستقل + کلیک مالک طبق rollout مرحله‌ای است؛ این فایل به runtime/compiler متصل نیست."
+  ],
+  "dossier_triggers": {
+    "T2-DOS-MET-01": {
+      "all": [
+        {
+          "var": "condition",
+          "op": "has",
+          "value": "diabetes"
+        },
+        {
+          "var": "med.class",
+          "op": "in",
+          "value": [
+            "metformin"
+          ]
+        }
+      ]
+    },
+    "T2-DOS-MET-02": {
+      "all": [
+        {
+          "var": "condition",
+          "op": "has",
+          "value": "diabetes"
+        },
+        {
+          "var": "med.class",
+          "op": "in",
+          "value": [
+            "metformin"
+          ]
+        }
+      ]
+    },
+    "T2-DOS-MET-03": {
+      "all": [
+        {
+          "var": "condition",
+          "op": "has",
+          "value": "diabetes"
+        },
+        {
+          "var": "med.class",
+          "op": "in",
+          "value": [
+            "metformin"
+          ]
+        },
+        {
+          "var": "indicator.egfr.latest",
+          "op": "between",
+          "value": [
+            30,
+            44
+          ]
+        }
+      ]
+    },
+    "T2-DOS-MET-04": {
+      "all": [
+        {
+          "var": "condition",
+          "op": "has",
+          "value": "diabetes"
+        },
+        {
+          "var": "med.class",
+          "op": "in",
+          "value": [
+            "metformin"
+          ]
+        },
+        {
+          "var": "indicator.egfr.latest",
+          "op": "<",
+          "value": 30
+        }
+      ]
+    },
+    "T2-DOS-SGLT2-01": {
+      "all": [
+        {
+          "var": "condition",
+          "op": "has",
+          "value": "diabetes"
+        },
+        {
+          "var": "med.class",
+          "op": "in",
+          "value": [
+            "sglt2i"
+          ]
+        },
+        {
+          "var": "indicator.egfr.latest",
+          "op": ">=",
+          "value": 30
+        }
+      ]
+    },
+    "T2-DOS-SGLT2-02": {
+      "all": [
+        {
+          "var": "condition",
+          "op": "has",
+          "value": "diabetes"
+        },
+        {
+          "var": "med.class",
+          "op": "in",
+          "value": [
+            "sglt2i"
+          ]
+        },
+        {
+          "var": "indicator.egfr.latest",
+          "op": ">=",
+          "value": 45
+        }
+      ]
+    },
+    "T2-DOS-SGLT2-03": {
+      "all": [
+        {
+          "var": "condition",
+          "op": "has",
+          "value": "diabetes"
+        },
+        {
+          "var": "med.class",
+          "op": "in",
+          "value": [
+            "sglt2i"
+          ]
+        },
+        {
+          "var": "indicator.egfr.latest",
+          "op": ">=",
+          "value": 60
+        }
+      ]
+    },
+    "T2-DOS-SGLT2-04": {
+      "all": [
+        {
+          "var": "condition",
+          "op": "has",
+          "value": "diabetes"
+        },
+        {
+          "var": "med.class",
+          "op": "in",
+          "value": [
+            "sglt2i"
+          ]
+        },
+        {
+          "var": "indicator.egfr.latest",
+          "op": "<",
+          "value": 60
+        }
+      ]
+    },
+    "T2-DOS-SGLT2-05": {
+      "all": [
+        {
+          "var": "condition",
+          "op": "has",
+          "value": "diabetes"
+        },
+        {
+          "var": "med.class",
+          "op": "in",
+          "value": [
+            "sglt2i"
+          ]
+        }
+      ]
+    },
+    "T2-DOS-GLP1-01": {
+      "all": [
+        {
+          "var": "condition",
+          "op": "has",
+          "value": "diabetes"
+        },
+        {
+          "var": "med.class",
+          "op": "in",
+          "value": [
+            "glp1_ra"
+          ]
+        }
+      ]
+    },
+    "T2-DOS-GLP1-02": {
+      "all": [
+        {
+          "var": "condition",
+          "op": "has",
+          "value": "diabetes"
+        },
+        {
+          "var": "med.class",
+          "op": "in",
+          "value": [
+            "glp1_ra"
+          ]
+        }
+      ]
+    },
+    "T2-DOS-GLP1-03": {
+      "all": [
+        {
+          "var": "condition",
+          "op": "has",
+          "value": "diabetes"
+        },
+        {
+          "var": "med.class",
+          "op": "in",
+          "value": [
+            "glp1_ra"
+          ]
+        }
+      ]
+    },
+    "T2-DOS-GLP1-04": {
+      "all": [
+        {
+          "var": "condition",
+          "op": "has",
+          "value": "diabetes"
+        },
+        {
+          "var": "med.class",
+          "op": "in",
+          "value": [
+            "glp1_ra"
+          ]
+        }
+      ]
+    },
+    "T2-DOS-GLP1-05": {
+      "all": [
+        {
+          "var": "condition",
+          "op": "has",
+          "value": "diabetes"
+        },
+        {
+          "var": "med.class",
+          "op": "in",
+          "value": [
+            "glp1_ra"
+          ]
+        }
+      ]
+    },
+    "T2-DOS-GLP1-06": {
+      "all": [
+        {
+          "var": "condition",
+          "op": "has",
+          "value": "diabetes"
+        },
+        {
+          "var": "med.class",
+          "op": "in",
+          "value": [
+            "glp1_ra"
+          ]
+        }
+      ]
+    },
+    "T2-DOS-GLP1-07": {
+      "all": [
+        {
+          "var": "condition",
+          "op": "has",
+          "value": "diabetes"
+        },
+        {
+          "var": "med.class",
+          "op": "in",
+          "value": [
+            "glp1_ra"
+          ]
+        },
+        {
+          "var": "indicator.egfr.latest",
+          "op": "<=",
+          "value": 30
+        }
+      ]
+    },
+    "T2-DOS-DPP4-01": {
+      "all": [
+        {
+          "var": "condition",
+          "op": "has",
+          "value": "diabetes"
+        },
+        {
+          "var": "med.class",
+          "op": "in",
+          "value": [
+            "dpp4i"
+          ]
+        },
+        {
+          "var": "indicator.egfr.latest",
+          "op": "<",
+          "value": 60
+        }
+      ]
+    },
+    "T2-DOS-DPP4-02": {
+      "all": [
+        {
+          "var": "condition",
+          "op": "has",
+          "value": "diabetes"
+        },
+        {
+          "var": "med.class",
+          "op": "in",
+          "value": [
+            "dpp4i"
+          ]
+        },
+        {
+          "var": "indicator.egfr.latest",
+          "op": "<",
+          "value": 60
+        }
+      ]
+    },
+    "T2-DOS-DPP4-03": {
+      "all": [
+        {
+          "var": "condition",
+          "op": "has",
+          "value": "diabetes"
+        },
+        {
+          "var": "med.class",
+          "op": "in",
+          "value": [
+            "dpp4i"
+          ]
+        },
+        {
+          "var": "indicator.egfr.latest",
+          "op": "<",
+          "value": 60
+        }
+      ]
+    },
+    "T2-DOS-TZD-01": {
+      "all": [
+        {
+          "var": "condition",
+          "op": "has",
+          "value": "diabetes"
+        },
+        {
+          "var": "med.class",
+          "op": "in",
+          "value": [
+            "tzd"
+          ]
+        }
+      ]
+    },
+    "T2-DOS-TZD-02": {
+      "all": [
+        {
+          "var": "condition",
+          "op": "has",
+          "value": "diabetes"
+        },
+        {
+          "var": "med.class",
+          "op": "in",
+          "value": [
+            "tzd"
+          ]
+        }
+      ],
+      "_note": "تریگر واقعی ALT>2.5×ULN است — lab.alt در facts نیست؛ کارت گیت کبدی."
+    },
+    "T2-DOS-SU-01": {
+      "all": [
+        {
+          "var": "condition",
+          "op": "has",
+          "value": "diabetes"
+        },
+        {
+          "var": "med.class",
+          "op": "in",
+          "value": [
+            "su"
+          ]
+        }
+      ]
+    },
+    "T2-DOS-SU-02": {
+      "all": [
+        {
+          "var": "condition",
+          "op": "has",
+          "value": "diabetes"
+        },
+        {
+          "var": "med.class",
+          "op": "in",
+          "value": [
+            "su"
+          ]
+        }
+      ]
+    },
+    "T2-DOS-SU-03": {
+      "all": [
+        {
+          "var": "condition",
+          "op": "has",
+          "value": "diabetes"
+        },
+        {
+          "var": "med.class",
+          "op": "in",
+          "value": [
+            "su"
+          ]
+        },
+        {
+          "var": "indicator.egfr.latest",
+          "op": "<",
+          "value": 60
+        }
+      ],
+      "_note": "داسیه عدد CKD نداده؛ <60 (مرز G3a) انتخاب عملیاتی تألیفی است و باید در بازبینی تأیید شود."
+    },
+    "T2-INS-BASAL-01": {
+      "all": [
+        {
+          "var": "condition",
+          "op": "has",
+          "value": "diabetes"
+        },
+        {
+          "var": "med.class",
+          "op": "in",
+          "value": [
+            "insulin_basal"
+          ]
+        }
+      ]
+    },
+    "T2-INS-BASAL-02": {
+      "all": [
+        {
+          "var": "condition",
+          "op": "has",
+          "value": "diabetes"
+        },
+        {
+          "var": "med.class",
+          "op": "in",
+          "value": [
+            "insulin_basal"
+          ]
+        },
+        {
+          "var": "indicator.fbs.latest",
+          "op": "exists"
+        }
+      ]
+    },
+    "T2-INS-BASAL-03": {
+      "all": [
+        {
+          "var": "condition",
+          "op": "has",
+          "value": "diabetes"
+        },
+        {
+          "var": "med.class",
+          "op": "in",
+          "value": [
+            "insulin_basal"
+          ]
+        },
+        {
+          "var": "indicator.fbs.latest",
+          "op": "exists"
+        }
+      ]
+    },
+    "T2-INS-BASAL-04": {
+      "all": [
+        {
+          "var": "condition",
+          "op": "has",
+          "value": "diabetes"
+        },
+        {
+          "var": "med.class",
+          "op": "in",
+          "value": [
+            "insulin_basal"
+          ]
+        },
+        {
+          "var": "indicator.fbs.latest",
+          "op": "<",
+          "value": 70
+        }
+      ]
+    },
+    "T2-INS-BASAL-05": {
+      "all": [
+        {
+          "var": "condition",
+          "op": "has",
+          "value": "diabetes"
+        },
+        {
+          "var": "medication.insulin_basal.dose_per_kg_daily",
+          "op": ">",
+          "value": 0.5
+        }
+      ],
+      "_note": "غیربیان‌پذیر در DSL 2.0 — fact وزن/دوز وجود ندارد؛ قاعده SILENT شده."
+    },
+    "T2-INS-PRANDIAL-01": {
+      "all": [
+        {
+          "var": "condition",
+          "op": "has",
+          "value": "diabetes"
+        },
+        {
+          "var": "med.class",
+          "op": "in",
+          "value": [
+            "insulin_basal"
+          ]
+        }
+      ]
+    },
+    "T2-INS-PRANDIAL-02": {
+      "all": [
+        {
+          "var": "condition",
+          "op": "has",
+          "value": "diabetes"
+        },
+        {
+          "var": "med.class",
+          "op": "in",
+          "value": [
+            "insulin_bolus"
+          ]
+        },
+        {
+          "var": "indicator.hba1c.latest",
+          "op": "<",
+          "value": 8
+        }
+      ]
+    },
+    "T2-INS-CORR-01": {
+      "all": [
+        {
+          "var": "condition",
+          "op": "has",
+          "value": "diabetes"
+        },
+        {
+          "var": "med.class",
+          "op": "in",
+          "value": [
+            "insulin_bolus"
+          ]
+        }
+      ],
+      "_note": "فرمول ISF وابسته به TDD است که fact نیست — فقط متن estimate با تأیید پزشک."
+    },
+    "T2-HYPO-TX-01": {
+      "all": [
+        {
+          "var": "condition",
+          "op": "has",
+          "value": "diabetes"
+        },
+        {
+          "var": "indicator.fbs.latest",
+          "op": "<",
+          "value": 70
+        }
+      ]
+    },
+    "T2-HYPO-TX-02": {
+      "all": [
+        {
+          "var": "condition",
+          "op": "has",
+          "value": "diabetes"
+        },
+        {
+          "any": [
+            {
+              "var": "med.class",
+              "op": "in",
+              "value": [
+                "insulin_basal"
+              ]
+            },
+            {
+              "var": "med.class",
+              "op": "in",
+              "value": [
+                "insulin_bolus"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "T2-SICKDAY-01": {
+      "all": [
+        {
+          "var": "condition",
+          "op": "has",
+          "value": "diabetes"
+        },
+        {
+          "any": [
+            {
+              "var": "med.class",
+              "op": "in",
+              "value": [
+                "metformin"
+              ]
+            },
+            {
+              "var": "med.class",
+              "op": "in",
+              "value": [
+                "sglt2i"
+              ]
+            },
+            {
+              "var": "med.class",
+              "op": "in",
+              "value": [
+                "glp1_ra"
+              ]
+            },
+            {
+              "var": "med.class",
+              "op": "in",
+              "value": [
+                "tzd"
+              ]
+            },
+            {
+              "var": "med.class",
+              "op": "in",
+              "value": [
+                "su"
+              ]
+            },
+            {
+              "var": "med.class",
+              "op": "in",
+              "value": [
+                "insulin_basal"
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "rules": [
+    {
+      "schema_version": "2.0",
+      "dsl_version": "2.0",
+      "rule_code": "T2-DOS-MET-01",
+      "version": "0.1.0-draft",
+      "title": "متفورمین IR — شروع و تیتراسیون (مرجع دوز)",
+      "phase": "ROUTINE",
+      "action_type": "suggest_med",
+      "severity": "INFO",
+      "priority": 5000,
+      "semantic_key": "t2d-dosing-v1.T2-DOS-MET-01",
+      "scope": {
+        "population": "adults_with_t2d_on_metformin",
+        "care_settings": [
+          "specialty_clinic"
+        ],
+        "encounter_types": [
+          "outpatient_chronic_care"
+        ],
+        "condition_codes": [
+          "diabetes"
+        ]
+      },
+      "required_facts": [
+        {
+          "key": "condition.diabetes",
+          "criticality": "REQUIRED",
+          "on_unusable": "NOT_APPLICABLE"
+        },
+        {
+          "key": "medication.metformin",
+          "criticality": "REQUIRED",
+          "on_unusable": "NOT_APPLICABLE"
+        }
+      ],
+      "eligibility": {
+        "node_id": "T2-DOS-MET-01-e1",
+        "fact": "condition.diabetes",
+        "op": "truthy"
+      },
+      "condition": {
+        "node_id": "T2-DOS-MET-01-c1",
+        "fact": "medication.metformin",
+        "op": "truthy"
+      },
+      "safety": {
+        "redflag_exclusions": [],
+        "hard_exclusions": [],
+        "on_safety_error": "BLOCK_ROUTINE_OUTPUTS"
+      },
+      "recommendation": {
+        "text_fa": "«مرجع دوز متفورمین IR (در صورت تصمیم پزشک به شروع/تشدید): شروع ۵۰۰ میلی‌گرم دو بار در روز یا ۸۵۰ یک‌بار همراه غذا؛ افزایش ۵۰۰ میلی‌گرم هفتگی تا حداکثر تحمل؛ سقف ۲۵۵۰ میلی‌گرم در روز (نگهدارندهٔ معمول ۲۰۰۰).»",
+        "suggestion_only": true,
+        "requires_clinician_confirmation": true,
+        "may_create_internal_task": false,
+        "params": {
+          "dose_start_fa": "500 mg BID یا 850 mg QD همراه غذا",
+          "dose_titration_fa": "+500 mg هفتگی (یا 850 mg هر ۲ هفته) تا حداکثر تحمل",
+          "dose_max_fa": "IR: 2550 mg/day (3×850)؛ دوز نگهدارندهٔ معمول 2000 mg/day",
+          "label_ref": "Glucophage PI (FDA)"
+        }
+      },
+      "evidence": {
+        "source_title": "Glucophage (metformin) Prescribing Information, FDA",
+        "issuing_organization": "U.S. Food and Drug Administration",
+        "publication_date": null,
+        "source_version": "PI (FDA)",
+        "source_locator": "داسیه DOSING_REFRESH §۱.۱ (ستون CURRENT): شروع IR 500 mg BID یا 850 mg QD همراه غذا؛ تیتراسیون +500 mg هفتگی؛ Max 2550 mg/day — Glucophage PI (FDA).",
+        "source_url": "https://www.accessdata.fda.gov/scripts/cder/daf/",
+        "evidence_certainty": "NOT_GRADED",
+        "recommendation_strength": "NOT_GRADED",
+        "local_validation_status": "NOT_REVIEWED",
+        "local_adaptation_note": "نشانی دقیق label Glucophage باید در بازبینی تکمیل شود؛ URL فعلی نمایهٔ Drugs@FDA است."
+      },
+      "governance": {
+        "status": "DRAFT",
+        "author": "clinical_rule_research/t2d pipeline",
+        "clinical_reviewer": null,
+        "review_due_date": "2026-11-21",
+        "change_note": "تبدیل از DOSING_REFRESH §۷ (T2-DOS-MET-01). اعداد 🆕 fill از PI؛ تریگر کلاس‌محور (کارت مرجع در زمینهٔ تحت‌درمان)."
+      }
+    },
+    {
+      "schema_version": "2.0",
+      "dsl_version": "2.0",
+      "rule_code": "T2-DOS-MET-02",
+      "version": "0.1.0-draft",
+      "title": "متفورمین ER — شروع و سقف (مرجع دوز)",
+      "phase": "ROUTINE",
+      "action_type": "suggest_med",
+      "severity": "INFO",
+      "priority": 4900,
+      "semantic_key": "t2d-dosing-v1.T2-DOS-MET-02",
+      "scope": {
+        "population": "adults_with_t2d_on_metformin",
+        "care_settings": [
+          "specialty_clinic"
+        ],
+        "encounter_types": [
+          "outpatient_chronic_care"
+        ],
+        "condition_codes": [
+          "diabetes"
+        ]
+      },
+      "required_facts": [
+        {
+          "key": "condition.diabetes",
+          "criticality": "REQUIRED",
+          "on_unusable": "NOT_APPLICABLE"
+        },
+        {
+          "key": "medication.metformin",
+          "criticality": "REQUIRED",
+          "on_unusable": "NOT_APPLICABLE"
+        }
+      ],
+      "eligibility": {
+        "node_id": "T2-DOS-MET-02-e1",
+        "fact": "condition.diabetes",
+        "op": "truthy"
+      },
+      "condition": {
+        "node_id": "T2-DOS-MET-02-c1",
+        "fact": "medication.metformin",
+        "op": "truthy"
+      },
+      "safety": {
+        "redflag_exclusions": [],
+        "hard_exclusions": [],
+        "on_safety_error": "BLOCK_ROUTINE_OUTPUTS"
+      },
+      "recommendation": {
+        "text_fa": "«مرجع دوز متفورمین ER (در صورت تصمیم پزشک به شروع/تعویض فرم): شروع ۵۰۰ تا ۱۰۰۰ میلی‌گرم شبانه با شام؛ افزایش ۵۰۰ میلی‌گرم هفتگی؛ سقف ۲۰۰۰ میلی‌گرم در روز.»",
+        "suggestion_only": true,
+        "requires_clinician_confirmation": true,
+        "may_create_internal_task": false,
+        "params": {
+          "dose_start_fa": "500–1000 mg QD با شام",
+          "dose_titration_fa": "+500 mg هفتگی",
+          "dose_max_fa": "ER: 2000 mg/day",
+          "label_ref": "Glucophage XR PI (FDA)"
+        }
+      },
+      "evidence": {
+        "source_title": "Glucophage XR (metformin extended-release) Prescribing Information, FDA",
+        "issuing_organization": "U.S. Food and Drug Administration",
+        "publication_date": null,
+        "source_version": "PI (FDA)",
+        "source_locator": "داسیه DOSING_REFRESH §۱.۱ (ستون CURRENT): ER شروع 500–1000 mg QD با شام؛ تیتر +500 mg هفتگی؛ Max 2000 mg/day — Glucophage XR PI.",
+        "source_url": "https://www.accessdata.fda.gov/scripts/cder/daf/",
+        "evidence_certainty": "NOT_GRADED",
+        "recommendation_strength": "NOT_GRADED",
+        "local_validation_status": "NOT_REVIEWED",
+        "local_adaptation_note": "نشانی دقیق label Glucophage XR باید در بازبینی تکمیل شود."
+      },
+      "governance": {
+        "status": "DRAFT",
+        "author": "clinical_rule_research/t2d pipeline",
+        "clinical_reviewer": null,
+        "review_due_date": "2026-11-21",
+        "change_note": "تبدیل از DOSING_REFRESH §۷ (T2-DOS-MET-02)."
+      }
+    },
+    {
+      "schema_version": "2.0",
+      "dsl_version": "2.0",
+      "rule_code": "T2-DOS-MET-03",
+      "version": "0.1.0-draft",
+      "title": "متفورمین و eGFR ۳۰–۴۴ — شروع ممنوع / نصف دوز",
+      "phase": "ROUTINE",
+      "action_type": "suggest_med",
+      "severity": "URGENT",
+      "priority": 8000,
+      "semantic_key": "t2d-dosing-v1.T2-DOS-MET-03",
+      "scope": {
+        "population": "adults_with_t2d_on_metformin_renal_band_30_44",
+        "care_settings": [
+          "specialty_clinic"
+        ],
+        "encounter_types": [
+          "outpatient_chronic_care"
+        ],
+        "condition_codes": [
+          "diabetes"
+        ]
+      },
+      "required_facts": [
+        {
+          "key": "condition.diabetes",
+          "criticality": "REQUIRED",
+          "on_unusable": "NOT_APPLICABLE"
+        },
+        {
+          "key": "medication.metformin",
+          "criticality": "REQUIRED",
+          "on_unusable": "NOT_APPLICABLE"
+        },
+        {
+          "key": "lab.egfr",
+          "criticality": "CRITICAL",
+          "on_unusable": "NEEDS_DATA"
+        }
+      ],
+      "eligibility": {
+        "node_id": "T2-DOS-MET-03-e1",
+        "fact": "condition.diabetes",
+        "op": "truthy"
+      },
+      "condition": {
+        "node_id": "T2-DOS-MET-03-c3",
+        "all": [
+          {
+            "node_id": "T2-DOS-MET-03-c1",
+            "fact": "medication.metformin",
+            "op": "truthy"
+          },
+          {
+            "node_id": "T2-DOS-MET-03-c2",
+            "fact": "lab.egfr",
+            "op": "between",
+            "value": [
+              30,
+              44
+            ],
+            "selector": {
+              "aggregation": "latest"
+            }
+          }
+        ]
+      },
+      "safety": {
+        "redflag_exclusions": [],
+        "hard_exclusions": [],
+        "on_safety_error": "BLOCK_ROUTINE_OUTPUTS"
+      },
+      "recommendation": {
+        "text_fa": "«eGFR بین ۳۰ و ۴۴: شروع متفورمین ممنوع است. در بیمار تحت درمان که eGFR به زیر ۴۵ افت کرده، ارزیابی منفعت/خطر و نصف‌کردن دوز لازم است.»",
+        "suggestion_only": true,
+        "requires_clinician_confirmation": true,
+        "may_create_internal_task": false,
+        "params": {
+          "renal_adjustment_fa": "eGFR<45: شروع نکن/کاهش؛ در افت به <45 ارزیابی منفعت/خطر و نصف‌کردن دوز؛ 30–45 شروع ممنوع",
+          "label_ref": "ADA 2026 Table 9.2 + Glucophage PI §2.3"
+        }
+      },
+      "evidence": {
+        "source_title": "ADA Standards of Care in Diabetes—2026, Table 9.2 + Glucophage PI §2.3",
+        "issuing_organization": "American Diabetes Association / U.S. FDA",
+        "publication_date": null,
+        "source_version": "2026",
+        "source_locator": "داسیه DOSING_REFRESH §۱.۱ سطر کلیوی (✅ تأیید): eGFR<30 منع؛ <45 شروع نکن/کاهش؛ جزئیات label: افت به <45 → ارزیابی منفعت/خطر و نصف‌کردن دوز؛ 30–45 شروع ممنوع.",
+        "source_url": "https://diabetesjournals.org/care/issue/49/Supplement_1",
+        "evidence_certainty": "NOT_GRADED",
+        "recommendation_strength": "NOT_GRADED",
+        "local_validation_status": "NOT_REVIEWED"
+      },
+      "governance": {
+        "status": "DRAFT",
+        "author": "clinical_rule_research/t2d pipeline",
+        "clinical_reviewer": null,
+        "review_due_date": "2026-11-21",
+        "change_note": "تبدیل از DOSING_REFRESH §۷ (T2-DOS-MET-03). تریگر egfr between [30,44] طبق دستور کار (آستانه‌های lab.egfr عیناً از داسیه)."
+      }
+    },
+    {
+      "schema_version": "2.0",
+      "dsl_version": "2.0",
+      "rule_code": "T2-DOS-MET-04",
+      "version": "0.1.0-draft",
+      "title": "متفورمین و eGFR <۳۰ — منع مصرف (قطع) + پایش B12",
+      "phase": "ROUTINE",
+      "action_type": "suggest_med",
+      "severity": "CRITICAL",
+      "priority": 8400,
+      "semantic_key": "t2d-dosing-v1.T2-DOS-MET-04",
+      "scope": {
+        "population": "adults_with_t2d_on_metformin_egfr_below_30",
+        "care_settings": [
+          "specialty_clinic"
+        ],
+        "encounter_types": [
+          "outpatient_chronic_care"
+        ],
+        "condition_codes": [
+          "diabetes"
+        ]
+      },
+      "required_facts": [
+        {
+          "key": "condition.diabetes",
+          "criticality": "REQUIRED",
+          "on_unusable": "NOT_APPLICABLE"
+        },
+        {
+          "key": "medication.metformin",
+          "criticality": "REQUIRED",
+          "on_unusable": "NOT_APPLICABLE"
+        },
+        {
+          "key": "lab.egfr",
+          "criticality": "CRITICAL",
+          "on_unusable": "NEEDS_DATA"
+        }
+      ],
+      "eligibility": {
+        "node_id": "T2-DOS-MET-04-e1",
+        "fact": "condition.diabetes",
+        "op": "truthy"
+      },
+      "condition": {
+        "node_id": "T2-DOS-MET-04-c3",
+        "all": [
+          {
+            "node_id": "T2-DOS-MET-04-c1",
+            "fact": "medication.metformin",
+            "op": "truthy"
+          },
+          {
+            "node_id": "T2-DOS-MET-04-c2",
+            "fact": "lab.egfr",
+            "op": "<",
+            "value": 30,
+            "selector": {
+              "aggregation": "latest"
+            }
+          }
+        ]
+      },
+      "safety": {
+        "redflag_exclusions": [],
+        "hard_exclusions": [],
+        "on_safety_error": "BLOCK_ROUTINE_OUTPUTS"
+      },
+      "recommendation": {
+        "text_fa": "«eGFR زیر ۳۰: متفورمین منع مصرف دارد و باید با تصمیم پزشک قطع شود. پیگیری پایش ویتامین B12 و جایگزینی درمان در worklist ایجاد شود.»",
+        "suggestion_only": true,
+        "requires_clinician_confirmation": true,
+        "may_create_internal_task": true,
+        "params": {
+          "renal_adjustment_fa": "eGFR<30: قطع/منع مصرف متفورمین",
+          "secondary_action": "create_followup",
+          "followup_note_fa": "پایش ویتامین B12 طبق داسیه (T2-DOS-MET-04)؛ فاصلهٔ زمانی توسط داسیه تعیین نشده — تصمیم با پزشک.",
+          "label_ref": "ADA 2026 Table 9.2 + Glucophage PI §2.3"
+        }
+      },
+      "evidence": {
+        "source_title": "ADA Standards of Care in Diabetes—2026, Table 9.2 + Glucophage PI §2.3",
+        "issuing_organization": "American Diabetes Association / U.S. FDA",
+        "publication_date": null,
+        "source_version": "2026",
+        "source_locator": "داسیه DOSING_REFRESH §۱.۱ سطر کلیوی (✅): eGFR<30 منع/قطع؛ §۷ خط T2-DOS-MET-04: stop/contraindicated (+B12 monitoring followup).",
+        "source_url": "https://diabetesjournals.org/care/issue/49/Supplement_1",
+        "evidence_certainty": "NOT_GRADED",
+        "recommendation_strength": "NOT_GRADED",
+        "local_validation_status": "NOT_REVIEWED"
+      },
+      "governance": {
+        "status": "DRAFT",
+        "author": "clinical_rule_research/t2d pipeline",
+        "clinical_reviewer": null,
+        "review_due_date": "2026-11-21",
+        "change_note": "تبدیل از DOSING_REFRESH §۷ (T2-DOS-MET-04). تنها قاعدهٔ این بسته با may_create_internal_task=true (داسیه صراحتاً followup پایش B12 داده). due_in_* عمداً خالی — داسیه عدد نداده."
+      }
+    },
+    {
+      "schema_version": "2.0",
+      "dsl_version": "2.0",
+      "rule_code": "T2-DOS-SGLT2-01",
+      "version": "0.1.0-draft",
+      "title": "Empagliflozin — 10→25 mg (DELTA-1: سقف label بازنگری‌شده)",
+      "phase": "ROUTINE",
+      "action_type": "suggest_med",
+      "severity": "INFO",
+      "priority": 7300,
+      "semantic_key": "t2d-dosing-v1.T2-DOS-SGLT2-01",
+      "scope": {
+        "population": "adults_with_t2d_on_sglt2i_egfr_at_or_above_30",
+        "care_settings": [
+          "specialty_clinic"
+        ],
+        "encounter_types": [
+          "outpatient_chronic_care"
+        ],
+        "condition_codes": [
+          "diabetes"
+        ]
+      },
+      "required_facts": [
+        {
+          "key": "condition.diabetes",
+          "criticality": "REQUIRED",
+          "on_unusable": "NOT_APPLICABLE"
+        },
+        {
+          "key": "medication.sglt2i",
+          "criticality": "REQUIRED",
+          "on_unusable": "NOT_APPLICABLE"
+        },
+        {
+          "key": "lab.egfr",
+          "criticality": "CRITICAL",
+          "on_unusable": "NEEDS_DATA"
+        }
+      ],
+      "eligibility": {
+        "node_id": "T2-DOS-SGLT2-01-e1",
+        "fact": "condition.diabetes",
+        "op": "truthy"
+      },
+      "condition": {
+        "node_id": "T2-DOS-SGLT2-01-c3",
+        "all": [
+          {
+            "node_id": "T2-DOS-SGLT2-01-c1",
+            "fact": "medication.sglt2i",
+            "op": "truthy"
+          },
+          {
+            "node_id": "T2-DOS-SGLT2-01-c2",
+            "fact": "lab.egfr",
+            "op": ">=",
+            "value": 30,
+            "selector": {
+              "aggregation": "latest"
+            }
+          }
+        ]
+      },
+      "safety": {
+        "redflag_exclusions": [],
+        "hard_exclusions": [],
+        "on_safety_error": "BLOCK_ROUTINE_OUTPUTS"
+      },
+      "recommendation": {
+        "text_fa": "«Empagliflozin: شروع ۱۰ میلی‌گرم صبح‌ها؛ پس از تحمل و در صورت نیاز به کنترل گلایسمی بیشتر، افزایش به ۲۵ میلی‌گرم مجاز است (⚠️ DELTA-1: سقف ۲۵ مطابق label US بازنگری‌شده rev 10/2025 — فرض قدیمی «Max T2D = 10 mg» منقضی است). کنترل گلایسمی در eGFR<30 توصیه نمی‌شود.»",
+        "suggestion_only": true,
+        "requires_clinician_confirmation": true,
+        "may_create_internal_task": false,
+        "params": {
+          "dose_start_fa": "10 mg صبح QD",
+          "dose_titration_fa": "پس از تحمل، برای کنترل گلایسمی بیشتر → 25 mg QD",
+          "dose_max_fa": "25 mg",
+          "renal_adjustment_fa": "کنترل گلایسمی در eGFR <30 توصیه نمی‌شود؛ اندیکاسیون HF/CKD طبق label مستقل",
+          "delta_note": "⚠️ DELTA-1: label US بازنگری‌شده (rev 10/2025) افزایش به 25 mg را در بیماران متحمل مجاز می‌داند (بدون شرط eGFR روی خودِ افزایش) — قانون max=25 با گیت tolerance.",
+          "label_ref": "Jardiance PI (FDA, rev 10/2025) §2.2"
+        }
+      },
+      "evidence": {
+        "source_title": "Jardiance (empagliflozin) Prescribing Information, rev 10/2025",
+        "issuing_organization": "U.S. Food and Drug Administration",
+        "publication_date": null,
+        "source_version": "rev 10/2025",
+        "source_locator": "داسیه DOSING_REFRESH §۱.۲ سطر Empagliflozin + DELTA-1: شروع 10 mg صبح QD؛ پس از تحمل → 25 mg QD؛ Max 25 mg — Jardiance PI (FDA, rev 10/2025) §2.2.",
+        "source_url": "https://www.accessdata.fda.gov/scripts/cder/daf/",
+        "evidence_certainty": "NOT_GRADED",
+        "recommendation_strength": "NOT_GRADED",
+        "local_validation_status": "NOT_REVIEWED",
+        "local_adaptation_note": "نشانی دقیق label Jardiance rev 10/2025 باید در بازبینی تکمیل شود؛ URL فعلی نمایهٔ Drugs@FDA است."
+      },
+      "governance": {
+        "status": "DRAFT",
+        "author": "clinical_rule_research/t2d pipeline",
+        "clinical_reviewer": null,
+        "review_due_date": "2026-11-21",
+        "change_note": "تبدیل از DOSING_REFRESH §۷ (T2-DOS-SGLT2-01). ⚠️ DELTA-1 حمل شده: max=25 با گیت tolerance؛ گیت گلایسمی eGFR≥30 در شرط ماشینی."
+      }
+    },
+    {
+      "schema_version": "2.0",
+      "dsl_version": "2.0",
+      "rule_code": "T2-DOS-SGLT2-02",
+      "version": "0.1.0-draft",
+      "title": "Dapagliflozin — 5→10 mg (گیت شروع گلایسمی eGFR ≥۴۵)",
+      "phase": "ROUTINE",
+      "action_type": "suggest_med",
+      "severity": "INFO",
+      "priority": 7400,
+      "semantic_key": "t2d-dosing-v1.T2-DOS-SGLT2-02",
+      "scope": {
+        "population": "adults_with_t2d_on_sglt2i_egfr_at_or_above_45",
+        "care_settings": [
+          "specialty_clinic"
+        ],
+        "encounter_types": [
+          "outpatient_chronic_care"
+        ],
+        "condition_codes": [
+          "diabetes"
+        ]
+      },
+      "required_facts": [
+        {
+          "key": "condition.diabetes",
+          "criticality": "REQUIRED",
+          "on_unusable": "NOT_APPLICABLE"
+        },
+        {
+          "key": "medication.sglt2i",
+          "criticality": "REQUIRED",
+          "on_unusable": "NOT_APPLICABLE"
+        },
+        {
+          "key": "lab.egfr",
+          "criticality": "CRITICAL",
+          "on_unusable": "NEEDS_DATA"
+        }
+      ],
+      "eligibility": {
+        "node_id": "T2-DOS-SGLT2-02-e1",
+        "fact": "condition.diabetes",
+        "op": "truthy"
+      },
+      "condition": {
+        "node_id": "T2-DOS-SGLT2-02-c3",
+        "all": [
+          {
+            "node_id": "T2-DOS-SGLT2-02-c1",
+            "fact": "medication.sglt2i",
+            "op": "truthy"
+          },
+          {
+            "node_id": "T2-DOS-SGLT2-02-c2",
+            "fact": "lab.egfr",
+            "op": ">=",
+            "value": 45,
+            "selector": {
+              "aggregation": "latest"
+            }
+          }
+        ]
+      },
+      "safety": {
+        "redflag_exclusions": [],
+        "hard_exclusions": [],
+        "on_safety_error": "BLOCK_ROUTINE_OUTPUTS"
+      },
+      "recommendation": {
+        "text_fa": "«Dapagliflozin: شروع ۵ میلی‌گرم صبح‌ها؛ پس از تحمل و نیاز، افزایش به ۱۰ میلی‌گرم. شروع برای کنترل گلایسمی نیازمند eGFR ≥۴۵ است؛ اندیکاسیون HF/CKD با ۱۰ میلی‌گرم حتی در eGFR پایین‌تر طبق label مجاز است.»",
+        "suggestion_only": true,
+        "requires_clinician_confirmation": true,
+        "may_create_internal_task": false,
+        "params": {
+          "dose_start_fa": "5 mg صبح QD",
+          "dose_titration_fa": "پس از تحمل و نیاز → 10 mg QD",
+          "dose_max_fa": "10 mg",
+          "renal_adjustment_fa": "شروع برای کنترل گلایسمی نیازمند eGFR ≥45؛ اندیکاسیون HF/CKD با 10 mg حتی eGFR پایین‌تر مجاز",
+          "label_ref": "Farxiga PI (FDA) §2.2"
+        }
+      },
+      "evidence": {
+        "source_title": "Farxiga (dapagliflozin) Prescribing Information, FDA",
+        "issuing_organization": "U.S. Food and Drug Administration",
+        "publication_date": null,
+        "source_version": "PI (FDA)",
+        "source_locator": "داسیه DOSING_REFRESH §۱.۲ سطر Dapagliflozin: شروع 5 mg صبح QD؛ → 10 mg QD؛ Max 10 mg؛ گیت گلایسمی eGFR ≥45 — Farxiga PI §2.2.",
+        "source_url": "https://www.accessdata.fda.gov/scripts/cder/daf/",
+        "evidence_certainty": "NOT_GRADED",
+        "recommendation_strength": "NOT_GRADED",
+        "local_validation_status": "NOT_REVIEWED",
+        "local_adaptation_note": "نشانی دقیق label Farxiga باید در بازبینی تکمیل شود."
+      },
+      "governance": {
+        "status": "DRAFT",
+        "author": "clinical_rule_research/t2d pipeline",
+        "clinical_reviewer": null,
+        "review_due_date": "2026-11-21",
+        "change_note": "تبدیل از DOSING_REFRESH §۷ (T2-DOS-SGLT2-02). گیت eGFR≥45 در شرط ماشینی؛ یادداشت اندیکاسیون HF/CKD در متن."
+      }
+    },
+    {
+      "schema_version": "2.0",
+      "dsl_version": "2.0",
+      "rule_code": "T2-DOS-SGLT2-03",
+      "version": "0.1.0-draft",
+      "title": "Canagliflozin در eGFR ≥۶۰ — 100→300 mg",
+      "phase": "ROUTINE",
+      "action_type": "suggest_med",
+      "severity": "INFO",
+      "priority": 7200,
+      "semantic_key": "t2d-dosing-v1.T2-DOS-SGLT2-03",
+      "scope": {
+        "population": "adults_with_t2d_on_sglt2i_egfr_at_or_above_60",
+        "care_settings": [
+          "specialty_clinic"
+        ],
+        "encounter_types": [
+          "outpatient_chronic_care"
+        ],
+        "condition_codes": [
+          "diabetes"
+        ]
+      },
+      "required_facts": [
+        {
+          "key": "condition.diabetes",
+          "criticality": "REQUIRED",
+          "on_unusable": "NOT_APPLICABLE"
+        },
+        {
+          "key": "medication.sglt2i",
+          "criticality": "REQUIRED",
+          "on_unusable": "NOT_APPLICABLE"
+        },
+        {
+          "key": "lab.egfr",
+          "criticality": "CRITICAL",
+          "on_unusable": "NEEDS_DATA"
+        }
+      ],
+      "eligibility": {
+        "node_id": "T2-DOS-SGLT2-03-e1",
+        "fact": "condition.diabetes",
+        "op": "truthy"
+      },
+      "condition": {
+        "node_id": "T2-DOS-SGLT2-03-c3",
+        "all": [
+          {
+            "node_id": "T2-DOS-SGLT2-03-c1",
+            "fact": "medication.sglt2i",
+            "op": "truthy"
+          },
+          {
+            "node_id": "T2-DOS-SGLT2-03-c2",
+            "fact": "lab.egfr",
+            "op": ">=",
+            "value": 60,
+            "selector": {
+              "aggregation": "latest"
+            }
+          }
+        ]
+      },
+      "safety": {
+        "redflag_exclusions": [],
+        "hard_exclusions": [],
+        "on_safety_error": "BLOCK_ROUTINE_OUTPUTS"
+      },
+      "recommendation": {
+        "text_fa": "«Canagliflozin در eGFR ≥۶۰: شروع ۱۰۰ میلی‌گرم قبل از اولین وعده؛ در صورت نیاز و تحمل، افزایش به ۳۰۰ میلی‌گرم.»",
+        "suggestion_only": true,
+        "requires_clinician_confirmation": true,
+        "may_create_internal_task": false,
+        "params": {
+          "dose_start_fa": "100 mg قبل از اولین وعده",
+          "dose_titration_fa": "eGFR ≥60 و نیاز → 300 mg",
+          "dose_max_fa": "eGFR≥60: 300 mg",
+          "label_ref": "Invokana PI (FDA, rev 08/2020) §2.2 Table 1"
+        }
+      },
+      "evidence": {
+        "source_title": "Invokana (canagliflozin) Prescribing Information, rev 08/2020",
+        "issuing_organization": "U.S. Food and Drug Administration",
+        "publication_date": null,
+        "source_version": "rev 08/2020",
+        "source_locator": "داسیه DOSING_REFRESH §۱.۲ سطر Canagliflozin: شروع 100 mg قبل از اولین وعده؛ eGFR ≥60 و نیاز → 300 mg — Invokana PI §2.2 Table 1.",
+        "source_url": "https://www.accessdata.fda.gov/scripts/cder/daf/",
+        "evidence_certainty": "NOT_GRADED",
+        "recommendation_strength": "NOT_GRADED",
+        "local_validation_status": "NOT_REVIEWED",
+        "local_adaptation_note": "نشانی دقیق label Invokana rev 08/2020 باید در بازبینی تکمیل شود."
+      },
+      "governance": {
+        "status": "DRAFT",
+        "author": "clinical_rule_research/t2d pipeline",
+        "clinical_reviewer": null,
+        "review_due_date": "2026-11-21",
+        "change_note": "تبدیل از DOSING_REFRESH §۷ (T2-DOS-SGLT2-03)."
+      }
+    },
+    {
+      "schema_version": "2.0",
+      "dsl_version": "2.0",
+      "rule_code": "T2-DOS-SGLT2-04",
+      "version": "0.1.0-draft",
+      "title": "Canagliflozin در eGFR <۶۰ — سقف 100 / منع شروع <۳۰",
+      "phase": "ROUTINE",
+      "action_type": "suggest_med",
+      "severity": "URGENT",
+      "priority": 7800,
+      "semantic_key": "t2d-dosing-v1.T2-DOS-SGLT2-04",
+      "scope": {
+        "population": "adults_with_t2d_on_sglt2i_egfr_below_60",
+        "care_settings": [
+          "specialty_clinic"
+        ],
+        "encounter_types": [
+          "outpatient_chronic_care"
+        ],
+        "condition_codes": [
+          "diabetes"
+        ]
+      },
+      "required_facts": [
+        {
+          "key": "condition.diabetes",
+          "criticality": "REQUIRED",
+          "on_unusable": "NOT_APPLICABLE"
+        },
+        {
+          "key": "medication.sglt2i",
+          "criticality": "REQUIRED",
+          "on_unusable": "NOT_APPLICABLE"
+        },
+        {
+          "key": "lab.egfr",
+          "criticality": "CRITICAL",
+          "on_unusable": "NEEDS_DATA"
+        }
+      ],
+      "eligibility": {
+        "node_id": "T2-DOS-SGLT2-04-e1",
+        "fact": "condition.diabetes",
+        "op": "truthy"
+      },
+      "condition": {
+        "node_id": "T2-DOS-SGLT2-04-c3",
+        "all": [
+          {
+            "node_id": "T2-DOS-SGLT2-04-c1",
+            "fact": "medication.sglt2i",
+            "op": "truthy"
+          },
+          {
+            "node_id": "T2-DOS-SGLT2-04-c2",
+            "fact": "lab.egfr",
+            "op": "<",
+            "value": 60,
+            "selector": {
+              "aggregation": "latest"
+            }
+          }
+        ]
+      },
+      "safety": {
+        "redflag_exclusions": [],
+        "hard_exclusions": [],
+        "on_safety_error": "BLOCK_ROUTINE_OUTPUTS"
+      },
+      "recommendation": {
+        "text_fa": "«Canagliflozin در eGFR زیر ۶۰: سقف ۱۰۰ میلی‌گرم است (ℹ️ NOTE: 200 mg فقط با UGT-inducer). در eGFR <۳۰ شروع ممنوع؛ ادامهٔ ۱۰۰ میلی‌گرم فقط اگر آلبومینوری >۳۰۰ برای حفاظت کلیوی؛ دیالیز: منع.»",
+        "suggestion_only": true,
+        "requires_clinician_confirmation": true,
+        "may_create_internal_task": false,
+        "params": {
+          "dose_max_fa": "eGFR 30–<60: 100 mg",
+          "renal_adjustment_fa": "eGFR <30: شروع ممنوع (ادامهٔ 100 mg فقط اگر آلبومینوری >300 برای حفاظت کلیوی)؛ دیالیز: منع",
+          "note_fa": "ℹ️ NOTE داسیه: در eGFR 30–<60 سقف 100 mg است (200 mg فقط با UGT-inducer).",
+          "label_ref": "Invokana PI (FDA, rev 08/2020) §2.2 Table 1"
+        }
+      },
+      "evidence": {
+        "source_title": "Invokana (canagliflozin) Prescribing Information, rev 08/2020",
+        "issuing_organization": "U.S. Food and Drug Administration",
+        "publication_date": null,
+        "source_version": "rev 08/2020",
+        "source_locator": "داسیه DOSING_REFRESH §۱.۲ سطر Canagliflozin (تنظیم کلیوی) + NOTE-5: eGFR <30 شروع ممنوع؛ eGFR 30–<60 سقف 100 mg — Invokana PI §2.2 Table 1.",
+        "source_url": "https://www.accessdata.fda.gov/scripts/cder/daf/",
+        "evidence_certainty": "NOT_GRADED",
+        "recommendation_strength": "NOT_GRADED",
+        "local_validation_status": "NOT_REVIEWED",
+        "local_adaptation_note": "نشانی دقیق label Invokana rev 08/2020 باید در بازبینی تکمیل شود."
+      },
+      "governance": {
+        "status": "DRAFT",
+        "author": "clinical_rule_research/t2d pipeline",
+        "clinical_reviewer": null,
+        "review_due_date": "2026-11-21",
+        "change_note": "تبدیل از DOSING_REFRESH §۷ (T2-DOS-SGLT2-04). دو زیرباند (30–<60 و <30) در یک ID داسیه‌اند؛ شرط ماشینی egfr<60 و تفکیک باندها در متن/params."
+      }
+    },
+    {
+      "schema_version": "2.0",
+      "dsl_version": "2.0",
+      "rule_code": "T2-DOS-SGLT2-05",
+      "version": "0.1.0-draft",
+      "title": "SGLT2i — قطع ≥۳ روز پیش از جراحی با ناشتایی طولانی (کلاس)",
+      "phase": "ROUTINE",
+      "action_type": "suggest_med",
+      "severity": "URGENT",
+      "priority": 7600,
+      "semantic_key": "t2d-dosing-v1.T2-DOS-SGLT2-05",
+      "scope": {
+        "population": "adults_with_t2d_on_sglt2i",
+        "care_settings": [
+          "specialty_clinic"
+        ],
+        "encounter_types": [
+          "outpatient_chronic_care"
+        ],
+        "condition_codes": [
+          "diabetes"
+        ]
+      },
+      "required_facts": [
+        {
+          "key": "condition.diabetes",
+          "criticality": "REQUIRED",
+          "on_unusable": "NOT_APPLICABLE"
+        },
+        {
+          "key": "medication.sglt2i",
+          "criticality": "REQUIRED",
+          "on_unusable": "NOT_APPLICABLE"
+        }
+      ],
+      "eligibility": {
+        "node_id": "T2-DOS-SGLT2-05-e1",
+        "fact": "condition.diabetes",
+        "op": "truthy"
+      },
+      "condition": {
+        "node_id": "T2-DOS-SGLT2-05-c1",
+        "fact": "medication.sglt2i",
+        "op": "truthy"
+      },
+      "safety": {
+        "redflag_exclusions": [],
+        "hard_exclusions": [],
+        "on_safety_error": "BLOCK_ROUTINE_OUTPUTS"
+      },
+      "recommendation": {
+        "text_fa": "«مهارکننده‌های SGLT2 باید حداقل ۳ روز پیش از جراحی با ناشتایی طولانی قطع شوند (✅ سند منجمد + Jardiance PI §2.3). قواعد مشترک کلاس: شروع تا eGFR ≥20 مجاز و تا دیالیز/پیوند ادامه‌پذیر؛ اثر کاهندهٔ گلوکز در eGFR <45 حداقلی.»",
+        "suggestion_only": true,
+        "requires_clinician_confirmation": true,
+        "may_create_internal_task": false,
+        "params": {
+          "hold_rule_fa": "قطع ≥3 روز پیش از جراحی با ناشتایی طولانی",
+          "class_scope_fa": "empagliflozin / dapagliflozin / canagliflozin (کلاس)",
+          "label_ref": "Jardiance PI §2.3 + ADA 2026 §9.10/Table 9.2"
+        }
+      },
+      "evidence": {
+        "source_title": "Jardiance PI §2.3 + ADA Standards of Care in Diabetes—2026 §9.10/Table 9.2",
+        "issuing_organization": "U.S. FDA / American Diabetes Association",
+        "publication_date": null,
+        "source_version": "2026",
+        "source_locator": "داسیه DOSING_REFRESH §۱.۲ قواعد مشترک کلاس (✅): قطع ≥3 روز پیش از جراحی با ناشتایی طولانی؛ شروع تا eGFR ≥20؛ اثر گلایسمی <45 حداقلی.",
+        "source_url": "https://diabetesjournals.org/care/issue/49/Supplement_1",
+        "evidence_certainty": "NOT_GRADED",
+        "recommendation_strength": "NOT_GRADED",
+        "local_validation_status": "NOT_REVIEWED"
+      },
+      "governance": {
+        "status": "DRAFT",
+        "author": "clinical_rule_research/t2d pipeline",
+        "clinical_reviewer": null,
+        "review_due_date": "2026-11-21",
+        "change_note": "تبدیل از DOSING_REFRESH §۷ (T2-DOS-SGLT2-05). قاعدهٔ کلاسی؛ تشخیص جراحی پیش‌رو در DSL نیست — کارت یادآور در بازبینی دارویی."
+      }
+    },
+    {
+      "schema_version": "2.0",
+      "dsl_version": "2.0",
+      "rule_code": "T2-DOS-GLP1-01",
+      "version": "0.1.0-draft",
+      "title": "Semaglutide SC (Ozempic) — 0.25×4w→0.5→1→2 mg/week",
+      "phase": "ROUTINE",
+      "action_type": "suggest_med",
+      "severity": "INFO",
+      "priority": 7000,
+      "semantic_key": "t2d-dosing-v1.T2-DOS-GLP1-01",
+      "scope": {
+        "population": "adults_with_t2d_on_glp1_ra",
+        "care_settings": [
+          "specialty_clinic"
+        ],
+        "encounter_types": [
+          "outpatient_chronic_care"
+        ],
+        "condition_codes": [
+          "diabetes"
+        ]
+      },
+      "required_facts": [
+        {
+          "key": "condition.diabetes",
+          "criticality": "REQUIRED",
+          "on_unusable": "NOT_APPLICABLE"
+        },
+        {
+          "key": "medication.glp1_ra",
+          "criticality": "REQUIRED",
+          "on_unusable": "NOT_APPLICABLE"
+        }
+      ],
+      "eligibility": {
+        "node_id": "T2-DOS-GLP1-01-e1",
+        "fact": "condition.diabetes",
+        "op": "truthy"
+      },
+      "condition": {
+        "node_id": "T2-DOS-GLP1-01-c1",
+        "fact": "medication.glp1_ra",
+        "op": "truthy"
+      },
+      "safety": {
+        "redflag_exclusions": [],
+        "hard_exclusions": [],
+        "on_safety_error": "BLOCK_ROUTINE_OUTPUTS"
+      },
+      "recommendation": {
+        "text_fa": "«Semaglutide زیرجلدی (Ozempic): شروع ۰٫۲۵ میلی‌گرم هفتگی ×۴ هفته (دوز آغازین، درمانی نیست)؛ سپس ۰٫۵ (بعد ۴ هفته) → ۱ (بعد ≥۴ هفته) → ۲ (بعد ≥۴ هفته)؛ سقف ۲ میلی‌گرم در هفته. بدون تنظیم کلیوی.»",
+        "suggestion_only": true,
+        "requires_clinician_confirmation": true,
+        "may_create_internal_task": false,
+        "params": {
+          "dose_start_fa": "0.25 mg هفتگی ×4 هفته (دوز آغازین، درمانی نیست)",
+          "dose_titration_fa": "0.25→0.5 (بعد 4w)→1 (بعد ≥4w)→2 (بعد ≥4w)",
+          "dose_max_fa": "2 mg/week",
+          "renal_adjustment_fa": "بدون تنظیم",
+          "label_ref": "Ozempic PI (FDA, 2026) §2.1"
+        }
+      },
+      "evidence": {
+        "source_title": "Ozempic (semaglutide SC) Prescribing Information, FDA 2026",
+        "issuing_organization": "U.S. Food and Drug Administration",
+        "publication_date": null,
+        "source_version": "2026",
+        "source_locator": "داسیه DOSING_REFRESH §۱.۳ سطر Semaglutide SC: 0.25×4w→0.5→1→2؛ Max 2 mg/week؛ بدون تنظیم کلیوی — Ozempic PI (FDA, 2026) §2.1.",
+        "source_url": "https://www.accessdata.fda.gov/scripts/cder/daf/",
+        "evidence_certainty": "NOT_GRADED",
+        "recommendation_strength": "NOT_GRADED",
+        "local_validation_status": "NOT_REVIEWED",
+        "local_adaptation_note": "نشانی دقیق label Ozempic 2026 باید در بازبینی تکمیل شود."
+      },
+      "governance": {
+        "status": "DRAFT",
+        "author": "clinical_rule_research/t2d pipeline",
+        "clinical_reviewer": null,
+        "review_due_date": "2026-11-21",
+        "change_note": "تبدیل از DOSING_REFRESH §۷ (T2-DOS-GLP1-01). فواصل تیتراسیون (≥4w) در DSL قابل زمان‌بندی نیست — فقط متن."
+      }
+    },
+    {
+      "schema_version": "2.0",
+      "dsl_version": "2.0",
+      "rule_code": "T2-DOS-GLP1-02",
+      "version": "0.1.0-draft",
+      "title": "Semaglutide خوراکی (Rybelsus R1) — 3×30d→7→14 mg (DELTA-2)",
+      "phase": "ROUTINE",
+      "action_type": "suggest_med",
+      "severity": "INFO",
+      "priority": 6900,
+      "semantic_key": "t2d-dosing-v1.T2-DOS-GLP1-02",
+      "scope": {
+        "population": "adults_with_t2d_on_glp1_ra",
+        "care_settings": [
+          "specialty_clinic"
+        ],
+        "encounter_types": [
+          "outpatient_chronic_care"
+        ],
+        "condition_codes": [
+          "diabetes"
+        ]
+      },
+      "required_facts": [
+        {
+          "key": "condition.diabetes",
+          "criticality": "REQUIRED",
+          "on_unusable": "NOT_APPLICABLE"
+        },
+        {
+          "key": "medication.glp1_ra",
+          "criticality": "REQUIRED",
+          "on_unusable": "NOT_APPLICABLE"
+        }
+      ],
+      "eligibility": {
+        "node_id": "T2-DOS-GLP1-02-e1",
+        "fact": "condition.diabetes",
+        "op": "truthy"
+      },
+      "condition": {
+        "node_id": "T2-DOS-GLP1-02-c1",
+        "fact": "medication.glp1_ra",
+        "op": "truthy"
+      },
+      "safety": {
+        "redflag_exclusions": [],
+        "hard_exclusions": [],
+        "on_safety_error": "BLOCK_ROUTINE_OUTPUTS"
+      },
+      "recommendation": {
+        "text_fa": "«Semaglutide خوراکی (Rybelsus R1): شروع ۳ میلی‌گرم روزانه ×۳۰ روز (دوز آغازین)؛ سپس ۷ (روز ۳۱) → ۱۴ (بعد ≥۳۰ روز در صورت نیاز)؛ سقف ۱۴ میلی‌گرم در روز. ⚠️ مسیر خوراکی از ۳ mg شروع می‌شود نه 0.25 (DELTA-2). قرص با قواعد ناشتا. فرمولاسیون R2 (1.5/4/9) ثبت شده اما فعلاً out-of-scope.»",
+        "suggestion_only": true,
+        "requires_clinician_confirmation": true,
+        "may_create_internal_task": false,
+        "params": {
+          "dose_start_fa": "3 mg/day ×30 روز (دوز آغازین)",
+          "dose_titration_fa": "3→7 (روز 31)→14 (بعد ≥30d در صورت نیاز)",
+          "dose_max_fa": "14 mg/day",
+          "renal_adjustment_fa": "بدون تنظیم",
+          "delta_note": "⚠️ DELTA-2: عبارت «sema 0.25→… oral» غلط است — مسیر خوراکی از 3 mg شروع می‌شود (0.25 فقط SC/Ozempic). فرمولاسیون جدید R2 (1.5/4/9 mg) ثبت شده — rule engine فعلاً فقط R1 (3/7/14) را مدل می‌کند.",
+          "extra_guidance_fa": "قواعد ناشتای Rybelsus: آب کم، ≥30 دقیقه پیش از غذا/داروی دیگر",
+          "label_ref": "Rybelsus PI (FDA) §2.2"
+        }
+      },
+      "evidence": {
+        "source_title": "Rybelsus (semaglutide oral) Prescribing Information, FDA",
+        "issuing_organization": "U.S. Food and Drug Administration",
+        "publication_date": null,
+        "source_version": "PI (FDA)",
+        "source_locator": "داسیه DOSING_REFRESH §۱.۳ سطر Semaglutide خوراکی + DELTA-2: 3 mg/day ×30 روز → 7 → 14؛ Max 14 mg/day — Rybelsus PI §2.2.",
+        "source_url": "https://www.accessdata.fda.gov/scripts/cder/daf/",
+        "evidence_certainty": "NOT_GRADED",
+        "recommendation_strength": "NOT_GRADED",
+        "local_validation_status": "NOT_REVIEWED",
+        "local_adaptation_note": "نشانی دقیق label Rybelsus باید در بازبینی تکمیل شود."
+      },
+      "governance": {
+        "status": "DRAFT",
+        "author": "clinical_rule_research/t2d pipeline",
+        "clinical_reviewer": null,
+        "review_due_date": "2026-11-21",
+        "change_note": "تبدیل از DOSING_REFRESH §۷ (T2-DOS-GLP1-02). ⚠️ DELTA-2 حمل شده: شروع 3 mg (نه 0.25)؛ R2 علامت‌گذاری out-of-scope."
+      }
+    },
+    {
+      "schema_version": "2.0",
+      "dsl_version": "2.0",
+      "rule_code": "T2-DOS-GLP1-03",
+      "version": "0.1.0-draft",
+      "title": "Liraglutide (Victoza) — 0.6×1w→1.2→1.8 mg/day",
+      "phase": "ROUTINE",
+      "action_type": "suggest_med",
+      "severity": "INFO",
+      "priority": 6800,
+      "semantic_key": "t2d-dosing-v1.T2-DOS-GLP1-03",
+      "scope": {
+        "population": "adults_with_t2d_on_glp1_ra",
+        "care_settings": [
+          "specialty_clinic"
+        ],
+        "encounter_types": [
+          "outpatient_chronic_care"
+        ],
+        "condition_codes": [
+          "diabetes"
+        ]
+      },
+      "required_facts": [
+        {
+          "key": "condition.diabetes",
+          "criticality": "REQUIRED",
+          "on_unusable": "NOT_APPLICABLE"
+        },
+        {
+          "key": "medication.glp1_ra",
+          "criticality": "REQUIRED",
+          "on_unusable": "NOT_APPLICABLE"
+        }
+      ],
+      "eligibility": {
+        "node_id": "T2-DOS-GLP1-03-e1",
+        "fact": "condition.diabetes",
+        "op": "truthy"
+      },
+      "condition": {
+        "node_id": "T2-DOS-GLP1-03-c1",
+        "fact": "medication.glp1_ra",
+        "op": "truthy"
+      },
+      "safety": {
+        "redflag_exclusions": [],
+        "hard_exclusions": [],
+        "on_safety_error": "BLOCK_ROUTINE_OUTPUTS"
+      },
+      "recommendation": {
+        "text_fa": "«Liraglutide (Victoza): شروع ۰٫۶ میلی‌گرم روزانه ×حداقل ۱ هفته؛ سپس ۱٫۲ → ۱٫۸ (هر گام بعد ≥۱ هفته)؛ سقف ۱٫۸ میلی‌گرم در روز. بدون تنظیم کلیوی.»",
+        "suggestion_only": true,
+        "requires_clinician_confirmation": true,
+        "may_create_internal_task": false,
+        "params": {
+          "dose_start_fa": "0.6 mg/day ×≥1 هفته",
+          "dose_titration_fa": "0.6→1.2→1.8 (هر گام بعد ≥1w)",
+          "dose_max_fa": "1.8 mg/day",
+          "renal_adjustment_fa": "بدون تنظیم",
+          "label_ref": "Victoza PI (FDA, 2025) §2.1"
+        }
+      },
+      "evidence": {
+        "source_title": "Victoza (liraglutide) Prescribing Information, FDA 2025",
+        "issuing_organization": "U.S. Food and Drug Administration",
+        "publication_date": null,
+        "source_version": "2025",
+        "source_locator": "داسیه DOSING_REFRESH §۱.۳ سطر Liraglutide: 0.6×≥1w→1.2→1.8؛ Max 1.8 mg/day — Victoza PI (FDA, 2025) §2.1.",
+        "source_url": "https://www.accessdata.fda.gov/scripts/cder/daf/",
+        "evidence_certainty": "NOT_GRADED",
+        "recommendation_strength": "NOT_GRADED",
+        "local_validation_status": "NOT_REVIEWED",
+        "local_adaptation_note": "نشانی دقیق label Victoza 2025 باید در بازبینی تکمیل شود."
+      },
+      "governance": {
+        "status": "DRAFT",
+        "author": "clinical_rule_research/t2d pipeline",
+        "clinical_reviewer": null,
+        "review_due_date": "2026-11-21",
+        "change_note": "تبدیل از DOSING_REFRESH §۷ (T2-DOS-GLP1-03)."
+      }
+    },
+    {
+      "schema_version": "2.0",
+      "dsl_version": "2.0",
+      "rule_code": "T2-DOS-GLP1-04",
+      "version": "0.1.0-draft",
+      "title": "Dulaglutide (Trulicity) — 0.75×4w→1.5→3→4.5 mg/week",
+      "phase": "ROUTINE",
+      "action_type": "suggest_med",
+      "severity": "INFO",
+      "priority": 6700,
+      "semantic_key": "t2d-dosing-v1.T2-DOS-GLP1-04",
+      "scope": {
+        "population": "adults_with_t2d_on_glp1_ra",
+        "care_settings": [
+          "specialty_clinic"
+        ],
+        "encounter_types": [
+          "outpatient_chronic_care"
+        ],
+        "condition_codes": [
+          "diabetes"
+        ]
+      },
+      "required_facts": [
+        {
+          "key": "condition.diabetes",
+          "criticality": "REQUIRED",
+          "on_unusable": "NOT_APPLICABLE"
+        },
+        {
+          "key": "medication.glp1_ra",
+          "criticality": "REQUIRED",
+          "on_unusable": "NOT_APPLICABLE"
+        }
+      ],
+      "eligibility": {
+        "node_id": "T2-DOS-GLP1-04-e1",
+        "fact": "condition.diabetes",
+        "op": "truthy"
+      },
+      "condition": {
+        "node_id": "T2-DOS-GLP1-04-c1",
+        "fact": "medication.glp1_ra",
+        "op": "truthy"
+      },
+      "safety": {
+        "redflag_exclusions": [],
+        "hard_exclusions": [],
+        "on_safety_error": "BLOCK_ROUTINE_OUTPUTS"
+      },
+      "recommendation": {
+        "text_fa": "«Dulaglutide (Trulicity): شروع ۰٫۷۵ میلی‌گرم هفتگی ×حداقل ۴ هفته؛ سپس گام‌های ۱٫۵ میلی‌گرمی هر ≥۴ هفته: ۱٫۵ → ۳ → ۴٫۵؛ سقف بزرگسال ۴٫۵ میلی‌گرم در هفته (ℹ️ NOTE: برخی منابع ثانویه سقف 1.5 نمایش می‌دهند — label رسمی بزرگسال 4.5 است). بدون تنظیم کلیوی.»",
+        "suggestion_only": true,
+        "requires_clinician_confirmation": true,
+        "may_create_internal_task": false,
+        "params": {
+          "dose_start_fa": "0.75 mg هفتگی ×≥4w",
+          "dose_titration_fa": "0.75→1.5→3→4.5 (گام‌های 1.5 mg، هر ≥4w)",
+          "dose_max_fa": "4.5 mg/week (بزرگسال)",
+          "renal_adjustment_fa": "بدون تنظیم",
+          "note_fa": "ℹ️ NOTE-7 داسیه: برخی منابع ثانویه سقف 1.5 mg را نمایش می‌دهند؛ label رسمی بزرگسال 4.5 mg است.",
+          "label_ref": "Trulicity PI (Lilly USPI) §2.1"
+        }
+      },
+      "evidence": {
+        "source_title": "Trulicity (dulaglutide) US Prescribing Information",
+        "issuing_organization": "Eli Lilly / U.S. FDA",
+        "publication_date": null,
+        "source_version": "USPI",
+        "source_locator": "داسیه DOSING_REFRESH §۱.۳ سطر Dulaglutide + NOTE-7: 0.75×≥4w→1.5→3→4.5؛ Max 4.5 mg/week — Trulicity PI §2.1.",
+        "source_url": "https://www.accessdata.fda.gov/scripts/cder/daf/",
+        "evidence_certainty": "NOT_GRADED",
+        "recommendation_strength": "NOT_GRADED",
+        "local_validation_status": "NOT_REVIEWED",
+        "local_adaptation_note": "نشانی دقیق label Trulicity باید در بازبینی تکمیل شود."
+      },
+      "governance": {
+        "status": "DRAFT",
+        "author": "clinical_rule_research/t2d pipeline",
+        "clinical_reviewer": null,
+        "review_due_date": "2026-11-21",
+        "change_note": "تبدیل از DOSING_REFRESH §۷ (T2-DOS-GLP1-04). NOTE-7 (سقف 4.5) حفظ شد."
+      }
+    },
+    {
+      "schema_version": "2.0",
+      "dsl_version": "2.0",
+      "rule_code": "T2-DOS-GLP1-05",
+      "version": "0.1.0-draft",
+      "title": "Tirzepatide (Mounjaro) — 2.5×4w→+2.5/q4w→15 mg/week",
+      "phase": "ROUTINE",
+      "action_type": "suggest_med",
+      "severity": "INFO",
+      "priority": 6600,
+      "semantic_key": "t2d-dosing-v1.T2-DOS-GLP1-05",
+      "scope": {
+        "population": "adults_with_t2d_on_glp1_ra",
+        "care_settings": [
+          "specialty_clinic"
+        ],
+        "encounter_types": [
+          "outpatient_chronic_care"
+        ],
+        "condition_codes": [
+          "diabetes"
+        ]
+      },
+      "required_facts": [
+        {
+          "key": "condition.diabetes",
+          "criticality": "REQUIRED",
+          "on_unusable": "NOT_APPLICABLE"
+        },
+        {
+          "key": "medication.glp1_ra",
+          "criticality": "REQUIRED",
+          "on_unusable": "NOT_APPLICABLE"
+        }
+      ],
+      "eligibility": {
+        "node_id": "T2-DOS-GLP1-05-e1",
+        "fact": "condition.diabetes",
+        "op": "truthy"
+      },
+      "condition": {
+        "node_id": "T2-DOS-GLP1-05-c1",
+        "fact": "medication.glp1_ra",
+        "op": "truthy"
+      },
+      "safety": {
+        "redflag_exclusions": [],
+        "hard_exclusions": [],
+        "on_safety_error": "BLOCK_ROUTINE_OUTPUTS"
+      },
+      "recommendation": {
+        "text_fa": "«Tirzepatide (Mounjaro): شروع ۲٫۵ میلی‌گرم هفتگی ×۴ هفته (آغازین)؛ سپس +۲٫۵ میلی‌گرم هر ≥۴ هفته (2.5→5→7.5→10→12.5→15)؛ سقف بزرگسال ۱۵ میلی‌گرم در هفته. بدون تنظیم کلیوی.»",
+        "suggestion_only": true,
+        "requires_clinician_confirmation": true,
+        "may_create_internal_task": false,
+        "params": {
+          "dose_start_fa": "2.5 mg هفتگی ×4w (آغازین)",
+          "dose_titration_fa": "+2.5 mg هر ≥4 هفته (2.5→5→7.5→10→12.5→15)",
+          "dose_max_fa": "15 mg/week (بزرگسال)",
+          "renal_adjustment_fa": "بدون تنظیم",
+          "label_ref": "Mounjaro PI (FDA, 2026) §2.1"
+        }
+      },
+      "evidence": {
+        "source_title": "Mounjaro (tirzepatide) Prescribing Information, FDA 2026",
+        "issuing_organization": "U.S. Food and Drug Administration",
+        "publication_date": null,
+        "source_version": "2026",
+        "source_locator": "داسیه DOSING_REFRESH §۱.۳ سطر Tirzepatide: 2.5×4w؛ +2.5 هر ≥4w؛ Max 15 mg/week — Mounjaro PI (FDA, 2026) §2.1.",
+        "source_url": "https://www.accessdata.fda.gov/scripts/cder/daf/",
+        "evidence_certainty": "NOT_GRADED",
+        "recommendation_strength": "NOT_GRADED",
+        "local_validation_status": "NOT_REVIEWED",
+        "local_adaptation_note": "نشانی دقیق label Mounjaro 2026 باید در بازبینی تکمیل شود."
+      },
+      "governance": {
+        "status": "DRAFT",
+        "author": "clinical_rule_research/t2d pipeline",
+        "clinical_reviewer": null,
+        "review_due_date": "2026-11-21",
+        "change_note": "تبدیل از DOSING_REFRESH §۷ (T2-DOS-GLP1-05)."
+      }
+    },
+    {
+      "schema_version": "2.0",
+      "dsl_version": "2.0",
+      "rule_code": "T2-DOS-GLP1-06",
+      "version": "0.1.0-draft",
+      "title": "Exenatide BID/ER — 5 mcg×1mo→10 BID / 2 mg هفتگی",
+      "phase": "ROUTINE",
+      "action_type": "suggest_med",
+      "severity": "INFO",
+      "priority": 6500,
+      "semantic_key": "t2d-dosing-v1.T2-DOS-GLP1-06",
+      "scope": {
+        "population": "adults_with_t2d_on_glp1_ra",
+        "care_settings": [
+          "specialty_clinic"
+        ],
+        "encounter_types": [
+          "outpatient_chronic_care"
+        ],
+        "condition_codes": [
+          "diabetes"
+        ]
+      },
+      "required_facts": [
+        {
+          "key": "condition.diabetes",
+          "criticality": "REQUIRED",
+          "on_unusable": "NOT_APPLICABLE"
+        },
+        {
+          "key": "medication.glp1_ra",
+          "criticality": "REQUIRED",
+          "on_unusable": "NOT_APPLICABLE"
+        }
+      ],
+      "eligibility": {
+        "node_id": "T2-DOS-GLP1-06-e1",
+        "fact": "condition.diabetes",
+        "op": "truthy"
+      },
+      "condition": {
+        "node_id": "T2-DOS-GLP1-06-c1",
+        "fact": "medication.glp1_ra",
+        "op": "truthy"
+      },
+      "safety": {
+        "redflag_exclusions": [],
+        "hard_exclusions": [],
+        "on_safety_error": "BLOCK_ROUTINE_OUTPUTS"
+      },
+      "recommendation": {
+        "text_fa": "«Exenatide BID (Byetta): شروع ۵ میکروگرم دو بار در روز ×۱ ماه، ≤۶۰ دقیقه قبل از دو وعدهٔ اصلی؛ سپس ۱۰ میکروگرم BID؛ سقف ۱۰ میکروگرم BID. Exenatide ER (Bydureon BCise): ۲ میلی‌گرم هفتگی بدون تیتراسیون. تنظیم کلیوی هر دو: اجتناب در eGFR ≤۳۰ (به T2-DOS-GLP1-07 نیز توجه شود).»",
+        "suggestion_only": true,
+        "requires_clinician_confirmation": true,
+        "may_create_internal_task": false,
+        "params": {
+          "dose_start_fa": "BID: 5 mcg BID ×1 ماه، ≤60 دقیقه قبل از دو وعدهٔ اصلی | ER: 2 mg هفتگی",
+          "dose_titration_fa": "BID: 5→10 mcg BID | ER: بدون تیتر",
+          "dose_max_fa": "BID: 10 mcg BID | ER: 2 mg/week",
+          "renal_adjustment_fa": "eGFR/CrCl ≤30 اجتناب (ADA 2026 Table 9.2)",
+          "label_ref": "Byetta PI (DailyMed) §2.1 + Bydureon PI + ADA 2026 Table 9.2"
+        }
+      },
+      "evidence": {
+        "source_title": "Byetta (exenatide BID) PI (DailyMed) + Bydureon BCise PI + ADA 2026 Table 9.2",
+        "issuing_organization": "U.S. FDA / American Diabetes Association",
+        "publication_date": null,
+        "source_version": "PI (DailyMed) / 2026",
+        "source_locator": "داسیه DOSING_REFRESH §۱.۳ سطرهای Exenatide BID و Exenatide ER: 5 mcg BID ×1 ماه → 10 mcg BID؛ ER 2 mg هفتگی بدون تیتر؛ eGFR ≤30 اجتناب.",
+        "source_url": "https://dailymed.nlm.nih.gov/dailymed/",
+        "evidence_certainty": "NOT_GRADED",
+        "recommendation_strength": "NOT_GRADED",
+        "local_validation_status": "NOT_REVIEWED",
+        "local_adaptation_note": "نشانی دقیق labelهای Byetta/Bydureon در DailyMed باید در بازبینی تکمیل شود."
+      },
+      "governance": {
+        "status": "DRAFT",
+        "author": "clinical_rule_research/t2d pipeline",
+        "clinical_reviewer": null,
+        "review_due_date": "2026-11-21",
+        "change_note": "تبدیل از DOSING_REFRESH §۷ (T2-DOS-GLP1-06). دو فرمولاسیون exenatide در یک ID داسیه‌اند؛ هر دو در متن/params."
+      }
+    },
+    {
+      "schema_version": "2.0",
+      "dsl_version": "2.0",
+      "rule_code": "T2-DOS-GLP1-07",
+      "version": "0.1.0-draft",
+      "title": "Exenatide/Lixisenatide — اجتناب در eGFR ≤۳۰",
+      "phase": "ROUTINE",
+      "action_type": "suggest_med",
+      "severity": "URGENT",
+      "priority": 7700,
+      "semantic_key": "t2d-dosing-v1.T2-DOS-GLP1-07",
+      "scope": {
+        "population": "adults_with_t2d_on_glp1_ra_egfr_at_or_below_30",
+        "care_settings": [
+          "specialty_clinic"
+        ],
+        "encounter_types": [
+          "outpatient_chronic_care"
+        ],
+        "condition_codes": [
+          "diabetes"
+        ]
+      },
+      "required_facts": [
+        {
+          "key": "condition.diabetes",
+          "criticality": "REQUIRED",
+          "on_unusable": "NOT_APPLICABLE"
+        },
+        {
+          "key": "medication.glp1_ra",
+          "criticality": "REQUIRED",
+          "on_unusable": "NOT_APPLICABLE"
+        },
+        {
+          "key": "lab.egfr",
+          "criticality": "CRITICAL",
+          "on_unusable": "NEEDS_DATA"
+        }
+      ],
+      "eligibility": {
+        "node_id": "T2-DOS-GLP1-07-e1",
+        "fact": "condition.diabetes",
+        "op": "truthy"
+      },
+      "condition": {
+        "node_id": "T2-DOS-GLP1-07-c3",
+        "all": [
+          {
+            "node_id": "T2-DOS-GLP1-07-c1",
+            "fact": "medication.glp1_ra",
+            "op": "truthy"
+          },
+          {
+            "node_id": "T2-DOS-GLP1-07-c2",
+            "fact": "lab.egfr",
+            "op": "<=",
+            "value": 30,
+            "selector": {
+              "aggregation": "latest"
+            }
+          }
+        ]
+      },
+      "safety": {
+        "redflag_exclusions": [],
+        "hard_exclusions": [],
+        "on_safety_error": "BLOCK_ROUTINE_OUTPUTS"
+      },
+      "recommendation": {
+        "text_fa": "«Exenatide (BID/ER) و Lixisenatide در eGFR ≤۳۰ اجتناب شوند (ADA 2026 Table 9.2). اگر GLP-1 RA در eGFR پایین لازم باشد، عامل غیروابسته به کلیه (sema/dula/lira/tirz بدون تنظیم) با تصمیم پزشک بررسی شود. در eGFR <30 ترجیح کلی GLP-1 RA است (§9.11).»",
+        "suggestion_only": true,
+        "requires_clinician_confirmation": true,
+        "may_create_internal_task": false,
+        "params": {
+          "renal_adjustment_fa": "lixi/exenatide: eGFR ≤30 اجتناب | sema/dula/lira/tirz: بدون تنظیم",
+          "agent_scope_fa": "exenatide BID/ER، lixisenatide (تفکیک agent در fact کلاسی ممکن نیست — بازبینی دستی لیست دارو لازم است)",
+          "label_ref": "Byetta/Bydureon/Adlyxin PI + ADA 2026 Table 9.2, §9.11"
+        }
+      },
+      "evidence": {
+        "source_title": "ADA Standards of Care in Diabetes—2026 Table 9.2 + Adlyxin/Byetta/Bydureon PI",
+        "issuing_organization": "American Diabetes Association / U.S. FDA",
+        "publication_date": null,
+        "source_version": "2026",
+        "source_locator": "داسیه DOSING_REFRESH §۱.۳ سطرهای Exenatide/Lixisenatide (⚠️ eGFR/CrCl ≤30 اجتناب) + §۴ (eGFR <30: GLP-1 RA ترجیح؛ دیالیز: GLP-1 غیروابسته به کلیه — 9.11 B/C).",
+        "source_url": "https://diabetesjournals.org/care/issue/49/Supplement_1",
+        "evidence_certainty": "NOT_GRADED",
+        "recommendation_strength": "NOT_GRADED",
+        "local_validation_status": "NOT_REVIEWED"
+      },
+      "governance": {
+        "status": "DRAFT",
+        "author": "clinical_rule_research/t2d pipeline",
+        "clinical_reviewer": null,
+        "review_due_date": "2026-11-21",
+        "change_note": "تبدیل از DOSING_REFRESH §۷ (T2-DOS-GLP1-07). تریگر egfr<=30 طبق داسیه؛ محدودیت: fact کلاس‌محور، نام agent در متن."
+      }
+    },
+    {
+      "schema_version": "2.0",
+      "dsl_version": "2.0",
+      "rule_code": "T2-DOS-DPP4-01",
+      "version": "0.1.0-draft",
+      "title": "Sitagliptin — باندهای کلیوی 100/50/25 (DELTA-3)",
+      "phase": "ROUTINE",
+      "action_type": "suggest_med",
+      "severity": "WARN",
+      "priority": 6400,
+      "semantic_key": "t2d-dosing-v1.T2-DOS-DPP4-01",
+      "scope": {
+        "population": "adults_with_t2d_on_dpp4i_egfr_below_60",
+        "care_settings": [
+          "specialty_clinic"
+        ],
+        "encounter_types": [
+          "outpatient_chronic_care"
+        ],
+        "condition_codes": [
+          "diabetes"
+        ]
+      },
+      "required_facts": [
+        {
+          "key": "condition.diabetes",
+          "criticality": "REQUIRED",
+          "on_unusable": "NOT_APPLICABLE"
+        },
+        {
+          "key": "medication.dpp4i",
+          "criticality": "REQUIRED",
+          "on_unusable": "NOT_APPLICABLE"
+        },
+        {
+          "key": "lab.egfr",
+          "criticality": "CRITICAL",
+          "on_unusable": "NEEDS_DATA"
+        }
+      ],
+      "eligibility": {
+        "node_id": "T2-DOS-DPP4-01-e1",
+        "fact": "condition.diabetes",
+        "op": "truthy"
+      },
+      "condition": {
+        "node_id": "T2-DOS-DPP4-01-c3",
+        "all": [
+          {
+            "node_id": "T2-DOS-DPP4-01-c1",
+            "fact": "medication.dpp4i",
+            "op": "truthy"
+          },
+          {
+            "node_id": "T2-DOS-DPP4-01-c2",
+            "fact": "lab.egfr",
+            "op": "<",
+            "value": 60,
+            "selector": {
+              "aggregation": "latest"
+            }
+          }
+        ]
+      },
+      "safety": {
+        "redflag_exclusions": [],
+        "hard_exclusions": [],
+        "on_safety_error": "BLOCK_ROUTINE_OUTPUTS"
+      },
+      "recommendation": {
+        "text_fa": "«Sitagliptin بر اساس eGFR: ≥۶۰ → ۱۰۰ میلی‌گرم روزانه؛ ۴۵–۵۹ → ۱۰۰ میلی‌گرم؛ ۳۰–۴۴ → ۵۰ میلی‌گرم روزانه (⚠️ DELTA-3: فرض «25 در 30–45» نادرست است)؛ <۳۰/دیالیز → ۲۵ میلی‌گرم روزانه (شامل HD، بعد دیالیز).»",
+        "suggestion_only": true,
+        "requires_clinician_confirmation": true,
+        "may_create_internal_task": false,
+        "params": {
+          "renal_band_table_fa": "eGFR ≥60: 100 mg QD | 45–59: 100 mg QD | 30–44: 50 mg QD | <30/HD: 25 mg QD (بعد دیالیز)",
+          "delta_note": "⚠️ DELTA-3: فرض ورودی «sitagliptin eGFR30-45→25» نادرست است؛ در eGFR 30–<45 دوز 50 mg است و 25 mg فقط برای eGFR <30/دیالیز.",
+          "label_ref": "Januvia PI (FDA) §2.2"
+        }
+      },
+      "evidence": {
+        "source_title": "Januvia (sitagliptin) Prescribing Information, FDA",
+        "issuing_organization": "U.S. Food and Drug Administration",
+        "publication_date": null,
+        "source_version": "PI (FDA)",
+        "source_locator": "داسیه DOSING_REFRESH §۱.۴ سطر Sitagliptin + DELTA-3: 100 / 50 (30–44) / 25 (<30 شامل HD بعد دیالیز) — Januvia PI §2.2.",
+        "source_url": "https://www.accessdata.fda.gov/scripts/cder/daf/",
+        "evidence_certainty": "NOT_GRADED",
+        "recommendation_strength": "NOT_GRADED",
+        "local_validation_status": "NOT_REVIEWED",
+        "local_adaptation_note": "نشانی دقیق label Januvia باید در بازبینی تکمیل شود."
+      },
+      "governance": {
+        "status": "DRAFT",
+        "author": "clinical_rule_research/t2d pipeline",
+        "clinical_reviewer": null,
+        "review_due_date": "2026-11-21",
+        "change_note": "تبدیل از DOSING_REFRESH §۷ (T2-DOS-DPP4-01). ⚠️ DELTA-3 حمل شده. سه باند در یک ID داسیه‌اند؛ شرط ماشینی egfr<60 و جدول باندها verbatim در params."
+      }
+    },
+    {
+      "schema_version": "2.0",
+      "dsl_version": "2.0",
+      "rule_code": "T2-DOS-DPP4-02",
+      "version": "0.1.0-draft",
+      "title": "Saxagliptin — 5 mg؛ 2.5 در eGFR<45 یا مهار CYP3A4/5",
+      "phase": "ROUTINE",
+      "action_type": "suggest_med",
+      "severity": "WARN",
+      "priority": 6300,
+      "semantic_key": "t2d-dosing-v1.T2-DOS-DPP4-02",
+      "scope": {
+        "population": "adults_with_t2d_on_dpp4i_egfr_below_60",
+        "care_settings": [
+          "specialty_clinic"
+        ],
+        "encounter_types": [
+          "outpatient_chronic_care"
+        ],
+        "condition_codes": [
+          "diabetes"
+        ]
+      },
+      "required_facts": [
+        {
+          "key": "condition.diabetes",
+          "criticality": "REQUIRED",
+          "on_unusable": "NOT_APPLICABLE"
+        },
+        {
+          "key": "medication.dpp4i",
+          "criticality": "REQUIRED",
+          "on_unusable": "NOT_APPLICABLE"
+        },
+        {
+          "key": "lab.egfr",
+          "criticality": "CRITICAL",
+          "on_unusable": "NEEDS_DATA"
+        }
+      ],
+      "eligibility": {
+        "node_id": "T2-DOS-DPP4-02-e1",
+        "fact": "condition.diabetes",
+        "op": "truthy"
+      },
+      "condition": {
+        "node_id": "T2-DOS-DPP4-02-c3",
+        "all": [
+          {
+            "node_id": "T2-DOS-DPP4-02-c1",
+            "fact": "medication.dpp4i",
+            "op": "truthy"
+          },
+          {
+            "node_id": "T2-DOS-DPP4-02-c2",
+            "fact": "lab.egfr",
+            "op": "<",
+            "value": 60,
+            "selector": {
+              "aggregation": "latest"
+            }
+          }
+        ]
+      },
+      "safety": {
+        "redflag_exclusions": [],
+        "hard_exclusions": [],
+        "on_safety_error": "BLOCK_ROUTINE_OUTPUTS"
+      },
+      "recommendation": {
+        "text_fa": "«Saxagliptin: دوز نرمال ۵ میلی‌گرم روزانه؛ در eGFR <۴۵ یا هم‌زمانی با مهارکنندهٔ قوی CYP3A4/5 → ۲٫۵ میلی‌گرم روزانه. سیگنال HF saxagliptin (✅ سند منجمد) در بازبینی لحاظ شود.»",
+        "suggestion_only": true,
+        "requires_clinician_confirmation": true,
+        "may_create_internal_task": false,
+        "params": {
+          "renal_band_table_fa": "eGFR ≥45: 5 mg QD | eGFR <45: 2.5 mg QD | با مهارکنندهٔ قوی CYP3A4/5: 2.5 mg QD",
+          "gap_note_fa": "شرط CYP3A4i در DSL بیان‌پذیر نیست (fact تداخل دارویی موجود نیست) — بازبینی دستی.",
+          "label_ref": "Onglyza PI (FDA, 2024) §2.2"
+        }
+      },
+      "evidence": {
+        "source_title": "Onglyza (saxagliptin) Prescribing Information, FDA 2024",
+        "issuing_organization": "U.S. Food and Drug Administration",
+        "publication_date": null,
+        "source_version": "2024",
+        "source_locator": "داسیه DOSING_REFRESH §۱.۴ سطر Saxagliptin: 5 mg QD (با مهارکنندهٔ قوی CYP3A4/5: 2.5)؛ eGFR <45 → 2.5 mg QD — Onglyza PI (2024) §2.2.",
+        "source_url": "https://www.accessdata.fda.gov/scripts/cder/daf/",
+        "evidence_certainty": "NOT_GRADED",
+        "recommendation_strength": "NOT_GRADED",
+        "local_validation_status": "NOT_REVIEWED",
+        "local_adaptation_note": "نشانی دقیق label Onglyza 2024 باید در بازبینی تکمیل شود."
+      },
+      "governance": {
+        "status": "DRAFT",
+        "author": "clinical_rule_research/t2d pipeline",
+        "clinical_reviewer": null,
+        "review_due_date": "2026-11-21",
+        "change_note": "تبدیل از DOSING_REFRESH §۷ (T2-DOS-DPP4-02). شرط CYP3A4i غیربیان‌پذیر — در متن/params."
+      }
+    },
+    {
+      "schema_version": "2.0",
+      "dsl_version": "2.0",
+      "rule_code": "T2-DOS-DPP4-03",
+      "version": "0.1.0-draft",
+      "title": "Linagliptin 5 ثابت؛ Alogliptin 25/12.5/6.25",
+      "phase": "ROUTINE",
+      "action_type": "suggest_med",
+      "severity": "WARN",
+      "priority": 6200,
+      "semantic_key": "t2d-dosing-v1.T2-DOS-DPP4-03",
+      "scope": {
+        "population": "adults_with_t2d_on_dpp4i_egfr_below_60",
+        "care_settings": [
+          "specialty_clinic"
+        ],
+        "encounter_types": [
+          "outpatient_chronic_care"
+        ],
+        "condition_codes": [
+          "diabetes"
+        ]
+      },
+      "required_facts": [
+        {
+          "key": "condition.diabetes",
+          "criticality": "REQUIRED",
+          "on_unusable": "NOT_APPLICABLE"
+        },
+        {
+          "key": "medication.dpp4i",
+          "criticality": "REQUIRED",
+          "on_unusable": "NOT_APPLICABLE"
+        },
+        {
+          "key": "lab.egfr",
+          "criticality": "CRITICAL",
+          "on_unusable": "NEEDS_DATA"
+        }
+      ],
+      "eligibility": {
+        "node_id": "T2-DOS-DPP4-03-e1",
+        "fact": "condition.diabetes",
+        "op": "truthy"
+      },
+      "condition": {
+        "node_id": "T2-DOS-DPP4-03-c3",
+        "all": [
+          {
+            "node_id": "T2-DOS-DPP4-03-c1",
+            "fact": "medication.dpp4i",
+            "op": "truthy"
+          },
+          {
+            "node_id": "T2-DOS-DPP4-03-c2",
+            "fact": "lab.egfr",
+            "op": "<",
+            "value": 60,
+            "selector": {
+              "aggregation": "latest"
+            }
+          }
+        ]
+      },
+      "safety": {
+        "redflag_exclusions": [],
+        "hard_exclusions": [],
+        "on_safety_error": "BLOCK_ROUTINE_OUTPUTS"
+      },
+      "recommendation": {
+        "text_fa": "«Linagliptin: ۵ میلی‌گرم روزانه در همهٔ باندهای eGFR (بدون تنظیم). Alogliptin: ≥۶۰ → ۲۵ میلی‌گرم؛ ۴۵–۵۹ → ۲۵؛ ۳۰–۴۴ → ۱۲٫۵ میلی‌گرم؛ <۳۰ → ۶٫۲۵ میلی‌گرم.»",
+        "suggestion_only": true,
+        "requires_clinician_confirmation": true,
+        "may_create_internal_task": false,
+        "params": {
+          "renal_band_table_fa": "Linagliptin: 5 mg QD در همهٔ باندها | Alogliptin: ≥60: 25 | 45–59: 25 | 30–44: 12.5 | <30: 6.25 mg QD",
+          "label_ref": "Tradjenta PI + Nesina PI"
+        }
+      },
+      "evidence": {
+        "source_title": "Tradjenta (linagliptin) PI + Nesina (alogliptin) PI, FDA",
+        "issuing_organization": "U.S. Food and Drug Administration",
+        "publication_date": null,
+        "source_version": "PI (FDA)",
+        "source_locator": "داسیه DOSING_REFRESH §۱.۴ سطرهای Linagliptin (5/5/5 بدون تنظیم) و Alogliptin (25/12.5/6.25) — Tradjenta PI + Nesina PI.",
+        "source_url": "https://www.accessdata.fda.gov/scripts/cder/daf/",
+        "evidence_certainty": "NOT_GRADED",
+        "recommendation_strength": "NOT_GRADED",
+        "local_validation_status": "NOT_REVIEWED",
+        "local_adaptation_note": "نشانی دقیق labelهای Tradjenta/Nesina باید در بازبینی تکمیل شود."
+      },
+      "governance": {
+        "status": "DRAFT",
+        "author": "clinical_rule_research/t2d pipeline",
+        "clinical_reviewer": null,
+        "review_due_date": "2026-11-21",
+        "change_note": "تبدیل از DOSING_REFRESH §۷ (T2-DOS-DPP4-03). دو agent در یک ID داسیه‌اند؛ هر دو در متن/params."
+      }
+    },
+    {
+      "schema_version": "2.0",
+      "dsl_version": "2.0",
+      "rule_code": "T2-DOS-TZD-01",
+      "version": "0.1.0-draft",
+      "title": "Pioglitazone — 15–30→45 mg (NYHA I/II شروع 15)",
+      "phase": "ROUTINE",
+      "action_type": "suggest_med",
+      "severity": "INFO",
+      "priority": 6100,
+      "semantic_key": "t2d-dosing-v1.T2-DOS-TZD-01",
+      "scope": {
+        "population": "adults_with_t2d_on_tzd",
+        "care_settings": [
+          "specialty_clinic"
+        ],
+        "encounter_types": [
+          "outpatient_chronic_care"
+        ],
+        "condition_codes": [
+          "diabetes"
+        ]
+      },
+      "required_facts": [
+        {
+          "key": "condition.diabetes",
+          "criticality": "REQUIRED",
+          "on_unusable": "NOT_APPLICABLE"
+        },
+        {
+          "key": "medication.tzd",
+          "criticality": "REQUIRED",
+          "on_unusable": "NOT_APPLICABLE"
+        }
+      ],
+      "eligibility": {
+        "node_id": "T2-DOS-TZD-01-e1",
+        "fact": "condition.diabetes",
+        "op": "truthy"
+      },
+      "condition": {
+        "node_id": "T2-DOS-TZD-01-c1",
+        "fact": "medication.tzd",
+        "op": "truthy"
+      },
+      "safety": {
+        "redflag_exclusions": [],
+        "hard_exclusions": [],
+        "on_safety_error": "BLOCK_ROUTINE_OUTPUTS"
+      },
+      "recommendation": {
+        "text_fa": "«Pioglitazone: شروع ۱۵ یا ۳۰ میلی‌گرم روزانه (در HF NYHA I/II شروع محدود به ۱۵)؛ افزایش +۱۵ میلی‌گرم بر اساس پاسخ HbA1c (عملی: هر ۸–۱۲ هفته)؛ سقف ۴۵ میلی‌گرم در روز. منع NYHA III/IV؛ وزن‌افزا؛ کم‌هیپو؛ بدون تنظیم دوز کلیوی ولی توصیه نمی‌شود در اختلال کلیوی (احتباس مایع).»",
+        "suggestion_only": true,
+        "requires_clinician_confirmation": true,
+        "may_create_internal_task": false,
+        "params": {
+          "dose_start_fa": "15 یا 30 mg QD؛ در HF NYHA I/II شروع محدود به 15 mg",
+          "dose_titration_fa": "+15 mg بر اساس پاسخ HbA1c (عملی: هر 8–12 هفته)",
+          "dose_max_fa": "45 mg/day",
+          "renal_adjustment_fa": "بدون تنظیم دوز ولی توصیه نمی‌شود در اختلال کلیوی (احتباس مایع)",
+          "gap_note_fa": "NYHA class در فهرست facts این موج نیست — شرط ماشینی ندارد، فقط متن.",
+          "label_ref": "Actos PI (Takeda) §2.1 + ADA 2026 Table 9.2"
+        }
+      },
+      "evidence": {
+        "source_title": "Actos (pioglitazone) Prescribing Information (Takeda) + ADA 2026 Table 9.2",
+        "issuing_organization": "Takeda / American Diabetes Association",
+        "publication_date": null,
+        "source_version": "PI / 2026",
+        "source_locator": "داسیه DOSING_REFRESH §۱.۵ سطرهای شروع/تیتراسیون/Max/کلیوی/هیپو-وزن-HF: 15–30 QD؛ +15؛ Max 45؛ NYHA III/IV منع.",
+        "source_url": "https://www.accessdata.fda.gov/scripts/cder/daf/",
+        "evidence_certainty": "NOT_GRADED",
+        "recommendation_strength": "NOT_GRADED",
+        "local_validation_status": "NOT_REVIEWED",
+        "local_adaptation_note": "نشانی دقیق label Actos باید در بازبینی تکمیل شود."
+      },
+      "governance": {
+        "status": "DRAFT",
+        "author": "clinical_rule_research/t2d pipeline",
+        "clinical_reviewer": null,
+        "review_due_date": "2026-11-21",
+        "change_note": "تبدیل از DOSING_REFRESH §۷ (T2-DOS-TZD-01)."
+      }
+    },
+    {
+      "schema_version": "2.0",
+      "dsl_version": "2.0",
+      "rule_code": "T2-DOS-TZD-02",
+      "version": "0.1.0-draft",
+      "title": "Pioglitazone — گیت کبدی (ALT >2.5×ULN شروع نشود)",
+      "phase": "ROUTINE",
+      "action_type": "suggest_med",
+      "severity": "WARN",
+      "priority": 6000,
+      "semantic_key": "t2d-dosing-v1.T2-DOS-TZD-02",
+      "scope": {
+        "population": "adults_with_t2d_on_tzd",
+        "care_settings": [
+          "specialty_clinic"
+        ],
+        "encounter_types": [
+          "outpatient_chronic_care"
+        ],
+        "condition_codes": [
+          "diabetes"
+        ]
+      },
+      "required_facts": [
+        {
+          "key": "condition.diabetes",
+          "criticality": "REQUIRED",
+          "on_unusable": "NOT_APPLICABLE"
+        },
+        {
+          "key": "medication.tzd",
+          "criticality": "REQUIRED",
+          "on_unusable": "NOT_APPLICABLE"
+        }
+      ],
+      "eligibility": {
+        "node_id": "T2-DOS-TZD-02-e1",
+        "fact": "condition.diabetes",
+        "op": "truthy"
+      },
+      "condition": {
+        "node_id": "T2-DOS-TZD-02-c1",
+        "fact": "medication.tzd",
+        "op": "truthy"
+      },
+      "safety": {
+        "redflag_exclusions": [],
+        "hard_exclusions": [],
+        "on_safety_error": "BLOCK_ROUTINE_OUTPUTS"
+      },
+      "recommendation": {
+        "text_fa": "«گیت کبدی pioglitazone: شروع در بیماری کبدی فعال یا ALT >2.5 برابر ULN توصیه نمی‌شود؛ LFT قبل از شروع بررسی شود. ⚠️ lab.alt در کاتالوگ facts این موج نیست — این قاعده کارت یادآور است نه گیت ماشینی.»",
+        "suggestion_only": true,
+        "requires_clinician_confirmation": true,
+        "may_create_internal_task": false,
+        "params": {
+          "hepatic_gate_fa": "شروع در بیماری کبدی فعال یا ALT >2.5×ULN توصیه نمی‌شود؛ LFT قبل از شروع",
+          "gap_note_fa": "شرط ALT>2.5×ULN غیربیان‌پذیر است (fact lab.alt موجود نیست) — نیاز به افزودن fact در موج آینده.",
+          "label_ref": "Actos PI (Takeda) §2.1"
+        }
+      },
+      "evidence": {
+        "source_title": "Actos (pioglitazone) Prescribing Information (Takeda), §2.1",
+        "issuing_organization": "Takeda",
+        "publication_date": null,
+        "source_version": "PI",
+        "source_locator": "داسیه DOSING_REFRESH §۱.۵ سطر کبدی: شروع در بیماری کبدی فعال یا ALT >2.5×ULN توصیه نمی‌شود؛ LFT قبل از شروع — Actos PI §2.1.",
+        "source_url": "https://www.accessdata.fda.gov/scripts/cder/daf/",
+        "evidence_certainty": "NOT_GRADED",
+        "recommendation_strength": "NOT_GRADED",
+        "local_validation_status": "NOT_REVIEWED",
+        "local_adaptation_note": "نشانی دقیق label Actos باید در بازبینی تکمیل شود."
+      },
+      "governance": {
+        "status": "DRAFT",
+        "author": "clinical_rule_research/t2d pipeline",
+        "clinical_reviewer": null,
+        "review_due_date": "2026-11-21",
+        "change_note": "تبدیل از DOSING_REFRESH §۷ (T2-DOS-TZD-02). تریگر واقعی ALT-based است که fact ندارد — کارت یادآور با gap صریح."
+      }
+    },
+    {
+      "schema_version": "2.0",
+      "dsl_version": "2.0",
+      "rule_code": "T2-DOS-SU-01",
+      "version": "0.1.0-draft",
+      "title": "Glimepiride — 1–2→8 mg (کلیوی/پرخطر: شروع 1)",
+      "phase": "ROUTINE",
+      "action_type": "suggest_med",
+      "severity": "INFO",
+      "priority": 5900,
+      "semantic_key": "t2d-dosing-v1.T2-DOS-SU-01",
+      "scope": {
+        "population": "adults_with_t2d_on_su",
+        "care_settings": [
+          "specialty_clinic"
+        ],
+        "encounter_types": [
+          "outpatient_chronic_care"
+        ],
+        "condition_codes": [
+          "diabetes"
+        ]
+      },
+      "required_facts": [
+        {
+          "key": "condition.diabetes",
+          "criticality": "REQUIRED",
+          "on_unusable": "NOT_APPLICABLE"
+        },
+        {
+          "key": "medication.su",
+          "criticality": "REQUIRED",
+          "on_unusable": "NOT_APPLICABLE"
+        }
+      ],
+      "eligibility": {
+        "node_id": "T2-DOS-SU-01-e1",
+        "fact": "condition.diabetes",
+        "op": "truthy"
+      },
+      "condition": {
+        "node_id": "T2-DOS-SU-01-c1",
+        "fact": "medication.su",
+        "op": "truthy"
+      },
+      "safety": {
+        "redflag_exclusions": [],
+        "hard_exclusions": [],
+        "on_safety_error": "BLOCK_ROUTINE_OUTPUTS"
+      },
+      "recommendation": {
+        "text_fa": "«Glimepiride: شروع ۱–۲ میلی‌گرم روزانه با صبحانه (پرخطرِ هیپو/سالمند/CKD → ۱ میلی‌گرم)؛ افزایش +۱–۲ میلی‌گرم هر ۱–۲ هفته؛ سقف ۸ میلی‌گرم در روز. هیپوی بالا و وزن‌افزایی کلاس SU در نظر گرفته شود.»",
+        "suggestion_only": true,
+        "requires_clinician_confirmation": true,
+        "may_create_internal_task": false,
+        "params": {
+          "dose_start_fa": "1–2 mg QD با صبحانه؛ پرخطرِ هیپو/سالمند/CKD → 1 mg",
+          "dose_titration_fa": "+1–2 mg هر 1–2 هفته",
+          "dose_max_fa": "8 mg/day",
+          "renal_adjustment_fa": "شروع 1 mg، تیتر محتاطانه",
+          "label_ref": "Amaryl PI (Sanofi) §2.1"
+        }
+      },
+      "evidence": {
+        "source_title": "Amaryl (glimepiride) Prescribing Information (Sanofi), §2.1",
+        "issuing_organization": "Sanofi / U.S. FDA",
+        "publication_date": null,
+        "source_version": "PI",
+        "source_locator": "داسیه DOSING_REFRESH §۱.۶ سطر Glimepiride: 1–2 QD؛ +1–2 هر 1–2 هفته؛ Max 8؛ کلیوی: شروع 1 mg.",
+        "source_url": "https://www.accessdata.fda.gov/scripts/cder/daf/",
+        "evidence_certainty": "NOT_GRADED",
+        "recommendation_strength": "NOT_GRADED",
+        "local_validation_status": "NOT_REVIEWED",
+        "local_adaptation_note": "نشانی دقیق label Amaryl باید در بازبینی تکمیل شود."
+      },
+      "governance": {
+        "status": "DRAFT",
+        "author": "clinical_rule_research/t2d pipeline",
+        "clinical_reviewer": null,
+        "review_due_date": "2026-11-21",
+        "change_note": "تبدیل از DOSING_REFRESH §۷ (T2-DOS-SU-01)."
+      }
+    },
+    {
+      "schema_version": "2.0",
+      "dsl_version": "2.0",
+      "rule_code": "T2-DOS-SU-02",
+      "version": "0.1.0-draft",
+      "title": "Glipizide — 2.5–5→max 40 IR / 20 XL",
+      "phase": "ROUTINE",
+      "action_type": "suggest_med",
+      "severity": "INFO",
+      "priority": 5800,
+      "semantic_key": "t2d-dosing-v1.T2-DOS-SU-02",
+      "scope": {
+        "population": "adults_with_t2d_on_su",
+        "care_settings": [
+          "specialty_clinic"
+        ],
+        "encounter_types": [
+          "outpatient_chronic_care"
+        ],
+        "condition_codes": [
+          "diabetes"
+        ]
+      },
+      "required_facts": [
+        {
+          "key": "condition.diabetes",
+          "criticality": "REQUIRED",
+          "on_unusable": "NOT_APPLICABLE"
+        },
+        {
+          "key": "medication.su",
+          "criticality": "REQUIRED",
+          "on_unusable": "NOT_APPLICABLE"
+        }
+      ],
+      "eligibility": {
+        "node_id": "T2-DOS-SU-02-e1",
+        "fact": "condition.diabetes",
+        "op": "truthy"
+      },
+      "condition": {
+        "node_id": "T2-DOS-SU-02-c1",
+        "fact": "medication.su",
+        "op": "truthy"
+      },
+      "safety": {
+        "redflag_exclusions": [],
+        "hard_exclusions": [],
+        "on_safety_error": "BLOCK_ROUTINE_OUTPUTS"
+      },
+      "recommendation": {
+        "text_fa": "«Glipizide: شروع ۲٫۵–۵ میلی‌گرم قبل از صبحانه؛ افزایش +۲٫۵–۵ میلی‌گرم؛ سقف IR: ۴۰ میلی‌گرم در روز، XL: ۲۰ میلی‌گرم در روز؛ در CKD شروع ۲٫۵ میلی‌گرم.»",
+        "suggestion_only": true,
+        "requires_clinician_confirmation": true,
+        "may_create_internal_task": false,
+        "params": {
+          "dose_start_fa": "2.5–5 mg قبل از صبحانه",
+          "dose_titration_fa": "+2.5–5 mg",
+          "dose_max_fa": "IR: 40 mg/day؛ XL: 20 mg/day",
+          "renal_adjustment_fa": "شروع 2.5 mg در CKD",
+          "label_ref": "Glucotrol PI"
+        }
+      },
+      "evidence": {
+        "source_title": "Glucotrol (glipizide) Prescribing Information, FDA",
+        "issuing_organization": "U.S. Food and Drug Administration",
+        "publication_date": null,
+        "source_version": "PI",
+        "source_locator": "داسیه DOSING_REFRESH §۱.۶ سطر Glipizide: 2.5–5 قبل صبحانه؛ +2.5–5؛ Max IR 40/XL 20؛ CKD شروع 2.5.",
+        "source_url": "https://www.accessdata.fda.gov/scripts/cder/daf/",
+        "evidence_certainty": "NOT_GRADED",
+        "recommendation_strength": "NOT_GRADED",
+        "local_validation_status": "NOT_REVIEWED",
+        "local_adaptation_note": "نشانی دقیق label Glucotrol باید در بازبینی تکمیل شود."
+      },
+      "governance": {
+        "status": "DRAFT",
+        "author": "clinical_rule_research/t2d pipeline",
+        "clinical_reviewer": null,
+        "review_due_date": "2026-11-21",
+        "change_note": "تبدیل از DOSING_REFRESH §۷ (T2-DOS-SU-02)."
+      }
+    },
+    {
+      "schema_version": "2.0",
+      "dsl_version": "2.0",
+      "rule_code": "T2-DOS-SU-03",
+      "version": "0.1.0-draft",
+      "title": "Glyburide — در CKD توصیه نمی‌شود",
+      "phase": "ROUTINE",
+      "action_type": "suggest_med",
+      "severity": "WARN",
+      "priority": 5700,
+      "semantic_key": "t2d-dosing-v1.T2-DOS-SU-03",
+      "scope": {
+        "population": "adults_with_t2d_on_su_egfr_below_60",
+        "care_settings": [
+          "specialty_clinic"
+        ],
+        "encounter_types": [
+          "outpatient_chronic_care"
+        ],
+        "condition_codes": [
+          "diabetes"
+        ]
+      },
+      "required_facts": [
+        {
+          "key": "condition.diabetes",
+          "criticality": "REQUIRED",
+          "on_unusable": "NOT_APPLICABLE"
+        },
+        {
+          "key": "medication.su",
+          "criticality": "REQUIRED",
+          "on_unusable": "NOT_APPLICABLE"
+        },
+        {
+          "key": "lab.egfr",
+          "criticality": "CRITICAL",
+          "on_unusable": "NEEDS_DATA"
+        }
+      ],
+      "eligibility": {
+        "node_id": "T2-DOS-SU-03-e1",
+        "fact": "condition.diabetes",
+        "op": "truthy"
+      },
+      "condition": {
+        "node_id": "T2-DOS-SU-03-c3",
+        "all": [
+          {
+            "node_id": "T2-DOS-SU-03-c1",
+            "fact": "medication.su",
+            "op": "truthy"
+          },
+          {
+            "node_id": "T2-DOS-SU-03-c2",
+            "fact": "lab.egfr",
+            "op": "<",
+            "value": 60,
+            "selector": {
+              "aggregation": "latest"
+            }
+          }
+        ]
+      },
+      "safety": {
+        "redflag_exclusions": [],
+        "hard_exclusions": [],
+        "on_safety_error": "BLOCK_ROUTINE_OUTPUTS"
+      },
+      "recommendation": {
+        "text_fa": "«در CKD، glyburide توصیه نمی‌شود (❌ ADA 2026 Table 9.2 — خطر هیپوگلیسمی طولانی). اگر SU بیمار glyburide است، تعویض به glimepiride (شروع 1) یا glipizide (شروع 2.5) با تصمیم پزشک بررسی شود. ⚠️ تفکیک agent در fact کلاسی ممکن نیست؛ آستانهٔ <60 انتخاب عملیاتی تألیفی است (داسیه عدد نداده).»",
+        "suggestion_only": true,
+        "requires_clinician_confirmation": true,
+        "may_create_internal_task": false,
+        "params": {
+          "agent_scope_fa": "glyburide (تفکیک agent در fact کلاسی ممکن نیست — بازبینی دستی لیست دارو لازم است)",
+          "renal_adjustment_fa": "جایگزین‌ها طبق داسیه: glimepiride شروع 1 mg؛ glipizide شروع 2.5 mg",
+          "gap_note_fa": "آستانهٔ eGFR<60 (مرز G3a) authored operationalization است و باید در بازبینی مالک تأیید شود.",
+          "label_ref": "ADA 2026 Table 9.2"
+        }
+      },
+      "evidence": {
+        "source_title": "ADA Standards of Care in Diabetes—2026, Table 9.2",
+        "issuing_organization": "American Diabetes Association",
+        "publication_date": null,
+        "source_version": "2026",
+        "source_locator": "داسیه DOSING_REFRESH §۱.۶ سطر Glyburide (✅): در CKD توصیه نمی‌شود — ADA 2026 Table 9.2.",
+        "source_url": "https://diabetesjournals.org/care/issue/49/Supplement_1",
+        "evidence_certainty": "NOT_GRADED",
+        "recommendation_strength": "NOT_GRADED",
+        "local_validation_status": "NOT_REVIEWED"
+      },
+      "governance": {
+        "status": "DRAFT",
+        "author": "clinical_rule_research/t2d pipeline",
+        "clinical_reviewer": null,
+        "review_due_date": "2026-11-21",
+        "change_note": "تبدیل از DOSING_REFRESH §۷ (T2-DOS-SU-03). آستانهٔ <60 تألیفی — در change_note و AUTHORING_NOTES علامت خورده."
+      }
+    },
+    {
+      "schema_version": "2.0",
+      "dsl_version": "2.0",
+      "rule_code": "T2-INS-BASAL-01",
+      "version": "0.1.0-draft",
+      "title": "انسولین basal — شروع 10 U یا 0.1–0.2 U/kg/day",
+      "phase": "ROUTINE",
+      "action_type": "suggest_med",
+      "severity": "INFO",
+      "priority": 5600,
+      "semantic_key": "t2d-dosing-v1.T2-INS-BASAL-01",
+      "scope": {
+        "population": "adults_with_t2d_on_insulin_basal",
+        "care_settings": [
+          "specialty_clinic"
+        ],
+        "encounter_types": [
+          "outpatient_chronic_care"
+        ],
+        "condition_codes": [
+          "diabetes"
+        ]
+      },
+      "required_facts": [
+        {
+          "key": "condition.diabetes",
+          "criticality": "REQUIRED",
+          "on_unusable": "NOT_APPLICABLE"
+        },
+        {
+          "key": "medication.insulin_basal",
+          "criticality": "REQUIRED",
+          "on_unusable": "NOT_APPLICABLE"
+        }
+      ],
+      "eligibility": {
+        "node_id": "T2-INS-BASAL-01-e1",
+        "fact": "condition.diabetes",
+        "op": "truthy"
+      },
+      "condition": {
+        "node_id": "T2-INS-BASAL-01-c1",
+        "fact": "medication.insulin_basal",
+        "op": "truthy"
+      },
+      "safety": {
+        "redflag_exclusions": [],
+        "hard_exclusions": [],
+        "on_safety_error": "BLOCK_ROUTINE_OUTPUTS"
+      },
+      "recommendation": {
+        "text_fa": "«مرجع شروع انسولین basal (در صورت تصمیم پزشک): ۱۰ واحد در روز یا ۰٫۱–۰٫۲ واحد/کیلوگرم در روز بر اساس درجهٔ هایپرگلیسمی؛ هدف FPG معمولاً ۸۰–۱۳۰ mg/dL. محاسبهٔ وزن‌محور در runtime انجام نمی‌شود — عدد نهایی با پزشک.»",
+        "suggestion_only": true,
+        "requires_clinician_confirmation": true,
+        "may_create_internal_task": false,
+        "params": {
+          "dose_start_fa": "10 U/day یا 0.1–0.2 U/kg/day بر اساس درجهٔ هایپرگلیسمی",
+          "target_fpg_fa": "هدف FPG معمولاً 80–130 mg/dL (Table 6.3)",
+          "gap_note_fa": "محاسبهٔ دوز وزن‌محور در runtime ممکن نیست (fact وزن/دوز ساختاریافته نیست) — فقط متن.",
+          "label_ref": "ADA 2026 §9/Fig 9.5 (S183)"
+        }
+      },
+      "evidence": {
+        "source_title": "ADA Standards of Care in Diabetes—2026, §9 Pharmacologic Approaches (Fig 9.5, S183)",
+        "issuing_organization": "American Diabetes Association",
+        "publication_date": null,
+        "source_version": "2026",
+        "source_locator": "داسیه DOSING_REFRESH §۲.۱ (✅): «starting doses can be estimated based on body weight (0.1–0.2 units/kg/day)» — Diabetes Care 2026;49(Suppl.1):S183؛ هدف FPG 80–130 (Table 6.3).",
+        "source_url": "https://diabetesjournals.org/care/issue/49/Supplement_1",
+        "evidence_certainty": "NOT_GRADED",
+        "recommendation_strength": "NOT_GRADED",
+        "local_validation_status": "NOT_REVIEWED"
+      },
+      "governance": {
+        "status": "DRAFT",
+        "author": "clinical_rule_research/t2d pipeline",
+        "clinical_reviewer": null,
+        "review_due_date": "2026-11-21",
+        "change_note": "تبدیل از DOSING_REFRESH §۷ (T2-INS-BASAL-01). تریگر کلاس‌محور؛ initiation واقعی نیازمند fact insulin-naïve است (gap)."
+      }
+    },
+    {
+      "schema_version": "2.0",
+      "dsl_version": "2.0",
+      "rule_code": "T2-INS-BASAL-02",
+      "version": "0.1.0-draft",
+      "title": "تیتراسیون سریع basal — +2 U هر ۳ روز تا هدف FPG",
+      "phase": "ROUTINE",
+      "action_type": "suggest_med",
+      "severity": "INFO",
+      "priority": 5500,
+      "semantic_key": "t2d-dosing-v1.T2-INS-BASAL-02",
+      "scope": {
+        "population": "adults_with_t2d_on_insulin_basal_with_fpg",
+        "care_settings": [
+          "specialty_clinic"
+        ],
+        "encounter_types": [
+          "outpatient_chronic_care"
+        ],
+        "condition_codes": [
+          "diabetes"
+        ]
+      },
+      "required_facts": [
+        {
+          "key": "condition.diabetes",
+          "criticality": "REQUIRED",
+          "on_unusable": "NOT_APPLICABLE"
+        },
+        {
+          "key": "medication.insulin_basal",
+          "criticality": "REQUIRED",
+          "on_unusable": "NOT_APPLICABLE"
+        },
+        {
+          "key": "lab.fbs",
+          "criticality": "CRITICAL",
+          "on_unusable": "NEEDS_DATA"
+        }
+      ],
+      "eligibility": {
+        "node_id": "T2-INS-BASAL-02-e1",
+        "fact": "condition.diabetes",
+        "op": "truthy"
+      },
+      "condition": {
+        "node_id": "T2-INS-BASAL-02-c3",
+        "all": [
+          {
+            "node_id": "T2-INS-BASAL-02-c1",
+            "fact": "medication.insulin_basal",
+            "op": "truthy"
+          },
+          {
+            "node_id": "T2-INS-BASAL-02-c2",
+            "fact": "lab.fbs",
+            "op": "exists"
+          }
+        ]
+      },
+      "safety": {
+        "redflag_exclusions": [],
+        "hard_exclusions": [],
+        "on_safety_error": "BLOCK_ROUTINE_OUTPUTS"
+      },
+      "recommendation": {
+        "text_fa": "«الگوریتم سریع تیتراسیون basal: +۲ واحد هر ۳ روز تا رسیدن FPG به هدف (۸۰–۱۳۰) بدون هیپوگلیسمی. زمان‌بندی خودکار فواصل تیتراسیون در DSL نیست — اجرا با تصمیم پزشک.»",
+        "suggestion_only": true,
+        "requires_clinician_confirmation": true,
+        "may_create_internal_task": false,
+        "params": {
+          "dose_titration_fa": "+2 U هر 3 روز تا FPG هدف بدون هیپو",
+          "target_fpg_fa": "هدف FPG معمولاً 80–130 mg/dL (Table 6.3)",
+          "algorithm_ref": "ADA 2026 Fig 9.5 (S183) — الگوریتم سریع",
+          "gap_note_fa": "زمان‌بندی interval تیتراسیون (q3d) در DSL قابل schedule نیست."
+        }
+      },
+      "evidence": {
+        "source_title": "ADA Standards of Care in Diabetes—2026, §9 Fig 9.5 (S183)",
+        "issuing_organization": "American Diabetes Association",
+        "publication_date": null,
+        "source_version": "2026",
+        "source_locator": "داسیه DOSING_REFRESH §۲.۲ جدول الگوریتم‌ها (✅): +2 U هر 3 روز تا FPG هدف بدون هیپو — ADA 2026 Fig 9.5 (S183).",
+        "source_url": "https://diabetesjournals.org/care/issue/49/Supplement_1",
+        "evidence_certainty": "NOT_GRADED",
+        "recommendation_strength": "NOT_GRADED",
+        "local_validation_status": "NOT_REVIEWED"
+      },
+      "governance": {
+        "status": "DRAFT",
+        "author": "clinical_rule_research/t2d pipeline",
+        "clinical_reviewer": null,
+        "review_due_date": "2026-11-21",
+        "change_note": "تبدیل از DOSING_REFRESH §۷ (T2-INS-BASAL-02)."
+      }
+    },
+    {
+      "schema_version": "2.0",
+      "dsl_version": "2.0",
+      "rule_code": "T2-INS-BASAL-03",
+      "version": "0.1.0-draft",
+      "title": "تیتراسیون درصدی basal — +10–15% دو بار در هفته",
+      "phase": "ROUTINE",
+      "action_type": "suggest_med",
+      "severity": "INFO",
+      "priority": 5400,
+      "semantic_key": "t2d-dosing-v1.T2-INS-BASAL-03",
+      "scope": {
+        "population": "adults_with_t2d_on_insulin_basal_with_fpg",
+        "care_settings": [
+          "specialty_clinic"
+        ],
+        "encounter_types": [
+          "outpatient_chronic_care"
+        ],
+        "condition_codes": [
+          "diabetes"
+        ]
+      },
+      "required_facts": [
+        {
+          "key": "condition.diabetes",
+          "criticality": "REQUIRED",
+          "on_unusable": "NOT_APPLICABLE"
+        },
+        {
+          "key": "medication.insulin_basal",
+          "criticality": "REQUIRED",
+          "on_unusable": "NOT_APPLICABLE"
+        },
+        {
+          "key": "lab.fbs",
+          "criticality": "CRITICAL",
+          "on_unusable": "NEEDS_DATA"
+        }
+      ],
+      "eligibility": {
+        "node_id": "T2-INS-BASAL-03-e1",
+        "fact": "condition.diabetes",
+        "op": "truthy"
+      },
+      "condition": {
+        "node_id": "T2-INS-BASAL-03-c3",
+        "all": [
+          {
+            "node_id": "T2-INS-BASAL-03-c1",
+            "fact": "medication.insulin_basal",
+            "op": "truthy"
+          },
+          {
+            "node_id": "T2-INS-BASAL-03-c2",
+            "fact": "lab.fbs",
+            "op": "exists"
+          }
+        ]
+      },
+      "safety": {
+        "redflag_exclusions": [],
+        "hard_exclusions": [],
+        "on_safety_error": "BLOCK_ROUTINE_OUTPUTS"
+      },
+      "recommendation": {
+        "text_fa": "«الگوریتم جایگزین تیتراسیون basal: +۱–۲ واحد یا +۱۰–۱۵٪ دوز، دو بار در هفته، تا FPG هدف بدون هیپوگلیسمی.»",
+        "suggestion_only": true,
+        "requires_clinician_confirmation": true,
+        "may_create_internal_task": false,
+        "params": {
+          "dose_titration_fa": "+1–2 U یا +10–15% دو بار در هفته",
+          "target_fpg_fa": "هدف FPG معمولاً 80–130 mg/dL (Table 6.3)",
+          "algorithm_ref": "ADA 2026 Fig 9.5 (S183) — الگوریتم درصدی",
+          "gap_note_fa": "محاسبهٔ درصدی از دوز فعلی در runtime ممکن نیست (fact دوز ساختاریافته نیست)."
+        }
+      },
+      "evidence": {
+        "source_title": "ADA Standards of Care in Diabetes—2026, §9 Fig 9.5 (S183)",
+        "issuing_organization": "American Diabetes Association",
+        "publication_date": null,
+        "source_version": "2026",
+        "source_locator": "داسیه DOSING_REFRESH §۲.۲ جدول الگوریتم‌ها (✅): +1–2 U یا +10–15% دو بار در هفته — ADA 2026 Fig 9.5.",
+        "source_url": "https://diabetesjournals.org/care/issue/49/Supplement_1",
+        "evidence_certainty": "NOT_GRADED",
+        "recommendation_strength": "NOT_GRADED",
+        "local_validation_status": "NOT_REVIEWED"
+      },
+      "governance": {
+        "status": "DRAFT",
+        "author": "clinical_rule_research/t2d pipeline",
+        "clinical_reviewer": null,
+        "review_due_date": "2026-11-21",
+        "change_note": "تبدیل از DOSING_REFRESH §۷ (T2-INS-BASAL-03)."
+      }
+    },
+    {
+      "schema_version": "2.0",
+      "dsl_version": "2.0",
+      "rule_code": "T2-INS-BASAL-04",
+      "version": "0.1.0-draft",
+      "title": "هیپو بدون علت روی basal — کاهش 10–20% دوز",
+      "phase": "ROUTINE",
+      "action_type": "suggest_med",
+      "severity": "URGENT",
+      "priority": 6800,
+      "semantic_key": "t2d-dosing-v1.T2-INS-BASAL-04",
+      "scope": {
+        "population": "adults_with_t2d_on_insulin_basal_with_hypo",
+        "care_settings": [
+          "specialty_clinic"
+        ],
+        "encounter_types": [
+          "outpatient_chronic_care"
+        ],
+        "condition_codes": [
+          "diabetes"
+        ]
+      },
+      "required_facts": [
+        {
+          "key": "condition.diabetes",
+          "criticality": "REQUIRED",
+          "on_unusable": "NOT_APPLICABLE"
+        },
+        {
+          "key": "medication.insulin_basal",
+          "criticality": "REQUIRED",
+          "on_unusable": "NOT_APPLICABLE"
+        },
+        {
+          "key": "lab.fbs",
+          "criticality": "CRITICAL",
+          "on_unusable": "NEEDS_DATA"
+        }
+      ],
+      "eligibility": {
+        "node_id": "T2-INS-BASAL-04-e1",
+        "fact": "condition.diabetes",
+        "op": "truthy"
+      },
+      "condition": {
+        "node_id": "T2-INS-BASAL-04-c3",
+        "all": [
+          {
+            "node_id": "T2-INS-BASAL-04-c1",
+            "fact": "medication.insulin_basal",
+            "op": "truthy"
+          },
+          {
+            "node_id": "T2-INS-BASAL-04-c2",
+            "fact": "lab.fbs",
+            "op": "<",
+            "value": 70,
+            "selector": {
+              "aggregation": "latest"
+            }
+          }
+        ]
+      },
+      "safety": {
+        "redflag_exclusions": [],
+        "hard_exclusions": [],
+        "on_safety_error": "BLOCK_ROUTINE_OUTPUTS"
+      },
+      "recommendation": {
+        "text_fa": "«قرائت قند <۷۰ در بیمار تحت basal: در هیپوگلیسمی بدون علت مشخص، کاهش ۱۰–۲۰٪ دوز basal طبق ADA Fig 9.5 بررسی شود (پس از درمان حاد طبق T2-HYPO-TX-01). علت‌یابی (وعدهٔ جامانده، فعالیت، دوز بولوس هم‌زمان) با پزشک.»",
+        "suggestion_only": true,
+        "requires_clinician_confirmation": true,
+        "may_create_internal_task": false,
+        "params": {
+          "dose_adjustment_fa": "هیپوگلیسمی بدون علت مشخص → کاهش 10–20% دوز basal",
+          "algorithm_ref": "ADA 2026 Fig 9.5 (S183)",
+          "cross_ref": "T2-HYPO-TX-01 برای درمان حاد 15-15"
+        }
+      },
+      "evidence": {
+        "source_title": "ADA Standards of Care in Diabetes—2026, §9 Fig 9.5 (S183)",
+        "issuing_organization": "American Diabetes Association",
+        "publication_date": null,
+        "source_version": "2026",
+        "source_locator": "داسیه DOSING_REFRESH §۲.۲ (✅): هیپوگلیسمی بدون علت مشخص → کاهش 10–20% دوز — ADA Fig 9.5.",
+        "source_url": "https://diabetesjournals.org/care/issue/49/Supplement_1",
+        "evidence_certainty": "NOT_GRADED",
+        "recommendation_strength": "NOT_GRADED",
+        "local_validation_status": "NOT_REVIEWED"
+      },
+      "governance": {
+        "status": "DRAFT",
+        "author": "clinical_rule_research/t2d pipeline",
+        "clinical_reviewer": null,
+        "review_due_date": "2026-11-21",
+        "change_note": "تبدیل از DOSING_REFRESH §۷ (T2-INS-BASAL-04). تریگر fbs<70 (آستانهٔ L1 طبق §۳.۱ داسیه)؛ «بدون علت» در DSL بیان‌پذیر نیست — متن."
+      }
+    },
+    {
+      "schema_version": "2.0",
+      "dsl_version": "2.0",
+      "rule_code": "T2-INS-BASAL-05",
+      "version": "0.1.0-draft",
+      "title": "Overbasalization (>0.5 U/kg/day) — غیربیان‌پذیر در DSL (SILENT)",
+      "phase": "ROUTINE",
+      "action_type": "flag_risk",
+      "severity": "WARN",
+      "priority": 4000,
+      "semantic_key": "t2d-dosing-v1.T2-INS-BASAL-05",
+      "scope": {
+        "population": "adults_with_t2d_on_insulin_basal_high_dose_per_kg",
+        "care_settings": [
+          "specialty_clinic"
+        ],
+        "encounter_types": [
+          "outpatient_chronic_care"
+        ],
+        "condition_codes": [
+          "diabetes"
+        ]
+      },
+      "required_facts": [
+        {
+          "key": "condition.diabetes",
+          "criticality": "REQUIRED",
+          "on_unusable": "NOT_APPLICABLE"
+        },
+        {
+          "key": "medication.insulin_basal",
+          "criticality": "OPTIONAL",
+          "on_unusable": "CONTINUE_WITH_WARNING"
+        }
+      ],
+      "eligibility": {
+        "node_id": "T2-INS-BASAL-05-e1",
+        "fact": "condition.diabetes",
+        "op": "truthy"
+      },
+      "condition": {
+        "node_id": "T2-INS-BASAL-05-c1",
+        "fact": "medication.insulin_basal",
+        "op": "exists"
+      },
+      "safety": {
+        "redflag_exclusions": [],
+        "hard_exclusions": [],
+        "on_safety_error": "BLOCK_ROUTINE_OUTPUTS"
+      },
+      "recommendation": {
+        "text_fa": "«PLACEHOLDER — هرگز نباید فعال شود. تریگر واقعی: basal > ~0.5 U/kg/day → نشانهٔ overbasalization → افزودن GLP-1 RA/dual یا prandial به‌جای افزایش basal (ADA 2026 §9). آستانه heuristic است نه حد ایمنی مطلق (Clinical Diabetes 2025;43:123) — soft-rule.»",
+        "suggestion_only": true,
+        "requires_clinician_confirmation": true,
+        "may_create_internal_task": false,
+        "params": {
+          "overbasal_note_fa": "basal > ~0.5 U/kg/day → overbasalization → افزودن GLP-1/prandial به‌جای افزایش basal (soft-flag نه hard-stop)",
+          "gap_note_fa": "محاسبهٔ U/kg/day نیازمند fact وزن + دوز ساختاریافته basal است که موجود نیست.",
+          "label_ref": "ADA 2026 §9 + سند منجمد §6.4.4"
+        }
+      },
+      "evidence": {
+        "source_title": "ADA Standards of Care in Diabetes—2026, §9 (+ Clinical Diabetes 2025;43:123 note)",
+        "issuing_organization": "American Diabetes Association",
+        "publication_date": null,
+        "source_version": "2026",
+        "source_locator": "داسیه DOSING_REFRESH §۲.۵: آستانهٔ ADA basal > ~0.5 U/kg/day → overbasalization (🆕 تکمیل عدد)؛ یادداشت heuristic بودن آستانه.",
+        "source_url": "https://diabetesjournals.org/care/issue/49/Supplement_1",
+        "evidence_certainty": "NOT_GRADED",
+        "recommendation_strength": "NOT_GRADED",
+        "local_validation_status": "NOT_REVIEWED"
+      },
+      "governance": {
+        "status": "SILENT",
+        "author": "clinical_rule_research/t2d pipeline",
+        "clinical_reviewer": null,
+        "review_due_date": "2026-11-21",
+        "change_note": "⚠️ SILENT — تریگر واقعی (dose_per_kg > 0.5) در DSL 2.0 بیان‌پذیر نیست (fact وزن/دوز وجود ندارد). condition فعلی PLACEHOLDER (exists) است و هرگز نباید بدون پیاده‌سازی محاسبهٔ وزن‌محور فعال شود؛ طبق الگوی SF-REN-02 بستهٔ redflags با status=SILENT وارد شده. SILENT هرگز اجرا نمی‌شود."
+      }
+    },
+    {
+      "schema_version": "2.0",
+      "dsl_version": "2.0",
+      "rule_code": "T2-INS-PRANDIAL-01",
+      "version": "0.1.0-draft",
+      "title": "افزودن بولوس اول — 4 U یا 10% basal، بزرگ‌ترین وعده",
+      "phase": "ROUTINE",
+      "action_type": "suggest_med",
+      "severity": "INFO",
+      "priority": 5200,
+      "semantic_key": "t2d-dosing-v1.T2-INS-PRANDIAL-01",
+      "scope": {
+        "population": "adults_with_t2d_on_insulin_basal",
+        "care_settings": [
+          "specialty_clinic"
+        ],
+        "encounter_types": [
+          "outpatient_chronic_care"
+        ],
+        "condition_codes": [
+          "diabetes"
+        ]
+      },
+      "required_facts": [
+        {
+          "key": "condition.diabetes",
+          "criticality": "REQUIRED",
+          "on_unusable": "NOT_APPLICABLE"
+        },
+        {
+          "key": "medication.insulin_basal",
+          "criticality": "REQUIRED",
+          "on_unusable": "NOT_APPLICABLE"
+        }
+      ],
+      "eligibility": {
+        "node_id": "T2-INS-PRANDIAL-01-e1",
+        "fact": "condition.diabetes",
+        "op": "truthy"
+      },
+      "condition": {
+        "node_id": "T2-INS-PRANDIAL-01-c1",
+        "fact": "medication.insulin_basal",
+        "op": "truthy"
+      },
+      "safety": {
+        "redflag_exclusions": [],
+        "hard_exclusions": [],
+        "on_safety_error": "BLOCK_ROUTINE_OUTPUTS"
+      },
+      "recommendation": {
+        "text_fa": "«Basal-plus: افزودن اولین بولوس ۴ واحد یا ۱۰٪ دوز basal با بزرگ‌ترین وعده (ADA Fig 9.5). تشخیص نیاز به prandial و انتخاب وعده با پزشک.»",
+        "suggestion_only": true,
+        "requires_clinician_confirmation": true,
+        "may_create_internal_task": false,
+        "params": {
+          "dose_start_fa": "بولوس اول: 4 U یا 10% دوز basal با بزرگ‌ترین وعده",
+          "algorithm_ref": "ADA 2026 Fig 9.5 (S183)",
+          "gap_note_fa": "محاسبهٔ 10% دوز basal در runtime ممکن نیست (fact دوز ساختاریافته نیست)."
+        }
+      },
+      "evidence": {
+        "source_title": "ADA Standards of Care in Diabetes—2026, §9 Fig 9.5 (S183)",
+        "issuing_organization": "American Diabetes Association",
+        "publication_date": null,
+        "source_version": "2026",
+        "source_locator": "داسیه DOSING_REFRESH §۲.۳ (✅): افزودن بولوس اول 4 U یا 10% دوز basal با بزرگ‌ترین وعده — ADA Fig 9.5.",
+        "source_url": "https://diabetesjournals.org/care/issue/49/Supplement_1",
+        "evidence_certainty": "NOT_GRADED",
+        "recommendation_strength": "NOT_GRADED",
+        "local_validation_status": "NOT_REVIEWED"
+      },
+      "governance": {
+        "status": "DRAFT",
+        "author": "clinical_rule_research/t2d pipeline",
+        "clinical_reviewer": null,
+        "review_due_date": "2026-11-21",
+        "change_note": "تبدیل از DOSING_REFRESH §۷ (T2-INS-PRANDIAL-01)."
+      }
+    },
+    {
+      "schema_version": "2.0",
+      "dsl_version": "2.0",
+      "rule_code": "T2-INS-PRANDIAL-02",
+      "version": "0.1.0-draft",
+      "title": "A1c <۸٪ هنگام افزودن بولوس — کاهش basal 4 U/10%",
+      "phase": "ROUTINE",
+      "action_type": "suggest_med",
+      "severity": "WARN",
+      "priority": 5100,
+      "semantic_key": "t2d-dosing-v1.T2-INS-PRANDIAL-02",
+      "scope": {
+        "population": "adults_with_t2d_on_insulin_bolus_a1c_below_8",
+        "care_settings": [
+          "specialty_clinic"
+        ],
+        "encounter_types": [
+          "outpatient_chronic_care"
+        ],
+        "condition_codes": [
+          "diabetes"
+        ]
+      },
+      "required_facts": [
+        {
+          "key": "condition.diabetes",
+          "criticality": "REQUIRED",
+          "on_unusable": "NOT_APPLICABLE"
+        },
+        {
+          "key": "medication.insulin_bolus",
+          "criticality": "REQUIRED",
+          "on_unusable": "NOT_APPLICABLE"
+        },
+        {
+          "key": "lab.hba1c",
+          "criticality": "CRITICAL",
+          "on_unusable": "NEEDS_DATA"
+        }
+      ],
+      "eligibility": {
+        "node_id": "T2-INS-PRANDIAL-02-e1",
+        "fact": "condition.diabetes",
+        "op": "truthy"
+      },
+      "condition": {
+        "node_id": "T2-INS-PRANDIAL-02-c3",
+        "all": [
+          {
+            "node_id": "T2-INS-PRANDIAL-02-c1",
+            "fact": "medication.insulin_bolus",
+            "op": "truthy"
+          },
+          {
+            "node_id": "T2-INS-PRANDIAL-02-c2",
+            "fact": "lab.hba1c",
+            "op": "<",
+            "value": 8,
+            "selector": {
+              "aggregation": "latest"
+            }
+          }
+        ]
+      },
+      "safety": {
+        "redflag_exclusions": [],
+        "hard_exclusions": [],
+        "on_safety_error": "BLOCK_ROUTINE_OUTPUTS"
+      },
+      "recommendation": {
+        "text_fa": "«بیمار روی بولوس با A1c <۸٪: هنگام افزودن/تنظیم بولوس، basal را ۴ واحد یا ۱۰٪ کم کن (ADA Fig 9.5) تا خطر هیپو کم شود. تصمیم نهایی با پزشک.»",
+        "suggestion_only": true,
+        "requires_clinician_confirmation": true,
+        "may_create_internal_task": false,
+        "params": {
+          "dose_adjustment_fa": "اگر A1c <8%: هنگام افزودن بولوس، basal را 4 U یا 10% کم کن",
+          "algorithm_ref": "ADA 2026 Fig 9.5 (S183)"
+        }
+      },
+      "evidence": {
+        "source_title": "ADA Standards of Care in Diabetes—2026, §9 Fig 9.5 (S183)",
+        "issuing_organization": "American Diabetes Association",
+        "publication_date": null,
+        "source_version": "2026",
+        "source_locator": "داسیه DOSING_REFRESH §۲.۳ (✅): اگر A1c <8% هنگام افزودن بولوس، basal را 4 U یا 10% کم کن — ADA Fig 9.5.",
+        "source_url": "https://diabetesjournals.org/care/issue/49/Supplement_1",
+        "evidence_certainty": "NOT_GRADED",
+        "recommendation_strength": "NOT_GRADED",
+        "local_validation_status": "NOT_REVIEWED"
+      },
+      "governance": {
+        "status": "DRAFT",
+        "author": "clinical_rule_research/t2d pipeline",
+        "clinical_reviewer": null,
+        "review_due_date": "2026-11-21",
+        "change_note": "تبدیل از DOSING_REFRESH §۷ (T2-INS-PRANDIAL-02). تریگر insulin_bolus + hba1c<8 (آستانهٔ عینی داسیه)."
+      }
+    },
+    {
+      "schema_version": "2.0",
+      "dsl_version": "2.0",
+      "rule_code": "T2-INS-CORR-01",
+      "version": "0.1.0-draft",
+      "title": "Correction bolus / ISF — قرارداد 1800/1500 (NON-GUIDELINE، تأیید پزشک)",
+      "phase": "SAFETY",
+      "action_type": "suggest_med",
+      "severity": "URGENT",
+      "priority": 8600,
+      "semantic_key": "t2d-dosing-v1.T2-INS-CORR-01",
+      "scope": {
+        "population": "adults_with_t2d_on_insulin_bolus",
+        "care_settings": [
+          "specialty_clinic"
+        ],
+        "encounter_types": [
+          "outpatient_chronic_care"
+        ],
+        "condition_codes": [
+          "diabetes"
+        ]
+      },
+      "required_facts": [
+        {
+          "key": "condition.diabetes",
+          "criticality": "REQUIRED",
+          "on_unusable": "NOT_APPLICABLE"
+        },
+        {
+          "key": "medication.insulin_bolus",
+          "criticality": "REQUIRED",
+          "on_unusable": "NOT_APPLICABLE"
+        }
+      ],
+      "eligibility": {
+        "node_id": "T2-INS-CORR-01-e1",
+        "fact": "condition.diabetes",
+        "op": "truthy"
+      },
+      "condition": {
+        "node_id": "T2-INS-CORR-01-c1",
+        "fact": "medication.insulin_bolus",
+        "op": "truthy"
+      },
+      "safety": {
+        "redflag_exclusions": [],
+        "hard_exclusions": [],
+        "on_safety_error": "BLOCK_ROUTINE_OUTPUTS"
+      },
+      "recommendation": {
+        "text_fa": "«⚠️ NON-GUIDELINE (خارج از ADA): فرمول ISF قرارداد بالینی Walsh/Roberts است، نه توصیهٔ ADA. آنالوگ سریع: ISF ≈ 1800/TDD؛ انسولین regular: ISF ≈ 1500/TDD. Correction dose = (BG − target)/ISF؛ فقط برای TDD پایدار، فقط با BGM/CGM و بدون هم‌پوشانی با دوز وعدهٔ اخیر. عدد «1700» گاهی نقل می‌شود اما استاندارد مرجع 1800/1500 است. هر correction dose صرفاً estimate است و پیش از تجویز باید توسط پزشک تأیید شود.»",
+        "suggestion_only": true,
+        "requires_clinician_confirmation": true,
+        "may_create_internal_task": false,
+        "params": {
+          "non_guideline": true,
+          "isf_rapid_fa": "ISF ≈ 1800/TDD («1800 rule») — آنالوگ سریع",
+          "isf_regular_fa": "ISF ≈ 1500/TDD — انسولین regular",
+          "formula_fa": "Correction dose = (BG − target)/ISF؛ فقط با BGM/CGM و بدون هم‌پوشانی با دوز وعدهٔ اخیر",
+          "caveat_fa": "عدد «1700» گاهی نقل می‌شود اما استاندارد مرجع 1800/1500 است؛ فقط برای TDD پایدار؛ estimate غیر-ADA — تأیید پزشک الزامی",
+          "delta_note": "⚠️ DELTA-4: فرمول ISF جزو ADA نیست — قرارداد بالینی Walsh/Roberts؛ در rule engine به‌عنوان estimate با تأیید پزشک.",
+          "gap_note_fa": "TDD fact ساختاریافته نیست — محاسبهٔ ISF در runtime ممکن نیست."
+        }
+      },
+      "evidence": {
+        "source_title": "قرارداد بالینی Walsh/Roberts (1800/1500 rule) — خارج از ADA (NON-GUIDELINE)",
+        "issuing_organization": "Clinical convention (Walsh/Roberts) — نه یک guideline رسمی",
+        "publication_date": null,
+        "source_version": "convention",
+        "source_locator": "داسیه DOSING_REFRESH §۲.۴ + DELTA-4: ISF جزو ADA نیست؛ آنالوگ سریع ≈1800/TDD؛ regular ≈1500/TDD؛ «1700» غیراستاندارد؛ فقط TDD پایدار؛ Correction=(BG−target)/ISF بدون هم‌پوشانی با دوز وعدهٔ اخیر. URL فعلی عمداً صفحهٔ ADA SOC است تا «نبودِ ISF در ADA» مستند بماند.",
+        "source_url": "https://diabetesjournals.org/care/issue/49/Supplement_1",
+        "evidence_certainty": "NOT_GRADED",
+        "recommendation_strength": "NOT_GRADED",
+        "local_validation_status": "NOT_REVIEWED",
+        "local_adaptation_note": "NON-GUIDELINE: هیچ DOI/PMID/صفحهٔ ناشری برای این قرارداد در داسیه نبود؛ اجرا منوط به تأیید پزشک است."
+      },
+      "governance": {
+        "status": "DRAFT",
+        "author": "clinical_rule_research/t2d pipeline",
+        "clinical_reviewer": null,
+        "review_due_date": "2026-11-21",
+        "change_note": "تبدیل از DOSING_REFRESH §۷ (T2-INS-CORR-01). ⚠️ DELTA-4 حمل شده؛ فاز SAFETY طبق دستور کار؛ NON-GUIDELINE در عنوان/متن/params/evidence."
+      }
+    },
+    {
+      "schema_version": "2.0",
+      "dsl_version": "2.0",
+      "rule_code": "T2-HYPO-TX-01",
+      "version": "0.1.0-draft",
+      "title": "هیپوگلیسمی — طبقه‌بندی L1/L2/L3 و قانون 15-15",
+      "phase": "SAFETY",
+      "action_type": "safety_alert",
+      "severity": "CRITICAL",
+      "priority": 9400,
+      "semantic_key": "t2d-dosing-v1.T2-HYPO-TX-01",
+      "scope": {
+        "population": "adults_with_t2d_hypo_event",
+        "care_settings": [
+          "specialty_clinic"
+        ],
+        "encounter_types": [
+          "outpatient_chronic_care"
+        ],
+        "condition_codes": [
+          "diabetes"
+        ]
+      },
+      "required_facts": [
+        {
+          "key": "condition.diabetes",
+          "criticality": "REQUIRED",
+          "on_unusable": "NOT_APPLICABLE"
+        },
+        {
+          "key": "lab.fbs",
+          "criticality": "CRITICAL",
+          "on_unusable": "NEEDS_DATA"
+        }
+      ],
+      "eligibility": {
+        "node_id": "T2-HYPO-TX-01-e1",
+        "fact": "condition.diabetes",
+        "op": "truthy"
+      },
+      "condition": {
+        "node_id": "T2-HYPO-TX-01-c3",
+        "all": [
+          {
+            "node_id": "T2-HYPO-TX-01-c1",
+            "fact": "condition.diabetes",
+            "op": "truthy"
+          },
+          {
+            "node_id": "T2-HYPO-TX-01-c2",
+            "fact": "lab.fbs",
+            "op": "<",
+            "value": 70,
+            "selector": {
+              "aggregation": "latest"
+            }
+          }
+        ]
+      },
+      "safety": {
+        "redflag_exclusions": [],
+        "hard_exclusions": [],
+        "on_safety_error": "BLOCK_ROUTINE_OUTPUTS"
+      },
+      "recommendation": {
+        "text_fa": "«قند <۷۰ ثبت شده (هیپوگلیسمی). طبقه‌بندی ADA: L1 = <70 و ≥54؛ L2 = <54؛ L3 = رخداد شدید با اختلال ذهنی/جسمی نیازمند کمک دیگران (مستقل از عدد). درمان فرد هوشیار (Rule of 15 / 15-15): ۱۵ گرم کربوهیدرات سریع (گلوکز خالص ترجیح) → چک پس از ۱۵ دقیقه → تکرار تا رفع. کاربران AID: ۵–۱۰ گرم. آکاربوز: فقط گلوکز خالص. پس از رفع، در صورت ادامهٔ اثر انسولین/SU میان‌وعده. اگر اختلال هوشیاری هست: اورژانس + گلوکاگون.»",
+        "suggestion_only": true,
+        "requires_clinician_confirmation": true,
+        "may_create_internal_task": false,
+        "params": {
+          "hypo_protocol_fa": "15 g کربوهیدرات سریع (گلوکز خالص ترجیح) → چک پس از 15 دقیقه → تکرار تا رفع («15-15»)",
+          "classification_fa": "L1: <70 و ≥54 | L2: <54 | L3: رخداد شدید با اختلال ذهنی/جسمی نیازمند کمک دیگران",
+          "special_cases_fa": "AID users: 5–10 g | آکاربوز: فقط گلوکز خالص | پس از رفع با ادامهٔ اثر انسولین/SU: میان‌وعده",
+          "label_ref": "ADA 2026 §6 Table 6.4 + §6.15"
+        }
+      },
+      "evidence": {
+        "source_title": "ADA Standards of Care in Diabetes—2026, §6 Glycemic Goals and Hypoglycemia (Table 6.4, §6.15)",
+        "issuing_organization": "American Diabetes Association",
+        "publication_date": null,
+        "source_version": "2026",
+        "source_locator": "داسیه DOSING_REFRESH §۳.۱/§۳.۲ (✅): طبقه‌بندی L1/L2/L3 طبق Table 6.4؛ Rule of 15 طبق §6.15 + ADA patient page.",
+        "source_url": "https://diabetesjournals.org/care/issue/49/Supplement_1",
+        "evidence_certainty": "NOT_GRADED",
+        "recommendation_strength": "NOT_GRADED",
+        "local_validation_status": "NOT_REVIEWED"
+      },
+      "governance": {
+        "status": "DRAFT",
+        "author": "clinical_rule_research/t2d pipeline",
+        "clinical_reviewer": null,
+        "review_due_date": "2026-11-21",
+        "change_note": "تبدیل از DOSING_REFRESH §۷ (T2-HYPO-TX-01). فاز SAFETY طبق دستور کار؛ تریگر fbs<70 (آستانهٔ L1)."
+      }
+    },
+    {
+      "schema_version": "2.0",
+      "dsl_version": "2.0",
+      "rule_code": "T2-HYPO-TX-02",
+      "version": "0.1.0-draft",
+      "title": "گلوکاگون برای همهٔ تحت‌انسولین",
+      "phase": "SAFETY",
+      "action_type": "suggest_med",
+      "severity": "URGENT",
+      "priority": 8800,
+      "semantic_key": "t2d-dosing-v1.T2-HYPO-TX-02",
+      "scope": {
+        "population": "adults_with_t2d_on_any_insulin",
+        "care_settings": [
+          "specialty_clinic"
+        ],
+        "encounter_types": [
+          "outpatient_chronic_care"
+        ],
+        "condition_codes": [
+          "diabetes"
+        ]
+      },
+      "required_facts": [
+        {
+          "key": "condition.diabetes",
+          "criticality": "REQUIRED",
+          "on_unusable": "NOT_APPLICABLE"
+        },
+        {
+          "key": "medication.insulin_basal",
+          "criticality": "OPTIONAL",
+          "on_unusable": "CONTINUE_WITH_WARNING"
+        },
+        {
+          "key": "medication.insulin_bolus",
+          "criticality": "OPTIONAL",
+          "on_unusable": "CONTINUE_WITH_WARNING"
+        }
+      ],
+      "eligibility": {
+        "node_id": "T2-HYPO-TX-02-e1",
+        "fact": "condition.diabetes",
+        "op": "truthy"
+      },
+      "condition": {
+        "node_id": "T2-HYPO-TX-02-c3",
+        "any": [
+          {
+            "node_id": "T2-HYPO-TX-02-c1",
+            "fact": "medication.insulin_basal",
+            "op": "truthy"
+          },
+          {
+            "node_id": "T2-HYPO-TX-02-c2",
+            "fact": "medication.insulin_bolus",
+            "op": "truthy"
+          }
+        ]
+      },
+      "safety": {
+        "redflag_exclusions": [],
+        "hard_exclusions": [],
+        "on_safety_error": "BLOCK_ROUTINE_OUTPUTS"
+      },
+      "recommendation": {
+        "text_fa": "«بیمار تحت انسولین است: تجویز گلوکاگون برای همهٔ افراد تحت‌انسولین توصیه می‌شود (ADA 6.16، سطح A). فرم آمادهٔ تزریق یا داخل‌بینی ترجیح دارد؛ آموزش استفاده به اطرافیان انجام شود.»",
+        "suggestion_only": true,
+        "requires_clinician_confirmation": true,
+        "may_create_internal_task": false,
+        "params": {
+          "dose_start_fa": "گلوکاگون فرم آمادهٔ تزریق/داخل‌بینی (ترجیحی) — Rx برای همهٔ تحت‌انسولین‌ها",
+          "extra_guidance_fa": "آموزش اطرافیان برای استفاده در هیپوی شدید با اختلال هوشیاری",
+          "label_ref": "ADA 2026 §6.16 (A)"
+        }
+      },
+      "evidence": {
+        "source_title": "ADA Standards of Care in Diabetes—2026, §6.16 (Glucagon, recommendation grade A)",
+        "issuing_organization": "American Diabetes Association",
+        "publication_date": null,
+        "source_version": "2026",
+        "source_locator": "داسیه DOSING_REFRESH §۳.۳ (✅): تجویز گلوکاگون برای همهٔ تحت‌انسولین‌ها (6.16، A)؛ فرم آمادهٔ تزریق/داخل‌بینی ترجیح دارد؛ آموزش اطرافیان.",
+        "source_url": "https://diabetesjournals.org/care/issue/49/Supplement_1",
+        "evidence_certainty": "NOT_GRADED",
+        "recommendation_strength": "NOT_GRADED",
+        "local_validation_status": "NOT_REVIEWED"
+      },
+      "governance": {
+        "status": "DRAFT",
+        "author": "clinical_rule_research/t2d pipeline",
+        "clinical_reviewer": null,
+        "review_due_date": "2026-11-21",
+        "change_note": "تبدیل از DOSING_REFRESH §۷ (T2-HYPO-TX-02). فاز SAFETY طبق دستور کار؛ تریگر any(insulin_basal|insulin_bolus)."
+      }
+    },
+    {
+      "schema_version": "2.0",
+      "dsl_version": "2.0",
+      "rule_code": "T2-SICKDAY-01",
+      "version": "0.1.0-draft",
+      "title": "روز بیماری — Hold داروها / ادامهٔ basal / کتون",
+      "phase": "SAFETY",
+      "action_type": "safety_alert",
+      "severity": "URGENT",
+      "priority": 9000,
+      "semantic_key": "t2d-dosing-v1.T2-SICKDAY-01",
+      "scope": {
+        "population": "adults_with_t2d_on_glycemic_meds_sickday_context",
+        "care_settings": [
+          "specialty_clinic"
+        ],
+        "encounter_types": [
+          "outpatient_chronic_care"
+        ],
+        "condition_codes": [
+          "diabetes"
+        ]
+      },
+      "required_facts": [
+        {
+          "key": "condition.diabetes",
+          "criticality": "REQUIRED",
+          "on_unusable": "NOT_APPLICABLE"
+        },
+        {
+          "key": "medication.metformin",
+          "criticality": "OPTIONAL",
+          "on_unusable": "CONTINUE_WITH_WARNING"
+        },
+        {
+          "key": "medication.sglt2i",
+          "criticality": "OPTIONAL",
+          "on_unusable": "CONTINUE_WITH_WARNING"
+        },
+        {
+          "key": "medication.glp1_ra",
+          "criticality": "OPTIONAL",
+          "on_unusable": "CONTINUE_WITH_WARNING"
+        },
+        {
+          "key": "medication.tzd",
+          "criticality": "OPTIONAL",
+          "on_unusable": "CONTINUE_WITH_WARNING"
+        },
+        {
+          "key": "medication.su",
+          "criticality": "OPTIONAL",
+          "on_unusable": "CONTINUE_WITH_WARNING"
+        },
+        {
+          "key": "medication.insulin_basal",
+          "criticality": "OPTIONAL",
+          "on_unusable": "CONTINUE_WITH_WARNING"
+        }
+      ],
+      "eligibility": {
+        "node_id": "T2-SICKDAY-01-e1",
+        "fact": "condition.diabetes",
+        "op": "truthy"
+      },
+      "condition": {
+        "node_id": "T2-SICKDAY-01-c7",
+        "any": [
+          {
+            "node_id": "T2-SICKDAY-01-c1",
+            "fact": "medication.metformin",
+            "op": "truthy"
+          },
+          {
+            "node_id": "T2-SICKDAY-01-c2",
+            "fact": "medication.sglt2i",
+            "op": "truthy"
+          },
+          {
+            "node_id": "T2-SICKDAY-01-c3",
+            "fact": "medication.glp1_ra",
+            "op": "truthy"
+          },
+          {
+            "node_id": "T2-SICKDAY-01-c4",
+            "fact": "medication.tzd",
+            "op": "truthy"
+          },
+          {
+            "node_id": "T2-SICKDAY-01-c5",
+            "fact": "medication.su",
+            "op": "truthy"
+          },
+          {
+            "node_id": "T2-SICKDAY-01-c6",
+            "fact": "medication.insulin_basal",
+            "op": "truthy"
+          }
+        ]
+      },
+      "safety": {
+        "redflag_exclusions": [],
+        "hard_exclusions": [],
+        "on_safety_error": "BLOCK_ROUTINE_OUTPUTS"
+      },
+      "recommendation": {
+        "text_fa": "«قواعد روز بیماری (✅ ADA 2026 §6 sick-day): Hold متفورمین و SGLT2i با عدم‌تحمل خوراکی/خطر AKI؛ GLP-1/dual با GI شدید؛ TZD با تشدید HF/پرحجمی؛ SU با آنتی‌بیوتیک‌های تداخلی کاهش/قطع. basal حتی با نخوردن غذا قطع نشود. کتون در علائم یا BG >200 بررسی شود (کتون خون ترجیح). ⚠️ DKA یوگلایسمیک با SGLT2i: تهوع/استفراغ + کتون مثبت باید مستقل از عدد گلوکز ارزیابی شود (گلوکز ممکن است <200 باشد). تصمیم hold/resume با پزشک.»",
+        "suggestion_only": true,
+        "requires_clinician_confirmation": true,
+        "may_create_internal_task": false,
+        "params": {
+          "sickday_hold_fa": "Hold metformin/SGLT2i (عدم‌تحمل خوراکی/خطر AKI)؛ GLP-1/dual (GI شدید)؛ TZD (تشدید HF/پرحجمی)؛ SU (آنتی‌بیوتیک تداخلی)",
+          "keep_rule_fa": "basal حتی با نخوردن غذا قطع نشود",
+          "ketone_check_fa": "کتون در علائم یا BG >200 (کتون خون ترجیح)",
+          "eudka_warning_fa": "DKA یوگلایسمیک SGLT2i: تهوع/استفراغ + کتون مثبت مستقل از گلوکز ارزیابی شود",
+          "label_ref": "ADA 2026 §6 sick-day + PIها"
+        }
+      },
+      "evidence": {
+        "source_title": "ADA Standards of Care in Diabetes—2026, §6 (Sick-day medication management)",
+        "issuing_organization": "American Diabetes Association",
+        "publication_date": null,
+        "source_version": "2026",
+        "source_locator": "داسیه DOSING_REFRESH §۳.۴ (✅ + تکمیل): Hold metformin/SGLT2i/GLP-1/TZD/SU per condition؛ basal ادامه؛ کتون BG>200؛ هشدار DKA یوگلایسمیک SGLT2i.",
+        "source_url": "https://diabetesjournals.org/care/issue/49/Supplement_1",
+        "evidence_certainty": "NOT_GRADED",
+        "recommendation_strength": "NOT_GRADED",
+        "local_validation_status": "NOT_REVIEWED"
+      },
+      "governance": {
+        "status": "DRAFT",
+        "author": "clinical_rule_research/t2d pipeline",
+        "clinical_reviewer": null,
+        "review_due_date": "2026-11-21",
+        "change_note": "تبدیل از DOSING_REFRESH §۷ (T2-SICKDAY-01). فاز SAFETY طبق دستور کار؛ شرط «تهوع/استفراغ» symptom-based است و در DSL نیست — متن آموزشی (الگوی §۴ notes بستهٔ redflags)."
+      }
+    }
+  ]
+}

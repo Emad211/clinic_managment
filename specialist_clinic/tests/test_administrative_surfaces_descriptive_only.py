@@ -141,7 +141,7 @@ def test_descriptive_and_administrative_pages_render_without_legacy_fields(app_c
     patient_id = _patient()
     client = _login(app_ctx)
 
-    for path in ("/", "/control-room/", "/patients/", f"/patients/{patient_id}"):
+    for path in ("/doctor-queue/", "/control-room/", "/patients/", f"/patients/{patient_id}"):
         response = client.get(path)
         assert response.status_code == 200, path
 

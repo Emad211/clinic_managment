@@ -24,6 +24,11 @@ from src.domain.clinical_engine.release import (
 _FIXED_AT = "2026-07-22 10:00:00"
 
 
+def _already_attested(exc: ValueError) -> bool:
+    message = str(exc)
+    return "UNIQUE" in message or "exactly once" in message
+
+
 def install_sealed_rollout(
     *,
     mode: str = "on_selected",
@@ -91,7 +96,7 @@ def install_sealed_rollout(
             report_hash=validation_report["report_hash"],
         )
     except ValueError as exc:
-        if "UNIQUE" not in str(exc):
+        if not _already_attested(exc):
             raise
     try:
         validation_service.attest_current(
@@ -101,7 +106,7 @@ def install_sealed_rollout(
             report_hash=validation_report["report_hash"],
         )
     except ValueError as exc:
-        if "UNIQUE" not in str(exc):
+        if not _already_attested(exc):
             raise
     validation_evidence = validation_service.current_release_evidence()
     assert validation_evidence

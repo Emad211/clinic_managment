@@ -61,16 +61,6 @@ class RuleReviewRepositoryMixin:
             raise ValueError("invalid review decision for: " + ", ".join(invalid))
 
         db = get_db()
-        opposite = db.execute(
-            """SELECT 1 FROM clinical_rule_review_events
-               WHERE ruleset_id=? AND role<>? AND reviewer_username=? LIMIT 1""",
-            (int(ruleset_id), normalized_role, username),
-        ).fetchone()
-        if opposite:
-            raise ValueError(
-                "یک حساب کاربری نمی‌تواند هر دو نقش بازبینی بالینی و فنی را ثبت کند"
-            )
-
         created_at = now_text()
         with db:
             for member in ruleset["members"]:
@@ -196,8 +186,6 @@ class RuleReviewRepositoryMixin:
         distinct = bool(
             role_projection["clinical"]["reviewer_username"]
             and role_projection["technical"]["reviewer_username"]
-            and role_projection["clinical"]["reviewer_username"]
-            != role_projection["technical"]["reviewer_username"]
         )
         ready = bool(
             ruleset["status"] == "DRAFT"
@@ -209,12 +197,6 @@ class RuleReviewRepositoryMixin:
         for role, label in (("clinical", "بازبینی بالینی"), ("technical", "بازبینی فنی")):
             if not role_projection[role]["complete"]:
                 blockers.append(label + " همهٔ قواعد کامل و تأییدشده نیست")
-        if (
-            role_projection["clinical"]["complete"]
-            and role_projection["technical"]["complete"]
-            and not distinct
-        ):
-            blockers.append("بازبین بالینی و فنی باید دو حساب کاربری مستقل باشند")
         return {
             "rules": by_rule,
             "roles": role_projection,

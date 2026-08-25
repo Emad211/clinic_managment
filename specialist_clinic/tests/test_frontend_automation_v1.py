@@ -31,17 +31,15 @@ def test_frontend_automation_plan_is_the_implementation_source_of_truth():
     assert "never fakes persistence" in plan
 
 
-def test_automation_layer_is_additive_and_loaded_only_by_opted_in_pages():
-    base = read("src/templates/automation_base.html")
-    assert '{% extends "base.html" %}' in base
+def test_automation_layer_is_additive_and_loaded_by_the_single_shell():
+    base = read("src/templates/base.html")
     assert "css/automation-v1.css" in base
     assert "js/automation-v1.js" in base
-    assert "{{ super() }}" in base
 
 
 def test_work_center_has_one_primary_action_and_automatic_filters():
     page = read("src/templates/followups/unified_worklist.html")
-    assert '{% extends "automation_base.html" %}' in page
+    assert '{% extends "base.html" %}' in page
     assert "مرکز کارها" in page
     assert "data-auto-filter" in page
     assert 'data-auto-submit="debounced"' in page
@@ -54,7 +52,7 @@ def test_work_center_has_one_primary_action_and_automatic_filters():
 
 def test_work_item_detail_prioritizes_action_and_collapses_ceremony():
     page = read("src/templates/followups/unified_detail.html")
-    assert '{% extends "automation_base.html" %}' in page
+    assert '{% extends "base.html" %}' in page
     assert "کاری که اکنون باید انجام شود" in page
     assert "دریافت برای رسیدگی" in page
     assert "رسیدگی و واگذاری" in page
@@ -89,7 +87,7 @@ def test_contact_outcomes_are_one_click_but_use_the_existing_server_form():
 
 def test_doctor_queue_is_next_patient_first_and_keeps_safe_linking():
     page = read("src/templates/doctor_queue/queue.html")
-    assert '{% extends "automation_base.html" %}' in page
+    assert '{% extends "base.html" %}' in page
     assert "بیمار بعدی" in page
     assert "شروع ویزیت" in page
     assert "ادامه مستندسازی" in page
@@ -102,7 +100,7 @@ def test_doctor_queue_is_next_patient_first_and_keeps_safe_linking():
 
 def test_encounter_has_three_human_steps_and_one_final_action():
     page = read("src/templates/doctor_queue/visit_quick.html")
-    assert '{% extends "automation_base.html" %}' in page
+    assert '{% extends "base.html" %}' in page
     for section in (
         "شرح حال و معاینه",
         "ارزیابی و برنامه",
@@ -137,7 +135,7 @@ def test_appointments_use_one_primary_row_action_and_optional_creation_fields():
     create = read("src/templates/appointments/new.html")
     styles = read("src/static/css/appointments-automation-v1.css")
 
-    assert '{% extends "automation_base.html" %}' in listing
+    assert '{% extends "base.html" %}' in listing
     assert "appointments-automation-v1.css" in listing
     assert "appointment-card-list" in listing
     assert "appointment-card__actions" in listing
@@ -146,7 +144,7 @@ def test_appointments_use_one_primary_row_action_and_optional_creation_fields():
     assert "ثبت غیبت" in listing
     assert "لغو نوبت" in listing
 
-    assert '{% extends "automation_base.html" %}' in create
+    assert '{% extends "base.html" %}' in create
     assert "appointments-automation-v1.css" in create
     assert "appointment-date-grid" in create
     assert "تنظیمات اختیاری" in create

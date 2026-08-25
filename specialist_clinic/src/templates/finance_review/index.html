@@ -1,4 +1,4 @@
-{% extends "automation_base.html" %}
+{% extends "base.html" %}
 {% block title %}امور مالی{% endblock %}
 {% block head %}{{ super() }}<link rel="stylesheet" href="{{ url_for('static', filename='css/finance-automation-v1.css') }}">{% endblock %}
 {% block content %}
@@ -8,7 +8,7 @@
         <h1><svg class="icon icon-lg"><use href="#i-banknote"></use></svg> امور مالی</h1>
         <p class="muted">فقط فاکتورهای نیازمند تصمیم را بررسی کنید؛ مبالغ حسابداری همچنان فقط‌خواندنی‌اند.</p>
     </div>
-    <div class="auto-page-header__actions"><form method="post" action="{{ url_for('finance_review.reconcile') }}"><button class="btn btn-ghost" type="submit"><svg class="icon"><use href="#i-refresh"></use></svg> بازخوانی حسابداری</button></form></div>
+    {% if permissions.get('financial.reconcile') %}<div class="auto-page-header__actions"><form method="post" action="{{ url_for('finance_review.reconcile') }}"><button class="btn btn-ghost" type="submit"><svg class="icon"><use href="#i-refresh"></use></svg> بازخوانی حسابداری</button></form></div>{% endif %}
 </header>
 
 <section class="work-center-summary" aria-label="خلاصه امور مالی">

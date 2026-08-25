@@ -49,7 +49,6 @@ _CLINICAL_ENGINE_V2_TRIGGERS = frozenset({
     "trg_rule_review_events_identity_match",
     "trg_rule_review_events_supersedes_match",
     "trg_rule_review_events_linear_history",
-    "trg_rule_review_events_role_separation",
 })
 
 
@@ -200,9 +199,12 @@ def _ensure_clinical_engine_v2_storage(db):
     # PRESENTED event can only truthfully be appended after the run is terminal.
     # Recreate these guards because CREATE TRIGGER IF NOT EXISTS cannot update
     # an older installed database's trigger body.
+    # Single-operator mode retires the cross-role reviewer separation guard the
+    # same way: DROP first so already-installed databases lose the old body.
     db.executescript(
         """DROP TRIGGER IF EXISTS trg_recommendation_events_running_insert_only;
         DROP TRIGGER IF EXISTS trg_recommendation_events_terminal_presentation;
+        DROP TRIGGER IF EXISTS trg_rule_review_events_role_separation;
         CREATE TRIGGER trg_recommendation_events_running_insert_only
         BEFORE INSERT ON clinical_recommendation_events
         WHEN NEW.event_type IN ('CREATED', 'SUPPRESSED')

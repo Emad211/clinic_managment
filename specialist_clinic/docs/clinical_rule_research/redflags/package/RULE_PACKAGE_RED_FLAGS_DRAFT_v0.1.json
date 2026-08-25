@@ -1,0 +1,1876 @@
+{
+  "package_format": "clinical-rule-package.draft/0.1",
+  "ruleset_code": "redflags-cross-v1",
+  "version": "0.1.0-draft",
+  "status": "DRAFT",
+  "clinical_use": "NOT_APPROVED_HISTORICAL_REGRESSION_ONLY",
+  "source_dossier": "ACUTE_THRESHOLDS_DOSSIER_FA v1.0.0",
+  "generated_at": "2026-08-23T12:00:00+03:30",
+  "schema_version": "2.0",
+  "dsl_version": "2.0",
+  "rule_schema_ref": "src/domain/clinical_engine/schemas/clinical-rule.schema.json",
+  "validation": {
+    "method": "jsonschema.Draft202012Validator with FormatChecker against clinical-rule.schema.json (internal refs only; no external registry needed)",
+    "validated_at": "2026-08-23T12:30:00+03:30",
+    "rules_total": 16,
+    "rules_valid": 16,
+    "result": "ALL_VALID",
+    "validator_version_note": "jsonschema library in specialist_clinic/.venv; each entry of rules[] validated as a standalone RuleDefinition"
+  },
+  "authoring_notes": [
+    "STRUCTURAL MAPPING (per dossier §8): indicator.X.latest → lab.X / observation.X با selector.aggregation=latest؛ med.class → medication.<class_key>؛ condition → condition.<code>؛ flag.<key> → flag catalog fact. هر گرهٔ expression نیازمند node_id است که به‌صورت قطعی <CODE>-e*/c* تولید شد.",
+    "OPERATORS: همهٔ عملگرهای داسیه (has, in, between, >=, <=, >, <, ==) زیرمجموعهٔ SUPPORTED_OPERATORS در compiler_support.py هستند — هیچ جایگزینی عملگر لازم نشد. تنها تطبیق ساختاری: op=has روی condition → op=truthy روی fact condition.<code>؛ op=in روی med.class → any-of از medication.<class> truthy.",
+    "VERBATIM TRIGGERS: چون اسکیما additionalProperties:false دارد، تریگر خام داسیه عیناً در کلید ریشهٔ dossier_triggers نگهداری می‌شود؛ condition/eligibility داخل هر rule معادلِ نگاشت‌شدهٔ همان تریگر است.",
+    "PRIORITY ×100 طبق پیوست §۸ داسیه (مثلاً 96 → 9600) تا در بازهٔ 0–10000 اسکیما بگنجد.",
+    "PHASE mapping طبق §۸: redflag → PREFLIGHT، safety → SAFETY. هیچ قاعدهٔ routine در داسیه نیست.",
+    "DELTA RULES: SF-REN-02 و SF-CM-01 به عملگر delta_pct نیاز دارند که در DSL 2.0 وجود ندارد (selector aggregation فقط single/latest/all/count/within_days/count_within_days/recently_completed). این دو قاعده با governance.status=SILENT و condition جانشین exists وارد شده‌اند و change_note هشدار صریح دارد؛ تا افزودن aggregation delta نباید فعال شوند.",
+    "may_create_internal_task=true فقط برای قواعدی که داسیه صراحتاً create_followup داده (شامل اکشن ثانویهٔ RF-BP-01)؛ بقیه false.",
+    "requires_clinician_confirmation=true برای همهٔ قواعد طبق دستور کار (فراتر از CONFIRMATION_REQUIRED کامپایلر که فقط suggest_med/set_target/classify را می‌پوشاند).",
+    "max_age_days در required_facts عمداً حذف شد — داسیه مقدار نداده و عدد بالینی/عملیاتی جدید اختراع نمی‌شود؛ تصمیم با مالک.",
+    "source_urlها فقط از DOI/PMID موجود در ارجاع داسیه یا صفحهٔ فرود ژورنال ساخته شده‌اند؛ مورد FDA (RF-GLY-03) به بخش Drug Safety اشاره دارد و نشانی دقیق باید در بازبینی تکمیل شود.",
+    "evidence_certainty/recommendation_strength = NOT_GRADED برای همه (داسیه درجه‌بندی GRADE نداده؛ اطلاعات Class/LOE ESC داخل source_locator حفظ شده).",
+    "review_due_date پیش‌فرض عملیاتی ۹۰ روزه است؛ مالک می‌تواند تغییر دهد.",
+    "فعال‌سازی این بسته مستلزم package_contract validation + کلیک مالک طبق rollout مرحله‌ای (پرچم‌های قرمز موج اول) است؛ این فایل به runtime/compiler متصل نیست."
+  ],
+  "dossier_triggers": {
+    "RF-GLY-01": {
+      "all": [
+        {
+          "var": "condition",
+          "op": "has",
+          "value": "diabetes"
+        },
+        {
+          "var": "indicator.fbs.latest",
+          "op": ">=",
+          "value": 400
+        }
+      ]
+    },
+    "RF-GLY-02": {
+      "all": [
+        {
+          "var": "condition",
+          "op": "has",
+          "value": "diabetes"
+        },
+        {
+          "var": "indicator.fbs.latest",
+          "op": "between",
+          "value": [
+            300,
+            399
+          ]
+        }
+      ]
+    },
+    "RF-GLY-03": {
+      "all": [
+        {
+          "var": "condition",
+          "op": "has",
+          "value": "diabetes"
+        },
+        {
+          "var": "med.class",
+          "op": "in",
+          "value": [
+            "sglt2i"
+          ]
+        },
+        {
+          "var": "indicator.fbs.latest",
+          "op": ">=",
+          "value": 250
+        }
+      ]
+    },
+    "SF-GLY-04": {
+      "all": [
+        {
+          "var": "condition",
+          "op": "has",
+          "value": "diabetes"
+        },
+        {
+          "var": "indicator.hba1c.latest",
+          "op": ">=",
+          "value": 10
+        }
+      ]
+    },
+    "SF-GLY-05": {
+      "all": [
+        {
+          "var": "condition",
+          "op": "has",
+          "value": "diabetes"
+        },
+        {
+          "any": [
+            {
+              "var": "indicator.fbs.latest",
+              "op": "<",
+              "value": 54
+            },
+            {
+              "var": "indicator.bs_2hpp.latest",
+              "op": "<",
+              "value": 54
+            }
+          ]
+        }
+      ]
+    },
+    "SF-GLY-06": {
+      "all": [
+        {
+          "var": "condition",
+          "op": "has",
+          "value": "diabetes"
+        },
+        {
+          "var": "indicator.fbs.latest",
+          "op": "between",
+          "value": [
+            54,
+            69
+          ]
+        },
+        {
+          "var": "flag.hypo_risk",
+          "op": "in",
+          "value": [
+            "atrisk",
+            "high"
+          ]
+        }
+      ]
+    },
+    "RF-BP-01": {
+      "all": [
+        {
+          "var": "condition",
+          "op": "has",
+          "value": "hypertension"
+        },
+        {
+          "any": [
+            {
+              "var": "indicator.bp_systolic.latest",
+              "op": ">=",
+              "value": 180
+            },
+            {
+              "var": "indicator.bp_diastolic.latest",
+              "op": ">=",
+              "value": 110
+            }
+          ]
+        }
+      ]
+    },
+    "RF-BP-02": {
+      "all": [
+        {
+          "any": [
+            {
+              "var": "indicator.bp_systolic.latest",
+              "op": ">=",
+              "value": 180
+            },
+            {
+              "var": "indicator.bp_diastolic.latest",
+              "op": ">=",
+              "value": 110
+            }
+          ]
+        },
+        {
+          "any": [
+            {
+              "var": "flag.hf_symptomatic",
+              "op": "==",
+              "value": "1"
+            },
+            {
+              "var": "flag.ascvd",
+              "op": "==",
+              "value": "1"
+            },
+            {
+              "var": "flag.cvd_high_risk",
+              "op": "==",
+              "value": "1"
+            }
+          ]
+        }
+      ]
+    },
+    "SF-BP-03": {
+      "all": [
+        {
+          "var": "condition",
+          "op": "has",
+          "value": "hypertension"
+        },
+        {
+          "any": [
+            {
+              "var": "indicator.bp_systolic.latest",
+              "op": ">=",
+              "value": 140
+            },
+            {
+              "var": "indicator.bp_diastolic.latest",
+              "op": ">=",
+              "value": 90
+            }
+          ]
+        },
+        {
+          "var": "med.class",
+          "op": "in",
+          "value": [
+            "thiazide"
+          ]
+        },
+        {
+          "var": "med.class",
+          "op": "in",
+          "value": [
+            "ccb"
+          ]
+        },
+        {
+          "var": "med.class",
+          "op": "in",
+          "value": [
+            "acei",
+            "arb"
+          ]
+        }
+      ]
+    },
+    "RF-REN-01": {
+      "all": [
+        {
+          "var": "indicator.egfr.latest",
+          "op": "<",
+          "value": 30
+        }
+      ]
+    },
+    "SF-REN-02": {
+      "all": [
+        {
+          "var": "indicator.egfr.delta_pct_12m",
+          "op": "<=",
+          "value": -25
+        }
+      ]
+    },
+    "SF-REN-03": {
+      "all": [
+        {
+          "var": "indicator.uacr.latest",
+          "op": ">=",
+          "value": 300
+        }
+      ]
+    },
+    "SF-CM-01": {
+      "all": [
+        {
+          "var": "indicator.weight.delta_pct_180d",
+          "op": "<=",
+          "value": -5
+        }
+      ]
+    },
+    "SF-CM-02": {
+      "any": [
+        {
+          "var": "indicator.pulse.latest",
+          "op": ">",
+          "value": 120
+        },
+        {
+          "var": "indicator.pulse.latest",
+          "op": "<",
+          "value": 50
+        }
+      ]
+    },
+    "SF-LAB-01": {
+      "all": [
+        {
+          "var": "indicator.potassium.latest",
+          "op": ">=",
+          "value": 5.5
+        },
+        {
+          "var": "med.class",
+          "op": "in",
+          "value": [
+            "acei",
+            "arb",
+            "mra",
+            "finerenone"
+          ]
+        }
+      ]
+    },
+    "SF-LAB-02": {
+      "all": [
+        {
+          "var": "indicator.triglyceride.latest",
+          "op": ">=",
+          "value": 500
+        }
+      ]
+    }
+  },
+  "rules": [
+    {
+      "schema_version": "2.0",
+      "dsl_version": "2.0",
+      "rule_code": "RF-GLY-01",
+      "version": "0.1.0-draft",
+      "title": "FBS ≥ 400 (بحران هیپرگلیسمیک محتمل)",
+      "phase": "PREFLIGHT",
+      "action_type": "classify",
+      "severity": "CRITICAL",
+      "priority": 9500,
+      "semantic_key": "redflags-cross-v1.RF-GLY-01",
+      "scope": {
+        "population": "adults_with_diabetes",
+        "care_settings": [
+          "specialty_clinic"
+        ],
+        "encounter_types": [
+          "outpatient_chronic_care"
+        ],
+        "condition_codes": [
+          "diabetes"
+        ]
+      },
+      "required_facts": [
+        {
+          "key": "condition.diabetes",
+          "criticality": "REQUIRED",
+          "on_unusable": "NOT_APPLICABLE"
+        },
+        {
+          "key": "lab.fbs",
+          "criticality": "CRITICAL",
+          "on_unusable": "NEEDS_DATA"
+        }
+      ],
+      "eligibility": {
+        "node_id": "RF-GLY-01-e1",
+        "fact": "condition.diabetes",
+        "op": "truthy"
+      },
+      "condition": {
+        "node_id": "RF-GLY-01-c1",
+        "fact": "lab.fbs",
+        "op": ">=",
+        "value": 400,
+        "selector": {
+          "aggregation": "latest"
+        }
+      },
+      "safety": {
+        "redflag_exclusions": [],
+        "hard_exclusions": [],
+        "on_safety_error": "BLOCK_ROUTINE_OUTPUTS"
+      },
+      "recommendation": {
+        "text_fa": "«قند خون بسیار بالا (≥۴۰۰). بررسی فوری کتواسیدوز/سندرم هیپراسمولار امروز: آزمایش کتون ادرار/خون، الکترولیت و گاز خون. اگر تهوع، استفراغ، درد شکم، تنفس عمیق یا کاهش هوشیاری دارد، همین حالا اورژانس.»",
+        "suggestion_only": true,
+        "requires_clinician_confirmation": true,
+        "may_create_internal_task": false,
+        "params": {}
+      },
+      "evidence": {
+        "source_title": "ADA Standards of Care in Diabetes—2025, §9 Pharmacologic Approaches to Glycemic Treatment",
+        "issuing_organization": "American Diabetes Association",
+        "publication_date": null,
+        "source_version": "2025",
+        "source_locator": "Diabetes Care 2025;48(Suppl.1):S181, Fig 9.4 — glucose ≥300 mg/dL/A1C >10% به‌عنوان آستانهٔ «خیلی بالا»؛ آستانهٔ HHS ≥600 در ADA Hyperglycemic Crises Consensus Report (Diabetes Care 2024;47(10):1637–1654). آستانهٔ ≥400 انتخاب داسیه است.",
+        "source_url": "https://diabetesjournals.org/care/issue/48/Supplement_1",
+        "evidence_certainty": "NOT_GRADED",
+        "recommendation_strength": "NOT_GRADED",
+        "local_validation_status": "NOT_REVIEWED"
+      },
+      "governance": {
+        "status": "DRAFT",
+        "author": "clinical_rule_research/redflags pipeline",
+        "clinical_reviewer": null,
+        "review_due_date": "2026-11-21",
+        "change_note": "تبدیل خودکار از ACUTE_THRESHOLDS_DOSSIER_FA v1.0.0 (بخش ۱). DRAFT — بدون بازبینی پزشک غیرقابل فعال‌سازی."
+      }
+    },
+    {
+      "schema_version": "2.0",
+      "dsl_version": "2.0",
+      "rule_code": "RF-GLY-02",
+      "version": "0.1.0-draft",
+      "title": "FBS 300–399 (شدید/نیازمند تشدید)",
+      "phase": "PREFLIGHT",
+      "action_type": "create_followup",
+      "severity": "URGENT",
+      "priority": 8500,
+      "semantic_key": "redflags-cross-v1.RF-GLY-02",
+      "scope": {
+        "population": "adults_with_diabetes",
+        "care_settings": [
+          "specialty_clinic"
+        ],
+        "encounter_types": [
+          "outpatient_chronic_care"
+        ],
+        "condition_codes": [
+          "diabetes"
+        ]
+      },
+      "required_facts": [
+        {
+          "key": "condition.diabetes",
+          "criticality": "REQUIRED",
+          "on_unusable": "NOT_APPLICABLE"
+        },
+        {
+          "key": "lab.fbs",
+          "criticality": "CRITICAL",
+          "on_unusable": "NEEDS_DATA"
+        }
+      ],
+      "eligibility": {
+        "node_id": "RF-GLY-02-e1",
+        "fact": "condition.diabetes",
+        "op": "truthy"
+      },
+      "condition": {
+        "node_id": "RF-GLY-02-c1",
+        "fact": "lab.fbs",
+        "op": "between",
+        "value": [
+          300,
+          399
+        ],
+        "selector": {
+          "aggregation": "latest"
+        }
+      },
+      "safety": {
+        "redflag_exclusions": [],
+        "hard_exclusions": [],
+        "on_safety_error": "BLOCK_ROUTINE_OUTPUTS"
+      },
+      "recommendation": {
+        "text_fa": "«قند ناشتا ≥۳۰۰ ثبت شده است. تکرار آزمایش و مرور رژیم/دارو ظرف ۴۸ ساعت لازم است؛ در صورت بروز علائم تخریب کاتابولیک (کاهش وزن ناخواسته، پُرنوشی/پُرادراری شدید) تماس فوری.»",
+        "suggestion_only": true,
+        "requires_clinician_confirmation": true,
+        "may_create_internal_task": true,
+        "params": {
+          "due_in_hours": 48
+        }
+      },
+      "evidence": {
+        "source_title": "ADA Standards of Care in Diabetes—2025, §9 Pharmacologic Approaches to Glycemic Treatment",
+        "issuing_organization": "American Diabetes Association",
+        "publication_date": null,
+        "source_version": "2025",
+        "source_locator": "ADA SOC 2025 §9 (S181) — BG ≥300 mg/dL به‌عنوان آستانهٔ ورود انسولین/تشدید.",
+        "source_url": "https://diabetesjournals.org/care/issue/48/Supplement_1",
+        "evidence_certainty": "NOT_GRADED",
+        "recommendation_strength": "NOT_GRADED",
+        "local_validation_status": "NOT_REVIEWED"
+      },
+      "governance": {
+        "status": "DRAFT",
+        "author": "clinical_rule_research/redflags pipeline",
+        "clinical_reviewer": null,
+        "review_due_date": "2026-11-21",
+        "change_note": "تبدیل خودکار از ACUTE_THRESHOLDS_DOSSIER_FA v1.0.0 (بخش ۱). due_in_hours=48 عیناً از داسیه."
+      }
+    },
+    {
+      "schema_version": "2.0",
+      "dsl_version": "2.0",
+      "rule_code": "RF-GLY-03",
+      "version": "0.1.0-draft",
+      "title": "SGLT2i + هیپرگلیسمی نسبی (خطر DKA یوگلایسمیک)",
+      "phase": "PREFLIGHT",
+      "action_type": "create_followup",
+      "severity": "URGENT",
+      "priority": 8800,
+      "semantic_key": "redflags-cross-v1.RF-GLY-03",
+      "scope": {
+        "population": "adults_with_diabetes_on_sglt2i",
+        "care_settings": [
+          "specialty_clinic"
+        ],
+        "encounter_types": [
+          "outpatient_chronic_care"
+        ],
+        "condition_codes": [
+          "diabetes"
+        ]
+      },
+      "required_facts": [
+        {
+          "key": "condition.diabetes",
+          "criticality": "REQUIRED",
+          "on_unusable": "NOT_APPLICABLE"
+        },
+        {
+          "key": "medication.sglt2i",
+          "criticality": "REQUIRED",
+          "on_unusable": "NOT_APPLICABLE"
+        },
+        {
+          "key": "lab.fbs",
+          "criticality": "CRITICAL",
+          "on_unusable": "NEEDS_DATA"
+        }
+      ],
+      "eligibility": {
+        "node_id": "RF-GLY-03-e1",
+        "fact": "condition.diabetes",
+        "op": "truthy"
+      },
+      "condition": {
+        "node_id": "RF-GLY-03-c1",
+        "all": [
+          {
+            "node_id": "RF-GLY-03-c2",
+            "fact": "medication.sglt2i",
+            "op": "truthy"
+          },
+          {
+            "node_id": "RF-GLY-03-c3",
+            "fact": "lab.fbs",
+            "op": ">=",
+            "value": 250,
+            "selector": {
+              "aggregation": "latest"
+            }
+          }
+        ]
+      },
+      "safety": {
+        "redflag_exclusions": [],
+        "hard_exclusions": [],
+        "on_safety_error": "BLOCK_ROUTINE_OUTPUTS"
+      },
+      "recommendation": {
+        "text_fa": "«بیمار روی مهارکنندهٔ SGLT2 است. حتی با قند نسبتاً پایین‌تر، خطر کتواسیدوز یوگلایسمیک وجود دارد؛ در صورت تهوع/استفراغ/درد شکم/بی‌حالی، اندازه‌گیری کتون و مراجعهٔ فوری. بررسی موقت قطع دارو با پزشک.»",
+        "suggestion_only": true,
+        "requires_clinician_confirmation": true,
+        "may_create_internal_task": true,
+        "params": {
+          "due_in_hours": 24,
+          "secondary_action": "educate"
+        }
+      },
+      "evidence": {
+        "source_title": "FDA Drug Safety Communication — SGLT2 inhibitors and ketoacidosis (2015, updated December 2015)",
+        "issuing_organization": "U.S. Food and Drug Administration",
+        "publication_date": null,
+        "source_version": "2015",
+        "source_locator": "FDA Drug Safety Communication 2015 (به‌روزرسانی دسامبر ۲۰۱۵) — SGLT2i و کتواسیدوز با قند <250؛ ADA SOC 2025 §9 (بحث ایمنی SGLT2i).",
+        "source_url": "https://www.fda.gov/drugs/drug-safety-and-availability",
+        "evidence_certainty": "NOT_GRADED",
+        "recommendation_strength": "NOT_GRADED",
+        "local_validation_status": "NOT_REVIEWED",
+        "local_adaptation_note": "نشانی دقیق صفحهٔ FDA باید در بازبینی تکمیل شود؛ URL فعلی بخش عمومی Drug Safety است."
+      },
+      "governance": {
+        "status": "DRAFT",
+        "author": "clinical_rule_research/redflags pipeline",
+        "clinical_reviewer": null,
+        "review_due_date": "2026-11-21",
+        "change_note": "تبدیل خودکار از ACUTE_THRESHOLDS_DOSSIER_FA v1.0.0 (بخش ۱). med.class in [sglt2i] → medication.sglt2i truthy."
+      }
+    },
+    {
+      "schema_version": "2.0",
+      "dsl_version": "2.0",
+      "rule_code": "SF-GLY-04",
+      "version": "0.1.0-draft",
+      "title": "A1c ≥ 10٪ (فوریت تشدید درمان)",
+      "phase": "SAFETY",
+      "action_type": "create_followup",
+      "severity": "URGENT",
+      "priority": 7500,
+      "semantic_key": "redflags-cross-v1.SF-GLY-04",
+      "scope": {
+        "population": "adults_with_diabetes",
+        "care_settings": [
+          "specialty_clinic"
+        ],
+        "encounter_types": [
+          "outpatient_chronic_care"
+        ],
+        "condition_codes": [
+          "diabetes"
+        ]
+      },
+      "required_facts": [
+        {
+          "key": "condition.diabetes",
+          "criticality": "REQUIRED",
+          "on_unusable": "NOT_APPLICABLE"
+        },
+        {
+          "key": "lab.hba1c",
+          "criticality": "CRITICAL",
+          "on_unusable": "NEEDS_DATA"
+        }
+      ],
+      "eligibility": {
+        "node_id": "SF-GLY-04-e1",
+        "fact": "condition.diabetes",
+        "op": "truthy"
+      },
+      "condition": {
+        "node_id": "SF-GLY-04-c1",
+        "fact": "lab.hba1c",
+        "op": ">=",
+        "value": 10,
+        "selector": {
+          "aggregation": "latest"
+        }
+      },
+      "safety": {
+        "redflag_exclusions": [],
+        "hard_exclusions": [],
+        "on_safety_error": "BLOCK_ROUTINE_OUTPUTS"
+      },
+      "recommendation": {
+        "text_fa": "«هموگلوبین A1c بالای ۱۰٪ است. جلسهٔ تشدید درمان (احتمال شروع/تشدید انسولین) ظرف یک هفته برنامه‌ریزی شود.»",
+        "suggestion_only": true,
+        "requires_clinician_confirmation": true,
+        "may_create_internal_task": true,
+        "params": {
+          "due_in_days": 7
+        }
+      },
+      "evidence": {
+        "source_title": "ADA Standards of Care in Diabetes—2025, §9 Pharmacologic Approaches to Glycemic Treatment",
+        "issuing_organization": "American Diabetes Association",
+        "publication_date": null,
+        "source_version": "2025",
+        "source_locator": "ADA SOC 2025 §9 (S181), Fig 9.4 — A1C >10% یا BG ≥300 → در نظر گرفتن انسولین زودهنگام.",
+        "source_url": "https://diabetesjournals.org/care/issue/48/Supplement_1",
+        "evidence_certainty": "NOT_GRADED",
+        "recommendation_strength": "NOT_GRADED",
+        "local_validation_status": "NOT_REVIEWED"
+      },
+      "governance": {
+        "status": "DRAFT",
+        "author": "clinical_rule_research/redflags pipeline",
+        "clinical_reviewer": null,
+        "review_due_date": "2026-11-21",
+        "change_note": "تبدیل خودکار از ACUTE_THRESHOLDS_DOSSIER_FA v1.0.0 (بخش ۱)."
+      }
+    },
+    {
+      "schema_version": "2.0",
+      "dsl_version": "2.0",
+      "rule_code": "SF-GLY-05",
+      "version": "0.1.0-draft",
+      "title": "هیپوگلیسمی سطح ۲ (<54) هر قرائت",
+      "phase": "SAFETY",
+      "action_type": "create_followup",
+      "severity": "CRITICAL",
+      "priority": 9000,
+      "semantic_key": "redflags-cross-v1.SF-GLY-05",
+      "scope": {
+        "population": "adults_with_diabetes",
+        "care_settings": [
+          "specialty_clinic"
+        ],
+        "encounter_types": [
+          "outpatient_chronic_care"
+        ],
+        "condition_codes": [
+          "diabetes"
+        ]
+      },
+      "required_facts": [
+        {
+          "key": "condition.diabetes",
+          "criticality": "REQUIRED",
+          "on_unusable": "NOT_APPLICABLE"
+        },
+        {
+          "key": "lab.fbs",
+          "criticality": "CRITICAL",
+          "on_unusable": "CONTINUE_WITH_WARNING"
+        },
+        {
+          "key": "lab.bs_2hpp",
+          "criticality": "CRITICAL",
+          "on_unusable": "CONTINUE_WITH_WARNING"
+        }
+      ],
+      "eligibility": {
+        "node_id": "SF-GLY-05-e1",
+        "fact": "condition.diabetes",
+        "op": "truthy"
+      },
+      "condition": {
+        "node_id": "SF-GLY-05-c1",
+        "any": [
+          {
+            "node_id": "SF-GLY-05-c2",
+            "fact": "lab.fbs",
+            "op": "<",
+            "value": 54,
+            "selector": {
+              "aggregation": "latest"
+            }
+          },
+          {
+            "node_id": "SF-GLY-05-c3",
+            "fact": "lab.bs_2hpp",
+            "op": "<",
+            "value": 54,
+            "selector": {
+              "aggregation": "latest"
+            }
+          }
+        ]
+      },
+      "safety": {
+        "redflag_exclusions": [],
+        "hard_exclusions": [],
+        "on_safety_error": "BLOCK_ROUTINE_OUTPUTS"
+      },
+      "recommendation": {
+        "text_fa": "«قرائت قند زیر ۵۴ ثبت شده (هیپوگلیسمی سطح ۲). بازنگری فوری رژیم دارویی — به‌ویژه انسولین/سولفونیل‌اوره — و آموزش مدیریت هیپو لازم است.»",
+        "suggestion_only": true,
+        "requires_clinician_confirmation": true,
+        "may_create_internal_task": true,
+        "params": {
+          "due_in_hours": 24,
+          "task_contract": {
+            "allowed_outcome_types": [
+              "ENCOUNTER_COMPLETED",
+              "OTHER"
+            ],
+            "minimum_verification": "PROVISIONAL",
+            "canonical_ingestion": "NONE",
+            "requires_acknowledgement": true
+          }
+        }
+      },
+      "evidence": {
+        "source_title": "ADA Standards of Care in Diabetes—2025, §6 Glycemic Goals and Hypoglycemia",
+        "issuing_organization": "American Diabetes Association",
+        "publication_date": null,
+        "source_version": "2025",
+        "source_locator": "Diabetes Care 2025;48(Suppl.1):S128 — تعریف Level 2: <54 mg/dL؛ توصیهٔ بازنگری طرح درمان پس از L2/L3.",
+        "source_url": "https://diabetesjournals.org/care/issue/48/Supplement_1",
+        "evidence_certainty": "NOT_GRADED",
+        "recommendation_strength": "NOT_GRADED",
+        "local_validation_status": "NOT_REVIEWED"
+      },
+      "governance": {
+        "status": "DRAFT",
+        "author": "clinical_rule_research/redflags pipeline",
+        "clinical_reviewer": null,
+        "review_due_date": "2026-11-21",
+        "change_note": "تبدیل خودکار از ACUTE_THRESHOLDS_DOSSIER_FA v1.0.0 (بخش ۱). task_contract.requires_acknowledgement=true عیناً از داسیه؛ سایر مقادیر task_contract پیش‌فرض عملیاتی پیشنهادی‌اند و باید در بازبینی تأیید شوند."
+      }
+    },
+    {
+      "schema_version": "2.0",
+      "dsl_version": "2.0",
+      "rule_code": "SF-GLY-06",
+      "version": "0.1.0-draft",
+      "title": "هیپوگلیسمی سطح ۱ مکرر (54–69) با ریسک بالا",
+      "phase": "SAFETY",
+      "action_type": "create_followup",
+      "severity": "WARN",
+      "priority": 5500,
+      "semantic_key": "redflags-cross-v1.SF-GLY-06",
+      "scope": {
+        "population": "adults_with_diabetes_at_hypo_risk",
+        "care_settings": [
+          "specialty_clinic"
+        ],
+        "encounter_types": [
+          "outpatient_chronic_care"
+        ],
+        "condition_codes": [
+          "diabetes"
+        ]
+      },
+      "required_facts": [
+        {
+          "key": "condition.diabetes",
+          "criticality": "REQUIRED",
+          "on_unusable": "NOT_APPLICABLE"
+        },
+        {
+          "key": "lab.fbs",
+          "criticality": "CRITICAL",
+          "on_unusable": "NEEDS_DATA"
+        },
+        {
+          "key": "flag.hypo_risk",
+          "criticality": "REQUIRED",
+          "on_unusable": "CONTINUE_WITH_WARNING"
+        }
+      ],
+      "eligibility": {
+        "node_id": "SF-GLY-06-e1",
+        "fact": "condition.diabetes",
+        "op": "truthy"
+      },
+      "condition": {
+        "node_id": "SF-GLY-06-c1",
+        "all": [
+          {
+            "node_id": "SF-GLY-06-c2",
+            "fact": "lab.fbs",
+            "op": "between",
+            "value": [
+              54,
+              69
+            ],
+            "selector": {
+              "aggregation": "latest"
+            }
+          },
+          {
+            "node_id": "SF-GLY-06-c3",
+            "fact": "flag.hypo_risk",
+            "op": "in",
+            "value": [
+              "atrisk",
+              "high"
+            ]
+          }
+        ]
+      },
+      "safety": {
+        "redflag_exclusions": [],
+        "hard_exclusions": [],
+        "on_safety_error": "BLOCK_ROUTINE_OUTPUTS"
+      },
+      "recommendation": {
+        "text_fa": "«قند در محدودهٔ ۵۴–۶۹ با سابقهٔ ریسک هیپوگلیسمی. بررسی الگوی قرائت‌ها و امکان deintensification در ویزیت بعدی.»",
+        "suggestion_only": true,
+        "requires_clinician_confirmation": true,
+        "may_create_internal_task": true,
+        "params": {
+          "due_in_days": 14
+        }
+      },
+      "evidence": {
+        "source_title": "ADA Standards of Care in Diabetes—2025, §6 Glycemic Goals and Hypoglycemia",
+        "issuing_organization": "American Diabetes Association",
+        "publication_date": null,
+        "source_version": "2025",
+        "source_locator": "ADA SOC 2025 §6 (S128) — Level 1: <70 و ≥54؛ توصیهٔ پایش در افراد پرخطر.",
+        "source_url": "https://diabetesjournals.org/care/issue/48/Supplement_1",
+        "evidence_certainty": "NOT_GRADED",
+        "recommendation_strength": "NOT_GRADED",
+        "local_validation_status": "NOT_REVIEWED"
+      },
+      "governance": {
+        "status": "DRAFT",
+        "author": "clinical_rule_research/redflags pipeline",
+        "clinical_reviewer": null,
+        "review_due_date": "2026-11-21",
+        "change_note": "تبدیل خودکار از ACUTE_THRESHOLDS_DOSSIER_FA v1.0.0 (بخش ۱)."
+      }
+    },
+    {
+      "schema_version": "2.0",
+      "dsl_version": "2.0",
+      "rule_code": "RF-BP-01",
+      "version": "0.1.0-draft",
+      "title": "BP ≥180/110 بدون علامت ثبت‌شده (مسیر مدیریتی هم‌روز)",
+      "phase": "PREFLIGHT",
+      "action_type": "classify",
+      "severity": "CRITICAL",
+      "priority": 9200,
+      "semantic_key": "redflags-cross-v1.RF-BP-01",
+      "scope": {
+        "population": "adults_with_hypertension",
+        "care_settings": [
+          "specialty_clinic"
+        ],
+        "encounter_types": [
+          "outpatient_chronic_care"
+        ],
+        "condition_codes": [
+          "hypertension"
+        ]
+      },
+      "required_facts": [
+        {
+          "key": "condition.hypertension",
+          "criticality": "REQUIRED",
+          "on_unusable": "NOT_APPLICABLE"
+        },
+        {
+          "key": "observation.bp_systolic",
+          "criticality": "CRITICAL",
+          "on_unusable": "CONTINUE_WITH_WARNING"
+        },
+        {
+          "key": "observation.bp_diastolic",
+          "criticality": "CRITICAL",
+          "on_unusable": "CONTINUE_WITH_WARNING"
+        }
+      ],
+      "eligibility": {
+        "node_id": "RF-BP-01-e1",
+        "fact": "condition.hypertension",
+        "op": "truthy"
+      },
+      "condition": {
+        "node_id": "RF-BP-01-c1",
+        "any": [
+          {
+            "node_id": "RF-BP-01-c2",
+            "fact": "observation.bp_systolic",
+            "op": ">=",
+            "value": 180,
+            "selector": {
+              "aggregation": "latest"
+            }
+          },
+          {
+            "node_id": "RF-BP-01-c3",
+            "fact": "observation.bp_diastolic",
+            "op": ">=",
+            "value": 110,
+            "selector": {
+              "aggregation": "latest"
+            }
+          }
+        ]
+      },
+      "safety": {
+        "redflag_exclusions": [],
+        "hard_exclusions": [],
+        "on_safety_error": "BLOCK_ROUTINE_OUTPUTS"
+      },
+      "recommendation": {
+        "text_fa": "«فشار ≥۱۸۰ سیستول یا ≥۱۱۰ دیاستول ثبت شده. اندازه‌گیری مجدد پس از ۵ دقیقه استراحت، ارزیابی هم‌روزِ آسیب حاد اندام هدف و تنظیم فوری درمان لازم است. اگر درد قفسهٔ سینه، ضعف اندام، اختلال تکلم/بینایی یا درد شدید پهلو دارید، اورژانس.»",
+        "suggestion_only": true,
+        "requires_clinician_confirmation": true,
+        "may_create_internal_task": true,
+        "params": {
+          "due_in_hours": 0,
+          "secondary_action": "create_followup"
+        }
+      },
+      "evidence": {
+        "source_title": "2024 ESC Guidelines for the management of elevated blood pressure and hypertension",
+        "issuing_organization": "European Society of Cardiology",
+        "publication_date": null,
+        "source_version": "2024",
+        "source_locator": "Eur Heart J 2024;45(38):3912–4018, doi:10.1093/eurheartj/ehae178, Diagnostic Confirmation Algorithm (Fig 10): Screening BP ≥180/110 → exclude hypertensive emergency؛ در نبود اورژانس، تأیید و شروع سریع درمان (Class 1, LOE C).",
+        "source_url": "https://doi.org/10.1093/eurheartj/ehae178",
+        "evidence_certainty": "NOT_GRADED",
+        "recommendation_strength": "NOT_GRADED",
+        "local_validation_status": "NOT_REVIEWED"
+      },
+      "governance": {
+        "status": "DRAFT",
+        "author": "clinical_rule_research/redflags pipeline",
+        "clinical_reviewer": null,
+        "review_due_date": "2026-11-21",
+        "change_note": "تبدیل خودکار از ACUTE_THRESHOLDS_DOSSIER_FA v1.0.0 (بخش ۲). اکشن ثانویهٔ create_followup (هم‌روز، due_in_hours=0) در params حفظ شده."
+      }
+    },
+    {
+      "schema_version": "2.0",
+      "dsl_version": "2.0",
+      "rule_code": "RF-BP-02",
+      "version": "0.1.0-draft",
+      "title": "BP ≥180/110 + نشانگر ریسک قلبی-عروقی ثبت‌شده (نسخهٔ flag-based علائم)",
+      "phase": "PREFLIGHT",
+      "action_type": "classify",
+      "severity": "CRITICAL",
+      "priority": 9600,
+      "semantic_key": "redflags-cross-v1.RF-BP-02",
+      "scope": {
+        "population": "adults_with_elevated_bp_and_cv_disease",
+        "care_settings": [
+          "specialty_clinic"
+        ],
+        "encounter_types": [
+          "outpatient_chronic_care"
+        ]
+      },
+      "required_facts": [
+        {
+          "key": "observation.bp_systolic",
+          "criticality": "CRITICAL",
+          "on_unusable": "CONTINUE_WITH_WARNING"
+        },
+        {
+          "key": "observation.bp_diastolic",
+          "criticality": "CRITICAL",
+          "on_unusable": "CONTINUE_WITH_WARNING"
+        },
+        {
+          "key": "flag.hf_symptomatic",
+          "criticality": "OPTIONAL",
+          "on_unusable": "CONTINUE_WITH_WARNING"
+        },
+        {
+          "key": "flag.ascvd",
+          "criticality": "OPTIONAL",
+          "on_unusable": "CONTINUE_WITH_WARNING"
+        },
+        {
+          "key": "flag.cvd_high_risk",
+          "criticality": "OPTIONAL",
+          "on_unusable": "CONTINUE_WITH_WARNING"
+        }
+      ],
+      "eligibility": {
+        "node_id": "RF-BP-02-e1",
+        "any": [
+          {
+            "node_id": "RF-BP-02-e2",
+            "fact": "observation.bp_systolic",
+            "op": "exists"
+          },
+          {
+            "node_id": "RF-BP-02-e3",
+            "fact": "observation.bp_diastolic",
+            "op": "exists"
+          }
+        ]
+      },
+      "condition": {
+        "node_id": "RF-BP-02-c1",
+        "all": [
+          {
+            "node_id": "RF-BP-02-c2",
+            "any": [
+              {
+                "node_id": "RF-BP-02-c3",
+                "fact": "observation.bp_systolic",
+                "op": ">=",
+                "value": 180,
+                "selector": {
+                  "aggregation": "latest"
+                }
+              },
+              {
+                "node_id": "RF-BP-02-c4",
+                "fact": "observation.bp_diastolic",
+                "op": ">=",
+                "value": 110,
+                "selector": {
+                  "aggregation": "latest"
+                }
+              }
+            ]
+          },
+          {
+            "node_id": "RF-BP-02-c5",
+            "any": [
+              {
+                "node_id": "RF-BP-02-c6",
+                "fact": "flag.hf_symptomatic",
+                "op": "==",
+                "value": "1"
+              },
+              {
+                "node_id": "RF-BP-02-c7",
+                "fact": "flag.ascvd",
+                "op": "==",
+                "value": "1"
+              },
+              {
+                "node_id": "RF-BP-02-c8",
+                "fact": "flag.cvd_high_risk",
+                "op": "==",
+                "value": "1"
+              }
+            ]
+          }
+        ]
+      },
+      "safety": {
+        "redflag_exclusions": [],
+        "hard_exclusions": [],
+        "on_safety_error": "BLOCK_ROUTINE_OUTPUTS"
+      },
+      "recommendation": {
+        "text_fa": "«فشار خیلی بالا در بیمار با بیماری قلبی/عروقی شناخته‌شده. احتمال فوریت فشار خون بالاست. اگر درد قفسهٔ سینه، تنگی نفس، ضعف/بی‌حسی، اختلال بینایی یا هوشیاری دارید بی‌درنگ اورژانس. ارزیابی پزشکی امروز الزامی است.»",
+        "suggestion_only": true,
+        "requires_clinician_confirmation": true,
+        "may_create_internal_task": false,
+        "params": {
+          "secondary_action": "educate"
+        }
+      },
+      "evidence": {
+        "source_title": "2024 ESC Guidelines for the management of elevated blood pressure and hypertension — Hypertensive emergencies",
+        "issuing_organization": "European Society of Cardiology",
+        "publication_date": null,
+        "source_version": "2024",
+        "source_locator": "ESC 2024 (ehae178), بخش Hypertensive emergencies — تعریف اورژانس = BP بالا + آسیب حاد اندام هدف (HMOD حاد)؛ تشخیص آن فقط بالینی است (بخش ۷ داسیه).",
+        "source_url": "https://doi.org/10.1093/eurheartj/ehae178",
+        "evidence_certainty": "NOT_GRADED",
+        "recommendation_strength": "NOT_GRADED",
+        "local_validation_status": "NOT_REVIEWED"
+      },
+      "governance": {
+        "status": "DRAFT",
+        "author": "clinical_rule_research/redflags pipeline",
+        "clinical_reviewer": null,
+        "review_due_date": "2026-11-21",
+        "change_note": "تبدیل خودکار از ACUTE_THRESHOLDS_DOSSIER_FA v1.0.0 (بخش ۲). مقادیر flag «1» عیناً از داسیه (رشته)."
+      }
+    },
+    {
+      "schema_version": "2.0",
+      "dsl_version": "2.0",
+      "rule_code": "SF-BP-03",
+      "version": "0.1.0-draft",
+      "title": "فشار خون مقاوم (≥140/90 با ۳ دارو شامل دیورتیک)",
+      "phase": "SAFETY",
+      "action_type": "create_followup",
+      "severity": "WARN",
+      "priority": 5000,
+      "semantic_key": "redflags-cross-v1.SF-BP-03",
+      "scope": {
+        "population": "adults_with_hypertension_on_triple_therapy",
+        "care_settings": [
+          "specialty_clinic"
+        ],
+        "encounter_types": [
+          "outpatient_chronic_care"
+        ],
+        "condition_codes": [
+          "hypertension"
+        ]
+      },
+      "required_facts": [
+        {
+          "key": "condition.hypertension",
+          "criticality": "REQUIRED",
+          "on_unusable": "NOT_APPLICABLE"
+        },
+        {
+          "key": "observation.bp_systolic",
+          "criticality": "CRITICAL",
+          "on_unusable": "NEEDS_DATA"
+        },
+        {
+          "key": "observation.bp_diastolic",
+          "criticality": "CRITICAL",
+          "on_unusable": "NEEDS_DATA"
+        },
+        {
+          "key": "medication.thiazide",
+          "criticality": "REQUIRED",
+          "on_unusable": "NOT_APPLICABLE"
+        },
+        {
+          "key": "medication.ccb",
+          "criticality": "REQUIRED",
+          "on_unusable": "NOT_APPLICABLE"
+        },
+        {
+          "key": "medication.acei",
+          "criticality": "OPTIONAL",
+          "on_unusable": "CONTINUE_WITH_WARNING"
+        },
+        {
+          "key": "medication.arb",
+          "criticality": "OPTIONAL",
+          "on_unusable": "CONTINUE_WITH_WARNING"
+        }
+      ],
+      "eligibility": {
+        "node_id": "SF-BP-03-e1",
+        "fact": "condition.hypertension",
+        "op": "truthy"
+      },
+      "condition": {
+        "node_id": "SF-BP-03-c1",
+        "all": [
+          {
+            "node_id": "SF-BP-03-c2",
+            "any": [
+              {
+                "node_id": "SF-BP-03-c3",
+                "fact": "observation.bp_systolic",
+                "op": ">=",
+                "value": 140,
+                "selector": {
+                  "aggregation": "latest"
+                }
+              },
+              {
+                "node_id": "SF-BP-03-c4",
+                "fact": "observation.bp_diastolic",
+                "op": ">=",
+                "value": 90,
+                "selector": {
+                  "aggregation": "latest"
+                }
+              }
+            ]
+          },
+          {
+            "node_id": "SF-BP-03-c5",
+            "fact": "medication.thiazide",
+            "op": "truthy"
+          },
+          {
+            "node_id": "SF-BP-03-c6",
+            "fact": "medication.ccb",
+            "op": "truthy"
+          },
+          {
+            "node_id": "SF-BP-03-c7",
+            "any": [
+              {
+                "node_id": "SF-BP-03-c8",
+                "fact": "medication.acei",
+                "op": "truthy"
+              },
+              {
+                "node_id": "SF-BP-03-c9",
+                "fact": "medication.arb",
+                "op": "truthy"
+              }
+            ]
+          }
+        ]
+      },
+      "safety": {
+        "redflag_exclusions": [],
+        "hard_exclusions": [],
+        "on_safety_error": "BLOCK_ROUTINE_OUTPUTS"
+      },
+      "recommendation": {
+        "text_fa": "«فشار با ترکیب سه‌دارویی (شامل دیورتیک) کنترل نشده است — الگوی فشار خون مقاوم. بررسی پایبندی، ABPM، غربالگری علل ثانویه (آلدوسترون‌اولیه، آپنه خواب) و مسیر تخصصی/اسپیرونولاکتون با پزشک مطرح شود.»",
+        "suggestion_only": true,
+        "requires_clinician_confirmation": true,
+        "may_create_internal_task": true,
+        "params": {
+          "due_in_days": 30
+        }
+      },
+      "evidence": {
+        "source_title": "2024 ESC Guidelines — Resistant Hypertension (+ ACC/AHA 2017 definition)",
+        "issuing_organization": "European Society of Cardiology",
+        "publication_date": null,
+        "source_version": "2024",
+        "source_locator": "ESC 2024 (ehae178), Resistant Hypertension section — تعریف: office BP ≥140/90 با ≥3 دارو در حداکثر دوز قابل تحمل شامل دیورتیک با تأیید پایبندی؛ ACC/AHA 2017 Guideline (Hypertension 2018;71:e13–e115), §8 نیز همین تعریف را دارد. نسخهٔ ماشین‌پذیر تقریبی است (شمارش تعداد دارو در DSL فعلی نیست).",
+        "source_url": "https://doi.org/10.1093/eurheartj/ehae178",
+        "evidence_certainty": "NOT_GRADED",
+        "recommendation_strength": "NOT_GRADED",
+        "local_validation_status": "NOT_REVIEWED"
+      },
+      "governance": {
+        "status": "DRAFT",
+        "author": "clinical_rule_research/redflags pipeline",
+        "clinical_reviewer": null,
+        "review_due_date": "2026-11-21",
+        "change_note": "تبدیل خودکار از ACUTE_THRESHOLDS_DOSSIER_FA v1.0.0 (بخش ۲). med.class in [...] سه‌باره → three truthy leaves + any(acei|arb)."
+      }
+    },
+    {
+      "schema_version": "2.0",
+      "dsl_version": "2.0",
+      "rule_code": "RF-REN-01",
+      "version": "0.1.0-draft",
+      "title": "eGFR <30 (ارجاع نفرولوژی + بازنگری متفورمین)",
+      "phase": "PREFLIGHT",
+      "action_type": "create_followup",
+      "severity": "URGENT",
+      "priority": 8000,
+      "semantic_key": "redflags-cross-v1.RF-REN-01",
+      "scope": {
+        "population": "adults_with_chronic_conditions",
+        "care_settings": [
+          "specialty_clinic"
+        ],
+        "encounter_types": [
+          "outpatient_chronic_care"
+        ]
+      },
+      "required_facts": [
+        {
+          "key": "lab.egfr",
+          "criticality": "CRITICAL",
+          "on_unusable": "NEEDS_DATA"
+        }
+      ],
+      "eligibility": {
+        "node_id": "RF-REN-01-e1",
+        "fact": "lab.egfr",
+        "op": "exists"
+      },
+      "condition": {
+        "node_id": "RF-REN-01-c1",
+        "fact": "lab.egfr",
+        "op": "<",
+        "value": 30,
+        "selector": {
+          "aggregation": "latest"
+        }
+      },
+      "safety": {
+        "redflag_exclusions": [],
+        "hard_exclusions": [],
+        "on_safety_error": "BLOCK_ROUTINE_OUTPUTS"
+      },
+      "recommendation": {
+        "text_fa": "«eGFR زیر ۳۰ است. ارجاع به نفرولوژی و بازنگری فوری داروها ضروری است: متفورمین در eGFR<30 منع مصرف دارد (قطع با تصمیم پزشک)؛ در ۳۰–۴۴ فقط با نصف دوز. دوز داروهای دیگر نیز بازبینی شود.»",
+        "suggestion_only": true,
+        "requires_clinician_confirmation": true,
+        "may_create_internal_task": true,
+        "params": {
+          "due_in_days": 7,
+          "secondary_action": "classify"
+        }
+      },
+      "evidence": {
+        "source_title": "KDIGO 2024 Clinical Practice Guideline for the Evaluation and Management of CKD",
+        "issuing_organization": "Kidney Disease: Improving Global Outcomes (KDIGO)",
+        "publication_date": null,
+        "source_version": "2024",
+        "source_locator": "Kidney Int 2024;105(4S):S117–S314, PMID 38490803, Chapter 5 Practice Point — refer most people with eGFR <30 to nephrology services؛ Chapter 3 Practice Points (متفورمین بر اساس FDA label): عدم شروع <45، نصف دوز 30–44، قطع <30؛ FDA Metformin label (contraindicated eGFR <30 mL/min/1.73m²).",
+        "source_url": "https://pubmed.ncbi.nlm.nih.gov/38490803/",
+        "evidence_certainty": "NOT_GRADED",
+        "recommendation_strength": "NOT_GRADED",
+        "local_validation_status": "NOT_REVIEWED"
+      },
+      "governance": {
+        "status": "DRAFT",
+        "author": "clinical_rule_research/redflags pipeline",
+        "clinical_reviewer": null,
+        "review_due_date": "2026-11-21",
+        "change_note": "تبدیل خودکار از ACUTE_THRESHOLDS_DOSSIER_FA v1.0.0 (بخش ۳). تریگر تک‌متغیره؛ eligibility=وجود lab.egfr."
+      }
+    },
+    {
+      "schema_version": "2.0",
+      "dsl_version": "2.0",
+      "rule_code": "SF-REN-02",
+      "version": "0.1.0-draft",
+      "title": "افت eGFR >25٪ نسبت به baseline (مشروط به محاسبه‌پذیری delta)",
+      "phase": "SAFETY",
+      "action_type": "create_followup",
+      "severity": "URGENT",
+      "priority": 7800,
+      "semantic_key": "redflags-cross-v1.SF-REN-02",
+      "scope": {
+        "population": "adults_with_chronic_conditions",
+        "care_settings": [
+          "specialty_clinic"
+        ],
+        "encounter_types": [
+          "outpatient_chronic_care"
+        ]
+      },
+      "required_facts": [
+        {
+          "key": "lab.egfr",
+          "criticality": "CRITICAL",
+          "on_unusable": "NEEDS_DATA"
+        }
+      ],
+      "eligibility": {
+        "node_id": "SF-REN-02-e1",
+        "fact": "lab.egfr",
+        "op": "exists"
+      },
+      "condition": {
+        "node_id": "SF-REN-02-c1",
+        "fact": "lab.egfr",
+        "op": "exists"
+      },
+      "safety": {
+        "redflag_exclusions": [],
+        "hard_exclusions": [],
+        "on_safety_error": "BLOCK_ROUTINE_OUTPUTS"
+      },
+      "recommendation": {
+        "text_fa": "«افت بیش از ۲۵٪ در eGFR نسبت به مقدار پایه ثبت شده است. بررسی علت (داروهای نفروتوکسیک، دهیدراتاسیون، انسداد)، تکرار آزمایش و مشاورهٔ نفرولوژی توصیه می‌شود.»",
+        "suggestion_only": true,
+        "requires_clinician_confirmation": true,
+        "may_create_internal_task": true,
+        "params": {
+          "due_in_days": 14
+        }
+      },
+      "evidence": {
+        "source_title": "KDIGO 2024 CKD Guideline — Chapters 1/2 (progression of CKD)",
+        "issuing_organization": "Kidney Disease: Improving Global Outcomes (KDIGO)",
+        "publication_date": null,
+        "source_version": "2024",
+        "source_locator": "Kidney Int 2024;105(4S):S117–S314, Chapter 1/2 — «sustained decline in GFR category» به‌عنوان معیار پیشرفت؛ تعریف کلاسیک پیشرفت سریع KDIGO: افت ≥25٪ از baseline.",
+        "source_url": "https://pubmed.ncbi.nlm.nih.gov/38490803/",
+        "evidence_certainty": "NOT_GRADED",
+        "recommendation_strength": "NOT_GRADED",
+        "local_validation_status": "NOT_REVIEWED"
+      },
+      "governance": {
+        "status": "SILENT",
+        "author": "clinical_rule_research/redflags pipeline",
+        "clinical_reviewer": null,
+        "review_due_date": "2026-11-21",
+        "supersedes": null,
+        "change_note": "⚠️ تریگر واقعی (indicator.egfr.delta_pct_12m <= -25) در DSL 2.0 بیان‌پذیر نیست — aggregation delta وجود ندارد. condition فعلی PLACEHOLDER (exists) است و هرگز نباید بدون پیاده‌سازی delta aggregation فعال شود؛ طبق §۸ داسیه با status=SILENT وارد شده. SILENT هرگز اجرا نمی‌شود."
+      }
+    },
+    {
+      "schema_version": "2.0",
+      "dsl_version": "2.0",
+      "rule_code": "SF-REN-03",
+      "version": "0.1.0-draft",
+      "title": "UACR ≥300 (ماکروآلبومینوری/A3 — تشدید محافظت کلیوی)",
+      "phase": "SAFETY",
+      "action_type": "create_followup",
+      "severity": "WARN",
+      "priority": 6000,
+      "semantic_key": "redflags-cross-v1.SF-REN-03",
+      "scope": {
+        "population": "adults_with_chronic_conditions",
+        "care_settings": [
+          "specialty_clinic"
+        ],
+        "encounter_types": [
+          "outpatient_chronic_care"
+        ]
+      },
+      "required_facts": [
+        {
+          "key": "lab.uacr",
+          "criticality": "CRITICAL",
+          "on_unusable": "NEEDS_DATA"
+        }
+      ],
+      "eligibility": {
+        "node_id": "SF-REN-03-e1",
+        "fact": "lab.uacr",
+        "op": "exists"
+      },
+      "condition": {
+        "node_id": "SF-REN-03-c1",
+        "fact": "lab.uacr",
+        "op": ">=",
+        "value": 300,
+        "selector": {
+          "aggregation": "latest"
+        }
+      },
+      "safety": {
+        "redflag_exclusions": [],
+        "hard_exclusions": [],
+        "on_safety_error": "BLOCK_ROUTINE_OUTPUTS"
+      },
+      "recommendation": {
+        "text_fa": "«آلبومین ادرار شدیداً بالا (A3). بهینه‌سازی مهارکنندهٔ RAS، بررسی کاندیداتوری SGLT2i/فینرنون، تکرار UACR برای تأیید پایداری و پایش پتاسیم لازم است.»",
+        "suggestion_only": true,
+        "requires_clinician_confirmation": true,
+        "may_create_internal_task": true,
+        "params": {
+          "due_in_days": 30
+        }
+      },
+      "evidence": {
+        "source_title": "KDIGO 2024 CKD Guideline — Table 2 (albuminuria categories), Rec 3.7.x / 3.11.x",
+        "issuing_organization": "Kidney Disease: Improving Global Outcomes (KDIGO)",
+        "publication_date": null,
+        "source_version": "2024",
+        "source_locator": "Kidney Int 2024;105(4S):S117–S314, Table 2 — A3: UACR >300 mg/g؛ Rec 3.7.x — شروع RASi در A2/A3؛ Rec 3.11.x — SGLT2i با eGFR≥20 و ACR≥200؛ nsMRA (فینرنون) با شرایط پتاسیم نرمال.",
+        "source_url": "https://pubmed.ncbi.nlm.nih.gov/38490803/",
+        "evidence_certainty": "NOT_GRADED",
+        "recommendation_strength": "NOT_GRADED",
+        "local_validation_status": "NOT_REVIEWED"
+      },
+      "governance": {
+        "status": "DRAFT",
+        "author": "clinical_rule_research/redflags pipeline",
+        "clinical_reviewer": null,
+        "review_due_date": "2026-11-21",
+        "change_note": "تبدیل خودکار از ACUTE_THRESHOLDS_DOSSIER_FA v1.0.0 (بخش ۳)."
+      }
+    },
+    {
+      "schema_version": "2.0",
+      "dsl_version": "2.0",
+      "rule_code": "SF-CM-01",
+      "version": "0.1.0-draft",
+      "title": "کاهش وزن ناخواسته >5٪ (پنجرهٔ ~۶ ماه)",
+      "phase": "SAFETY",
+      "action_type": "create_followup",
+      "severity": "WARN",
+      "priority": 5200,
+      "semantic_key": "redflags-cross-v1.SF-CM-01",
+      "scope": {
+        "population": "adults_with_chronic_conditions",
+        "care_settings": [
+          "specialty_clinic"
+        ],
+        "encounter_types": [
+          "outpatient_chronic_care"
+        ]
+      },
+      "required_facts": [
+        {
+          "key": "observation.weight",
+          "criticality": "CRITICAL",
+          "on_unusable": "NEEDS_DATA"
+        }
+      ],
+      "eligibility": {
+        "node_id": "SF-CM-01-e1",
+        "fact": "observation.weight",
+        "op": "exists"
+      },
+      "condition": {
+        "node_id": "SF-CM-01-c1",
+        "fact": "observation.weight",
+        "op": "exists"
+      },
+      "safety": {
+        "redflag_exclusions": [],
+        "hard_exclusions": [],
+        "on_safety_error": "BLOCK_ROUTINE_OUTPUTS"
+      },
+      "recommendation": {
+        "text_fa": "«کاهش وزن بیش از ۵٪ در بازهٔ اخیر ثبت شده است. اگر این کاهش عمدی (رژیم/ورزش) نبوده، ارزیابی پزشک برای علل ثانویه (بدخیمی، پرکاری تیروئید، افسردگی، سوءجذب) لازم است.»",
+        "suggestion_only": true,
+        "requires_clinician_confirmation": true,
+        "may_create_internal_task": true,
+        "params": {
+          "due_in_days": 14,
+          "secondary_action": "educate"
+        }
+      },
+      "evidence": {
+        "source_title": "Endocrine Society Clinical Practice Guideline — Unintentional Weight Loss in Older Adults",
+        "issuing_organization": "Endocrine Society",
+        "publication_date": null,
+        "source_version": "2021",
+        "source_locator": "J Clin Endocrinol Metab 2021;106(3), doi:10.1210/clinem/dgaa726 — تعریف: کاهش >5٪ وزن طی 6–12 ماه = clinically significant involuntary weight loss؛ ارزیابی برای بدخیمی/تیروئید/افسردگی.",
+        "source_url": "https://doi.org/10.1210/clinem/dgaa726",
+        "evidence_certainty": "NOT_GRADED",
+        "recommendation_strength": "NOT_GRADED",
+        "local_validation_status": "NOT_REVIEWED"
+      },
+      "governance": {
+        "status": "SILENT",
+        "author": "clinical_rule_research/redflags pipeline",
+        "clinical_reviewer": null,
+        "review_due_date": "2026-11-21",
+        "supersedes": null,
+        "change_note": "⚠️ تریگر واقعی (indicator.weight.delta_pct_180d <= -5) در DSL 2.0 بیان‌پذیر نیست — aggregation delta روی پنجرهٔ زمانی وجود ندارد. condition فعلی PLACEHOLDER (exists) است؛ طبق §۸ داسیه با status=SILENT وارد شده و تا آماده شدن delta aggregation نباید فعال شود."
+      }
+    },
+    {
+      "schema_version": "2.0",
+      "dsl_version": "2.0",
+      "rule_code": "SF-CM-02",
+      "version": "0.1.0-draft",
+      "title": "پالس خارج محدودهٔ امن + وظیفهٔ معاینهٔ دستی ریتم (غربالگری AF)",
+      "phase": "SAFETY",
+      "action_type": "create_followup",
+      "severity": "WARN",
+      "priority": 5800,
+      "semantic_key": "redflags-cross-v1.SF-CM-02",
+      "scope": {
+        "population": "adults_with_chronic_conditions",
+        "care_settings": [
+          "specialty_clinic"
+        ],
+        "encounter_types": [
+          "outpatient_chronic_care"
+        ]
+      },
+      "required_facts": [
+        {
+          "key": "observation.pulse",
+          "criticality": "CRITICAL",
+          "on_unusable": "NEEDS_DATA"
+        }
+      ],
+      "eligibility": {
+        "node_id": "SF-CM-02-e1",
+        "fact": "observation.pulse",
+        "op": "exists"
+      },
+      "condition": {
+        "node_id": "SF-CM-02-c1",
+        "any": [
+          {
+            "node_id": "SF-CM-02-c2",
+            "fact": "observation.pulse",
+            "op": ">",
+            "value": 120,
+            "selector": {
+              "aggregation": "latest"
+            }
+          },
+          {
+            "node_id": "SF-CM-02-c3",
+            "fact": "observation.pulse",
+            "op": "<",
+            "value": 50,
+            "selector": {
+              "aggregation": "latest"
+            }
+          }
+        ]
+      },
+      "safety": {
+        "redflag_exclusions": [],
+        "hard_exclusions": [],
+        "on_safety_error": "BLOCK_ROUTINE_OUTPUTS"
+      },
+      "recommendation": {
+        "text_fa": "«ضربان قلب خارج محدودهٔ معمول (<۵۰ یا >۱۲۰) ثبت شده است. معاینهٔ پالس توسط پزشک و در صورت نامنظم بودن، نوار قلب (ECG) برای غربالگری فیبریلاسیون دهلیزی انجام شود.»",
+        "suggestion_only": true,
+        "requires_clinician_confirmation": true,
+        "may_create_internal_task": true,
+        "params": {
+          "due_in_days": 7,
+          "task_title_fa": "معاینهٔ پالس/ECG"
+        }
+      },
+      "evidence": {
+        "source_title": "2024 ESC Guidelines — BP Measurement (pulse palpation) + ESC AF guideline",
+        "issuing_organization": "European Society of Cardiology",
+        "publication_date": null,
+        "source_version": "2024",
+        "source_locator": "ESC 2024 HTN (ehae178), BP Measurement section — «All patients should have pulse palpation at rest to detect arrhythmias such as AF» (Class 1, LOE C)؛ ESC 2024 AF guideline (Eur Heart J 2024;45(36):3314–3414) — تشخیص AF نیازمند ECG است.",
+        "source_url": "https://doi.org/10.1093/eurheartj/ehae178",
+        "evidence_certainty": "NOT_GRADED",
+        "recommendation_strength": "NOT_GRADED",
+        "local_validation_status": "NOT_REVIEWED"
+      },
+      "governance": {
+        "status": "DRAFT",
+        "author": "clinical_rule_research/redflags pipeline",
+        "clinical_reviewer": null,
+        "review_due_date": "2026-11-21",
+        "change_note": "تبدیل خودکار از ACUTE_THRESHOLDS_DOSSIER_FA v1.0.0 (بخش ۴). عنوان وظیفهٔ دستی عیناً از داسیه در params.task_title_fa."
+      }
+    },
+    {
+      "schema_version": "2.0",
+      "dsl_version": "2.0",
+      "rule_code": "SF-LAB-01",
+      "version": "0.1.0-draft",
+      "title": "K⁺ ≥5.5 روی ACEi/ARB/MRA/فینرنون (مسیر hold/recheck)",
+      "phase": "SAFETY",
+      "action_type": "create_followup",
+      "severity": "URGENT",
+      "priority": 8200,
+      "semantic_key": "redflags-cross-v1.SF-LAB-01",
+      "scope": {
+        "population": "adults_on_raas_mra_agents",
+        "care_settings": [
+          "specialty_clinic"
+        ],
+        "encounter_types": [
+          "outpatient_chronic_care"
+        ]
+      },
+      "required_facts": [
+        {
+          "key": "lab.potassium",
+          "criticality": "CRITICAL",
+          "on_unusable": "NEEDS_DATA"
+        },
+        {
+          "key": "medication.acei",
+          "criticality": "OPTIONAL",
+          "on_unusable": "CONTINUE_WITH_WARNING"
+        },
+        {
+          "key": "medication.arb",
+          "criticality": "OPTIONAL",
+          "on_unusable": "CONTINUE_WITH_WARNING"
+        },
+        {
+          "key": "medication.mra",
+          "criticality": "OPTIONAL",
+          "on_unusable": "CONTINUE_WITH_WARNING"
+        },
+        {
+          "key": "medication.finerenone",
+          "criticality": "OPTIONAL",
+          "on_unusable": "CONTINUE_WITH_WARNING"
+        }
+      ],
+      "eligibility": {
+        "node_id": "SF-LAB-01-e1",
+        "fact": "lab.potassium",
+        "op": "exists"
+      },
+      "condition": {
+        "node_id": "SF-LAB-01-c1",
+        "all": [
+          {
+            "node_id": "SF-LAB-01-c2",
+            "fact": "lab.potassium",
+            "op": ">=",
+            "value": 5.5,
+            "selector": {
+              "aggregation": "latest"
+            }
+          },
+          {
+            "node_id": "SF-LAB-01-c3",
+            "any": [
+              {
+                "node_id": "SF-LAB-01-c4",
+                "fact": "medication.acei",
+                "op": "truthy"
+              },
+              {
+                "node_id": "SF-LAB-01-c5",
+                "fact": "medication.arb",
+                "op": "truthy"
+              },
+              {
+                "node_id": "SF-LAB-01-c6",
+                "fact": "medication.mra",
+                "op": "truthy"
+              },
+              {
+                "node_id": "SF-LAB-01-c7",
+                "fact": "medication.finerenone",
+                "op": "truthy"
+              }
+            ]
+          }
+        ]
+      },
+      "safety": {
+        "redflag_exclusions": [],
+        "hard_exclusions": [],
+        "on_safety_error": "BLOCK_ROUTINE_OUTPUTS"
+      },
+      "recommendation": {
+        "text_fa": "«پتاسیم ≥۵٫۵ در بیمار روی داروی مؤثر بر RAS/مینرالوکورتیکوئید. تکرار پتاسیم (کنترل همولیز نمونه)، مرور دوز/تعلیق موقت دارو و پرهیز از NSAID فقط با تصمیم پزشک. در صورت K+≥6 یا تغییرات ECG، اقدام فوری.»",
+        "suggestion_only": true,
+        "requires_clinician_confirmation": true,
+        "may_create_internal_task": true,
+        "params": {
+          "due_in_hours": 72,
+          "escalation_fa": "اگر K+≥6.0 → due_in_hours=24 (طبق داسیه)"
+        }
+      },
+      "evidence": {
+        "source_title": "KDIGO 2024 CKD Guideline — Recommendation 3.7.2 (+ FDA Kerendia PI, FIDELIO-DKD)",
+        "issuing_organization": "Kidney Disease: Improving Global Outcomes (KDIGO)",
+        "publication_date": null,
+        "source_version": "2024",
+        "source_locator": "Kidney Int 2024;105(4S):S117–S314, Recommendation 3.7.2 (1B) — ادامهٔ RASi مگر K+ >5.5 mmol/L؛ FDA Kerendia (finerenone) Prescribing Information 2021 — قطع دائم در K+ >5.5 mEq/L؛ FIDELIO-DKD (NEJM 2020;383:2219–2229) — پروتکل پایش پتاسیم.",
+        "source_url": "https://pubmed.ncbi.nlm.nih.gov/38490803/",
+        "evidence_certainty": "NOT_GRADED",
+        "recommendation_strength": "NOT_GRADED",
+        "local_validation_status": "NOT_REVIEWED"
+      },
+      "governance": {
+        "status": "DRAFT",
+        "author": "clinical_rule_research/redflags pipeline",
+        "clinical_reviewer": null,
+        "review_due_date": "2026-11-21",
+        "change_note": "تبدیل خودکار از ACUTE_THRESHOLDS_DOSSIER_FA v1.0.0 (بخش ۵). مسیر شرطی K+≥6→24h در params.escalation_fa حفظ شد (قاعدهٔ جداگانهٔ ماشینی ساخته نشد تا عدد جدید اختراع نشود)."
+      }
+    },
+    {
+      "schema_version": "2.0",
+      "dsl_version": "2.0",
+      "rule_code": "SF-LAB-02",
+      "version": "0.1.0-draft",
+      "title": "تری‌گلیسرید ≥500 (ریسک پانکراتیت)",
+      "phase": "SAFETY",
+      "action_type": "create_followup",
+      "severity": "WARN",
+      "priority": 5600,
+      "semantic_key": "redflags-cross-v1.SF-LAB-02",
+      "scope": {
+        "population": "adults_with_chronic_conditions",
+        "care_settings": [
+          "specialty_clinic"
+        ],
+        "encounter_types": [
+          "outpatient_chronic_care"
+        ]
+      },
+      "required_facts": [
+        {
+          "key": "lab.triglyceride",
+          "criticality": "CRITICAL",
+          "on_unusable": "NEEDS_DATA"
+        }
+      ],
+      "eligibility": {
+        "node_id": "SF-LAB-02-e1",
+        "fact": "lab.triglyceride",
+        "op": "exists"
+      },
+      "condition": {
+        "node_id": "SF-LAB-02-c1",
+        "fact": "lab.triglyceride",
+        "op": ">=",
+        "value": 500,
+        "selector": {
+          "aggregation": "latest"
+        }
+      },
+      "safety": {
+        "redflag_exclusions": [],
+        "hard_exclusions": [],
+        "on_safety_error": "BLOCK_ROUTINE_OUTPUTS"
+      },
+      "recommendation": {
+        "text_fa": "«تری‌گلیسرید ≥۵۰۰ ثبت شده است. کنترل شدید قند، قطع الکل، بررسی علل ثانویه و بحث دربارهٔ درمان دارویی (فیبرات) برای کاهش خطر پانکراتیت حاد با پزشک مطرح شود.»",
+        "suggestion_only": true,
+        "requires_clinician_confirmation": true,
+        "may_create_internal_task": true,
+        "params": {
+          "due_in_days": 14,
+          "secondary_action": "educate"
+        }
+      },
+      "evidence": {
+        "source_title": "ADA Standards of Care in Diabetes—2025, §10 Cardiovascular Disease and Risk Management (+ AHA Statement, Pancreatology review)",
+        "issuing_organization": "American Diabetes Association",
+        "publication_date": null,
+        "source_version": "2025",
+        "source_locator": "Diabetes Care 2025;48(Suppl.1) §10 — TG fasting ≥500 mg/dL → بررسی علل ثانویه و درمان دارویی برای کاهش خطر پانکراتیت؛ AHA Scientific Statement (Miller M et al., Circulation 2011;123:2292–2333) — آستانهٔ ≥500 برای شروع دارو جهت پیشگیری از پانکراتیت؛ Yang AL & McNabb-Baltar J, Pancreatology 2020;20:795–800 — HTG سومین علت شایع پانکراتیت حاد.",
+        "source_url": "https://diabetesjournals.org/care/issue/48/Supplement_1",
+        "evidence_certainty": "NOT_GRADED",
+        "recommendation_strength": "NOT_GRADED",
+        "local_validation_status": "NOT_REVIEWED"
+      },
+      "governance": {
+        "status": "DRAFT",
+        "author": "clinical_rule_research/redflags pipeline",
+        "clinical_reviewer": null,
+        "review_due_date": "2026-11-21",
+        "change_note": "تبدیل خودکار از ACUTE_THRESHOLDS_DOSSIER_FA v1.0.0 (بخش ۵)."
+      }
+    }
+  ]
+}

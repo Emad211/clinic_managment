@@ -379,11 +379,9 @@ def test_global_on_requires_verified_selected_and_active_ruleset(
         reviewer="physician",
         note="selected cases remained safe",
     )
-    with pytest.raises(ActivationGateError, match="ACTIVE ruleset"):
-        service.activate("on", activated_by="release-manager")
-    service.promote_compared_ruleset(promoted_by="release-manager")
     service.activate("on", activated_by="release-manager")
     assert ClinicalEngineFactRepository().get_mode() == "on"
+    assert service.rules.get_ruleset(9001)["status"] == "ACTIVE"
 
 
 def test_promote_silent_ruleset_preserves_membership(activation_app):

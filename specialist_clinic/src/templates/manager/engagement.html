@@ -3,9 +3,7 @@
 {% set catlabel = {'operational':'عملیاتی','marketing':'بازاریابی'} %}
 {% set chanbadge = {'sms':'badge-info','worklist':'badge-warn','both':'badge-violet','off':'badge-muted'} %}
 {% block content %}
-{% set hub_tab = 'engagement' %}
-{% include "sms/_hub_tabs.html" %}
-<div class="crumb"><a href="{{ url_for('manager.index') }}">مدیریت</a> / یادآوری و پیگیریِ خودکار</div>
+<div class="crumb"><a href="{{ url_for('manager.index') }}">مدیریت</a> / <a href="{{ url_for('manager.settings') }}#settings-engagement">تنظیمات</a> / یادآوری و پیگیریِ خودکار</div>
 <div class="topbar">
     <h1><svg class="icon icon-lg"><use href="#i-megaphone"></use></svg> یادآوری و پیگیریِ خودکار</h1>
 </div>
@@ -32,23 +30,6 @@
         <span class="chip">پنل پیامک: {% if runtime.provider_ready %}<b class="c-ok">متصل</b>{% else %}<b class="c-danger">تنظیم نشده</b>{% endif %}</span>
     </div>
     {% if runtime.last_error %}<div class="alert-banner alert-danger" style="margin-top:var(--s3);"><svg class="icon"><use href="#i-alert"></use></svg><span>{{ runtime.last_error }}</span></div>{% endif %}
-</div>
-
-<!-- GUARDRAILS -->
-<div class="card">
-    <div class="section-title"><svg class="icon"><use href="#i-shield"></use></svg> گاردریل‌های پیامکِ خودکار</div>
-    <form method="post" action="{{ url_for('manager.engagement_settings') }}">
-        <div class="grid grid-4" style="align-items:flex-end;">
-            <div class="fld"><label>شروع ساعتِ مجاز</label><input type="time" class="time-input" name="quiet_start" value="{{ settings.quiet_start }}" step="900" lang="fa-IR" required></div>
-            <div class="fld"><label>پایان ساعتِ مجاز</label><input type="time" class="time-input" name="quiet_end" value="{{ settings.quiet_end }}" step="900" lang="fa-IR" required></div>
-            <div class="fld"><label>سقفِ پیامک در روز (هر بیمار)</label><input type="number" name="daily_cap" min="1" max="10" value="{{ settings.daily_cap }}"></div>
-            <button class="btn" type="submit"><svg class="icon"><use href="#i-save"></use></svg> ذخیرهٔ گاردریل‌ها</button>
-        </div>
-        <div class="help" style="margin-top:var(--s2);">
-            <svg class="icon icon-sm"><use href="#i-info"></use></svg>
-            خارج از ساعتِ مجاز، پیامک‌ها تا ورود به بازه به تعویق می‌افتند. بیمارانی که انصراف داده‌اند هرگز پیامکِ خودکار نمی‌گیرند.
-        </div>
-    </form>
 </div>
 
 <!-- EVENT -> CHANNEL TABLE -->

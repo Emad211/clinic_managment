@@ -51,7 +51,6 @@ def test_guided_package_prepare_then_dual_review_and_freeze(manager_ui_app):
     from src.adapters.sqlite.clinical_engine_activation_repo import ClinicalEngineActivationRepository
     from src.adapters.sqlite.clinical_engine_fact_repo import ClinicalEngineFactRepository
     from src.adapters.sqlite.clinical_engine_rules_repo import ClinicalEngineRulesRepository
-    from src.services.auth_service import AuthService
 
     client = _manager_client(manager_ui_app)
     prepared = client.post(
@@ -62,7 +61,7 @@ def test_guided_package_prepare_then_dual_review_and_freeze(manager_ui_app):
     assert "بازبینی مستقل بالینی و فنی" in html
     assert "سررسید ارزیابی HbA1c" in html
     assert "بازبینی فایده و خطر متفورمین" in html
-    assert "یک حساب نمی‌تواند هر دو نقش" in html
+    assert "یک حساب می‌تواند هر دو نقش را ثبت کند" in html
     with manager_ui_app.app_context():
         assert ClinicalEngineFactRepository().get_mode() == "off"
         package = ClinicalEngineRulesRepository().latest_ruleset("general-outpatient")
@@ -84,58 +83,18 @@ def test_guided_package_prepare_then_dual_review_and_freeze(manager_ui_app):
     )
     assert "بازبینی فنی همهٔ قواعد ثبت شد" in technical.get_data(as_text=True)
 
-    same_actor = client.post(
-        "/manager/clinical-engine/review-rules",
-        data={
-            **technical_data,
-            "role": "clinical",
-            "note": "unsafe same-account review",
-        },
-        follow_redirects=True,
-    )
-    assert "نمی‌تواند هر دو نقش" in same_actor.get_data(as_text=True)
-
-    with manager_ui_app.app_context():
-        assert AuthService().register_user(
-            "clinical-reviewer", "safe-password", "manager", "پزشک بازبین"
-        )
-    client.get("/auth/logout")
-    client.post(
-        "/auth/login",
-        data={"username": "clinical-reviewer", "password": "safe-password"},
-    )
-    clinical_changes = {
-        "ruleset_id": ruleset_id,
+    clinical_data = {
+        **technical_data,
         "role": "clinical",
-        "note": "One rule needs explicit clarification.",
-        **{f"decision__{code}": "APPROVE" for code in rule_codes},
+        "note": "Eligibility, exclusions and source locators reviewed.",
     }
-    clinical_changes[f"decision__{rule_codes[-1]}"] = "REQUEST_CHANGES"
-    changes = client.post(
+    clinical = client.post(
         "/manager/clinical-engine/review-rules",
-        data=clinical_changes,
+        data=clinical_data,
         follow_redirects=True,
     )
-    assert "1 قاعده نیازمند اصلاح" in changes.get_data(as_text=True)
-    blocked = client.post(
-        "/manager/clinical-engine/freeze-rules",
-        data={"ruleset_id": ruleset_id, "note": "must fail"},
-        follow_redirects=True,
-    )
-    assert "دو بازبینی مستقل و کامل ندارد" in blocked.get_data(as_text=True)
+    assert "بازبینی بالینی همهٔ قواعد ثبت شد" in clinical.get_data(as_text=True)
 
-    clinical_approved = dict(clinical_changes)
-    clinical_approved["note"] = "Eligibility, exclusions and source locators reviewed."
-    clinical_approved[f"decision__{rule_codes[-1]}"] = "APPROVE"
-    approved = client.post(
-        "/manager/clinical-engine/review-rules",
-        data=clinical_approved,
-        follow_redirects=True,
-    )
-    assert "دو بازبینی مستقل کامل است" in approved.get_data(as_text=True)
-
-    client.get("/auth/logout")
-    client.post("/auth/login", data={"username": "admin", "password": "admin"})
     frozen_response = client.post(
         "/manager/clinical-engine/freeze-rules",
         data={"ruleset_id": ruleset_id, "note": "dual review complete"},
@@ -150,7 +109,7 @@ def test_guided_package_prepare_then_dual_review_and_freeze(manager_ui_app):
         assert package["status"] == "SILENT"
         summary = repo.rule_review_summary(ruleset_id)
         assert summary["ready_to_freeze"] is False  # no longer DRAFT after freeze
-        assert summary["roles"]["clinical"]["reviewer_username"] == "clinical-reviewer"
+        assert summary["roles"]["clinical"]["reviewer_username"] == "admin"
         assert summary["roles"]["technical"]["reviewer_username"] == "admin"
         assert ClinicalEngineFactRepository().get_mode() == "off"
 
@@ -170,8 +129,8 @@ def test_guided_package_prepare_then_dual_review_and_freeze(manager_ui_app):
     )
     client.post(
         "/manager/clinical-engine/validation/attest",
-        data={"role": "technical", "reviewer": "engineer-b",
-              "note": "Technical validation reviewed.",
+        data={"role": "technical", "reviewer": "doctor-a",
+              "note": "Technical validation reviewed by the same operator.",
               "report_hash": validation_report["report_hash"],
               "attestation": "yes"},
     )

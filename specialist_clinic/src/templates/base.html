@@ -8,6 +8,7 @@
     <title>{% block title %}کلینیک تخصصی{% endblock %}</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='vendor/persian-datepicker.min.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/automation-v1.css') }}">
     <script src="{{ url_for('static', filename='vendor/jquery.min.js') }}"></script>
     <script src="{{ url_for('static', filename='vendor/persian-date.min.js') }}"></script>
     <script src="{{ url_for('static', filename='vendor/persian-datepicker.min.js') }}"></script>
@@ -84,14 +85,17 @@
         </div>
         <nav aria-label="ناوبری اصلی">
             <div class="nav-section">عملیات</div>
-            <a class="nav-item {% if active_page=='dashboard' %}active{% endif %}" href="{{ url_for('dashboard.index') }}"{% if active_page=='dashboard' %} aria-current="page"{% endif %}><svg class="icon"><use href="#i-dashboard"></use></svg> داشبورد</a>
-            <a class="nav-item {% if active_page=='control_room' %}active{% endif %}" href="{{ url_for('control_room.index') }}"{% if active_page=='control_room' %} aria-current="page"{% endif %}><svg class="icon"><use href="#i-activity"></use></svg> اتاقِ کنترل</a>
             <a class="nav-item {% if active_page=='doctor_queue' %}active{% endif %}" href="{{ url_for('doctor_queue.index') }}"{% if active_page=='doctor_queue' %} aria-current="page"{% endif %}><svg class="icon"><use href="#i-stethoscope"></use></svg> صفِ پزشک</a>
+            {% if config.get('FOLLOWUP_UNIFIED_WORKLIST_READONLY') and permissions.get('clinical.task.view') %}
+            <a class="nav-item {% if active_page=='unified_worklist' %}active{% endif %}" href="{{ url_for('unified_followups.index') }}"{% if active_page=='unified_worklist' %} aria-current="page"{% endif %}><svg class="icon"><use href="#i-list-checks"></use></svg> مرکز کارها</a>
+            {% endif %}
             <a class="nav-item {% if active_page=='patients' %}active{% endif %}" href="{{ url_for('patients.list_patients') }}"{% if active_page=='patients' %} aria-current="page"{% endif %}><svg class="icon"><use href="#i-users"></use></svg> بیماران</a>
             <a class="nav-item {% if active_page=='appointments' %}active{% endif %}" href="{{ url_for('appointments.list_appointments') }}"{% if active_page=='appointments' %} aria-current="page"{% endif %}><svg class="icon"><use href="#i-calendar"></use></svg> نوبت‌دهی</a>
-            <a class="nav-item {% if active_page=='sms' %}active{% endif %}" href="{{ url_for('sms.campaigns') }}"{% if active_page=='sms' %} aria-current="page"{% endif %}><svg class="icon"><use href="#i-megaphone"></use></svg> هاب پیام</a>
+            {% if permissions.get('sms.view') %}
+            <a class="nav-item {% if active_page=='sms' %}active{% endif %}" href="{{ url_for('sms.campaigns') }}"{% if active_page=='sms' %} aria-current="page"{% endif %}><svg class="icon"><use href="#i-megaphone"></use></svg> مرکز پیام‌ها</a>
+            {% endif %}
             {% if permissions.get('financial.review.view') %}
-            <a class="nav-item {% if active_page=='finance_review' %}active{% endif %}" href="{{ url_for('finance_review.index') }}"{% if active_page=='finance_review' %} aria-current="page"{% endif %}><svg class="icon"><use href="#i-banknote"></use></svg> بازبینی وصول</a>
+            <a class="nav-item {% if active_page=='finance_review' %}active{% endif %}" href="{{ url_for('finance_review.index') }}"{% if active_page=='finance_review' %} aria-current="page"{% endif %}><svg class="icon"><use href="#i-banknote"></use></svg> امور مالی</a>
             {% endif %}
             {% if permissions.get('rule.review.clinical') or permissions.get('rule.review.technical') or permissions.get('rule.activate') or permissions.get('security.grant.manage') %}
             <div class="nav-section">سیستم</div>
@@ -243,6 +247,7 @@
         }
     }, true);
     </script>
+    <script src="{{ url_for('static', filename='js/automation-v1.js') }}"></script>
     {% block scripts %}{% endblock %}
 </body>
 </html>

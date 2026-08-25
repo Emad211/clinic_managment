@@ -146,7 +146,7 @@ CREATE TABLE IF NOT EXISTS appointments (
     status TEXT NOT NULL DEFAULT 'scheduled',-- scheduled, done, no_show, cancelled
     recurrence_months INTEGER,               -- for periodic auto-appointments
     parent_appointment_id INTEGER,
-    reminder_sent INTEGER DEFAULT 0,
+    reminder_sent INTEGER DEFAULT 0,        -- deprecated/unused: superseded by engagement 'appointment_reminder' event; column kept (additive-only, never DROP)
     notes TEXT,
     created_by TEXT,
     created_at TIMESTAMP DEFAULT (datetime('now', '+3 hours', '+30 minutes')),
@@ -1086,15 +1086,4 @@ WHEN (
 )
 BEGIN
     SELECT RAISE(ABORT, 'review supersession must extend the latest event');
-END;
-CREATE TRIGGER IF NOT EXISTS trg_rule_review_events_role_separation
-BEFORE INSERT ON clinical_rule_review_events
-WHEN EXISTS (
-    SELECT 1 FROM clinical_rule_review_events prior
-    WHERE prior.ruleset_id=NEW.ruleset_id
-      AND prior.role<>NEW.role
-      AND prior.reviewer_username=NEW.reviewer_username
-)
-BEGIN
-    SELECT RAISE(ABORT, 'one account cannot review both clinical and technical roles');
 END;

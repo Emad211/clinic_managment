@@ -8,7 +8,7 @@
     <p>{{ error_message }}</p>
     <div class="error-actions">
         {% if g.user %}
-        <a class="btn" href="{{ url_for('dashboard.index') }}"><svg class="icon"><use href="#i-dashboard"></use></svg> بازگشت به داشبورد</a>
+        <a class="btn" href="{{ url_for('doctor_queue.index') }}"><svg class="icon"><use href="#i-stethoscope"></use></svg> بازگشت به صف پزشک</a>
         {% else %}
         <a class="btn" href="{{ url_for('auth.login') }}">ورود به سامانه</a>
         {% endif %}

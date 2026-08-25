@@ -1,4 +1,4 @@
-{% extends "automation_base.html" %}
+{% extends "base.html" %}
 {% block title %}مدیریت{% endblock %}
 {% block content %}
 <header class="auto-page-header">
@@ -30,6 +30,7 @@
 <details class="card auto-technical" data-technical-details>
     <summary>ابزارهای پیشرفته و Shadow</summary>
     <div class="auto-technical__body grid grid-3">
+        <a class="card card-soft nav-tile" href="{{ url_for('control_room.index') }}"><div class="nt-ic t-ok"><svg class="icon"><use href="#i-users"></use></svg></div><div><b>اتاق پیگیری</b><small>نمای مدیریتی عملیات و گروه‌بندی بیماران</small></div></a>
         {% if permissions.get('operational.health.view') %}
         <a class="card card-soft nav-tile" href="{{ url_for('hypoglycemia_shadow_monitor.index') }}"><div class="nt-ic t-ok"><svg class="icon"><use href="#i-activity"></use></svg></div><div><b>پایش هیپوگلیسمی Shadow</b><small>سلامت داخلی، backlog و خطاهای یکپارچگی</small></div></a>
         {% endif %}
@@ -38,6 +39,37 @@
         <a class="card card-soft nav-tile" href="{{ url_for('hypoglycemia_shadow_monitor.reviews') }}"><div class="nt-ic t-ok"><svg class="icon"><use href="#i-check"></use></svg></div><div><b>بازکردن Reviewهای Shadow</b><small>بازکردن Review بدون ایجاد اقدام درمانی</small></div></a>
         {% endif %}
     </div>
+    {% if automation_health %}
+    <section class="card card-soft mt-3" aria-labelledby="manager-automation-title">
+        <div class="section-title">
+            <svg class="icon"><use href="#i-activity"></use></svg>
+            <div>
+                <div id="manager-automation-title">سلامت اتوماسیون پس‌زمینه</div>
+                <div class="section-sub">زمان‌بندِ کارهای خودکار — مستقل از موتور تحلیلی بالینی.</div>
+            </div>
+            <span class="badge {% if automation_health.tone == 'ok' %}badge-ok{% elif automation_health.tone == 'warn' or automation_health.tone == 'danger' %}badge-warn{% else %}badge-muted{% endif %}">
+                {% if automation_health.tone == 'ok' %}<svg class="icon icon-sm"><use href="#i-check"></use></svg>{% elif automation_health.tone == 'danger' %}<svg class="icon icon-sm"><use href="#i-alert"></use></svg>{% endif %}
+                {{ automation_health.status_fa }}
+            </span>
+        </div>
+
+        {% if automation_health.tone == 'danger' %}
+        <div class="alert-banner alert-warn"><svg class="icon"><use href="#i-alert"></use></svg> {{ automation_health.message_fa }}</div>
+        {% else %}
+        <p class="muted text-sm">{{ automation_health.message_fa }}</p>
+        {% endif %}
+
+        <div class="flex gap-2 wrap text-sm">
+            <span class="chip">آخرین فعالیت: {% if automation_health.last_seen %}{{ automation_health.last_seen|jalali }}{% else %}—{% endif %}</span>
+            {% if automation_health.age_seconds is not none %}<span class="chip nums">{{ (automation_health.age_seconds // 60)|fa_num }} دقیقه پیش</span>{% endif %}
+            {% if automation_health.last_job %}<span class="chip" dir="ltr"><code>{{ automation_health.last_job.job_key }}</code> · {{ automation_health.last_job.status }}</span>{% endif %}
+        </div>
+
+        {% if automation_health.last_failure %}
+        <div class="alert-banner alert-warn mt-3"><svg class="icon"><use href="#i-alert"></use></svg> آخرین خطای کار خودکار: <code dir="ltr">{{ automation_health.last_failure.job_key }}</code>{% if automation_health.last_failure.error_code %} — <code dir="ltr">{{ automation_health.last_failure.error_code }}</code>{% endif %}</div>
+        {% endif %}
+    </section>
+    {% endif %}
 </details>
 {% endif %}
 {% endblock %}
