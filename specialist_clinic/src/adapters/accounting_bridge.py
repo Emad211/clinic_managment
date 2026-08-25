@@ -109,8 +109,6 @@ def search_patients(query: str, limit: int = 30) -> list[dict[str, Any]]:
     """Search accounting patients by name / national_id / phone."""
     q = (query or "").strip()
     conn = _connect_ro()
-    if conn is None:
-        return []
     try:
         name = _patient_name_expression(conn)
         like = f"%{q}%"
@@ -148,8 +146,6 @@ def get_patient_by_national_id(national_id: str) -> Optional[dict[str, Any]]:
     if not national_id:
         return None
     conn = _connect_ro()
-    if conn is None:
-        return None
     try:
         name = _patient_name_expression(conn)
         row = conn.execute(
@@ -179,8 +175,6 @@ def fetch_closed_invoices(last_id: int = 0, floor_date: Optional[str] = None,
     on failure (fail-loud). Returns [] only when the accounting DB is unavailable.
     """
     conn = _connect_ro()
-    if conn is None:
-        return []
     try:
         name = _patient_name_expression(conn, alias="p")
         rows = conn.execute(
@@ -209,8 +203,6 @@ def fetch_open_visit_invoices(work_date: Optional[str] = None,
     pass work_date ('YYYY-MM-DD') to limit to one day. NEVER writes the accounting DB.
     """
     conn = _connect_ro()
-    if conn is None:
-        return []
     try:
         name = _patient_name_expression(conn, alias="p")
         base = (
@@ -233,13 +225,14 @@ def fetch_open_visit_invoices(work_date: Optional[str] = None,
 
 def fetch_invoice_items(invoice_id: int) -> list[dict[str, Any]]:
     """Read-only: the item types of one accounting invoice (visits / injections /
-    procedures), used to route procedure follow-up invites (Phase 2). Best-effort —
-    returns [] on any error (procedure invites are non-critical; the thank-you does
-    not depend on this). NEVER writes the accounting DB.
+    procedures), used to route procedure follow-up invites (Phase 2). Procedure
+    invites are non-critical — the thank-you does not depend on them — so the sole
+    caller (invoice_sync_service.on_invoice_processed) catches AccountingBridgeError
+    and treats a failed read as "no items". This function itself RAISES
+    AccountingBridgeError on any read fault (it does NOT swallow to []). NEVER
+    writes the accounting DB.
     """
     conn = _connect_ro()
-    if conn is None:
-        return []
     try:
         rows = conn.execute(
             """
@@ -260,8 +253,6 @@ def fetch_invoice_items(invoice_id: int) -> list[dict[str, Any]]:
 
 def get_patient_by_id(accounting_patient_id: int) -> Optional[dict[str, Any]]:
     conn = _connect_ro()
-    if conn is None:
-        return None
     try:
         name = _patient_name_expression(conn)
         row = conn.execute(
@@ -300,8 +291,6 @@ def revenue_for_accounting_ids(ids: list[int], since: str | None = None,
     if not ids:
         return out
     conn = _connect_ro()
-    if conn is None:
-        return out
     try:
         for chunk in _chunks(ids):
             ph = ",".join("?" * len(chunk))
@@ -352,8 +341,6 @@ def daily_revenue_for_accounting_ids(ids: list[int], date_from: str, date_to: st
     if not ids:
         return totals
     conn = _connect_ro()
-    if conn is None:
-        return totals
     try:
         for chunk in _chunks(ids):
             ph = ",".join("?" * len(chunk))
@@ -391,8 +378,6 @@ def revenue_for_enrolled(pairs: list[tuple[int, str | None]], floor: str | None 
     if not pairs:
         return out
     conn = _connect_ro()
-    if conn is None:
-        return out
     try:
         for chunk in _chunks(pairs):
             values_sql = ",".join(["(?,?)"] * len(chunk))
@@ -458,8 +443,6 @@ def revenue_by_patient(pairs: list[tuple[int, str | None]]) -> dict[int, int]:
     if not pairs:
         return out
     conn = _connect_ro()
-    if conn is None:
-        return out
     try:
         for chunk in _chunks(pairs):
             values_sql = ",".join(["(?,?)"] * len(chunk))
@@ -499,8 +482,6 @@ def daily_revenue_for_enrolled(pairs: list[tuple[int, str | None]], date_from: s
     if not pairs:
         return totals
     conn = _connect_ro()
-    if conn is None:
-        return totals
     try:
         for chunk in _chunks(pairs):
             values_sql = ",".join(["(?,?)"] * len(chunk))
@@ -540,8 +521,6 @@ def revenue_windowed(triples: list[tuple[int, str, str]]) -> dict[str, int]:
     if not triples:
         return out
     conn = _connect_ro()
-    if conn is None:
-        return out
     try:
         for chunk in _chunks(triples):
             values_sql = ",".join(["(?,?,?)"] * len(chunk))
@@ -587,8 +566,6 @@ def get_visit_history(accounting_patient_id: int, limit: int = 30) -> list[dict[
     if not accounting_patient_id:
         return []
     conn = _connect_ro()
-    if conn is None:
-        return []
     try:
         visit_columns = {
             str(row["name"])

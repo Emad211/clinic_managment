@@ -3,6 +3,22 @@
 This is deliberately not part of ``VitalsRepository``: the repository remains
 purely descriptive. The bridge creates only a CANDIDATE event and never confirms
 an episode, opens a review, creates a task/alert, or produces a treatment action.
+
+Engine independence (safety net — intentional):
+    This bridge is a patient-safety detector for Level-2 hypoglycemia
+    (fasting glucose < 54 mg/dL). It runs *inline* on the vital-write path
+    (``VitalsRepository.add_reading``) inside the same request transaction —
+    it does NOT depend on the clinical analytical engine (Engine v2), the rule
+    engine, or the background scheduler. A Level-2 glucose therefore produces a
+    shadow candidate identically whether the analytical engine is ON, OFF, or
+    UNAVAILABLE, and whether or not the scheduler is alive.
+
+    This independence is required, not incidental: a missed hypoglycemia event
+    is a patient-safety false negative, so this detector must never be gated
+    behind (or silenced by) the toggle that turns the analytical engine off.
+    Keep it free of any ``clinical_engine`` / ``rule_engine`` import; the
+    guard test ``tests/test_hypoglycemia_shadow_engine_independent.py`` enforces
+    this and must stay green.
 """
 from __future__ import annotations
 

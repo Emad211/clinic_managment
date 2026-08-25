@@ -12,6 +12,14 @@
 .appointment-menu-action.is-danger{color:var(--danger,#ef4444)}
 .task-card__menu form{margin:0}
 
+/* fix #6 — visibility-only open-invoice hint (no revenue/Encounter/write) */
+.appt-invoice-callout{display:flex;align-items:flex-start;gap:var(--s3,12px);padding:var(--s3,12px) var(--s4,16px);border:1px solid var(--auto-border);border-radius:var(--radius-lg,14px);background:var(--auto-panel);margin-block-end:var(--s3,12px)}
+.appt-invoice-callout .icon{flex:0 0 auto;margin-top:.15rem}
+.appt-invoice-callout__body{display:grid;gap:.2rem;min-width:0}
+.appt-invoice-callout--warn{border-color:color-mix(in srgb,var(--warn,#f59e0b) 55%,var(--auto-border));background:color-mix(in srgb,var(--warn,#f59e0b) 12%,var(--auto-panel))}
+.appt-invoice-callout--warn .icon{color:var(--warn,#f59e0b)}
+.appt-invoice-flag{justify-self:start;margin-top:.15rem}
+
 .appointment-create-card{max-width:780px;margin-inline:auto}
 .appointment-create-form{display:grid;gap:var(--s4,16px)}
 .appointment-date-grid{display:grid;grid-template-columns:1fr .7fr 1fr;gap:var(--s3,12px)}

@@ -54,6 +54,11 @@ class PatientCockpitService:
     @staticmethod
     def next_action(*, followups, refill_due, appointments, indicators,
                     clinical_v2=None, **_retired_inputs) -> dict:
+        # The analytical engine is separable and default-OFF. Distinguish three
+        # states so an ABSENCE of analysis is never rendered as a clinical
+        # all-clear (no-false-negative): OFF (facade returns None), UNAVAILABLE
+        # (dict with current=False), or RAN (dict with current=True).
+        analysis_ran = bool(clinical_v2) and clinical_v2.get("current") is True
         v2_groups = (clinical_v2 or {}).get("groups") or []
         v2_redflags = sum(
             len(group.get("items") or [])
@@ -113,6 +118,21 @@ class PatientCockpitService:
                 "title": "آماده‌سازی ویزیت بعدی",
                 "detail": scheduled[0].get("appt_type") or "نوبت ثبت‌شده",
                 "date": scheduled[0].get("scheduled_at"),
+            }
+        if not analysis_ran:
+            # No trustworthy clinical analysis this run — never present a green
+            # "همه‌چیز مرتب است" clearance. State plainly that only the
+            # administrative status was checked and no clinical assessment was made.
+            if clinical_v2 is None:
+                detail = ("موتور تحلیل بالینی خاموش است؛ فقط وضعیت اداری بررسی شد و "
+                          "ارزیابی بالینی انجام نشده است.")
+            else:
+                detail = (clinical_v2.get("message_fa")
+                          or "ارزیابی بالینی فعلی در دسترس نیست؛ این وضعیت به‌منزلهٔ تأیید بالینی نیست.")
+            return {
+                "tone": "info", "icon": "activity", "target": "cockpit",
+                "title": "بدون ارزیابی بالینی",
+                "detail": detail,
             }
         return {
             "tone": "ok", "icon": "check", "target": "appointment",

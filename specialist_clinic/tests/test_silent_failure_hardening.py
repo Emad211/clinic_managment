@@ -375,8 +375,16 @@ def test_scheduler_heartbeats_during_long_callback(monkeypatch):
 
 
 def test_scheduler_renews_lease_before_every_job(monkeypatch):
+    from datetime import datetime
+
     from src.adapters.sqlite.operational_lease_repo import Lease
     from src.services import scheduler as scheduler_module
+
+    # Hermetic clock: the weekly verified-backup job only enrols on Saturday
+    # 03:xx Tehran, which would inflate the fixed job count to 9. Pin a
+    # non-backup instant so the expected count (8) is deterministic regardless
+    # of the wall clock the suite happens to run on.
+    fixed_now = datetime(2026, 8, 19, 12, 0, 0)  # Wednesday, noon
 
     initial = Lease("lease", "owner", 7, "a", "h0", "e0")
 
@@ -409,6 +417,7 @@ def test_scheduler_renews_lease_before_every_job(monkeypatch):
     seen = []
     monkeypatch.setattr(scheduler_module, "OperationalLeaseRepository", FakeLeases)
     scheduler = scheduler_module.Scheduler()
+    monkeypatch.setattr(scheduler_module, "iran_now", lambda: fixed_now)
     monkeypatch.setattr(
         scheduler,
         "_run_once",

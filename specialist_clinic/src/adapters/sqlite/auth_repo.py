@@ -1,7 +1,11 @@
+import logging
 import sqlite3
 from typing import Optional, List, Dict
 
 from src.adapters.sqlite.core import get_db
+
+
+logger = logging.getLogger(__name__)
 
 
 class AuthRepository:
@@ -111,8 +115,9 @@ class AuthRepository:
             )
             db.commit()
             return True
-        except Exception as e:
-            print(f"Error creating user: {e}")
+        except Exception:
+            db.rollback()
+            logger.exception("create_user failed username=%s", username)
             return False
 
     def update_user_password(self, user_id: int, password_hash: bytes) -> bool:
@@ -121,8 +126,9 @@ class AuthRepository:
             db.execute("UPDATE users SET password_hash = ? WHERE id = ?", (password_hash, user_id))
             db.commit()
             return True
-        except Exception as e:
-            print(f"Error updating password: {e}")
+        except Exception:
+            db.rollback()
+            logger.exception("update_user_password failed user_id=%s", user_id)
             return False
 
     def set_api_token(self, user_id: int, token: str, ttl_days: int = 90):

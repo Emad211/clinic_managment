@@ -135,8 +135,19 @@ class InvoiceSyncService:
         # 1) Thank-you — once per patient per work_date (not per invoice).
         eng.enqueue_event_for_patient(patient_link_id, "thank_you", f"thank_you:{work_date}")
         # 2) Procedure follow-up invites — derived from the invoice's items (lazy read).
+        # A bridge fault here must NOT block outreach: thank-you is already enqueued
+        # above, so swallow the read failure (log it) and skip only the procedure
+        # invites. Otherwise the raise would propagate past mark_outreach_done and the
+        # invoice would be re-processed every tick forever.
         seen = set()
-        for it in accounting_bridge.fetch_invoice_items(inv_id):
+        try:
+            items = accounting_bridge.fetch_invoice_items(inv_id)
+        except accounting_bridge.AccountingBridgeError:
+            logger.exception(
+                "invoice items read failed inv_id=%s; procedure invites skipped", inv_id
+            )
+            items = []
+        for it in items:
             ev = _procedure_event_key(it.get("description") or "")
             if ev and ev not in seen:
                 seen.add(ev)

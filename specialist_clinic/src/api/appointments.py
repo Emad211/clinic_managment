@@ -4,6 +4,7 @@ from src.api.auth import login_required
 from src.adapters.sqlite.appointments_repo import AppointmentRepository
 from src.adapters.sqlite.patients_repo import PatientRepository
 from src.services.appointment_service import AppointmentService
+from src.services.appointment_invoice_visibility import AppointmentInvoiceVisibility
 from src.services.activity_logger import log_activity
 from src.common.utils import jalali_to_gregorian_str, iran_now, format_jalali_datetime
 
@@ -28,12 +29,18 @@ def list_appointments():
         a['status_fa'] = STATUS_FA.get(a.get('status'), a.get('status'))
         a['scheduled_fa'] = format_jalali_datetime(a['scheduled_at'])
         a['is_today'] = str(a['scheduled_at'])[:10] == today
+    # Visibility-only (fix #6): flag today's scheduled appointments that have no
+    # OPEN accounting visit invoice yet. Creates no revenue/Encounter and writes
+    # nothing; bridge-unavailable renders as "unknown", never as a false gap.
+    invoice_vis = AppointmentInvoiceVisibility().annotate(appts, today=today)
     summary = {
         'today': sum(1 for a in appts if a['is_today']),
         'scheduled': sum(1 for a in appts if a['status'] == 'scheduled'),
         'done': sum(1 for a in appts if a['status'] == 'done'),
         'no_show': sum(1 for a in appts if a['status'] == 'no_show'),
         'total': len(appts),
+        'needs_invoice': invoice_vis['none'],
+        'invoice_unknown': invoice_vis['unknown'],
     }
     return render_template("appointments/list.html", appointments=appts, status_fa=STATUS_FA,
                            active_page='appointments', summary=summary, active_status=status or '')

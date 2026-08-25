@@ -41,11 +41,17 @@ def test_next_action_accepts_v2_projection_without_double_counting_priority():
 
 
 def test_retired_v1_projection_cannot_influence_priority():
+    # The retired V1 clinical_support projection must create NO clinical priority.
+    # With no V2 analysis present, the surface falls through to the neutral
+    # "no clinical assessment" frame — never a V1 red flag, and never a green
+    # all-clear that would falsely imply the engine ran.
     result = PatientCockpitService.next_action(
         clinical_support={"sections": [{"key": "redflags", "rules": [{"id": 1}]}]},
         followups=[], refill_due=0, appointments=[], indicators=[{"latest": 1}],
     )
-    assert result["tone"] == "ok"
+    assert result["tone"] != "danger"  # the retired V1 redflag raised no priority
+    assert result["tone"] == "info"
+    assert result["title"] == "بدون ارزیابی بالینی"
 
 
 def test_next_action_only_counts_unreviewed_or_deferred_v2_actions():
@@ -66,9 +72,12 @@ def test_next_action_only_counts_unreviewed_or_deferred_v2_actions():
 
 
 def test_next_action_does_not_call_completed_v2_review_unreviewed():
+    # A safety_alert already ACCEPTED must NOT be counted as unreviewed. With the
+    # engine's current run present (current=True) and nothing else pending, the
+    # green clearance is legitimate and preserved.
     result = PatientCockpitService.next_action(
         clinical_support={"sections": []},
-        clinical_v2={"groups": [{
+        clinical_v2={"current": True, "groups": [{
             "action_type": "safety_alert",
             "items": [{"current_decision": {"decision": "ACCEPTED"}}],
         }]},

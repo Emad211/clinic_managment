@@ -127,7 +127,13 @@ def list_patients():
 @bp.route("/enroll", methods=["GET"])
 @login_required
 def enroll():
-    return render_template("patients/enroll.html", active_page='patients')
+    # Optional prefill (e.g. from the doctor queue): pre-populates the read-only
+    # accounting search box only. It never auto-links to accounting — the user
+    # still explicitly picks a patient or enters one manually (A0).
+    return render_template(
+        "patients/enroll.html", active_page='patients',
+        prefill_q=request.args.get("q", "").strip(),
+    )
 
 
 @bp.route("/api/search-accounting")

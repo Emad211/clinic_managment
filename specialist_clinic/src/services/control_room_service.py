@@ -44,8 +44,6 @@ class ControlRoomService:
                                   FROM lab_results l
                                   WHERE l.patient_link_id=p.id), '')
                       ) AS last_observation,
-                      (SELECT COUNT(*) FROM followup_tasks f
-                       WHERE f.patient_link_id=p.id AND f.status='open') AS open_fu,
                       (SELECT COUNT(*) FROM patient_medications m
                        WHERE m.patient_link_id=p.id AND m.is_active=1
                          AND m.refill_due_date IS NOT NULL

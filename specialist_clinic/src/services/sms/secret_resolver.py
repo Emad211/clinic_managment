@@ -1,11 +1,16 @@
 """Resolve SMS credentials without exposing raw keys to templates or logs."""
 from __future__ import annotations
 
+import logging
 import os
+import sqlite3
 
 from flask import current_app, has_app_context
 
 from src.adapters.sqlite.core import get_db
+
+
+logger = logging.getLogger(__name__)
 
 
 _SECRET_KEYS = {
@@ -39,7 +44,9 @@ def get_sms_secret(provider_name: str) -> str:
             (db_key,),
         ).fetchone()
         return str(row["value"] if row else "").strip()
-    except Exception:
+    except sqlite3.Error:
+        # Fail-closed (no key) but surface the real DB fault instead of hiding it.
+        logger.exception("SMS secret DB read failed provider=%s", normalized)
         return ""
 
 

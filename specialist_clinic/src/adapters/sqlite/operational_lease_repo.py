@@ -307,3 +307,40 @@ class OperationalLeaseRepository:
             )
             if cursor.rowcount != 1:
                 raise LeaseLost("job fencing token is no longer current")
+
+    def scheduler_health(
+        self,
+        lease_name: str,
+        *,
+        jobs_limit: int = 8,
+    ) -> dict:
+        """Read-only liveness snapshot for one scheduler lease.
+
+        Returns the lease row (regardless of whether it is currently held —
+        the scheduler intentionally releases/expires its lease at the end of
+        every tick, so "held right now" is NOT the liveness signal) plus the
+        most recent durable job runs. Interpretation (fresh/stale/down) is left
+        to the service layer; this accessor only reads and never mutates.
+        """
+        name = str(lease_name or "").strip()
+        limit = max(1, min(int(jobs_limit or 1), 50))
+        db = self._db()
+        lease_row = db.execute(
+            """SELECT lease_name, owner_id, fencing_token,
+                      acquired_at, heartbeat_at, expires_at
+               FROM operational_leases WHERE lease_name=?""",
+            (name,),
+        ).fetchone()
+        job_rows = db.execute(
+            """SELECT job_key, owner_id, status,
+                      started_at, completed_at, error_code
+               FROM operational_job_runs
+               WHERE lease_name=?
+               ORDER BY datetime(started_at) DESC, id DESC
+               LIMIT ?""",
+            (name, limit),
+        ).fetchall()
+        return {
+            "lease": dict(lease_row) if lease_row else None,
+            "recent_jobs": [dict(row) for row in job_rows],
+        }

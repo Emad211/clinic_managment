@@ -6,46 +6,6 @@
   const qs = (selector, root = document) => root.querySelector(selector);
   const qsa = (selector, root = document) => Array.from(root.querySelectorAll(selector));
 
-  function humanizePrimaryNavigation() {
-    const nav = qs('#clinic-sidebar nav');
-    if (!nav) return;
-
-    const replacements = [
-      { match: 'داشبورد', label: 'خانه' },
-      { match: 'اتاقِ کنترل', label: 'مرکز کارها', href: '/followups/unified/' },
-      { match: 'هاب پیام', label: 'مرکز پیام‌ها' },
-      { match: 'بازبینی وصول', label: 'امور مالی' },
-      { match: 'تنظیمات سیستم', label: 'مدیریت' },
-    ];
-
-    qsa('a.nav-item', nav).forEach((link) => {
-      const current = link.textContent.replace(/\s+/g, ' ').trim();
-      const replacement = replacements.find((item) => current.includes(item.match));
-      if (!replacement) return;
-      const textNode = Array.from(link.childNodes).find((node) => node.nodeType === Node.TEXT_NODE);
-      if (textNode) textNode.textContent = ` ${replacement.label}`;
-      link.setAttribute('data-automation-nav', replacement.label);
-      if (replacement.href) link.setAttribute('href', replacement.href);
-    });
-
-    qsa('.nav-section', nav).forEach((section) => {
-      if (section.textContent.trim() === 'عملیات') section.textContent = 'کار روزانه';
-      if (section.textContent.trim() === 'سیستم') section.textContent = 'مدیریت';
-    });
-
-    if (window.location.pathname.startsWith('/followups/unified')) {
-      qsa('a.nav-item.active', nav).forEach((link) => {
-        link.classList.remove('active');
-        link.removeAttribute('aria-current');
-      });
-      const workCenter = qs('[data-automation-nav="مرکز کارها"]', nav);
-      if (workCenter) {
-        workCenter.classList.add('active');
-        workCenter.setAttribute('aria-current', 'page');
-      }
-    }
-  }
-
   function closeSiblingMenus(opened) {
     qsa('details[data-action-menu][open]').forEach((menu) => {
       if (menu !== opened) menu.removeAttribute('open');
@@ -254,7 +214,6 @@
 
   window.ClinicAutomation = Object.freeze({ toast, persistForm });
 
-  humanizePrimaryNavigation();
   setupActionMenus();
   setupAutomaticFilters();
   setupOneClickContactOutcomes();

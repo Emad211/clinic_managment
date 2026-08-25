@@ -55,7 +55,8 @@ class AppointmentRepository:
         self, date_from: str, date_to: str, status: str | None = None
     ) -> list[dict]:
         params = [f"{date_from} 00:00:00", f"{date_to} 23:59:59"]
-        sql = """SELECT a.*, p.full_name AS patient_name, p.phone_number
+        sql = """SELECT a.*, p.full_name AS patient_name, p.phone_number,
+                        p.national_id
                  FROM appointments a JOIN patient_links p ON p.id=a.patient_link_id
                  WHERE a.scheduled_at BETWEEN ? AND ?"""
         if status:
@@ -118,29 +119,6 @@ class AppointmentRepository:
         db.execute(
             "UPDATE appointments SET status=? WHERE id=?",
             (status, int(appt_id)),
-        )
-        if commit:
-            db.commit()
-
-    def due_reminders(self, within_hours: int = 24) -> list[dict]:
-        return [
-            dict(row)
-            for row in self._db().execute(
-                """SELECT a.*, p.full_name AS patient_name, p.phone_number
-                   FROM appointments a JOIN patient_links p ON p.id=a.patient_link_id
-                   WHERE a.status='scheduled' AND a.reminder_sent=0
-                     AND a.scheduled_at >= datetime('now','+3 hours','+30 minutes')
-                     AND a.scheduled_at <= datetime(
-                         'now','+3 hours','+30 minutes', ?
-                     )""",
-                (f"+{int(within_hours)} hours",),
-            ).fetchall()
-        ]
-
-    def mark_reminder_sent(self, appt_id: int, *, commit: bool = True):
-        db = self._db()
-        db.execute(
-            "UPDATE appointments SET reminder_sent=1 WHERE id=?", (int(appt_id),)
         )
         if commit:
             db.commit()
