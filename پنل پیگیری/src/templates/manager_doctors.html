@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}حساب پزشکان — {{ app_name }}{% endblock %}
+{% block content %}
+<section class="card">
+  <h1>حساب پزشکان</h1>
+  {% if accounts %}
+  <table>
+    <thead><tr><th>نام کاربری</th><th>پزشک در حسابداری</th><th>وضعیت</th><th>پزشک مدیر</th><th>کارها</th></tr></thead>
+    <tbody>
+    {% for a in accounts %}
+      <tr>
+        <td dir="ltr">{{ a.username }}</td>
+        <td>{{ a.staff_name or 'در کادر درمان پیدا نشد' }}
+          {% if a.staff_name and a.staff_active == 0 %}<span class="tag err">غیرفعال در حسابداری</span>{% endif %}</td>
+        <td>{% if a.is_active %}<span class="tag ok">فعال</span>{% else %}<span class="tag err">غیرفعال</span>{% endif %}</td>
+        <td>{% if a.is_director %}✓ بله{% else %}–{% endif %}</td>
+        <td class="row-actions">
+          <form method="post" action="{{ url_for('manager.update_doctor', doctor_id=a.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            {% if a.is_director %}<button name="action" value="director_off">برداشتن پزشک مدیر</button>
+            {% else %}<button name="action" value="director_on">پزشک مدیر شود</button>{% endif %}
+            {% if a.is_active %}<button name="action" value="deactivate">غیرفعال کردن</button>
+            {% else %}<button name="action" value="activate">فعال کردن</button>{% endif %}
+          </form>
+          <form method="post" action="{{ url_for('manager.update_doctor', doctor_id=a.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="password" name="password" placeholder="رمز تازه" dir="ltr" minlength="6" required aria-label="رمز تازه">
+            <button name="action" value="password">عوض کردن رمز</button>
+          </form>
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">هنوز حساب پزشکی ساخته نشده است.</p>
+  {% endif %}
+</section>
+
+<section class="card">
+  <h2>ساخت حساب پزشک</h2>
+  {% if available %}
+  <form method="post" action="{{ url_for('manager.create_doctor') }}" class="stack narrow">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label>پزشک (از کادر درمانِ فعال حسابداری)
+      <select name="staff_id" required>
+        <option value="">انتخاب کنید</option>
+        {% for d in available %}<option value="{{ d.acc_id }}">{{ d.full_name }}</option>{% endfor %}
+      </select>
+    </label>
+    <label>نام کاربری <input name="username" dir="ltr" pattern="[A-Za-z0-9_.\-]{3,32}" required></label>
+    <label>رمز <input name="password" type="password" dir="ltr" minlength="6" required></label>
+    <label class="check"><input type="checkbox" name="is_director" value="1"> پزشک مدیر (تأیید کات‌آف‌ها)</label>
+    <button type="submit" class="primary">ساخت حساب</button>
+  </form>
+  {% else %}
+  <p class="muted">همهٔ پزشکانِ فعال حسابداری حساب دارند، یا فهرست کادر درمان هنوز از حسابداری خوانده نشده است.</p>
+  {% endif %}
+</section>
+{% endblock %}

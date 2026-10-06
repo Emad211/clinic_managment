@@ -277,6 +277,7 @@ CREATE TABLE IF NOT EXISTS acc_item (
   service_id      INTEGER,                 -- injections.service_id
   doctor_staff_id INTEGER, nurse_staff_id INTEGER, performer_type TEXT,
   price REAL, work_date TEXT, shift TEXT,
+  item_at TEXT,                            -- visits.visit_date (برای ترتیب صف)؛ برای بقیه NULL
   is_paid INTEGER NOT NULL DEFAULT 0, payment_type TEXT, paid_seen_at TEXT,
   deleted_at TEXT,
   PRIMARY KEY (item_type, item_id)
