@@ -36,7 +36,13 @@
       const tr = document.createElement("tr");
       tr.className = "status-" + r.status;
       tr.appendChild(cell(`${ICON[r.status]} ${r.status_label}`));
-      tr.appendChild(cell(r.name));
+      const nameCell = document.createElement("td");
+      const link = document.createElement("a");
+      link.href = `/doctor/visit/${r.visit_id}`;
+      link.textContent = r.name;
+      nameCell.appendChild(link);
+      tr.appendChild(nameCell);
+      tr.addEventListener("click", (ev) => { if (ev.target.tagName !== "A") window.location.href = link.href; });
       const tags = document.createElement("td");
       if (!r.identity_ok) tags.appendChild(tag("⚠ هویت ناقص", "warn"));
       for (const s of r.services) tags.appendChild(tag(s));
@@ -48,6 +54,12 @@
 
   async function refresh() {
     try { render(await api("/api/doctor/queue")); } catch (e) { /* keep the last list */ }
+  }
+  const flash = sessionStorage.getItem("peygiri:flash");
+  if (flash) {
+    sessionStorage.removeItem("peygiri:flash");
+    const p = document.getElementById("q-flash");
+    p.textContent = flash; p.hidden = false;
   }
   refresh();
   setInterval(refresh, 5000);

@@ -1,0 +1,29 @@
+{
+  "code": "lab_order",
+  "title": "آزمایش",
+  "enabled": true,
+  "params": {},
+  "steps": [
+    {
+      "kind": "call",
+      "day": 2,
+      "purpose": "lab_check"
+    },
+    {
+      "kind": "expect",
+      "category": "visit",
+      "day": 1,
+      "end": 30,
+      "accept_early": true
+    }
+  ],
+  "call_rules": {
+    "no_answer_retry_days": 1,
+    "max_attempts": 3,
+    "refused": "close",
+    "lab_not_done": {
+      "retry_days": 3,
+      "max": 3
+    }
+  }
+}

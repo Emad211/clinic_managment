@@ -1,0 +1,26 @@
+{
+  "code": "quarterly_lab",
+  "title": "آزمایش سه‌ماهه (دیابت)",
+  "enabled": true,
+  "params": {},
+  "steps": [
+    {
+      "kind": "call",
+      "day": 87,
+      "purpose": "quarterly_lab_reminder"
+    },
+    {
+      "kind": "expect",
+      "category": "visit",
+      "day": 1,
+      "end": 120,
+      "accept_early": true
+    }
+  ],
+  "call_rules": {
+    "no_answer_retry_days": 1,
+    "max_attempts": 3,
+    "refused": "close"
+  },
+  "continue_on_success": true
+}

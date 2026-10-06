@@ -1,0 +1,36 @@
+{
+  "code": "wound_care",
+  "title": "جراحی سرپایی",
+  "enabled": true,
+  "params": {
+    "suture_day": null,
+    "dressing_every": null
+  },
+  "steps": [
+    {
+      "kind": "expect",
+      "category": "dressing",
+      "day": "{dressing_every}",
+      "window_days": 1,
+      "recall_on_miss": true,
+      "when": "{dressing_every}",
+      "repeat": {
+        "every_days": "{dressing_every}",
+        "before_day": "{suture_day}"
+      }
+    },
+    {
+      "kind": "expect",
+      "category": "suture_removal",
+      "day": "{suture_day}",
+      "window_days": 3,
+      "recall_on_miss": true,
+      "completes": true
+    }
+  ],
+  "call_rules": {
+    "no_answer_retry_days": 1,
+    "max_attempts": 3,
+    "refused": "close"
+  }
+}

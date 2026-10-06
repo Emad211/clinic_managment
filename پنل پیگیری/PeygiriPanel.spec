@@ -13,6 +13,7 @@ a = Analysis(
         ('src\\templates', 'src\\templates'),
         ('src\\static', 'src\\static'),
         ('src\\adapters\\sqlite\\schema.sql', 'src\\adapters\\sqlite'),
+        ('journeys', 'journeys'),                 # template seeds (docs/05 §7)
     ],
     hiddenimports=hiddenimports,
     hookspath=[],

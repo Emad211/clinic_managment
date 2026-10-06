@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}کات‌آف‌ها — {{ app_name }}{% endblock %}
+{% block content %}
+<section class="card">
+  <h1>کات‌آف‌های بالینی</h1>
+  <p class="muted">پرستار و پذیرش فقط عدد را ثبت می‌کنند؛ اقدام را این قاعده‌ها تعیین می‌کنند. هیچ عدد پیش‌فرضی وجود ندارد؛ هر عدد را پزشک مدیر تعیین و تأیید می‌کند.</p>
+  <div id="c-approved"></div>
+</section>
+
+<section class="card">
+  <h2>پیش‌نویس</h2>
+  <form id="c-form" class="stack" novalidate>
+    <fieldset class="rule"><legend>فشار — قاعدهٔ ۱: دعوت به ویزیت + سری کنترل فشار</legend>
+      اگر سیستولیک ≥ <input name="bp1_sys" type="number" inputmode="numeric" aria-label="سیستولیک قاعدهٔ ۱">
+      یا دیاستولیک ≥ <input name="bp1_dia" type="number" inputmode="numeric" aria-label="دیاستولیک قاعدهٔ ۱"></fieldset>
+    <fieldset class="rule"><legend>فشار — قاعدهٔ ۲: فقط سری کنترل فشار</legend>
+      اگر سیستولیک ≥ <input name="bp2_sys" type="number" inputmode="numeric" aria-label="سیستولیک قاعدهٔ ۲">
+      یا دیاستولیک ≥ <input name="bp2_dia" type="number" inputmode="numeric" aria-label="دیاستولیک قاعدهٔ ۲"></fieldset>
+    <fieldset class="rule"><legend>قند ناشتا: دعوت به ویزیت</legend>
+      اگر قند ناشتا ≥ <input name="bs_fasting" type="number" inputmode="numeric" aria-label="قند ناشتا"></fieldset>
+    <fieldset class="rule"><legend>قند غیرناشتا: دعوت به ویزیت</legend>
+      اگر قند غیرناشتا ≥ <input name="bs_random" type="number" inputmode="numeric" aria-label="قند غیرناشتا"></fieldset>
+    <fieldset class="rule"><legend>سری کنترل</legend>
+      <input name="series_count" type="number" min="1" max="10" aria-label="تعداد نوبت"> نوبت، هر
+      <input name="series_every" type="number" min="1" max="7" aria-label="فاصله"> روز</fieldset>
+    <p class="muted">قاعده‌ها از بالا به پایین بررسی می‌شوند و اولین قاعدهٔ منطبق اعمال می‌شود.</p>
+    <ul id="c-problems" class="error"></ul>
+    <p id="c-message" class="flash ok" role="status" hidden></p>
+    <div class="actions">
+      <button type="submit" class="primary">ذخیرهٔ پیش‌نویس</button>
+      <button type="button" id="c-approve" hidden>تأیید و اعمال (پزشک مدیر)</button>
+    </div>
+    <p class="muted" id="c-wait" hidden>در انتظار تأیید پزشک مدیر.</p>
+  </form>
+</section>
+{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='js/cutoffs.js') }}"></script>{% endblock %}

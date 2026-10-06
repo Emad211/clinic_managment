@@ -1,0 +1,27 @@
+{
+  "code": "control_series_bp",
+  "title": "سری کنترل فشار",
+  "enabled": true,
+  "params": {
+    "count": 3,
+    "every_days": 1
+  },
+  "steps": [
+    {
+      "kind": "expect",
+      "category": "bp_check",
+      "day": "{every_days}",
+      "window_days": 0,
+      "recall_on_miss": true,
+      "repeat": {
+        "count": "{count}",
+        "every_days": "{every_days}"
+      }
+    }
+  ],
+  "call_rules": {
+    "no_answer_retry_days": 1,
+    "max_attempts": 3,
+    "refused": "close"
+  }
+}

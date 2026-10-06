@@ -7,6 +7,7 @@
   --font: "Vazirmatn", Tahoma, "Segoe UI", sans-serif;
 }
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }   /* layout rules must never un-hide an element */
 body { margin: 0; background: var(--bg); color: var(--text); font-family: var(--font); line-height: 1.7; }
 a { color: var(--brand); }
 h1 { font-size: 1.2rem; margin: 0 0 12px; }
@@ -91,3 +92,28 @@ dialog::backdrop { background: rgba(0, 0, 0, .35); }
 button:disabled { opacity: .55; cursor: not-allowed; }
 .report-scroll { overflow-x: auto; }
 .report-filter { display: flex; gap: 12px; flex-wrap: wrap; align-items: end; }
+
+/* ---- M3: tabs, doctor panel chips, cut-off rules ---- */
+.flash.warn { background: var(--warn-bg); color: var(--warn); }
+.tabs { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 12px; }
+.tabs [role=tab] { border-radius: 8px 8px 0 0; }
+.tabs [role=tab][aria-selected=true] { background: var(--brand); color: #fff; border-color: var(--brand); }
+.tabs [role=tab][aria-selected=true] .tag { background: rgba(255,255,255,.25); color: #fff; }
+.panel-form fieldset.row, form fieldset.row { border: 0; border-bottom: 1px solid var(--border); margin: 0; padding: 10px 0;
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+fieldset.row legend { float: right; width: 9.5rem; font-weight: 600; padding: 0; margin-left: 8px; }
+.chip { flex-direction: row; align-items: center; gap: 6px; font-weight: 400; min-height: 44px; padding: 0 12px;
+  border: 1px solid var(--border); border-radius: 999px; background: var(--surface); cursor: pointer; }
+.chip:has(input:checked) { background: var(--ok-bg); border-color: var(--ok); color: var(--ok); font-weight: 600; }
+.chip input { margin: 0; }
+.sub { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-inline-start: 8px; }
+.series input, .sub input[type=number], .rule input, fieldset.row input[type=number] { width: 5.5rem; }
+.open-journeys { margin: 8px 0; }
+.open-journeys .tag button.link { min-height: 28px; color: var(--err); }
+fieldset.rule { border: 1px solid var(--border); border-radius: 8px; padding: 12px; display: flex; flex-wrap: wrap;
+  align-items: center; gap: 8px; }
+fieldset.rule legend { font-weight: 600; padding: 0 6px; }
+#c-problems { margin: 0; padding-inline-start: 1.2rem; }
+.queue tbody tr { cursor: pointer; }
+.queue tbody tr:hover { background: #f1f6f8; }
+@media (max-width: 640px) { fieldset.row legend { float: none; width: 100%; } }

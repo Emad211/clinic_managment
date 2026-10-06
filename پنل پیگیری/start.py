@@ -34,6 +34,8 @@ def _setup_logging(logs_dir) -> None:
     root.setLevel(logging.INFO)
     root.addHandler(handler)
     if not is_frozen():
+        if hasattr(sys.stderr, "reconfigure"):
+            sys.stderr.reconfigure(encoding="utf-8")   # Persian paths on a cp1252 console
         root.addHandler(logging.StreamHandler())
     logging.getLogger("werkzeug").setLevel(logging.WARNING)
 

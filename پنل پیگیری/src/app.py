@@ -11,6 +11,7 @@ from flask import Flask, g
 from .adapters.accounting.bridge import AccountingBridge
 from .adapters.sqlite import core
 from .api import auth as auth_api
+from .api import clinical as clinical_api
 from .api import health as health_api
 from .api import identity as identity_api
 from .api import manager as manager_api
@@ -20,11 +21,14 @@ from .common import iran_time
 from .common.jalali import jalali_date
 from .common.persian_text import fa_digits
 from .config.settings import Settings, resource_dir
+from .services import journeys
 from .services.bridge_monitor import BridgeMonitor
 from .sync.poller import Poller
 from .version import APP_NAME, APP_VERSION
 
 log = logging.getLogger(__name__)
+
+ENGINE_TICK_SECONDS = 60
 
 
 class Runtime:
@@ -47,6 +51,20 @@ class Runtime:
     def start_background(self) -> None:
         self._spawn("bridge-monitor", self.monitor.run)
         self._spawn("poller", self._poll_when_ready)
+        self._spawn("engine", self._engine_ticks)
+
+    def _engine_ticks(self, stop: threading.Event) -> None:
+        """Time-driven journey transitions every 60 s (docs/02 §2); also catches day changes."""
+        while not stop.is_set():
+            try:
+                conn = core.connect(self.settings.panel_db_path)
+                try:
+                    journeys.tick_all(conn, self.clock())
+                finally:
+                    conn.close()
+            except Exception:                      # never let the thread die
+                log.exception("engine tick crashed")
+            stop.wait(ENGINE_TICK_SECONDS)
 
     def _poll_when_ready(self, stop: threading.Event) -> None:
         # The first schema check must pass before the first poll.
@@ -79,6 +97,11 @@ def create_app(settings: Settings, *, start_background: bool = True,
     app.json.ensure_ascii = False
 
     core.init_db(settings.panel_db_path, settings.backups_dir)
+    conn = core.connect(settings.panel_db_path)
+    try:
+        journeys.ensure_templates(conn, clock().strftime(iran_time.TS_FORMAT))
+    finally:
+        conn.close()
 
     runtime = Runtime(settings, clock)
     app.extensions["peygiri"] = runtime
@@ -107,6 +130,7 @@ def create_app(settings: Settings, *, start_background: bool = True,
     app.register_blueprint(pages_api.reception_bp)
     app.register_blueprint(manager_api.bp)
     app.register_blueprint(identity_api.bp)
+    app.register_blueprint(clinical_api.bp)
 
     if start_background:
         runtime.start_background()

@@ -157,18 +157,19 @@ def test_persian_digit_identity_saved_normalized(env):
 
 
 def test_awaiting_identity_on_closed_invoice_activates_and_duplicate_cancels(env):
+    """G9: of two waiting journeys of one template, the newer one survives activation."""
     pid, iid = invoice(env)
     with db(env) as conn:
-        first, duplicate = waiting(conn,iid), waiting(conn,iid)
+        older, newer = waiting(conn,iid), waiting(conn,iid)
     env[2]._run("UPDATE invoices SET status='closed' WHERE id=?",(iid,))
     assert env[1].poller.step().ok
     c = client(env)
     assert iid in [r['invoice_id'] for r in c.get(BASE).get_json()['rows']]
     assert post_json(c,f'{BASE}/{iid}',body(c,iid)).status_code == 200
     with db(env) as conn:
-        assert conn.execute('SELECT status,person_id FROM journey WHERE id=?',(first,)).fetchone()[:] == ('active',1)
-        assert conn.execute('SELECT status,close_reason FROM journey WHERE id=?',(duplicate,)).fetchone()[:] == ('cancelled','duplicate')
-        assert conn.execute('SELECT status FROM journey_step WHERE journey_id=?',(duplicate,)).fetchone()[0] == 'cancelled'
+        assert conn.execute('SELECT status,person_id FROM journey WHERE id=?',(newer,)).fetchone()[:] == ('active',1)
+        assert conn.execute('SELECT status,close_reason FROM journey WHERE id=?',(older,)).fetchone()[:] == ('cancelled','duplicate')
+        assert conn.execute('SELECT status FROM journey_step WHERE journey_id=?',(older,)).fetchone()[0] == 'cancelled'
     assert iid not in [r['invoice_id'] for r in c.get(BASE).get_json()['rows']]
 
 
@@ -314,7 +315,7 @@ def test_m1_to_m2_upgrade_baselines_mirror_and_backs_up_before_ddl(tmp_path):
         conn.execute("INSERT INTO acc_invoice(acc_id,acc_patient_id,status,first_seen_at,last_seen_at) VALUES (1,1,'open','t','t')")
         conn.execute("INSERT INTO acc_item(item_type,item_id,acc_invoice_id) VALUES ('visit',1,1)")
         conn.execute("INSERT INTO acc_item_category VALUES ('visit',1,'visit')")
-    assert core.init_db(dbpath,backups) == 3
+    assert core.init_db(dbpath,backups) == core.SCHEMA_VERSION
     with core.connect(dbpath) as conn:
         assert conn.execute('SELECT acc_invoice_id,accounting_identity_ok FROM identity_observation').fetchone()[:] == (1,0)
         assert conn.execute('SELECT name FROM acc_patient').fetchone()[0] == 'خ'

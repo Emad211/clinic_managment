@@ -28,10 +28,10 @@
   </header>
   <div class="banner" id="sync-banner" hidden></div>
   {% if principal.role == 'manager' %}
-  <nav class="subnav"><a href="{{ url_for('manager.doctors') }}">حساب پزشکان</a><a href="{{ url_for('identity.report_page') }}">گزارش رعایت هویت</a></nav>
+  <nav class="subnav"><a href="{{ url_for('manager.doctors') }}">حساب پزشکان</a><a href="{{ url_for('clinical.cutoffs_page') }}">کات‌آف‌ها</a><a href="{{ url_for('identity.report_page') }}">گزارش رعایت هویت</a></nav>
   {% endif %}
 
-  {% if principal.is_director %}<nav class="subnav"><a href="{{ url_for('identity.report_page') }}">گزارش رعایت هویت</a></nav>{% endif %}
+  {% if principal.is_director %}<nav class="subnav"><a href="{{ url_for('doctor.queue_page') }}">صف من</a><a href="{{ url_for('clinical.cutoffs_page') }}">کات‌آف‌ها</a><a href="{{ url_for('identity.report_page') }}">گزارش رعایت هویت</a></nav>{% endif %}
   <dialog id="shift-dialog">
     <form method="dialog" id="shift-form">
       <h2>تغییر شیفت جاری</h2>

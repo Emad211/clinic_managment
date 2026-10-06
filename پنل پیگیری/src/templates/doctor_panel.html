@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% block title %}پنل بیمار — {{ app_name }}{% endblock %}
+{% block content %}
+<section class="card panel" id="panel" data-visit="{{ visit_id }}">
+  <div class="card-head">
+    <h1 id="p-name">…</h1>
+    <a href="{{ url_for('doctor.queue_page') }}">بازگشت به صف</a>
+  </div>
+  <p class="muted" id="p-meta"></p>
+  <p class="flash warn" id="p-identity" hidden>هویت این بیمار ناقص است. پیگیری‌ها پس از تکمیل هویت توسط پذیرش فعال می‌شوند.</p>
+  <p class="flash ok" id="p-saved" hidden></p>
+  <div id="p-open" class="open-journeys"></div>
+
+  <form id="p-form" class="panel-form" novalidate>
+    <fieldset class="row">
+      <legend>بیماری مزمن</legend>
+      <label class="chip"><input type="checkbox" name="diabetes"> دیابت</label>
+      <label class="chip"><input type="checkbox" name="hypertension"> فشار خون</label>
+    </fieldset>
+
+    <fieldset class="row">
+      <legend>تمدید نسخه</legend>
+      <label class="chip"><input type="radio" name="renewal" value="1"> ۱ ماه</label>
+      <label class="chip"><input type="radio" name="renewal" value="2"> ۲ ماه</label>
+      <label class="chip"><input type="radio" name="renewal" value="3"> ۳ ماه</label>
+    </fieldset>
+
+    <fieldset class="row" id="row-quarterly" hidden>
+      <legend>آزمایش سه‌ماهه</legend>
+      <label class="chip"><input type="checkbox" name="quarterly_lab"> بله</label>
+    </fieldset>
+
+    <fieldset class="row">
+      <legend>سری کنترل قند</legend>
+      <label class="chip"><input type="checkbox" name="series_bs"> بله</label>
+      <span class="series"><input name="bs_count" type="number" min="1" max="10" value="3" aria-label="تعداد نوبت قند"> نوبت · هر
+        <input name="bs_every" type="number" min="1" max="7" value="1" aria-label="فاصلهٔ روز قند"> روز</span>
+    </fieldset>
+
+    <fieldset class="row">
+      <legend>سری کنترل فشار</legend>
+      <label class="chip"><input type="checkbox" name="series_bp"> بله</label>
+      <span class="series"><input name="bp_count" type="number" min="1" max="10" value="3" aria-label="تعداد نوبت فشار"> نوبت · هر
+        <input name="bp_every" type="number" min="1" max="7" value="1" aria-label="فاصلهٔ روز فشار"> روز</span>
+    </fieldset>
+
+    <fieldset class="row">
+      <legend>آزمایش نوشته شد</legend>
+      <label class="chip"><input type="checkbox" name="lab_order"> بله</label>
+    </fieldset>
+
+    <fieldset class="row">
+      <legend>جراحی سرپایی</legend>
+      <label class="chip"><input type="checkbox" name="wound"> بله</label>
+      <span class="sub">بخیه:
+        {% for d in (5, 7, 10, 14) %}<label class="chip"><input type="radio" name="suture_day" value="{{ d }}"> {{ d|fa }}</label>{% endfor %}
+      </span>
+      <span class="sub">پانسمان:
+        {% for d in (1, 2, 3) %}<label class="chip"><input type="radio" name="dressing_every" value="{{ d }}"> هر {{ d|fa }}</label>{% endfor %}
+        <label class="chip"><input type="radio" name="dressing_every" value="0"> ندارد</label>
+      </span>
+    </fieldset>
+
+    <fieldset class="row">
+      <legend>جرم گوش</legend>
+      <label class="chip"><input type="radio" name="ear_wax" value="rx"> قطره تجویز شد</label>
+      <label class="chip"><input type="radio" name="ear_wax" value="norx"> تجویز نشد</label>
+      <button type="button" class="link" id="ear-clear">پاک کردن</button>
+    </fieldset>
+
+    <fieldset class="row">
+      <legend>عدد (اختیاری)</legend>
+      <span class="sub">فشار <input name="systolic" type="number" inputmode="numeric" aria-label="سیستولیک">
+        / <input name="diastolic" type="number" inputmode="numeric" aria-label="دیاستولیک"></span>
+      <span class="sub">قند <input name="glucose" type="number" inputmode="numeric" aria-label="قند">
+        <label class="chip"><input type="radio" name="glucose_type" value="fasting"> ناشتا</label>
+        <label class="chip"><input type="radio" name="glucose_type" value="random"> غیرناشتا</label></span>
+    </fieldset>
+    <p class="muted" id="p-hint" hidden></p>
+
+    <label>یادداشت (اختیاری) <input name="note" maxlength="200"></label>
+    <p class="error" id="p-error" role="alert"></p>
+    <div class="actions">
+      <button type="submit" class="primary">ثبت</button>
+      <button type="button" id="p-none">بدون پیگیری</button>
+    </div>
+  </form>
+</section>
+{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='js/panel.js') }}"></script>{% endblock %}

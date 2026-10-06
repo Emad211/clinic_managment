@@ -1,0 +1,25 @@
+{
+  "code": "invite_visit",
+  "title": "دعوت به ویزیت",
+  "enabled": true,
+  "params": {},
+  "steps": [
+    {
+      "kind": "call",
+      "day": 1,
+      "purpose": "invite_visit"
+    },
+    {
+      "kind": "expect",
+      "category": "visit",
+      "day": 1,
+      "end": 14,
+      "accept_early": true
+    }
+  ],
+  "call_rules": {
+    "no_answer_retry_days": 1,
+    "max_attempts": 3,
+    "refused": "close"
+  }
+}

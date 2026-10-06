@@ -1,0 +1,29 @@
+{
+  "code": "renewal",
+  "title": "تمدید نسخه",
+  "enabled": true,
+  "params": {
+    "interval_months": null,
+    "due_day": null
+  },
+  "steps": [
+    {
+      "kind": "call",
+      "day": "max(1, {due_day} - 10)",
+      "purpose": "renewal_reminder"
+    },
+    {
+      "kind": "expect",
+      "category": "visit",
+      "day": 1,
+      "end": "{due_day} + 30",
+      "accept_early": true
+    }
+  ],
+  "call_rules": {
+    "no_answer_retry_days": 1,
+    "max_attempts": 3,
+    "refused": "close"
+  },
+  "continue_on_success": true
+}

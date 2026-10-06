@@ -5,6 +5,7 @@ import hashlib
 import json
 
 from ..adapters.sqlite import account_repo, core, identity_repo as repo
+from . import encounters, journeys
 from ..common.persian_text import normalize
 from ..domain.identity import (clean_mobile, clean_national_id, identity_ok, identity_problems,
                                is_valid_mobile, is_valid_national_id, mask_national_id)
@@ -96,17 +97,11 @@ def _bind(conn, patient_id, person_id, method, actor, at):
         _audit(conn, at, actor, 'identity.link', 'person_acc_link', patient_id,
                after={'person_id': person_id, 'method': method})
     repo.bind_clinical_records(conn, patient_id, person_id)
+    encounters.apply_pending_tags(conn, person_id, at)
     for journey in repo.waiting_journeys(conn, patient_id):
         if journey['person_id'] not in (None, person_id):
             continue  # Never reassign a clinical record to another person.
-        duplicate = repo.open_journey_for_template(conn, person_id, journey['template_code'], journey['id'])
-        if duplicate:
-            repo.cancel_journey(conn, journey['id'], 'duplicate', at)
-            action, result = 'journey.cancel', {'status': 'cancelled', 'reason': 'duplicate', 'duplicate_of': duplicate['id']}
-        else:
-            repo.activate_journey(conn, journey['id'], person_id)
-            action, result = 'journey.identity_ready', {'status': 'active', 'person_id': person_id}
-        _audit(conn, at, actor, action, 'journey', journey['id'], dict(journey), result)
+        journeys.activate_with_identity(conn, journey['id'], person_id, actor, at)
 
 
 def sync_patients(conn, patient_ids, at):

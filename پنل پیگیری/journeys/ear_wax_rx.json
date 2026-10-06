@@ -1,0 +1,29 @@
+{
+  "code": "ear_wax_rx",
+  "title": "جرم گوش — قطره تجویز شد",
+  "enabled": true,
+  "params": {
+    "call_day": 3,
+    "visit_day": 4,
+    "window_days": 10
+  },
+  "steps": [
+    {
+      "kind": "call",
+      "day": "{call_day}",
+      "purpose": "ear_wash_reminder"
+    },
+    {
+      "kind": "expect",
+      "category": "ear_irrigation",
+      "day": "{visit_day}",
+      "window_days": "{window_days}",
+      "recall_on_miss": true
+    }
+  ],
+  "call_rules": {
+    "no_answer_retry_days": 1,
+    "max_attempts": 3,
+    "refused": "close"
+  }
+}

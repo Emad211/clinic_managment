@@ -1,0 +1,25 @@
+{
+  "code": "respiratory",
+  "title": "تنفسی",
+  "enabled": false,
+  "params": {},
+  "steps": [
+    {
+      "kind": "call",
+      "day": 3,
+      "purpose": "respiratory_check"
+    },
+    {
+      "kind": "expect",
+      "category": "nebulizer",
+      "day": 3,
+      "end": 14,
+      "accept_early": true
+    }
+  ],
+  "call_rules": {
+    "no_answer_retry_days": 1,
+    "max_attempts": 3,
+    "refused": "close"
+  }
+}

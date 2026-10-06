@@ -20,7 +20,7 @@ from ...config.settings import resource_dir
 
 log = logging.getLogger(__name__)
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 KEEP_BACKUPS = 4
 
 # version → additive, re-runnable step that brings the DB from version-1 to version.
@@ -37,7 +37,25 @@ def _migrate_v3(conn: sqlite3.Connection) -> None:
     identity_repo.observe_invoices(conn, identity_repo.all_invoice_ids(conn), iran_time.now_str())
 
 
-MIGRATIONS: dict[int, Callable[[sqlite3.Connection], None]] = {2: _migrate_v2, 3: _migrate_v3}
+_V4_STEP_COLUMNS = {
+    "accept_early": "INTEGER NOT NULL DEFAULT 0",
+    "recall_on_miss": "INTEGER NOT NULL DEFAULT 0",
+    "completes": "INTEGER NOT NULL DEFAULT 0",
+    "about_category": "TEXT",
+}
+
+
+def _migrate_v4(conn: sqlite3.Connection) -> None:
+    """M3: per-step rule flags copied from the template when the journey is planned."""
+    columns = {row[1] for row in conn.execute("PRAGMA table_info(journey_step)")}
+    for name, ddl in _V4_STEP_COLUMNS.items():
+        if name not in columns:
+            conn.execute(f"ALTER TABLE journey_step ADD COLUMN {name} {ddl}")
+    if "chronic_tags" not in {row[1] for row in conn.execute("PRAGMA table_info(encounter)")}:
+        conn.execute("ALTER TABLE encounter ADD COLUMN chronic_tags TEXT")
+
+
+MIGRATIONS: dict[int, Callable[[sqlite3.Connection], None]] = {2: _migrate_v2, 3: _migrate_v3, 4: _migrate_v4}
 
 
 def schema_sql() -> str:

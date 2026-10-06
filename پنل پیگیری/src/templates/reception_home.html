@@ -1,6 +1,47 @@
 {% extends "base.html" %}
 {% block content %}
-<section class="card">
+<nav class="tabs" role="tablist">
+  <button role="tab" id="tab-identity" aria-controls="pane-identity" aria-selected="true">هویت ناقص <span id="identity-count-tab" class="tag err">…</span></button>
+  <button role="tab" id="tab-walkin" aria-controls="pane-walkin" aria-selected="false">کاغذ پرستار <span id="walkin-count" class="tag">…</span></button>
+</nav>
+
+<section class="card" id="pane-walkin" role="tabpanel" aria-labelledby="tab-walkin" hidden>
+  <div class="card-head"><h1>کاغذ پرستار — تست قند و کنترل فشارِ بدون ویزیت (امروز و دیروز)</h1></div>
+  <p class="flash warn" id="walkin-cutoff" hidden>کات‌آف هنوز توسط پزشک مدیر تأیید نشده است؛ اطلاعات فقط ثبت می‌شود و اقدام خودکاری ساخته نمی‌شود.</p>
+  <p id="walkin-message" class="flash ok" role="status" hidden></p>
+  <table>
+    <thead><tr><th>تاریخ</th><th>بیمار</th><th>خدمت</th><th>کارها</th></tr></thead>
+    <tbody id="walkin-list"></tbody>
+  </table>
+</section>
+<dialog id="walkin-dialog" aria-labelledby="walkin-title">
+  <form id="walkin-form" class="stack" novalidate>
+    <h2 id="walkin-title">ورود اطلاعات کاغذ پرستار</h2>
+    <p id="walkin-who" class="muted"></p>
+    <fieldset id="walkin-bp" class="row"><legend>فشار</legend>
+      <input name="systolic" type="number" inputmode="numeric" aria-label="سیستولیک" placeholder="سیستولیک"> /
+      <input name="diastolic" type="number" inputmode="numeric" aria-label="دیاستولیک" placeholder="دیاستولیک"></fieldset>
+    <fieldset id="walkin-bs" class="row"><legend>قند</legend>
+      <input name="glucose" type="number" inputmode="numeric" aria-label="قند">
+      <label class="chip"><input type="radio" name="glucose_type" value="fasting"> ناشتا</label>
+      <label class="chip"><input type="radio" name="glucose_type" value="random"> غیرناشتا</label></fieldset>
+    <fieldset class="row"><legend>دارو مصرف می‌کند؟</legend>
+      <label class="chip"><input type="radio" name="on_medication" value="yes"> بله</label>
+      <label class="chip"><input type="radio" name="on_medication" value="no"> خیر</label></fieldset>
+    <fieldset class="row" id="walkin-renewal" hidden><legend>زمان تقریبی تمدید نسخه</legend>
+      <label class="chip"><input type="radio" name="renewal_quick" value="10"> ۱۰ روز دیگر</label>
+      <label class="chip"><input type="radio" name="renewal_quick" value="20"> ۲۰ روز دیگر</label>
+      <label class="chip"><input type="radio" name="renewal_quick" value="30"> ۱ ماه دیگر</label>
+      <input name="renewal_date" inputmode="numeric" placeholder="یا تاریخ: ۱۴۰۵/۰۸/۰۱" aria-label="تاریخ تمدید"></fieldset>
+    <fieldset class="row"><legend>دستگاه شخصی (فشارسنج/قندسنج) دارد؟</legend>
+      <label class="chip"><input type="radio" name="has_device" value="yes"> بله</label>
+      <label class="chip"><input type="radio" name="has_device" value="no"> خیر</label></fieldset>
+    <p id="walkin-error" class="error" role="alert"></p>
+    <div class="actions"><button class="primary" type="submit">ثبت</button><button type="button" id="walkin-cancel">انصراف</button></div>
+  </form>
+</dialog>
+
+<section class="card" id="pane-identity" role="tabpanel" aria-labelledby="tab-identity">
   <div class="card-head"><h1>پذیرش — هویت ناقص <span id="identity-count" class="tag err">…</span></h1><button id="identity-refresh">تازه‌سازی</button></div>
   <p>تا بیمار در درمانگاه است تکمیل کنید.</p>
   <p class="muted">پرونده‌های تکراری فقط در پنل متصل می‌شوند؛ حسابداری تغییر نمی‌کند.</p>
@@ -30,4 +71,5 @@
   <div class="actions"><button id="foreign-confirm" class="primary">تبعه است؛ خارج از پیگیری</button><button id="foreign-cancel">انصراف</button></div>
 </dialog>
 {% endblock %}
-{% block scripts %}<script src="{{ url_for('static', filename='js/identity.js') }}"></script>{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='js/identity.js') }}"></script>
+<script src="{{ url_for('static', filename='js/walkin.js') }}"></script>{% endblock %}

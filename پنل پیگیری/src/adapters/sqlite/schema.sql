@@ -54,6 +54,7 @@ CREATE TABLE IF NOT EXISTS encounter (
   decision        TEXT NOT NULL CHECK (decision IN ('no_followup','followup')),
   note            TEXT CHECK (note IS NULL OR length(note) <= 200),
   status          TEXT NOT NULL DEFAULT 'ok' CHECK (status IN ('ok','source_deleted')),
+  chronic_tags    TEXT,                                      -- JSON {"diabetes": true, …}؛ با تکمیل هویت روی شخص اعمال می‌شود
   created_at TEXT NOT NULL, updated_at TEXT NOT NULL         -- ویرایش تا پایان همان روز
 );
 
@@ -133,6 +134,10 @@ CREATE TABLE IF NOT EXISTS journey_step (
   status      TEXT NOT NULL CHECK (status IN ('pending','done','skipped','missed','cancelled')),
   attempts    INTEGER NOT NULL DEFAULT 0,
   resolved_at TEXT,
+  accept_early   INTEGER NOT NULL DEFAULT 0,  -- M4: بازگشتِ پیش از due_date هم پذیرفته است
+  recall_on_miss INTEGER NOT NULL DEFAULT 0,  -- G7: پایان پنجره بدون مدرک ← تماس «missed»
+  completes      INTEGER NOT NULL DEFAULT 0,  -- انجامش مسیر را تمام می‌کند (کشیدن بخیه)
+  about_category TEXT,                        -- برای تماس missed/no_show: چه خدمتی از دست رفت
   UNIQUE (journey_id, seq),
   CHECK ((kind = 'call' AND category IS NULL) OR (kind = 'expect' AND category IS NOT NULL AND window_end IS NOT NULL))
 );

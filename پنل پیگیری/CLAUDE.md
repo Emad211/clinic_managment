@@ -10,7 +10,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - detects the patient's return from payments recorded in accounting;
 - reads accounting **strictly read-only**.
 
-**Status:** M0 committed (`92307517`). M1 implemented and locally verified: poller, mirror, two-source login, doctor accounts/queue, shift override, sync indicator. App 0.2.0, panel schema v2; v1 upgrades take a backup and add `acc_item.item_at`. 169 tests pass, 2 production-copy perf checks skip without `PEYGIRI_PERF_DB`. Next: M2 (identity). See `docs/m1-verification.md` and `docs/08` §1. Read `README.md`, then `docs/01`–`09` in order. Every decision and its source is in `docs/09-decisions-log.md` (IDs `Dxx` decisions, `Axx` assumptions, `Oxx` open items). Rationale is in `docs/adr/`.
+**Status:** M0–M3 done (panel schema v4): read-only bridge, poller/mirror, login, doctor queue, identity (M2), journey engine with 10 templates in `journeys/`, doctor panel, nurse paper, cut-offs. ~250 tests. Next: M4 (reception calls, return matching M1–M9, evidence revocation). See `docs/08` §1. Read `README.md`, then `docs/01`–`09` in order. Every decision and its source is in `docs/09-decisions-log.md` (IDs `Dxx` decisions, `Axx` assumptions, `Oxx` open items). Rationale is in `docs/adr/`.
 
 ## Hard rules
 
@@ -59,6 +59,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Python 3.13 venv in `.venv` (`py -3.13 -m venv .venv`, then `pip install -r requirements-dev.txt`). Quote the folder path in shells.
 
 ```powershell
+.\.venv\Scripts\python.exe scripts\dev_env.py --doctors   # SYNTHETIC dev data + config.ini (port 18091)
 .\.venv\Scripts\python.exe start.py                      # http://127.0.0.1:8091 — creates config.ini on first run
 .\.venv\Scripts\python.exe -m pytest tests -q            # ~70 s; bridge + real-poller lock tests dominate
 $env:PEYGIRI_PERF_DB = "<path to a COPY of clinic_new.db>"; .\.venv\Scripts\python.exe -m pytest tests\test_perf.py -s
