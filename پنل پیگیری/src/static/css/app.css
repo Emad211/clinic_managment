@@ -199,6 +199,18 @@ dialog legend { font-weight: 700; padding: 0; margin-bottom: 6px; width: 100%; }
 jdp-container { font-family: var(--font); }
 jdp-container .jdp-day.suggested:not(.selected) { background: var(--brand-soft); color: var(--brand-strong); font-weight: 800; }
 
+/* sub-navigation inside a page (reports: پیگیری / ثبت هویت; status: وضعیت / رویدادها) */
+.subnav { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 16px; }
+.subnav a { padding: 4px 14px; border-radius: 999px; border: 1px solid var(--border-strong); text-decoration: none; color: var(--text); background: var(--surface); }
+.subnav a[aria-current="page"] { background: var(--brand); border-color: var(--brand); color: #fff; font-weight: 700; }
+.kv { display: grid; grid-template-columns: max-content 1fr; gap: 6px 20px; margin: 0; }
+.kv dt { color: var(--muted); }
+.kv dd { margin: 0; font-weight: 600; }
+.grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; }
+.grid-2 > .card + .card { margin-top: 0; }
+textarea { width: 100%; min-height: 72px; resize: vertical; line-height: 1.8; }
+.mono { font-family: Consolas, monospace; font-size: .85rem; direction: ltr; text-align: left; word-break: break-all; color: var(--muted); }
+
 @media (max-width: 720px) {
   .appbar { gap: 8px; padding: 8px 12px; }
   .panel-form .q { grid-template-columns: 1fr; gap: 6px; }

@@ -10,7 +10,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - detects the patient's return from payments recorded in accounting;
 - reads accounting **strictly read-only**.
 
-**Status:** M0–M4 done (panel schema v4). That covers the read-only bridge, poller/mirror, login and doctor queue, identity, the journey engine and doctor panel, nurse paper and cut-offs, plus reception calls and return detection with revocation. M4 was also verified end to end against the real accounting app running on a copy of the clinic DB, with zero lock errors. About 270 tests. Next: M5 (reports, audit/health pages, weekly backup, mirror retention, stop button, procedure-name mapping, pilot). See `docs/08` §1. Read `README.md`, then `docs/01`–`09` in order. Every decision and its source is in `docs/09-decisions-log.md` (IDs `Dxx` decisions, `Axx` assumptions, `Oxx` open items). Rationale is in `docs/adr/`.
+**Status:** M0–M5 done; version 1.0.0-rc1 is the pilot candidate (panel schema v4). That covers the read-only bridge, poller/mirror, login and doctor queue, identity, the journey engine and doctor panel, nurse paper and cut-offs, plus reception calls and return detection with revocation. M4 was also verified end to end against the real accounting app running on a copy of the clinic DB, with zero lock errors. About 270 tests. Next: the on-site pilot (docs/08 §4–§5). See `docs/08` §1. Read `README.md`, then `docs/01`–`09` in order. Every decision and its source is in `docs/09-decisions-log.md` (IDs `Dxx` decisions, `Axx` assumptions, `Oxx` open items). Rationale is in `docs/adr/`.
 
 ## Hard rules
 

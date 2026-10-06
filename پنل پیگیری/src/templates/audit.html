@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}رویدادها — {{ app_name }}{% endblock %}
+{% block content %}
+<nav class="subnav" aria-label="وضعیت برنامه"><a href="{{ url_for('admin.health_page') }}">وضعیت</a><a href="{{ url_for('admin.audit_page') }}" aria-current="page">رویدادها</a></nav>
+<div class="page-head">
+  <div>
+    <h1>رویدادها</h1>
+    <p class="muted">هر تغییری که در پنل انجام شده: چه کسی، چه زمانی، چه کاری.</p>
+  </div>
+</div>
+<section class="card">
+  <form id="a-filter" class="row" style="margin-bottom:12px">
+    <label class="inline">بازهٔ تاریخ
+      <input name="range" class="range" data-jdp data-jdp-mode="range" data-jdp-max-date="today" autocomplete="off" value="{{ default_range }}"></label>
+    <label class="inline">کاربر <input name="actor" style="width:9rem" placeholder="بخشی از نام"></label>
+    <label class="inline">نوع کار <select name="action" id="a-action"><option value="">همه</option></select></label>
+    <button class="primary" type="submit">نمایش</button>
+  </form>
+  <p id="a-error" class="notice err" role="alert" hidden></p>
+  <div class="table-wrap"><table>
+    <thead><tr><th>زمان</th><th>کاربر</th><th>کار</th><th>شناسه</th><th>جزئیات</th></tr></thead>
+    <tbody id="a-rows"></tbody>
+  </table></div>
+  <div class="actions" style="margin-top:12px"><button id="a-prev" class="small">صفحهٔ قبل</button><button id="a-next" class="small">صفحهٔ بعد</button></div>
+</section>
+{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='js/audit.js') }}"></script>{% endblock %}

@@ -10,6 +10,7 @@ from flask import Flask, g
 
 from .adapters.accounting.bridge import AccountingBridge
 from .adapters.sqlite import core
+from .api import admin as admin_api
 from .api import auth as auth_api
 from .api import clinical as clinical_api
 from .api import health as health_api
@@ -21,7 +22,7 @@ from .common import iran_time
 from .common.jalali import jalali_date
 from .common.persian_text import fa_digits
 from .config.settings import Settings, resource_dir
-from .services import journeys, returns
+from .services import admin, journeys, returns
 from .services.bridge_monitor import BridgeMonitor
 from .sync.poller import Poller
 from .version import APP_NAME, APP_VERSION
@@ -46,6 +47,8 @@ class Runtime:
         self.poller = Poller(self.bridge, settings.panel_db_path,
                              interval_seconds=settings.poll_seconds, clock=clock,
                              on_events=lambda conn, events: returns.on_poll_events(conn, events, clock()))
+        self.maintenance = admin.Maintenance(settings.panel_db_path, settings.backups_dir, clock)
+        self.stop_server: Callable[[], None] | None = None     # set by start.py (the «توقف برنامه» button)
         self.stop = threading.Event()
         self.threads: list[threading.Thread] = []
 
@@ -53,6 +56,7 @@ class Runtime:
         self._spawn("bridge-monitor", self.monitor.run)
         self._spawn("poller", self._poll_when_ready)
         self._spawn("engine", self._engine_ticks)
+        self._spawn("maintenance", self.maintenance.run)
 
     def _engine_ticks(self, stop: threading.Event) -> None:
         """Time-driven journey transitions every 60 s (docs/02 §2); also catches day changes."""
@@ -132,6 +136,7 @@ def create_app(settings: Settings, *, start_background: bool = True,
     app.register_blueprint(manager_api.bp)
     app.register_blueprint(identity_api.bp)
     app.register_blueprint(clinical_api.bp)
+    app.register_blueprint(admin_api.bp)
 
     if start_background:
         runtime.start_background()

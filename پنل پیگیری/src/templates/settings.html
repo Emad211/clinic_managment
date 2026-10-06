@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}تنظیمات — {{ app_name }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>تنظیمات</h1>
+    <p class="muted">نام کارهای عملی در حسابداری و متن تماس‌های پذیرش.</p>
+  </div>
+</div>
+
+<section class="card" id="procedures">
+  <div class="card-head"><div><h2>نام کارهای عملی</h2>
+    <p class="muted">کارهای عملی در حسابداری با نام دلخواه ثبت می‌شوند. پنل از روی نام تشخیص می‌دهد کدام «کشیدن بخیه»، «پانسمان» یا «شستشوی گوش» است. نام‌هایی که دسته ندارند یا مبهم‌اند اول فهرست آمده‌اند؛ برای هر کدام دستهٔ درست را انتخاب کنید.</p></div></div>
+  {% if procedures %}
+  <div class="table-wrap"><table>
+    <thead><tr><th>نام در حسابداری</th><th>تعداد ردیف</th><th>تشخیص خودکار</th><th>تصمیم مدیر</th></tr></thead>
+    <tbody>
+    {% for p in procedures %}
+      <tr>
+        <td><strong>{{ p.name }}</strong>
+          {% if p.needs_decision %}<span class="tag warn">{{ 'مبهم' if p.ambiguous else 'بدون دسته' }}</span>{% endif %}</td>
+        <td>{{ p.count|fa }}</td>
+        <td>{{ p.auto|join('، ') if p.auto else '—' }}</td>
+        <td>
+          <form method="post" action="{{ url_for('admin.map_procedure') }}" class="actions">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="name" value="{{ p.name }}">
+            <select name="choice" aria-label="دستهٔ {{ p.name }}">
+              <option value="auto" {% if not p.mapped %}selected{% endif %}>طبق تشخیص خودکار</option>
+              {% for c, label in categories %}<option value="{{ c }}" {% if p.mapped and p.manual == c %}selected{% endif %}>{{ label }}</option>{% endfor %}
+              <option value="none" {% if p.mapped and p.manual is none %}selected{% endif %}>هیچ‌کدام (نامرتبط)</option>
+            </select>
+            <button class="small" type="submit">ذخیره</button>
+          </form>
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% else %}
+  <p class="empty">هنوز کار عملی‌ای از حسابداری خوانده نشده است.</p>
+  {% endif %}
+</section>
+
+<section class="card" id="call-texts">
+  <div class="card-head"><div><h2>متن تماس‌ها</h2>
+    <p class="muted">متنی که پذیرش هنگام تماس برای بیمار می‌خواند. <code>{due_date}</code> جای تاریخ موعد و <code>{category}</code> جای نام خدمت را می‌گیرد. در متن دعوت به ویزیتِ جرم گوش نام دارو نیاورید.</p></div></div>
+  <div class="stack">
+  {% for t in texts %}
+    <form method="post" action="{{ url_for('admin.save_call_text') }}" class="stack">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="purpose" value="{{ t.purpose }}">
+      <label>{{ t.label }}<textarea name="text" maxlength="400" required>{{ t.text }}</textarea></label>
+      <div><button class="small" type="submit">ذخیرهٔ متن</button></div>
+    </form>
+  {% endfor %}
+  </div>
+</section>
+{% endblock %}

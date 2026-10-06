@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% block title %}گزارش ثبت هویت — {{ app_name }}{% endblock %}
 {% block content %}
+<nav class="subnav" aria-label="گزارش‌ها"><a href="{{ url_for('admin.report_page') }}">پیگیری‌ها</a><a href="{{ url_for('identity.report_page') }}" aria-current="page">ثبت هویت</a></nav>
 <div class="page-head">
   <div>
     <h1>گزارش ثبت هویت</h1>

@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}گزارش پیگیری‌ها — {{ app_name }}{% endblock %}
+{% block content %}
+<nav class="subnav" aria-label="گزارش‌ها"><a href="{{ url_for('admin.report_page') }}" aria-current="page">پیگیری‌ها</a><a href="{{ url_for('identity.report_page') }}">ثبت هویت</a></nav>
+<div class="page-head">
+  <div>
+    <h1>گزارش پیگیری‌ها</h1>
+    <p class="muted">پیگیری‌هایی که در این بازه ساخته شده‌اند (بدون ادامه‌های خودکار)، نتیجهٔ آن‌ها و کار تماس پذیرش.</p>
+  </div>
+  <form id="r-filter" class="row">
+    <label class="inline">بازهٔ تاریخ
+      <input name="range" class="range" data-jdp data-jdp-mode="range" data-jdp-max-date="today" autocomplete="off"
+             value="{{ default_range }}" required></label>
+    <button class="primary" type="submit">نمایش</button>
+  </form>
+</div>
+<p id="r-error" class="notice err" role="alert" hidden></p>
+
+<section class="card">
+  <div class="card-head"><div><h2>بر اساس نوع پیگیری</h2>
+    <p class="muted">«درصد موفقیت» از میان پیگیری‌های بسته‌شده حساب می‌شود (موفق و نیمه‌کامل نسبت به همهٔ بسته‌شده‌ها).</p></div></div>
+  <div class="table-wrap"><table>
+    <thead><tr><th>نوع پیگیری</th><th>کل</th><th>در جریان</th><th>منتظر هویت</th><th>موفق</th><th>نیمه‌کامل</th><th>ناموفق</th><th>لغوشده</th><th>درصد موفقیت</th></tr></thead>
+    <tbody id="r-templates"></tbody>
+  </table></div>
+</section>
+
+<section class="card">
+  <div class="card-head"><div><h2>بر اساس پزشک</h2>
+    <p class="muted" id="r-baseline"></p></div></div>
+  <div class="table-wrap"><table>
+    <thead><tr><th>پزشک ثبت‌کننده</th><th>موفق</th><th>نیمه‌کامل</th><th>ناموفق</th><th>درصد موفقیت</th><th>ویزیت‌های بازگشت</th><th>نزد همان پزشک</th></tr></thead>
+    <tbody id="r-doctors"></tbody>
+  </table></div>
+</section>
+
+<section class="card">
+  <div class="card-head"><h2>تماس‌های پذیرش</h2></div>
+  <div class="table-wrap"><table>
+    <thead><tr><th>کاربر</th><th>کل تماس‌ها</th><th>نوبت داده شد</th><th>پاسخ نداد</th><th>مراجعه نمی‌کند</th><th>هنوز آزمایش نداده</th></tr></thead>
+    <tbody id="r-calls"></tbody>
+  </table></div>
+</section>
+{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='js/report.js') }}"></script>{% endblock %}

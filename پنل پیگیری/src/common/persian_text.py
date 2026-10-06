@@ -48,5 +48,9 @@ def digits_only(text: str | None) -> str:
     return "".join(ch for ch in normalize(text) if ch.isascii() and ch.isdigit())
 
 
+_DECIMAL_POINT = re.compile(r"(?<=\d)\.(?=\d)")
+
+
 def fa_digits(value: object) -> str:
-    return str(value).translate(_TO_FA_DIGITS)
+    """Persian digits, and the Persian decimal separator (٫) between digits."""
+    return _DECIMAL_POINT.sub("٫", str(value)).translate(_TO_FA_DIGITS)

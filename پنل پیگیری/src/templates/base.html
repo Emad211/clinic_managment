@@ -15,18 +15,21 @@
   <header class="appbar">
     <a class="brand" href="{{ url_for('pages.index') }}">{{ app_name }}</a>
     <nav aria-label="بخش‌ها">
+      {% set in_reports = ep in ('admin.report_page', 'identity.report_page') %}
       {% if principal.role == 'doctor' %}
         {{ nav_link('doctor.queue_page', 'بیماران امروز') }}
         {% if principal.is_director %}
           {{ nav_link('clinical.cutoffs_page', 'کات‌آف‌های بالینی') }}
-          {{ nav_link('identity.report_page', 'گزارش ثبت هویت') }}
+          <a href="{{ url_for('admin.report_page') }}"{% if in_reports %} aria-current="page"{% endif %}>گزارش‌ها</a>
         {% endif %}
       {% elif principal.role == 'reception' %}
         {{ nav_link('reception.home', 'پیگیری بیماران') }}
       {% elif principal.role == 'manager' %}
         {{ nav_link('manager.doctors', 'پزشکان') }}
         {{ nav_link('clinical.cutoffs_page', 'کات‌آف‌های بالینی') }}
-        {{ nav_link('identity.report_page', 'گزارش ثبت هویت') }}
+        <a href="{{ url_for('admin.report_page') }}"{% if in_reports %} aria-current="page"{% endif %}>گزارش‌ها</a>
+        {{ nav_link('admin.settings_page', 'تنظیمات') }}
+        <a href="{{ url_for('admin.health_page') }}"{% if ep in ('admin.health_page', 'admin.audit_page') %} aria-current="page"{% endif %}>وضعیت برنامه</a>
       {% endif %}
     </nav>
     <span class="spacer"></span>

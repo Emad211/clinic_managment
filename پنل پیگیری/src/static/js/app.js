@@ -21,7 +21,7 @@
     return body;
   }
 
-  const toFa = (v) => String(v ?? "").replace(/\d/g, (d) => FA[d]);
+  const toFa = (v) => String(v ?? "").replace(/(\d)\.(?=\d)/g, "$1٫").replace(/\d/g, (d) => FA[d]);
   const toLatin = (v) => String(v ?? "").trim().replace(/[۰-۹]/g, (d) => FA.indexOf(d)).replace(/[٠-٩]/g, (d) => "٠١٢٣٤٥٦٧٨٩".indexOf(d));
 
   function toast(text, isError = false) {

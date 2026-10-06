@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}وضعیت برنامه — {{ app_name }}{% endblock %}
+{% block content %}
+<nav class="subnav" aria-label="وضعیت برنامه"><a href="{{ url_for('admin.health_page') }}" aria-current="page">وضعیت</a><a href="{{ url_for('admin.audit_page') }}">رویدادها</a></nav>
+<div class="page-head">
+  <div>
+    <h1>وضعیت برنامه</h1>
+    <p class="muted">ارتباط با حسابداری، پشتیبان‌ها و حجم داده‌ها.</p>
+  </div>
+</div>
+
+{% set s = h.sync %}
+{% if s.color == 'green' %}<p class="notice ok">ارتباط با حسابداری برقرار است و داده‌ها به‌روزند.</p>
+{% elif s.color == 'yellow' %}<p class="notice warn">دریافت از حسابداری با تأخیر انجام می‌شود.</p>
+{% else %}<p class="notice err">{{ s.message or 'ارتباط با حسابداری قطع است.' }}</p>{% endif %}
+
+<div class="grid-2">
+  <section class="card">
+    <h2>ارتباط با حسابداری</h2>
+    <dl class="kv">
+      <dt>آخرین دریافت موفق</dt><dd>{{ h.last_ok_fa or '—' }}</dd>
+      <dt>زمان معمول هر بار خواندن</dt><dd>{{ (s.cycle_ms_p50 ~ ' میلی‌ثانیه')|fa if s.cycle_ms_p50 else '—' }}</dd>
+      <dt>کندترین ۱٪ خواندن‌ها</dt><dd>{{ (s.cycle_ms_p99 ~ ' میلی‌ثانیه')|fa if s.cycle_ms_p99 else '—' }}</dd>
+      <dt>خواندن‌های موفق / ردشده</dt><dd>{{ s.cycles_ok|fa }} / {{ s.cycles_skipped|fa }}</dd>
+      <dt>خطاهای پیاپی</dt><dd>{{ s.consecutive_failures|fa }}</dd>
+      <dt>آخرین خطا</dt><dd>{{ h.last_error_fa or '—' }}{% if s.last_error %} <span class="mono">{{ s.last_error }}</span>{% endif %}</dd>
+      <dt>بررسی ساختار حسابداری</dt><dd>{{ {'ok': 'سازگار', 'disabled': 'ناسازگار یا در دسترس نیست', 'unchecked': 'هنوز بررسی نشده'}[h.bridge_state] }} · {{ h.bridge_checked_fa }}</dd>
+      {% if s.last_engine_error %}<dt>آخرین خطای داخلی</dt><dd class="mono">{{ s.last_engine_error }}</dd>{% endif %}
+    </dl>
+  </section>
+
+  <section class="card">
+    <h2>پشتیبان و داده‌ها</h2>
+    <dl class="kv">
+      <dt>آخرین پشتیبان هفتگی</dt><dd>{{ h.last_backup_fa or 'هنوز گرفته نشده' }}</dd>
+      <dt>حجم دیتابیس پنل</dt><dd>{{ (h.db_mb ~ ' مگابایت')|fa }}</dd>
+      <dt>بیماران با هویت کامل</dt><dd>{{ h.counts.person|fa }}</dd>
+      <dt>پیگیری‌ها</dt><dd>{{ h.counts.journey|fa }}</dd>
+      <dt>بازگشت‌های ثبت‌شده</dt><dd>{{ h.counts.return_evidence|fa }}</dd>
+      <dt>فاکتورهای کپی‌شده از حسابداری</dt><dd>{{ h.counts.acc_invoice|fa }}</dd>
+    </dl>
+    <p class="faint" style="margin-top:8px">پشتیبان‌ها در پوشهٔ <span class="mono">backups</span> کنار برنامه نگه داشته می‌شوند (چهار نسخهٔ آخر). دادهٔ حسابداریِ قدیمی‌تر از ۱۲۰ روز، اگر پیگیری‌ای به آن وابسته نباشد، هفتگی از پنل پاک می‌شود؛ حسابداری دست نمی‌خورد.</p>
+    <form method="post" action="{{ url_for('admin.backup_now') }}" style="margin-top:12px">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button type="submit" class="small">همین حالا پشتیبان بگیر</button>
+    </form>
+  </section>
+</div>
+
+<section class="card">
+  <h2>توقف برنامه</h2>
+  {% if can_stop %}
+  <p class="muted">پنل بسته می‌شود؛ حسابداری بدون هیچ تغییری به کار ادامه می‌دهد. برای اجرای دوباره، PeygiriPanel.exe را باز کنید.</p>
+  <form method="post" action="{{ url_for('admin.stop') }}" onsubmit="return confirm('پنل پیگیری متوقف شود؟');">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button type="submit" class="danger">توقف برنامه</button>
+  </form>
+  {% else %}
+  <p class="muted">توقف فقط از کامپیوتری که برنامه روی آن اجرا می‌شود ممکن است.</p>
+  {% endif %}
+</section>
+{% endblock %}

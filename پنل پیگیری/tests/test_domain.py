@@ -24,6 +24,11 @@ def test_normalize():
     assert normalize(None) == ""
 
 
+def test_fa_digits_decimal_separator():
+    from src.common.persian_text import fa_digits
+    assert fa_digits("2.30 ms") == "۲٫۳۰ ms" and fa_digits("1405/07/14") == "۱۴۰۵/۰۷/۱۴" and fa_digits("v1.") == "v۱."
+
+
 def test_clean_name_keeps_half_space():
     from src.common.persian_text import clean_name
     assert clean_name(" عبدالله‌زاده  ") == "عبدالله‌زاده"

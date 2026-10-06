@@ -107,10 +107,10 @@ def _current_version(conn: sqlite3.Connection) -> int | None:
     return int(row[0]) if row else 0
 
 
-def backup(conn: sqlite3.Connection, backups_dir: Path, label: str) -> Path:
+def backup(conn: sqlite3.Connection, backups_dir: Path, label: str, when=None) -> Path:
     """Consistent copy via the backup API; keeps the newest KEEP_BACKUPS per label."""
     backups_dir.mkdir(parents=True, exist_ok=True)
-    stamp = iran_time.now().strftime("%Y%m%d-%H%M%S")
+    stamp = (when or iran_time.now()).strftime("%Y%m%d-%H%M%S")
     dest = backups_dir / f"peygiri_panel_{label}_{stamp}.db"
     target = sqlite3.connect(str(dest))
     try:

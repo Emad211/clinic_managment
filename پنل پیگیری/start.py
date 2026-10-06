@@ -87,6 +87,7 @@ def main() -> None:
         _fatal(f"برنامه اجرا نشد:\n{exc}")
         return
     server.app = app
+    app.extensions["peygiri"].stop_server = server.shutdown
 
     log.info("listening on %s:%d", settings.host, settings.port)
     if settings.open_browser:

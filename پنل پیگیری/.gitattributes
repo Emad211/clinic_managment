@@ -1,0 +1,3 @@
+# Vendored third-party files must stay byte-identical (their hashes are in NOTICE.txt).
+src/static/vendor/** -text
+src/static/fonts/** binary
