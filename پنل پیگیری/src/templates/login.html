@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}ورود — {{ app_name }}{% endblock %}
+{% block content %}
+<section class="card narrow">
+  <h1>ورود به {{ app_name }}</h1>
+  {% if error %}<p class="flash error" role="alert">{{ error }}</p>{% endif %}
+  <form method="post" class="stack">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label>نام کاربری <input name="username" value="{{ username }}" autocomplete="username" dir="ltr" required autofocus></label>
+    <label>رمز <input name="password" type="password" autocomplete="current-password" dir="ltr" required></label>
+    <button type="submit" class="primary">ورود</button>
+  </form>
+  <p class="muted">پذیرش و مدیر با همان نام کاربری و رمز حسابداری وارد می‌شوند. پزشکان با حسابی که مدیر در پنل ساخته است.</p>
+</section>
+{% endblock %}

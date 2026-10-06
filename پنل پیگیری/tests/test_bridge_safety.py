@@ -123,7 +123,8 @@ def _writer(path: Path, stop: threading.Event, latencies: list, errors: list, rn
         conn.close()
 
 
-def test_lock_poller_never_blocks_accounting(acc_db):
+@pytest.mark.parametrize("real_poller", [False, True], ids=["bridge", "poller"])
+def test_lock_poller_never_blocks_accounting(acc_db, tmp_path, real_poller):
     """1000 poll cycles at ~100/s — 500× the production rate (one per 5 s) — against a writer.
 
     Pass criteria (docs/03 §11.3):
@@ -136,6 +137,20 @@ def test_lock_poller_never_blocks_accounting(acc_db):
     watched = frozenset(range(291, 301))      # the open invoices
     req = PollRequest(300, 0, watched, "2026-10-05")
 
+    if real_poller:
+        from datetime import datetime
+        from src.adapters.sqlite import core, state_repo
+        from src.sync.poller import Poller
+        panel = tmp_path / "panel.db"
+        core.init_db(panel, tmp_path / "backups")
+        b = bridge.AccountingBridge(str(acc_db), budget_ms=BUDGET, busy_timeout_ms=BUSY)
+        assert BridgeMonitor(b).check_now().state == "ok"
+        with core.connect(panel) as conn:
+            with core.transaction(conn):
+                state_repo.sync_set(conn, {"wm_invoice_id": "290", "wm_activity_log_id": "0"})
+        poller = Poller(b, panel, interval_seconds=0.01, clock=lambda: datetime(2026, 10, 6, 10))
+        assert poller.step().ok
+
     stop, lat, errors = threading.Event(), [], []
     w = threading.Thread(target=_writer, args=(acc_db, stop, lat, errors, 2))
     w.start()
@@ -144,7 +159,14 @@ def test_lock_poller_never_blocks_accounting(acc_db):
     try:
         while (done < 1000 or len(lat) < 100) and time.monotonic() < deadline:
             try:
-                cycle(acc_db, lambda s: read_poll(s, req))
+                if real_poller:
+                    result = poller.step()
+                    assert result.ok or result.reason == "busy", result
+                    if not result.ok:
+                        skipped += 1
+                        continue
+                else:
+                    cycle(acc_db, lambda s: read_poll(s, req))
                 done += 1
             except CycleSkipped as exc:
                 assert exc.reason == "busy", exc
@@ -159,6 +181,8 @@ def test_lock_poller_never_blocks_accounting(acc_db):
     assert len(lat) >= 100
     assert max(lat) < 100, f"worst accounting commit {max(lat):.1f} ms (p99 {p99(lat):.1f} ms)"
     assert skipped <= done * 0.05
+    print(f"lock {'poller' if real_poller else 'bridge'}: {done} ok, {skipped} skipped; "
+          f"writer {len(lat)} commits, max {max(lat):.2f} ms, p99 {p99(lat):.2f} ms")
 
 
 def test_busy_accounting_skips_cycle_without_holding_locks(acc_db):

@@ -20,11 +20,18 @@ from ...config.settings import resource_dir
 
 log = logging.getLogger(__name__)
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 KEEP_BACKUPS = 4
 
 # version → additive, re-runnable step that brings the DB from version-1 to version.
-MIGRATIONS: dict[int, Callable[[sqlite3.Connection], None]] = {}
+def _migrate_v2(conn: sqlite3.Connection) -> None:
+    """M1: preserve an M0 mirror while adding the visit timestamp used by the queue."""
+    columns = {row[1] for row in conn.execute("PRAGMA table_info(acc_item)")}
+    if "item_at" not in columns:
+        conn.execute("ALTER TABLE acc_item ADD COLUMN item_at TEXT")
+
+
+MIGRATIONS: dict[int, Callable[[sqlite3.Connection], None]] = {2: _migrate_v2}
 
 
 def schema_sql() -> str:

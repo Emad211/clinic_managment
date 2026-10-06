@@ -265,3 +265,8 @@ def sample_params(name: str) -> tuple[str, tuple]:
 
 def iter_query_names() -> Iterable[str]:
     return QUERIES.keys()
+
+
+def read_shift_staff(s: ReadSession, since: str) -> list[AccShiftStaff]:
+    """Q9 alone: the 84-day history on first run."""
+    return [AccShiftStaff(*r) for r in s.fetch(QUERIES["Q9"], (since,))]

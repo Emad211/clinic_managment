@@ -10,6 +10,10 @@
 - **migration:** `schema.sql` منبع حقیقت است و همهٔ دستورهایش `IF NOT EXISTS` دارند. نسخهٔ اسکیما در `schema_meta.version` ثبت می‌شود. تغییرات افزایشی و قابل اجرای دوباره هستند و پیش از هر migration یک بکاپ خودکار گرفته می‌شود. این همان روش `webapp` است، به‌علاوهٔ شمارهٔ نسخه.
 - `PRAGMA foreign_keys = ON`، `journal_mode = WAL`، `busy_timeout = 5000`.
 
+### نسخهٔ فعلی اسکیما
+
+نسخهٔ ۲ (M1): ستون `acc_item.item_at` برای زمان و ترتیب ویزیت‌ها اضافه شد. ارتقای نصب M0 نسخهٔ ۱، پیش از تغییر بکاپ می‌گیرد، ستون را افزایشی اضافه می‌کند و اطلاعات قبلی را حفظ می‌کند. اجرای دوبارهٔ ارتقا بی‌اثر است.
+
 ## ۲. نمودار ارتباطات اصلی
 
 ```mermaid
@@ -277,6 +281,7 @@ CREATE TABLE IF NOT EXISTS acc_item (
   service_id      INTEGER,                 -- injections.service_id
   doctor_staff_id INTEGER, nurse_staff_id INTEGER, performer_type TEXT,
   price REAL, work_date TEXT, shift TEXT,
+  item_at TEXT,                            -- visits.visit_date (برای ترتیب صف)؛ برای بقیه NULL
   is_paid INTEGER NOT NULL DEFAULT 0, payment_type TEXT, paid_seen_at TEXT,
   deleted_at TEXT,
   PRIMARY KEY (item_type, item_id)

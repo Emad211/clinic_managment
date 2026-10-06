@@ -100,3 +100,25 @@ def test_schema_constraints_hold(tmp_path):
             conn.execute("INSERT INTO person_acc_link VALUES (1, 999, 'manual', 't', 't')")
     finally:
         conn.close()
+
+
+def test_m0_upgrade_adds_visit_time_and_preserves_data(tmp_path):
+    """M0 v1 did not have acc_item.item_at; an existing install must migrate."""
+    db, backups = tmp_path / "m0.db", tmp_path / "backups"
+    m0_schema = chr(10).join(line for line in core.schema_sql().splitlines() if not line.strip().startswith("item_at TEXT"))
+    with sqlite3.connect(db) as conn:
+        conn.executescript(m0_schema)
+        conn.execute("INSERT INTO schema_meta VALUES ('version', '1')")
+        conn.execute("INSERT INTO setting VALUES ('keep', 'value', 'test', '2026-10-06 10:00:00')")
+        conn.execute("INSERT INTO acc_item(item_type, item_id, acc_invoice_id) VALUES ('visit', 1, 1)")
+    assert core.init_db(db, backups) == core.SCHEMA_VERSION
+    with sqlite3.connect(db) as conn:
+        assert 'item_at' in {row[1] for row in conn.execute('PRAGMA table_info(acc_item)')}
+        assert conn.execute("SELECT item_at FROM acc_item WHERE item_id = 1").fetchone() == (None,)
+        assert conn.execute("SELECT value FROM setting WHERE key = 'keep'").fetchone() == ('value',)
+    (copy,) = backups.glob('peygiri_panel_pre-migration-v1_*.db')
+    with sqlite3.connect(copy) as conn:
+        assert 'item_at' not in {row[1] for row in conn.execute('PRAGMA table_info(acc_item)')}
+        assert conn.execute("SELECT value FROM schema_meta WHERE key = 'version'").fetchone() == ('1',)
+    core.init_db(db, backups)
+    assert len(list(backups.glob('*.db'))) == 1

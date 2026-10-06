@@ -110,3 +110,112 @@ def add_items(conn: sqlite3.Connection, iid: int, pid: int, work: str, shift: st
             "performer_type, nurse_id) VALUES (?,?,?,?,?,?,?,?)",
             (pid, rng.choice(["کشیدن بخیه", "پانسمان", "شستشوی گوش"]), work, shift, 150000, iid, "nurse", 5))
         pay("procedure", cur.lastrowid)
+
+
+class Reception:
+    """Plays the accounting app's reception writes on a synthetic DB (same tables, same rows).
+
+    Every write is its own short transaction with python's default timeout=5,
+    like the accounting app.
+    """
+
+    def __init__(self, path: Path) -> None:
+        self.path = path
+
+    def _run(self, sql: str, params=()) -> int:
+        conn = sqlite3.connect(str(self.path), timeout=5)
+        try:
+            cur = conn.execute(sql, params)
+            conn.commit()
+            return int(cur.lastrowid or 0)
+        finally:
+            conn.close()
+
+    def _log(self, action: str, invoice_id: int | None, target_type: str | None = None,
+             target_id: int | None = None) -> None:
+        self._run("INSERT INTO activity_logs(action_type, action_category, invoice_id, target_type, target_id) "
+                  "VALUES (?, 'invoice', ?, ?, ?)", (action, invoice_id, target_type, target_id))
+
+    def add_patient(self, name: str, family: str, national_id: str | None = None,
+                    phone: str | None = None, is_foreign: int = 0) -> int:
+        return self._run("INSERT INTO patients(name, family_name, national_id, phone_number, is_foreign) "
+                         "VALUES (?,?,?,?,?)", (name, family, national_id, phone, is_foreign))
+
+    def update_patient(self, pid: int, **fields) -> None:
+        cols = ", ".join(f"{k} = ?" for k in fields)
+        self._run(f"UPDATE patients SET {cols} WHERE id = ?", (*fields.values(), pid))
+
+    def open_invoice(self, patient_id: int, work_date: str, shift: str) -> int:
+        iid = self._run("INSERT INTO invoices(patient_id, status, work_date, shift, opened_by) "
+                        "VALUES (?, 'open', ?, ?, 'recep1')", (patient_id, work_date, shift))
+        self._log("invoice_create", iid, "invoice", iid)
+        return iid
+
+    def _patient_of(self, iid: int) -> tuple[int, str, str]:
+        conn = sqlite3.connect(str(self.path))
+        try:
+            return conn.execute("SELECT patient_id, work_date, shift FROM invoices WHERE id = ?", (iid,)).fetchone()
+        finally:
+            conn.close()
+
+    def add_visit(self, iid: int, doctor_id: int, at: str | None = None, price: float = 500000) -> int:
+        pid, work, shift = self._patient_of(iid)
+        vid = self._run("INSERT INTO visits(patient_id, invoice_id, doctor_id, work_date, shift, price, visit_date) "
+                        "VALUES (?,?,?,?,?,?, coalesce(?, datetime('now')))", (pid, iid, doctor_id, work, shift, price, at))
+        self._run("INSERT INTO invoice_item_payments(invoice_id, item_type, item_id, is_paid) VALUES (?, 'visit', ?, 0)",
+                  (iid, vid))
+        self._log("visit_add", iid, "visit", vid)
+        return vid
+
+    def add_injection(self, iid: int, service_id: int, name: str, nurse_id: int = 5) -> int:
+        pid, work, shift = self._patient_of(iid)
+        jid = self._run("INSERT INTO injections(patient_id, injection_type, service_id, work_date, shift, "
+                        "total_price, invoice_id, nurse_id) VALUES (?,?,?,?,?,?,?,?)",
+                        (pid, name, service_id, work, shift, 80000, iid, nurse_id))
+        self._run("INSERT INTO invoice_item_payments(invoice_id, item_type, item_id, is_paid) "
+                  "VALUES (?, 'injection', ?, 0)", (iid, jid))
+        self._log("injection_add", iid, "injection", jid)
+        return jid
+
+    def add_procedure(self, iid: int, name: str, nurse_id: int = 5) -> int:
+        pid, work, shift = self._patient_of(iid)
+        rid = self._run("INSERT INTO procedures(patient_id, procedure_type, work_date, shift, price, invoice_id, "
+                        "performer_type, nurse_id) VALUES (?,?,?,?,?,?,'nurse',?)",
+                        (pid, name, work, shift, 150000, iid, nurse_id))
+        self._run("INSERT INTO invoice_item_payments(invoice_id, item_type, item_id, is_paid) "
+                  "VALUES (?, 'procedure', ?, 0)", (iid, rid))
+        self._log("procedure_add", iid, "procedure", rid)
+        return rid
+
+    def set_paid(self, iid: int, item_type: str, item_id: int, paid: bool = True) -> None:
+        self._run("INSERT INTO invoice_item_payments(invoice_id, item_type, item_id, payment_type, is_paid) "
+                  "VALUES (?,?,?, 'cash', ?) ON CONFLICT(invoice_id, item_type, item_id) "
+                  "DO UPDATE SET is_paid = excluded.is_paid, payment_type = excluded.payment_type",
+                  (iid, item_type, item_id, int(paid)))
+        self._log("payment_update", iid, item_type, item_id)
+
+    def delete_item(self, iid: int, item_type: str, item_id: int) -> None:
+        table = {"visit": "visits", "injection": "injections", "procedure": "procedures"}[item_type]
+        self._run(f"DELETE FROM {table} WHERE id = ?", (item_id,))
+        self._run("DELETE FROM invoice_item_payments WHERE invoice_id = ? AND item_type = ? AND item_id = ?",
+                  (iid, item_type, item_id))
+        self._log(f"{item_type}_delete", iid, item_type, item_id)
+
+    def close_invoice(self, iid: int, total: float) -> None:
+        self._run("UPDATE invoices SET status = 'closed', total_amount = ?, closed_at = datetime('now') "
+                  "WHERE id = ?", (total, iid))
+        self._log("invoice_close", iid, "invoice", iid)
+
+    def start_shift(self, user_id: int, shift: str, work_date: str, started_at: str) -> None:
+        self._run("INSERT INTO user_active_shift(user_id, active_shift, work_date, shift_started_at) "
+                  "VALUES (?,?,?,?) ON CONFLICT(user_id) DO UPDATE SET active_shift = excluded.active_shift, "
+                  "work_date = excluded.work_date, shift_started_at = excluded.shift_started_at",
+                  (user_id, shift, work_date, started_at))
+
+    def set_staff_active(self, staff_id: int, active: bool) -> None:
+        self._run("UPDATE medical_staff SET is_active = ? WHERE id = ?", (int(active), staff_id))
+
+    def add_user(self, username: str, password_hash: bytes | str, role: str, *, active: int = 1,
+                 locked_until: str | None = None, full_name: str = "") -> int:
+        return self._run("INSERT INTO users(username, password_hash, role, full_name, is_active, locked_until) "
+                         "VALUES (?,?,?,?,?,?)", (username, password_hash, role, full_name, active, locked_until))
