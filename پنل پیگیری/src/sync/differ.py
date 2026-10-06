@@ -10,6 +10,7 @@ snapshot does not was deleted in accounting (docs/03 §8).
 """
 from __future__ import annotations
 
+import logging
 import sqlite3
 from dataclasses import dataclass, field
 
@@ -20,6 +21,12 @@ from ..domain import categories as cat
 from ..domain.events import (DomainEvent, InvoiceClosed, ItemAdded, ItemDeleted, ItemPaid, PatientChanged,
                              PaymentRemoved)
 from ..domain.identity import identity_ok
+from ..services.identity import sync_patients
+from ..adapters.sqlite import identity_repo
+from ..adapters.sqlite.core import savepoint
+
+
+log = logging.getLogger(__name__)
 
 
 @dataclass
@@ -103,6 +110,15 @@ def apply_snapshot(conn: sqlite3.Connection, snap: PollSnapshot, ids: cat.Servic
         ok = identity_ok(p.name, p.family_name, p.national_id, p.phone_number)
         if repo.upsert_patient(conn, p, ok, now):
             result.events.append(PatientChanged(p.id, ok))
+
+    # Identity is panel-only logic. A bug or bad row there must never stop the mirror:
+    # its writes are undone, the mirror update still commits, and the next cycle retries.
+    try:
+        with savepoint(conn, "identity_sync"):
+            identity_repo.observe_invoices(conn, read_ids, now)
+            sync_patients(conn, [p.id for p in snap.patients], now)
+    except Exception:
+        log.exception("identity sync failed; mirror update kept")
 
     if snap.shift_staff:
         repo.upsert_shift_staff(conn, snap.shift_staff)

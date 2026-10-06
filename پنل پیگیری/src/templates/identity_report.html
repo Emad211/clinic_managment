@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="card">
+  <h1>گزارش رعایت هویت — کاربر پذیرش و شیفت</h1>
+  <form id="report-filter" class="report-filter">
+    <label>از تاریخ <input name="from" value="{{ today }}" inputmode="numeric" required></label>
+    <label>تا تاریخ <input name="to" value="{{ today }}" inputmode="numeric" required></label>
+    <button class="primary" type="submit">نمایش گزارش</button>
+  </form>
+  <p class="muted">فقط فاکتورهای مشاهده‌شده در آینه با ویزیت، تست قند یا کنترل فشار. «اولین مشاهده» کیفیت ثبت اولیهٔ حسابداری نیست؛ برای داده‌های قدیمی مبنا زمان ارتقای پنل است.</p>
+  <p class="muted">تکمیل پنل جدا از حسابداری نشان داده می‌شود؛ اتباع تأییدشده از نرخ مؤثر خارج‌اند.</p>
+  <p id="report-error" class="error" role="alert"></p>
+  <div class="report-scroll"><table>
+    <thead><tr><th>کاربر</th><th>شیفت</th><th>کل</th><th>کامل در اولین مشاهده</th><th>کامل حسابداری اکنون</th><th>متصل در پنل</th><th>تبعه</th><th>کامل مؤثر (غیرتبعه)</th><th>نرخ مؤثر</th></tr></thead>
+    <tbody id="report-rows"></tbody>
+  </table></div>
+</section>
+{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='js/identity-report.js') }}"></script>{% endblock %}

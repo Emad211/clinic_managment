@@ -12,6 +12,7 @@ from .adapters.accounting.bridge import AccountingBridge
 from .adapters.sqlite import core
 from .api import auth as auth_api
 from .api import health as health_api
+from .api import identity as identity_api
 from .api import manager as manager_api
 from .api import pages as pages_api
 from .api.security import check_client, check_csrf, csrf_token, principal
@@ -105,6 +106,7 @@ def create_app(settings: Settings, *, start_background: bool = True,
     app.register_blueprint(pages_api.doctor_bp)
     app.register_blueprint(pages_api.reception_bp)
     app.register_blueprint(manager_api.bp)
+    app.register_blueprint(identity_api.bp)
 
     if start_background:
         runtime.start_background()

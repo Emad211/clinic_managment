@@ -171,7 +171,9 @@ def upsert_shift_staff(conn: sqlite3.Connection, rows) -> None:
 def doctor_queue(conn: sqlite3.Connection, staff_id: int, work_date: str, shift: str) -> list[sqlite3.Row]:
     return conn.execute(
         "SELECT v.item_id AS visit_id, v.acc_invoice_id, v.acc_patient_id, v.item_at, "
-        "       p.name, p.family_name, p.national_id, p.identity_ok, "
+        "       coalesce(local.first_name,p.name) AS name, coalesce(local.last_name,p.family_name) AS family_name, "
+        "       coalesce(local.national_id,p.national_id) AS national_id, "
+        "       CASE WHEN local.id IS NOT NULL THEN 1 ELSE coalesce(p.identity_ok,0) END AS identity_ok, "
         "       e.decision, "
         "       (SELECT group_concat(c.category) FROM acc_item o JOIN acc_item_category c "
         "          ON c.item_type = o.item_type AND c.item_id = o.item_id "
@@ -179,6 +181,8 @@ def doctor_queue(conn: sqlite3.Connection, staff_id: int, work_date: str, shift:
         "          AND o.item_type <> 'visit') AS other_categories "
         "FROM acc_item v "
         "LEFT JOIN acc_patient p ON p.acc_id = v.acc_patient_id "
+        "LEFT JOIN person_acc_link l ON l.acc_patient_id = v.acc_patient_id "
+        "LEFT JOIN person local ON local.id = l.person_id "
         "LEFT JOIN encounter e ON e.acc_visit_id = v.item_id "
         "WHERE v.item_type = 'visit' AND v.work_date = ? AND v.shift = ? AND v.doctor_staff_id = ? "
         "  AND v.deleted_at IS NULL "

@@ -20,7 +20,7 @@ from ...config.settings import resource_dir
 
 log = logging.getLogger(__name__)
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 KEEP_BACKUPS = 4
 
 # version → additive, re-runnable step that brings the DB from version-1 to version.
@@ -31,7 +31,13 @@ def _migrate_v2(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE acc_item ADD COLUMN item_at TEXT")
 
 
-MIGRATIONS: dict[int, Callable[[sqlite3.Connection], None]] = {2: _migrate_v2}
+def _migrate_v3(conn: sqlite3.Connection) -> None:
+    """M2: baseline existing mirror at upgrade time; never invent historical quality."""
+    from . import identity_repo
+    identity_repo.observe_invoices(conn, identity_repo.all_invoice_ids(conn), iran_time.now_str())
+
+
+MIGRATIONS: dict[int, Callable[[sqlite3.Connection], None]] = {2: _migrate_v2, 3: _migrate_v3}
 
 
 def schema_sql() -> str:
@@ -57,6 +63,19 @@ def transaction(conn: sqlite3.Connection) -> Iterator[sqlite3.Connection]:
         conn.execute("ROLLBACK")
         raise
     conn.execute("COMMIT")
+
+
+@contextmanager
+def savepoint(conn: sqlite3.Connection, name: str) -> Iterator[sqlite3.Connection]:
+    """Nested unit inside an open transaction: on error only its own writes are undone, then re-raise."""
+    conn.execute(f"SAVEPOINT {name}")
+    try:
+        yield conn
+    except BaseException:
+        conn.execute(f"ROLLBACK TO {name}")
+        conn.execute(f"RELEASE {name}")
+        raise
+    conn.execute(f"RELEASE {name}")
 
 
 def _current_version(conn: sqlite3.Connection) -> int | None:

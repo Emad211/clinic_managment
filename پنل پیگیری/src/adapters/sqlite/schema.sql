@@ -279,3 +279,11 @@ CREATE TABLE IF NOT EXISTS audit_log (
 );
 CREATE INDEX IF NOT EXISTS ix_audit_at ON audit_log(at);
 CREATE TABLE IF NOT EXISTS schema_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);  -- version، created_at
+
+
+-- M2: first mirrored observation, NOT necessarily the original registration time.
+CREATE TABLE IF NOT EXISTS identity_observation (
+  acc_invoice_id INTEGER PRIMARY KEY,
+  accounting_identity_ok INTEGER NOT NULL CHECK (accounting_identity_ok IN (0,1)),
+  observed_at TEXT NOT NULL
+);

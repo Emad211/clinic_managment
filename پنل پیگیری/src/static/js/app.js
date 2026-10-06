@@ -13,7 +13,10 @@
     const resp = await fetch(url, opts);
     if (resp.status === 401) { window.location.href = "/login"; throw new Error("unauthorized"); }
     const body = await resp.json().catch(() => ({}));
-    if (!resp.ok) throw new Error(body.error || "خطا در ارتباط با سرور");
+    if (!resp.ok) {
+      const error = new Error(body.error || "خطا در ارتباط با سرور");
+      error.status = resp.status; error.details = body; throw error;
+    }
     return body;
   }
 

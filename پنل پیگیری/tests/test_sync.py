@@ -236,3 +236,24 @@ def test_restart_resumes_watermark_and_handles_over_500_watched_invoices(env):
     assert q(db, "SELECT count(*) FROM acc_invoice")[0][0] == 510
     assert restarted.step().ok
     assert q(db, "SELECT count(*) FROM acc_invoice")[0][0] == 510
+
+
+def test_identity_failure_never_stops_the_mirror(env, monkeypatch):
+    """A crash in panel-only identity code is isolated; the mirror and watermarks still advance."""
+    poller, rec, db, seen = env
+    poller.step()
+
+    def boom(*_args, **_kwargs):
+        raise RuntimeError("identity bug")
+    monkeypatch.setattr("src.sync.differ.sync_patients", boom)
+    pid = rec.add_patient("مریم", "احمدی", VALID_NID, "09121234567")
+    vid = rec.add_visit(rec.open_invoice(pid, T, "morning"), doctor_id=1)
+    assert poller.step().ok
+    assert q(db, "SELECT item_id FROM acc_item WHERE item_type='visit' AND item_id=?", vid) == [(vid,)]
+    assert q(db, "SELECT count(*) FROM person") == [(0,)]                 # identity writes undone
+    assert q(db, "SELECT count(*) FROM identity_observation") == [(0,)]
+
+    monkeypatch.undo()
+    rec.set_paid(*q(db, "SELECT acc_invoice_id, 'visit', item_id FROM acc_item WHERE item_id=?", vid)[0])
+    assert poller.step().ok                                               # next cycle heals
+    assert q(db, "SELECT count(*) FROM person") == [(1,)]

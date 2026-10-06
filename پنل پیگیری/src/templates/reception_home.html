@@ -1,8 +1,33 @@
 {% extends "base.html" %}
 {% block content %}
 <section class="card">
-  <h1>پذیرش</h1>
-  <p>زبانه‌های پذیرش (هویت ناقص، کاغذ پرستار، تماس‌ها و …) در مرحله‌های بعدی اضافه می‌شوند.</p>
-  <p class="muted">شیفت جاری و وضعیت همگام‌سازی در بالای صفحه دیده می‌شود.</p>
+  <div class="card-head"><h1>پذیرش — هویت ناقص <span id="identity-count" class="tag err">…</span></h1><button id="identity-refresh">تازه‌سازی</button></div>
+  <p>تا بیمار در درمانگاه است تکمیل کنید.</p>
+  <p class="muted">پرونده‌های تکراری فقط در پنل متصل می‌شوند؛ حسابداری تغییر نمی‌کند.</p>
+  <p id="identity-message" role="status" aria-live="polite"></p>
+  <p id="identity-list-error" class="error" role="alert"></p>
+  <div id="identity-list" class="stack"></div>
 </section>
+<dialog id="identity-dialog" aria-labelledby="identity-title">
+  <form id="identity-form" class="stack" novalidate>
+    <h2 id="identity-title">تکمیل هویت</h2>
+    <label>نام <input name="first_name" maxlength="100" autocomplete="off" required></label>
+    <label>نام خانوادگی <input name="last_name" maxlength="100" autocomplete="off" required></label>
+    <label>کد ملی <input name="national_id" dir="ltr" inputmode="numeric" maxlength="100" autocomplete="off" required></label>
+    <label>موبایل <input name="mobile" dir="ltr" inputmode="tel" maxlength="100" autocomplete="off" required></label>
+    <div id="identity-problems" class="error" aria-live="polite"></div>
+    <div id="identity-match" class="stack"></div>
+    <div id="identity-suggestions" class="stack"></div>
+    <p class="muted">این اطلاعات فقط در پنل ذخیره می‌شود. در مراجعهٔ بعدی، بیمار را در حسابداری با همین کد ملی ثبت کنید.</p>
+    <p id="identity-error" class="error" role="alert"></p>
+    <div class="actions"><button id="identity-save" class="primary" type="submit" disabled>ثبت هویت و اتصال</button><button id="identity-cancel" type="button">انصراف</button></div>
+  </form>
+</dialog>
+<dialog id="foreign-dialog" aria-labelledby="foreign-title">
+  <h2 id="foreign-title">تأیید تبعهٔ خارجی</h2><p id="foreign-name"></p>
+  <p>بیمار واقعاً تبعه است؟ همهٔ پیگیری‌های در انتظار هویت این پرونده لغو می‌شوند. علامت خارجیِ حسابداری به‌تنهایی کافی نیست.</p>
+  <p id="foreign-error" class="error" role="alert"></p>
+  <div class="actions"><button id="foreign-confirm" class="primary">تبعه است؛ خارج از پیگیری</button><button id="foreign-cancel">انصراف</button></div>
+</dialog>
 {% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='js/identity.js') }}"></script>{% endblock %}

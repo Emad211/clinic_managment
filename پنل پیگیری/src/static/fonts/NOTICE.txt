@@ -1,0 +1,4 @@
+Vazirmatn (Regular, Bold) — by Saber Rastikerdar and contributors.
+Licensed under the SIL Open Font License 1.1: https://openfontlicense.org
+Source: https://github.com/rastikerdar/vazirmatn
+Bundled locally so the panel never loads anything from the internet.
