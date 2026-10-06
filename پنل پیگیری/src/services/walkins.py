@@ -21,8 +21,8 @@ from ..domain.identity import mask_national_id
 from . import cutoffs, journeys
 from .encounters import EncounterError, plan_from_form
 
-ACTION_LABELS = {"invite_visit": "دعوت به ویزیت", "control_series_bp": "سری کنترل فشار",
-                 "control_series_bs": "سری کنترل قند", "renewal": "تمدید نسخه"}
+ACTION_LABELS = {"invite_visit": "دعوت به ویزیت", "control_series_bp": "اندازه‌گیری فشار در درمانگاه",
+                 "control_series_bs": "اندازه‌گیری قند در درمانگاه", "renewal": "تمدید نسخه"}
 QUICK_RENEWAL_DAYS = (10, 20, 30)
 
 
@@ -76,7 +76,7 @@ def save(conn: sqlite3.Connection, invoice_id: int, form: dict[str, Any], *, act
         if form["status"] == "no_paper":
             wid = repo.insert_walkin(conn, status="no_paper", ruleset_id=None, **base)
             account_repo.audit(conn, at, actor, "walkin.no_paper", "walkin_entry", wid)
-            return {"walkin_id": wid, "actions": [], "message": "ثبت شد — کاغذ موجود نیست"}
+            return {"walkin_id": wid, "actions": [], "message": "ثبت شد: برگهٔ پرستار موجود نیست"}
 
         try:
             _, _, measurements = plan_from_form({"bp": form.get("bp"), "bs": form.get("bs")})
@@ -127,13 +127,12 @@ def save(conn: sqlite3.Connection, invoice_id: int, form: dict[str, Any], *, act
                                   "cutoff_ruleset_id": approved[0] if approved else None})
 
     if approved is None:
-        message = "ثبت شد. کات‌آف هنوز توسط پزشک مدیر تأیید نشده؛ اقدام خودکاری ساخته نشد"
-        if "renewal" in actions:
-            message += " (فقط تمدید نسخه ساخته شد)"
+        message = ("ثبت شد؛ پیگیری تمدید نسخه ساخته شد. کات‌آف هنوز تأیید نشده، پس دعوت یا اندازه‌گیری دوباره ساخته نشد"
+                   if "renewal" in actions else "ثبت شد. کات‌آف هنوز تأیید نشده، پس پیگیری خودکاری ساخته نشد")
     elif actions:
-        message = "ثبت شد — " + "، ".join(ACTION_LABELS[a] for a in actions) + " ساخته شد"
+        message = "ثبت شد؛ پیگیری ساخته شد: " + "، ".join(ACTION_LABELS[a] for a in actions)
     else:
-        message = "ثبت شد — بدون اقدام"
+        message = "ثبت شد؛ عددها به آستانهٔ اقدام نرسیدند و پیگیری لازم نیست"
     if actions and person_id is None:
         message += ". پیگیری‌ها پس از تکمیل هویت فعال می‌شوند"
     return {"walkin_id": wid, "actions": actions, "message": message}

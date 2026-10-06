@@ -1,17 +1,20 @@
 {% extends "base.html" %}
-{% block title %}صف من — {{ app_name }}{% endblock %}
+{% block title %}بیماران امروز — {{ app_name }}{% endblock %}
 {% block content %}
-<section class="card">
-  <div class="card-head">
-    <h1>صف من — <span id="q-shift">…</span></h1>
-    <span class="muted" id="q-counts"></span>
+<div class="page-head">
+  <div>
+    <h1>بیماران امروز من</h1>
+    <p class="muted">ویزیت‌هایی که در شیفت جاری به نام شما در حسابداری ثبت شده است. برای ثبت پیگیری روی نام بیمار بزنید.</p>
   </div>
-  <p class="flash ok" id="q-flash" role="status" hidden></p>
-  <table class="queue">
-    <thead><tr><th>وضعیت</th><th>بیمار</th><th>خدمات و هشدار</th><th>ساعت</th></tr></thead>
-    <tbody id="q-body"><tr><td colspan="4" class="muted">در حال بارگذاری…</td></tr></tbody>
-  </table>
-  <p class="muted">صف هر ۵ ثانیه از روی آخرین همگام‌سازی با حسابداری تازه می‌شود.</p>
+  <span class="muted" id="q-counts"></span>
+</div>
+<section class="card">
+  <div class="table-wrap">
+    <table class="clickable">
+      <thead><tr><th>ساعت ویزیت</th><th>بیمار</th><th class="hide-sm">خدمات همین فاکتور</th><th>پیگیری</th></tr></thead>
+      <tbody id="q-body"><tr><td colspan="4" class="empty">در حال بارگذاری…</td></tr></tbody>
+    </table>
+  </div>
 </section>
 {% endblock %}
 {% block scripts %}<script src="{{ url_for('static', filename='js/queue.js') }}"></script>{% endblock %}

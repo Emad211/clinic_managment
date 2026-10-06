@@ -1,6 +1,6 @@
 {
   "code": "control_series_bs",
-  "title": "سری کنترل قند",
+  "title": "اندازه‌گیری قند در درمانگاه",
   "enabled": true,
   "params": {
     "count": 3,

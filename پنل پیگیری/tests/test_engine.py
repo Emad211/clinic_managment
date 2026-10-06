@@ -78,7 +78,7 @@ def test_panel_creates_journeys_with_exact_dates(env):
     assert view["identity_ok"] and view["has_bs_test"] and view["invoice_services"] == ["تست قند"]
     result = env.save(vid, {**FOLLOW, "tags": {"diabetes": True}, "renewal_months": 2, "quarterly_lab": True,
                             "bs": {"glucose": 180, "glucose_type": "fasting"}})
-    assert result["message"] == "ثبت شد — ۲ پیگیری ساخته شد"
+    assert result["message"] == "ثبت شد — ۲ پیگیری برای بیمار ساخته شد"
     rows = env.q("SELECT j.template_code, j.status, j.origin_doctor_staff_id, s.kind, s.due_date, s.window_end "
                  "FROM journey j JOIN journey_step s ON s.journey_id = j.id ORDER BY j.id, s.seq")
     assert rows == [
@@ -98,7 +98,7 @@ def test_panel_creates_journeys_with_exact_dates(env):
 
 
 @pytest.mark.parametrize("form,message", [
-    ({"quarterly_lab": True}, "دیابتی"),
+    ({"quarterly_lab": True}, "«دیابت» انتخاب"),
     ({"wound": {"dressing_every": 2}}, "روز کشیدن بخیه"),
     ({"wound": {"suture_day": 7}}, "پانسمان"),
     ({"renewal_months": 4}, "۱، ۲ یا ۳"),
@@ -116,7 +116,7 @@ def test_panel_validation(env, form, message):
 
 def test_no_followup_one_click(env):
     vid, _ = env.visit()
-    assert env.save(vid, {"decision": "no_followup"})["message"] == "ثبت شد — بدون پیگیری"
+    assert env.save(vid, {"decision": "no_followup"})["message"] == "برای این ویزیت «بدون پیگیری» ثبت شد"
     assert env.q("SELECT count(*) FROM journey") == [(0,)]
 
 
@@ -276,7 +276,7 @@ def test_walkin_after_approval_creates_actions(env):
         ("invite_visit", "walkin", None), ("control_series_bp", "walkin", 3)]
     iid2 = walkin_invoice(env, BS_TEST_ID, "تست قند", nid=NID2)
     assert save_walkin(env, iid2, {"status": "entered", "bs": {"glucose": 110, "glucose_type": "fasting"}}
-                       )["message"] == "ثبت شد — بدون اقدام"
+                       )["message"] == "ثبت شد؛ عددها به آستانهٔ اقدام نرسیدند و پیگیری لازم نیست"
 
 
 @pytest.mark.parametrize("form,message", [

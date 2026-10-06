@@ -1,6 +1,6 @@
 {
   "code": "control_series_bp",
-  "title": "سری کنترل فشار",
+  "title": "اندازه‌گیری فشار در درمانگاه",
   "enabled": true,
   "params": {
     "count": 3,

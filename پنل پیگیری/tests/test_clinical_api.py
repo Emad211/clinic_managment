@@ -50,7 +50,7 @@ def test_doctor_panel_round_trip(env):
     bad = post_json(c, f"/api/doctor/visit/{vid}", {"decision": "followup", "wound": {"dressing_every": 1}})
     assert bad.status_code == 400 and "بخیه" in bad.get_json()["error"]
     ok = post_json(c, f"/api/doctor/visit/{vid}", {"decision": "followup", "renewal_months": 1, "lab_order": True})
-    assert ok.status_code == 200 and ok.get_json()["message"] == "ثبت شد — ۲ پیگیری ساخته شد"
+    assert ok.status_code == 200 and ok.get_json()["message"] == "ثبت شد — ۲ پیگیری برای بیمار ساخته شد"
     assert c.get("/api/doctor/queue").get_json()["rows"][0]["status"] == "done"
     assert c.post(f"/api/doctor/visit/{vid}", json={"decision": "no_followup"}).status_code == 400   # no CSRF
 
@@ -142,7 +142,7 @@ def test_call_endpoints_roles_and_flow(env):
     bad = post_json(r, f"/api/reception/calls/{call['step_id']}", {"outcome": "booked", "booked_date_fa": "x"})
     assert bad.status_code == 400 and "تاریخ" in bad.get_json()["error"]
     ok = post_json(r, f"/api/reception/calls/{call['step_id']}", {"outcome": "no_answer", "note": "خاموش بود"})
-    assert ok.get_json()["message"] == "تماس دوباره فردا"
+    assert ok.get_json()["message"] == "تماس بعدی: فردا"
     assert r.get("/api/reception/followups").get_json()["today"] == []
     assert d.get("/api/reception/followups").status_code == 403                    # doctors don't call
     assert post_json(d, f"/api/reception/calls/{call['step_id']}", {"outcome": "refused"}).status_code == 403

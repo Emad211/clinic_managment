@@ -14,7 +14,7 @@ from typing import Any
 from ..adapters.sqlite import account_repo, journey_repo as repo
 from ..adapters.sqlite.core import transaction
 from ..common.iran_time import TS_FORMAT
-from ..common.jalali import jalali_date
+from ..common.jalali import jalali_date, jalali_long
 from ..common.persian_text import fa_digits
 from ..domain.categories import LABELS_FA
 from ..domain.identity import mask_national_id
@@ -61,6 +61,7 @@ def panel(conn: sqlite3.Connection, visit_id: int, staff_id: int, today: str) ->
     name = " ".join(x for x in ((ctx["first_name"] or ctx["name"]), (ctx["last_name"] or ctx["family_name"])) if x)
     return {
         "visit_id": visit_id, "invoice_id": ctx["invoice_id"], "work_date": ctx["work_date"],
+        "work_date_long": jalali_long(ctx["work_date"]),
         "name": name or f"پرونده {ctx['patient_id']}",
         "identity_ok": bool(person_id) or bool(ctx["identity_ok"]),
         "mobile": ctx["person_mobile"] or ctx["phone"] or "",
@@ -98,7 +99,7 @@ def plan_from_form(form: dict[str, Any]) -> tuple[list[tuple[str, dict]], dict[s
         out.append(("renewal", {"interval_months": months, "due_day": 30 * months}))
     if form.get("quarterly_lab"):
         if not tags["diabetes"]:
-            raise EncounterError("آزمایش سه‌ماهه فقط برای بیمار دیابتی است؛ برچسب دیابت را بزنید")
+            raise EncounterError("آزمایش دوره‌ای دیابت فقط وقتی ثبت می‌شود که «دیابت» انتخاب شده باشد")
         out.append(("quarterly_lab", {}))
     for key, code in (("series_bs", "control_series_bs"), ("series_bp", "control_series_bp")):
         series = form.get(key)
@@ -191,11 +192,11 @@ def save(conn: sqlite3.Connection, visit_id: int, form: dict[str, Any], *, staff
                                           "tags": tags, "measurements": measurements})
 
     if decision == "no_followup":
-        message = "ثبت شد — بدون پیگیری"
+        message = "برای این ویزیت «بدون پیگیری» ثبت شد"
     else:
-        message = f"ثبت شد — {fa_digits(len(created))} پیگیری ساخته شد"
+        message = f"ثبت شد — {fa_digits(len(created))} پیگیری برای بیمار ساخته شد"
         if person_id is None:
-            message += ". پیگیری‌ها پس از تکمیل هویت توسط پذیرش فعال می‌شوند"
+            message += "؛ پس از تکمیل هویت توسط پذیرش فعال می‌شوند"
     return {"encounter_id": enc_id, "journeys": created, "message": message}
 
 

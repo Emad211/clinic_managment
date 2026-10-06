@@ -1,73 +1,84 @@
 {% extends "base.html" %}
-{% block title %}حساب پزشکان — {{ app_name }}{% endblock %}
+{% block title %}پزشکان — {{ app_name }}{% endblock %}
 {% block content %}
+<div class="page-head">
+  <div>
+    <h1>پزشکان</h1>
+    <p class="muted">حساب ورود پزشکان به پنل. هر حساب به یک پزشکِ کادر درمان حسابداری وصل است و در هر ورود، فعال بودن او در حسابداری بررسی می‌شود.</p>
+  </div>
+</div>
+
 <section class="card">
-  <h1>حساب پزشکان</h1>
+  <div class="card-head"><h2>حساب‌های پزشک</h2></div>
   {% if accounts %}
-  <table>
-    <thead><tr><th>نام کاربری</th><th>پزشک در حسابداری</th><th>وضعیت</th><th>پزشک مدیر</th><th>کارها</th></tr></thead>
+  <div class="table-wrap"><table>
+    <thead><tr><th>نام کاربری</th><th>پزشک در حسابداری</th><th>وضعیت حساب</th><th>پزشک مدیر</th><th></th></tr></thead>
     <tbody>
     {% for a in accounts %}
       <tr>
-        <td dir="ltr">{{ a.username }}</td>
+        <td dir="ltr" style="text-align:right">{{ a.username }}</td>
         <td>{{ a.staff_name or 'در کادر درمان پیدا نشد' }}
-          {% if a.staff_name and a.staff_active == 0 %}<span class="tag err">غیرفعال در حسابداری</span>{% endif %}</td>
+          {% if a.staff_name and a.staff_active == 0 %}<span class="tag err">در حسابداری غیرفعال</span>{% endif %}</td>
         <td>{% if a.is_active %}<span class="tag ok">فعال</span>{% else %}<span class="tag err">غیرفعال</span>{% endif %}</td>
-        <td>{% if a.is_director %}✓ بله{% else %}–{% endif %}</td>
-        <td class="row-actions">
-          <form method="post" action="{{ url_for('manager.update_doctor', doctor_id=a.id) }}">
+        <td>{% if a.is_director %}<span class="tag info">پزشک مدیر</span>{% else %}<span class="faint">—</span>{% endif %}</td>
+        <td class="actions-cell">
+          <form method="post" action="{{ url_for('manager.update_doctor', doctor_id=a.id) }}" class="actions">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            {% if a.is_director %}<button name="action" value="director_off">برداشتن پزشک مدیر</button>
-            {% else %}<button name="action" value="director_on">پزشک مدیر شود</button>{% endif %}
-            {% if a.is_active %}<button name="action" value="deactivate">غیرفعال کردن</button>
-            {% else %}<button name="action" value="activate">فعال کردن</button>{% endif %}
+            {% if a.is_director %}<button class="small" name="action" value="director_off">لغو پزشک مدیر</button>
+            {% else %}<button class="small" name="action" value="director_on">پزشک مدیر شود</button>{% endif %}
+            {% if a.is_active %}<button class="small danger" name="action" value="deactivate">غیرفعال کردن</button>
+            {% else %}<button class="small" name="action" value="activate">فعال کردن</button>{% endif %}
           </form>
-          <form method="post" action="{{ url_for('manager.update_doctor', doctor_id=a.id) }}">
+          <form method="post" action="{{ url_for('manager.update_doctor', doctor_id=a.id) }}" class="actions" style="margin-top:6px">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <input type="password" name="password" placeholder="رمز تازه" dir="ltr" minlength="6" required aria-label="رمز تازه">
-            <button name="action" value="password">عوض کردن رمز</button>
+            <input type="password" name="password" placeholder="رمز تازه" dir="ltr" minlength="6" required aria-label="رمز تازهٔ {{ a.username }}" style="width:10rem;min-height:34px">
+            <button class="small" name="action" value="password">تغییر رمز</button>
           </form>
         </td>
       </tr>
     {% endfor %}
     </tbody>
-  </table>
+  </table></div>
   {% else %}
-  <p class="muted">هنوز حساب پزشکی ساخته نشده است.</p>
+  <p class="empty">هنوز برای هیچ پزشکی حساب ساخته نشده است.</p>
   {% endif %}
 </section>
 
 <section class="card">
-  <h2>ساخت حساب پزشک</h2>
+  <div class="card-head"><h2>ساخت حساب پزشک</h2></div>
   {% if available %}
   <form method="post" action="{{ url_for('manager.create_doctor') }}" class="stack narrow">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <label>پزشک (از کادر درمانِ فعال حسابداری)
+    <label>پزشک
       <select name="staff_id" required>
-        <option value="">انتخاب کنید</option>
+        <option value="">از کادر درمانِ فعال حسابداری انتخاب کنید</option>
         {% for d in available %}<option value="{{ d.acc_id }}">{{ d.full_name }}</option>{% endfor %}
       </select>
     </label>
-    <label>نام کاربری <input name="username" dir="ltr" pattern="[A-Za-z0-9_.\-]{3,32}" required></label>
-    <label>رمز <input name="password" type="password" dir="ltr" minlength="6" required></label>
-    <label class="check"><input type="checkbox" name="is_director" value="1"> پزشک مدیر (تأیید کات‌آف‌ها)</label>
-    <button type="submit" class="primary">ساخت حساب</button>
+    <label>نام کاربری <input name="username" dir="ltr" pattern="[A-Za-z0-9_.\-]{3,32}" required
+      title="۳ تا ۳۲ نویسهٔ انگلیسی، رقم، نقطه، خط تیره یا زیرخط"></label>
+    <label>رمز عبور <input name="password" type="password" dir="ltr" minlength="6" required></label>
+    <label class="check"><input type="checkbox" name="is_director" value="1"> پزشک مدیر (تأیید کات‌آف‌های بالینی)</label>
+    <div><button type="submit" class="primary">ساخت حساب</button></div>
   </form>
   {% else %}
-  <p class="muted">همهٔ پزشکانِ فعال حسابداری حساب دارند، یا فهرست کادر درمان هنوز از حسابداری خوانده نشده است.</p>
+  <p class="empty">برای همهٔ پزشکانِ فعال حسابداری حساب ساخته شده است.</p>
   {% endif %}
 </section>
+
 <section class="card">
-  <h2>پزشکان پیگیری</h2>
-  <p class="muted">هنگام ثبت «نوبت گرفت»، بعد از برنامهٔ پزشک مبدأ، روزهای معمول این پزشکان پیشنهاد می‌شود (D20).</p>
+  <div class="card-head"><div><h2>پزشکان پیگیری</h2>
+    <p class="muted">هنگام ثبت نوبت، پس از روزهای حضور پزشکی که بیمار را ویزیت کرده، روزهای حضور این پزشکان پیشنهاد می‌شود.</p></div></div>
   <form method="post" action="{{ url_for('manager.followup_doctors') }}" class="stack">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="row">
     {% for d in all_doctors %}
       <label class="chip"><input type="checkbox" name="staff_id" value="{{ d.acc_id }}" {% if d.acc_id in followup %}checked{% endif %}> {{ d.full_name }}</label>
+    {% else %}
+      <p class="faint">فهرست کادر درمان هنوز از حسابداری خوانده نشده است.</p>
     {% endfor %}
     </div>
-    <button type="submit" class="primary">ذخیره</button>
+    <div><button type="submit" class="primary">ذخیره</button></div>
   </form>
 </section>
 {% endblock %}

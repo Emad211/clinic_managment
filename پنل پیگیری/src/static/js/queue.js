@@ -1,54 +1,44 @@
-/* Doctor queue: refresh every 5 s without reloading the page (docs/06 §4-1). */
+/* Doctor queue: refreshes every 5 s without reloading (docs/06 §4-1). */
 (function () {
   "use strict";
-  const { api, toFa } = window.Peygiri;
+  const { api, toFa, toast } = window.Peygiri;
   const body = document.getElementById("q-body");
   const ICON = { pending: "●", done: "✓", no_followup: "–" };
 
-  function cell(text, cls) {
-    const td = document.createElement("td");
-    if (cls) td.className = cls;
-    td.textContent = text;
-    return td;
-  }
-
-  function tag(text, cls) {
-    const span = document.createElement("span");
-    span.className = "tag" + (cls ? " " + cls : "");
-    span.textContent = text;
-    return span;
-  }
+  const el = (tag, text, cls) => {
+    const e = document.createElement(tag);
+    if (text != null) e.textContent = text;
+    if (cls) e.className = cls;
+    return e;
+  };
 
   function render(data) {
-    document.getElementById("q-shift").textContent = `شیفت ${data.shift.label} · ${data.shift.work_date_fa}`;
-    document.getElementById("q-counts").textContent =
-      `${toFa(data.total)} بیمار · ${toFa(data.pending)} در انتظار`;
+    document.getElementById("q-counts").textContent = data.total
+      ? `${toFa(data.total)} بیمار · ${toFa(data.pending)} پیگیریِ ثبت‌نشده` : "";
     body.replaceChildren();
     if (!data.rows.length) {
-      const tr = document.createElement("tr");
-      const td = cell("بیماری با ویزیت شما در این شیفت ثبت نشده است.", "muted");
-      td.colSpan = 4;
-      tr.appendChild(td);
-      body.appendChild(tr);
+      const tr = el("tr"), td = el("td", "هنوز ویزیتی در این شیفت به نام شما ثبت نشده است.", "empty");
+      td.colSpan = 4; tr.append(td); body.append(tr);
       return;
     }
     for (const r of data.rows) {
-      const tr = document.createElement("tr");
-      tr.className = "status-" + r.status;
-      tr.appendChild(cell(`${ICON[r.status]} ${r.status_label}`));
-      const nameCell = document.createElement("td");
-      const link = document.createElement("a");
-      link.href = `/doctor/visit/${r.visit_id}`;
-      link.textContent = r.name;
-      nameCell.appendChild(link);
-      tr.appendChild(nameCell);
-      tr.addEventListener("click", (ev) => { if (ev.target.tagName !== "A") window.location.href = link.href; });
-      const tags = document.createElement("td");
-      if (!r.identity_ok) tags.appendChild(tag("⚠ هویت ناقص", "warn"));
-      for (const s of r.services) tags.appendChild(tag(s));
-      tr.appendChild(tags);
-      tr.appendChild(cell(r.time ? toFa(r.time) : ""));
-      body.appendChild(tr);
+      const href = `/doctor/visit/${r.visit_id}`;
+      const tr = el("tr", null, r.status === "pending" ? "" : "is-done");
+      tr.dataset.href = href;
+      tr.append(el("td", r.time ? toFa(r.time) : "—"));
+      const name = el("td"), link = el("a", r.name, "patient-link");
+      link.href = href;
+      name.append(link);
+      if (!r.identity_ok) name.append(" ", el("span", "هویت ناقص", "tag warn"));
+      tr.append(name);
+      const services = el("td", null, "hide-sm");
+      r.services.forEach((s) => services.append(el("span", s, "tag"), " "));
+      if (!r.services.length) services.textContent = "—";
+      tr.append(services);
+      const st = el("td"); st.append(el("span", `${ICON[r.status]} ${r.status_label}`, `status ${r.status}`));
+      tr.append(st);
+      tr.addEventListener("click", (ev) => { if (ev.target.tagName !== "A") window.location.href = href; });
+      body.append(tr);
     }
   }
 
@@ -56,11 +46,7 @@
     try { render(await api("/api/doctor/queue")); } catch (e) { /* keep the last list */ }
   }
   const flash = sessionStorage.getItem("peygiri:flash");
-  if (flash) {
-    sessionStorage.removeItem("peygiri:flash");
-    const p = document.getElementById("q-flash");
-    p.textContent = flash; p.hidden = false;
-  }
+  if (flash) { sessionStorage.removeItem("peygiri:flash"); toast(flash); }
   refresh();
   setInterval(refresh, 5000);
   document.addEventListener("peygiri:shift-changed", refresh);

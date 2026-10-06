@@ -1,6 +1,6 @@
 {
   "code": "wound_care",
-  "title": "جراحی سرپایی",
+  "title": "بخیه و پانسمان",
   "enabled": true,
   "params": {
     "suture_day": null,

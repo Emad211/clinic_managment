@@ -14,6 +14,7 @@ from typing import Any
 from ..adapters.sqlite import account_repo, journey_repo as repo
 from ..adapters.sqlite.core import transaction
 from ..common.iran_time import TS_FORMAT
+from ..common.jalali import jalali_datetime
 from ..domain import cutoffs as domain
 
 
@@ -32,6 +33,7 @@ def state(conn: sqlite3.Connection) -> dict[str, Any]:
         rules = json.loads(row["rules"])
         return {"id": row["id"], "version": row["version"], "rules": rules, "drafted_by": row["drafted_by"],
                 "drafted_at": row["drafted_at"], "approved_at": row["approved_at"],
+                "drafted_at_fa": jalali_datetime(row["drafted_at"]), "approved_at_fa": jalali_datetime(row["approved_at"]),
                 "approved_by_staff_id": row["approved_by_staff_id"], "problems": domain.validate(rules)}
     return {"approved": view(approved), "draft": view(draft),
             "blank": copy.deepcopy(approved and json.loads(approved["rules"]) or domain.EMPTY_TEMPLATE)}

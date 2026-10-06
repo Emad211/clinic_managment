@@ -24,7 +24,7 @@
     el.addEventListener("click", action); return el;
   }
   function values() { return Object.fromEntries(fields.map(k => [k, form.elements[k].value])); }
-  function message(result) { document.getElementById("identity-message").textContent = result.message; }
+  function message(result) { window.Peygiri.toast(result.message); }
   function error(text) { document.getElementById("identity-error").textContent = text; }
   function ready() {
     const differences = validation?.match?.differences || [];
@@ -36,10 +36,10 @@
     matchBox.replaceChildren();
     if (!match) return;
     const person = match.person;
-    matchBox.append(node("p", `این کد ملی متعلق به ${person.first_name} ${person.last_name} است. اتصال؟`));
+    matchBox.append(node("p", `این کد ملی قبلاً برای «${person.first_name} ${person.last_name}» ثبت شده است. این پرونده به همان شخص وصل می‌شود.`));
     (match.differences || []).forEach(k => {
-      const group = node("fieldset"); group.append(node("legend", `${labels[k]} متفاوت است؛ کدام نگه داشته شود؟`));
-      [["existing", person[k], "اطلاعات فعلی پنل"], ["entered", values()[k], "اطلاعات واردشده"]].forEach(([choice, value, source]) => {
+      const group = node("fieldset"); group.append(node("legend", `${labels[k]} با اطلاعات قبلی فرق دارد؛ کدام ثبت شود؟`));
+      [["existing", person[k], "قبلی"], ["entered", values()[k], "تازه واردشده"]].forEach(([choice, value, source]) => {
         const label = node("label");
         const radio = node("input"); radio.type = "radio"; radio.name = `keep_${k}`; radio.value = choice;
         radio.addEventListener("change", ready); label.append(radio, node("span", `${source}: ${toFa(value)}`)); group.append(label);
@@ -48,7 +48,7 @@
     });
     const label = node("label", null, "check"); const confirm = node("input");
     confirm.type = "checkbox"; confirm.id = "match-confirm"; confirm.addEventListener("change", ready);
-    label.append(confirm, node("span", "کد ملی را با بیمار بررسی کردم؛ اتصال همین شخص را تأیید می‌کنم")); matchBox.append(label);
+    label.append(confirm, node("span", "کد ملی را با بیمار چک کردم؛ همین شخص است")); matchBox.append(label);
   }
   async function validate() {
     const version = ++revision, input = values();
@@ -104,9 +104,9 @@
       document.getElementById("identity-title").textContent = `تکمیل هویت — فاکتور ${toFa(invoiceId)}`;
       const suggestions = document.getElementById("identity-suggestions"); suggestions.replaceChildren();
       data.suggestions.forEach(s => {
-        const box = node("section", null, "identity-row"); box.dataset.suggestion = s.person_id;
-        box.append(node("p", `پیشنهاد نیازمند تأیید: ${s.name} · ${toFa(s.national_id_masked)}`),
-          button("بررسی اتصال پیشنهادی", () => decideSuggestion(s.person_id, true)),
+        const box = node("section", null, "item-card"); box.dataset.suggestion = s.person_id;
+        box.append(node("p", `احتمالاً همان بیمارِ «${s.name}» (کد ملی ${toFa(s.national_id_masked)}) است`),
+          button("بررسی و وصل کردن", () => decideSuggestion(s.person_id, true)),
           button("نه؛ پیشنهاد را رد کن", () => decideSuggestion(s.person_id, false))); suggestions.append(box);
       });
       ready(); dialog.showModal(); await validate();
@@ -151,16 +151,19 @@
       document.getElementById("identity-count").textContent = toFa(data.total);
       document.getElementById("identity-list-error").textContent = "";
       const rows = data.rows.map(r => {
-        const row = node("article", null, "identity-row");
-        row.append(node("strong", r.name || `پرونده ${toFa(r.patient_id)}`),
-          node("p", `فاکتور ${toFa(r.invoice_id)} · ${r.work_date_fa} · کد ملی ${toFa(r.national_id_masked || "ثبت نشده")}`, "muted"));
-        r.categories.forEach(c => { if (categories[c]) row.append(node("span", categories[c], "tag")); });
+        const row = node("article", null, "item-card");
+        const head = node("div", null, "item-head");
+        head.append(node("strong", r.name || `پرونده ${toFa(r.patient_id)}`));
+        r.categories.forEach(c => { if (categories[c]) head.append(node("span", categories[c], "tag")); });
+        row.append(head, node("p", `فاکتور ${toFa(r.invoice_id)} · ${r.work_date_fa} · کد ملی: ${r.national_id_masked ? toFa(r.national_id_masked) : "ثبت نشده"}`, "muted"));
         const actions = node("div", null, "actions");
-        actions.append(button("تکمیل هویت", () => openIdentity(r.invoice_id)), button("تبعهٔ خارجی است", () => openForeign(r.invoice_id)));
+        const complete = button("تکمیل هویت", () => openIdentity(r.invoice_id)); complete.className = "primary";
+        actions.append(complete, button("تبعهٔ خارجی است", () => openForeign(r.invoice_id)));
         row.append(actions); return row;
       });
-      list.replaceChildren(...(rows.length ? rows : [node("p", "هشدار هویت بازی وجود ندارد.")]));
-    } catch (e) { document.getElementById("identity-list-error").textContent = `${e.message}؛ فهرست قبلی ممکن است قدیمی باشد.`; }
+      list.replaceChildren(...(rows.length ? rows : [node("p", "بیماری با هویت ناقص نمانده است.", "empty")]));
+      document.getElementById("identity-list-error").hidden = true;
+    } catch (e) { const box = document.getElementById("identity-list-error"); box.hidden = false; box.textContent = `${e.message}؛ فهرست نمایش‌داده‌شده ممکن است قدیمی باشد.`; }
   }
   document.getElementById("identity-refresh").addEventListener("click", refresh);
   refresh(); setInterval(refresh, 5000);

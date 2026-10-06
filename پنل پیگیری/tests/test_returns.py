@@ -241,7 +241,7 @@ def test_call_validation(env):
     env.origin({"ear_wax": "rx", "renewal_months": 1})
     env.goto(3)
     step = env.call("ear_wax_rx")
-    with pytest.raises(calls.CallError, match="فقط برای مسیر آزمایش"):
+    with pytest.raises(calls.CallError, match="فقط برای پیگیری جواب آزمایش"):
         env.outcome(step, "lab_not_done")
     with pytest.raises(calls.CallError, match="گذشته"):
         env.outcome(step, "booked", booked_date_fa=jalali_date(env.day(1)))

@@ -226,7 +226,7 @@ def cancel_by_user(conn: sqlite3.Connection, journey_id: int, *, role: str, staf
     with transaction(conn):
         j = repo.journey(conn, journey_id)
         if j is None or j["status"] not in repo.OPEN_STATUSES:
-            raise JourneyError("این مسیر باز نیست؛ صفحه را تازه کنید")
+            raise JourneyError("این پیگیری دیگر باز نیست؛ صفحه را دوباره باز کنید")
         if role != "manager" and not (role == "doctor" and j["origin_doctor_staff_id"] == staff_id):
-            raise JourneyError("فقط پزشکی که مسیر را ساخته یا مدیر می‌تواند آن را لغو کند")
+            raise JourneyError("فقط پزشکی که این پیگیری را ثبت کرده یا مدیر می‌تواند آن را لغو کند")
         cancel(conn, journey_id, "manual", actor, at)

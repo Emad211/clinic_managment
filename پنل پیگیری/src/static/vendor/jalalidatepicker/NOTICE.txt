@@ -1,0 +1,4 @@
+JalaliDatePicker v1.0.0 — https://github.com/majidh1/JalaliDatePicker (MIT, see LICENSE).
+Vendored unmodified from https://unpkg.com/@majidh1/jalalidatepicker@1.0.0/dist/ so the panel never loads anything from the internet.
+sha256 jalalidatepicker.min.js  9fbd69734ef61261dd6467851ff8fd58d847cb73c9b4e6e117c3b90e02921a72
+sha256 jalalidatepicker.min.css df7b6ee1fad44cc091620758b4e58b0a34cffccb4251edb88b9a58bb46b97e28

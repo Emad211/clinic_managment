@@ -1,110 +1,146 @@
 {% extends "base.html" %}
+{% block title %}پیگیری بیماران — {{ app_name }}{% endblock %}
 {% block content %}
-<nav class="tabs" role="tablist">
-  <button role="tab" id="tab-identity" aria-controls="pane-identity" aria-selected="true">هویت ناقص <span id="identity-count-tab" class="tag err">…</span></button>
-  <button role="tab" id="tab-walkin" aria-controls="pane-walkin" aria-selected="false">کاغذ پرستار <span id="walkin-count" class="tag">…</span></button>
-  <button role="tab" id="tab-today" aria-controls="pane-today" aria-selected="false">تماس‌های امروز <span id="today-count" class="tag">…</span></button>
-  <button role="tab" id="tab-overdue" aria-controls="pane-overdue" aria-selected="false">عقب‌افتاده‌ها <span id="overdue-count" class="tag">…</span></button>
-  <button role="tab" id="tab-expected" aria-controls="pane-expected" aria-selected="false">انتظار امروز <span id="expected-count" class="tag">…</span></button>
-  <button role="tab" id="tab-suggest" aria-controls="pane-suggest" aria-selected="false">تأیید تطبیق <span id="suggest-count" class="tag">…</span></button>
+<div class="page-head">
+  <div>
+    <h1>پیگیری بیماران</h1>
+    <p class="muted">کارهای امروز پذیرش. عدد کنار هر بخش تعداد موارد انجام‌نشده است.</p>
+  </div>
+</div>
+
+<nav class="tabs" role="tablist" aria-label="بخش‌های پذیرش">
+  <button role="tab" id="tab-identity" aria-controls="pane-identity" aria-selected="true">هویت ناقص <span class="count alert" id="identity-count">…</span></button>
+  <button role="tab" id="tab-walkin" aria-controls="pane-walkin" aria-selected="false">برگهٔ پرستار <span class="count" id="walkin-count">…</span></button>
+  <button role="tab" id="tab-today" aria-controls="pane-today" aria-selected="false">تماس‌های امروز <span class="count" id="today-count">…</span></button>
+  <button role="tab" id="tab-overdue" aria-controls="pane-overdue" aria-selected="false">تماس‌های عقب‌افتاده <span class="count" id="overdue-count">…</span></button>
+  <button role="tab" id="tab-expected" aria-controls="pane-expected" aria-selected="false">مراجعه‌های امروز <span class="count" id="expected-count">…</span></button>
+  <button role="tab" id="tab-suggest" aria-controls="pane-suggest" aria-selected="false">تطبیق پرونده <span class="count" id="suggest-count">…</span></button>
 </nav>
-<p id="calls-message" class="flash ok" role="status" hidden></p>
 
-<section class="card" id="pane-today" role="tabpanel" aria-labelledby="tab-today" hidden>
-  <h1>تماس‌های امروز</h1><div id="today-list" class="stack"></div>
-</section>
-<section class="card" id="pane-overdue" role="tabpanel" aria-labelledby="tab-overdue" hidden>
-  <h1>تماس‌های عقب‌افتاده</h1><div id="overdue-list" class="stack"></div>
-</section>
-<section class="card" id="pane-expected" role="tabpanel" aria-labelledby="tab-expected" hidden>
-  <h1>انتظار امروز</h1>
-  <p class="muted">بیمارانی که امروز انتظار مراجعه‌شان هست. اگر فاکتور امروزِ بیمار بدون هویت ثبت شده، آن را به همین شخص وصل کنید.</p>
-  <table><thead><tr><th>بیمار</th><th>موبایل</th><th>مسیر و خدمت</th><th>پایان پنجره</th><th>اتصال به فاکتور امروز</th></tr></thead>
-  <tbody id="expected-list"></tbody></table>
-</section>
-<section class="card" id="pane-suggest" role="tabpanel" aria-labelledby="tab-suggest" hidden>
-  <h1>تأیید تطبیق</h1>
-  <p class="muted">فاکتورهای بی‌هویتی که موبایلشان با بیمارِ مورد انتظار یکی است.</p>
-  <table><thead><tr><th>فاکتور</th><th>موبایل فاکتور</th><th>بیمار مورد انتظار</th><th></th></tr></thead>
-  <tbody id="suggest-list"></tbody></table>
-</section>
-<dialog id="book-dialog" aria-labelledby="book-title">
-  <form id="book-form" class="stack" novalidate>
-    <h2 id="book-title">ثبت نوبت</h2>
-    <p id="book-who" class="muted"></p>
-    <div id="book-slots" class="row"></div>
-    <label>تاریخ نوبت <input name="date" inputmode="numeric" placeholder="۱۴۰۵/۰۷/۲۰" required></label>
-    <label>یادداشت (اختیاری) <input name="note" maxlength="200"></label>
-    <p id="book-error" class="error" role="alert"></p>
-    <div class="actions"><button class="primary" type="submit">ثبت نوبت</button><button type="button" id="book-cancel">انصراف</button></div>
-  </form>
-</dialog>
-
-<section class="card" id="pane-walkin" role="tabpanel" aria-labelledby="tab-walkin" hidden>
-  <div class="card-head"><h1>کاغذ پرستار — تست قند و کنترل فشارِ بدون ویزیت (امروز و دیروز)</h1></div>
-  <p class="flash warn" id="walkin-cutoff" hidden>کات‌آف هنوز توسط پزشک مدیر تأیید نشده است؛ اطلاعات فقط ثبت می‌شود و اقدام خودکاری ساخته نمی‌شود.</p>
-  <p id="walkin-message" class="flash ok" role="status" hidden></p>
-  <table>
-    <thead><tr><th>تاریخ</th><th>بیمار</th><th>خدمت</th><th>کارها</th></tr></thead>
-    <tbody id="walkin-list"></tbody>
-  </table>
-</section>
-<dialog id="walkin-dialog" aria-labelledby="walkin-title">
-  <form id="walkin-form" class="stack" novalidate>
-    <h2 id="walkin-title">ورود اطلاعات کاغذ پرستار</h2>
-    <p id="walkin-who" class="muted"></p>
-    <fieldset id="walkin-bp" class="row"><legend>فشار</legend>
-      <input name="systolic" type="number" inputmode="numeric" aria-label="سیستولیک" placeholder="سیستولیک"> /
-      <input name="diastolic" type="number" inputmode="numeric" aria-label="دیاستولیک" placeholder="دیاستولیک"></fieldset>
-    <fieldset id="walkin-bs" class="row"><legend>قند</legend>
-      <input name="glucose" type="number" inputmode="numeric" aria-label="قند">
-      <label class="chip"><input type="radio" name="glucose_type" value="fasting"> ناشتا</label>
-      <label class="chip"><input type="radio" name="glucose_type" value="random"> غیرناشتا</label></fieldset>
-    <fieldset class="row"><legend>دارو مصرف می‌کند؟</legend>
-      <label class="chip"><input type="radio" name="on_medication" value="yes"> بله</label>
-      <label class="chip"><input type="radio" name="on_medication" value="no"> خیر</label></fieldset>
-    <fieldset class="row" id="walkin-renewal" hidden><legend>زمان تقریبی تمدید نسخه</legend>
-      <label class="chip"><input type="radio" name="renewal_quick" value="10"> ۱۰ روز دیگر</label>
-      <label class="chip"><input type="radio" name="renewal_quick" value="20"> ۲۰ روز دیگر</label>
-      <label class="chip"><input type="radio" name="renewal_quick" value="30"> ۱ ماه دیگر</label>
-      <input name="renewal_date" inputmode="numeric" placeholder="یا تاریخ: ۱۴۰۵/۰۸/۰۱" aria-label="تاریخ تمدید"></fieldset>
-    <fieldset class="row"><legend>دستگاه شخصی (فشارسنج/قندسنج) دارد؟</legend>
-      <label class="chip"><input type="radio" name="has_device" value="yes"> بله</label>
-      <label class="chip"><input type="radio" name="has_device" value="no"> خیر</label></fieldset>
-    <p id="walkin-error" class="error" role="alert"></p>
-    <div class="actions"><button class="primary" type="submit">ثبت</button><button type="button" id="walkin-cancel">انصراف</button></div>
-  </form>
-</dialog>
-
+{# ------------------------------------------------------------ هویت ناقص #}
 <section class="card" id="pane-identity" role="tabpanel" aria-labelledby="tab-identity">
-  <div class="card-head"><h1>پذیرش — هویت ناقص <span id="identity-count" class="tag err">…</span></h1><button id="identity-refresh">تازه‌سازی</button></div>
-  <p>تا بیمار در درمانگاه است تکمیل کنید.</p>
-  <p class="muted">پرونده‌های تکراری فقط در پنل متصل می‌شوند؛ حسابداری تغییر نمی‌کند.</p>
-  <p id="identity-message" role="status" aria-live="polite"></p>
-  <p id="identity-list-error" class="error" role="alert"></p>
-  <div id="identity-list" class="stack"></div>
+  <div class="card-head">
+    <div>
+      <h2>هویت ناقص</h2>
+      <p class="muted">بیمارانی که ویزیت، تست قند یا کنترل فشار دارند و نام کامل، کد ملی یا موبایلشان در حسابداری ثبت نشده است. تا بیمار در درمانگاه است تکمیل کنید.</p>
+    </div>
+    <button id="identity-refresh" class="small">به‌روزرسانی فهرست</button>
+  </div>
+  <p id="identity-message" hidden></p>
+  <p id="identity-list-error" class="notice err" role="alert" hidden></p>
+  <div id="identity-list" class="list"></div>
 </section>
 <dialog id="identity-dialog" aria-labelledby="identity-title">
-  <form id="identity-form" class="stack" novalidate>
+  <form id="identity-form" novalidate>
     <h2 id="identity-title">تکمیل هویت</h2>
     <label>نام <input name="first_name" maxlength="100" autocomplete="off" required></label>
     <label>نام خانوادگی <input name="last_name" maxlength="100" autocomplete="off" required></label>
     <label>کد ملی <input name="national_id" dir="ltr" inputmode="numeric" maxlength="100" autocomplete="off" required></label>
-    <label>موبایل <input name="mobile" dir="ltr" inputmode="tel" maxlength="100" autocomplete="off" required></label>
+    <label>موبایل <input name="mobile" dir="ltr" inputmode="tel" maxlength="100" autocomplete="off" placeholder="09…" required></label>
     <div id="identity-problems" class="error" aria-live="polite"></div>
     <div id="identity-match" class="stack"></div>
     <div id="identity-suggestions" class="stack"></div>
-    <p class="muted">این اطلاعات فقط در پنل ذخیره می‌شود. در مراجعهٔ بعدی، بیمار را در حسابداری با همین کد ملی ثبت کنید.</p>
+    <p class="notice info">این اطلاعات فقط در پنل ذخیره می‌شود و حسابداری تغییر نمی‌کند. در مراجعهٔ بعدی، بیمار را در حسابداری با همین کد ملی ثبت کنید.</p>
     <p id="identity-error" class="error" role="alert"></p>
-    <div class="actions"><button id="identity-save" class="primary" type="submit" disabled>ثبت هویت و اتصال</button><button id="identity-cancel" type="button">انصراف</button></div>
+    <div class="actions"><button id="identity-save" class="primary" type="submit" disabled>ثبت هویت</button><button id="identity-cancel" class="quiet" type="button">انصراف</button></div>
   </form>
 </dialog>
 <dialog id="foreign-dialog" aria-labelledby="foreign-title">
-  <h2 id="foreign-title">تأیید تبعهٔ خارجی</h2><p id="foreign-name"></p>
-  <p>بیمار واقعاً تبعه است؟ همهٔ پیگیری‌های در انتظار هویت این پرونده لغو می‌شوند. علامت خارجیِ حسابداری به‌تنهایی کافی نیست.</p>
-  <p id="foreign-error" class="error" role="alert"></p>
-  <div class="actions"><button id="foreign-confirm" class="primary">تبعه است؛ خارج از پیگیری</button><button id="foreign-cancel">انصراف</button></div>
+  <div class="dialog-body">
+    <h2 id="foreign-title">بیمار تبعهٔ خارجی است</h2>
+    <p id="foreign-name"></p>
+    <p>با تأیید، این هشدار بسته می‌شود و پیگیری‌هایی که منتظر تکمیل هویت این پرونده‌اند لغو می‌شوند. علامت «خارجی» در حسابداری به‌تنهایی کافی نیست؛ فقط وقتی تأیید کنید که بیمار واقعاً تبعه است.</p>
+    <p id="foreign-error" class="error" role="alert"></p>
+    <div class="actions"><button id="foreign-confirm" class="danger">تأیید: تبعهٔ خارجی است</button><button id="foreign-cancel" class="quiet">انصراف</button></div>
+  </div>
 </dialog>
+
+{# ------------------------------------------------------------ برگهٔ پرستار #}
+<section class="card" id="pane-walkin" role="tabpanel" aria-labelledby="tab-walkin" hidden>
+  <div class="card-head">
+    <div>
+      <h2>برگهٔ پرستار</h2>
+      <p class="muted">تست قند و کنترل فشارِ بدون ویزیت، امروز و دیروز. عددهای برگهٔ پرستار را وارد کنید؛ اقدام بعدی را سامانه تعیین می‌کند.</p>
+    </div>
+  </div>
+  <p class="notice warn" id="walkin-cutoff" hidden>کات‌آف بالینی هنوز توسط پزشک مدیر تأیید نشده است. عددها ثبت می‌شوند ولی دعوت به ویزیت یا اندازه‌گیری دوباره ساخته نمی‌شود.</p>
+  <div class="table-wrap"><table>
+    <thead><tr><th>تاریخ</th><th>بیمار</th><th>خدمت</th><th></th></tr></thead>
+    <tbody id="walkin-list"></tbody>
+  </table></div>
+</section>
+<dialog id="walkin-dialog" aria-labelledby="walkin-title">
+  <form id="walkin-form" novalidate>
+    <h2 id="walkin-title">ورود اطلاعات برگهٔ پرستار</h2>
+    <p id="walkin-who" class="muted"></p>
+    <fieldset id="walkin-bp"><legend>فشار خون</legend>
+      <input class="num" name="systolic" inputmode="numeric" aria-label="فشار سیستولیک" placeholder="سیستول"> /
+      <input class="num" name="diastolic" inputmode="numeric" aria-label="فشار دیاستولیک" placeholder="دیاستول"></fieldset>
+    <fieldset id="walkin-bs"><legend>قند خون</legend>
+      <input class="num" name="glucose" inputmode="numeric" aria-label="قند خون">
+      <label class="chip"><input type="radio" name="glucose_type" value="fasting"> ناشتا</label>
+      <label class="chip"><input type="radio" name="glucose_type" value="random"> غیرناشتا</label></fieldset>
+    <fieldset><legend>داروی فشار یا قند مصرف می‌کند؟</legend>
+      <label class="chip"><input type="radio" name="on_medication" value="yes"> بله</label>
+      <label class="chip"><input type="radio" name="on_medication" value="no"> خیر</label></fieldset>
+    <fieldset id="walkin-renewal" hidden><legend>موعد تقریبی تمدید نسخه</legend>
+      <label class="chip"><input type="radio" name="renewal_quick" value="10"> ۱۰ روز دیگر</label>
+      <label class="chip"><input type="radio" name="renewal_quick" value="20"> ۲۰ روز دیگر</label>
+      <label class="chip"><input type="radio" name="renewal_quick" value="30"> ۱ ماه دیگر</label>
+      <input name="renewal_date" data-jdp data-jdp-min-date="today+1" data-jdp-max-date="today+120" autocomplete="off" placeholder="یا انتخاب تاریخ" aria-label="تاریخ تمدید نسخه"></fieldset>
+    <fieldset><legend>دستگاه فشارسنج یا قندسنج در منزل دارد؟</legend>
+      <label class="chip"><input type="radio" name="has_device" value="yes"> بله</label>
+      <label class="chip"><input type="radio" name="has_device" value="no"> خیر</label></fieldset>
+    <p id="walkin-error" class="error" role="alert"></p>
+    <div class="actions"><button class="primary" type="submit">ثبت</button><button type="button" class="quiet" id="walkin-cancel">انصراف</button></div>
+  </form>
+</dialog>
+
+{# ------------------------------------------------------------ تماس‌ها #}
+<section class="card" id="pane-today" role="tabpanel" aria-labelledby="tab-today" hidden>
+  <div class="card-head"><div><h2>تماس‌های امروز</h2>
+    <p class="muted">پس از هر تماس نتیجه را ثبت کنید. متن پیشنهادی تماس در هر کارت آمده است.</p></div></div>
+  <div id="today-list" class="list"></div>
+</section>
+<section class="card" id="pane-overdue" role="tabpanel" aria-labelledby="tab-overdue" hidden>
+  <div class="card-head"><div><h2>تماس‌های عقب‌افتاده</h2>
+    <p class="muted">تماس‌هایی که موعدشان گذشته است. اگر ۳۰ روز از موعد بگذرد، پیگیری بسته می‌شود.</p></div></div>
+  <div id="overdue-list" class="list"></div>
+</section>
+<dialog id="book-dialog" aria-labelledby="book-title">
+  <form id="book-form" novalidate>
+    <h2 id="book-title">ثبت نوبت</h2>
+    <p id="book-who" class="muted"></p>
+    <div>
+      <p class="muted">روزهای معمول حضور پزشک مبدأ و پزشکان پیگیری:</p>
+      <div id="book-slots" class="slots"></div>
+    </div>
+    <label>تاریخ نوبت <input name="date" data-jdp data-jdp-min-date="today" data-jdp-max-date="today+60" autocomplete="off" required></label>
+    <label>یادداشت <input name="note" maxlength="200" placeholder="اختیاری"></label>
+    <p id="book-error" class="error" role="alert"></p>
+    <div class="actions"><button class="primary" type="submit">ثبت نوبت</button><button type="button" class="quiet" id="book-cancel">انصراف</button></div>
+  </form>
+</dialog>
+
+{# ------------------------------------------------------------ مراجعه‌های امروز #}
+<section class="card" id="pane-expected" role="tabpanel" aria-labelledby="tab-expected" hidden>
+  <div class="card-head"><div><h2>مراجعه‌های امروز</h2>
+    <p class="muted">بیمارانی که امروز موعد مراجعه دارند. اگر بیمار آمده ولی فاکتورش در حسابداری بدون هویت ثبت شده، فاکتور را از فهرست انتخاب کنید و به همین بیمار وصل کنید.</p></div></div>
+  <div class="table-wrap"><table>
+    <thead><tr><th>بیمار</th><th>موبایل</th><th>پیگیری</th><th>مهلت مراجعه</th><th>وصل کردن فاکتورِ امروز</th></tr></thead>
+    <tbody id="expected-list"></tbody>
+  </table></div>
+</section>
+
+{# ------------------------------------------------------------ تطبیق پرونده #}
+<section class="card" id="pane-suggest" role="tabpanel" aria-labelledby="tab-suggest" hidden>
+  <div class="card-head"><div><h2>تطبیق پرونده</h2>
+    <p class="muted">فاکتورهای بدون هویتی که موبایلشان با موبایل بیمارِ منتظر مراجعه یکی است. با بیمار یا پرونده بررسی کنید و تأیید یا رد کنید.</p></div></div>
+  <div class="table-wrap"><table>
+    <thead><tr><th>فاکتور</th><th>موبایل فاکتور</th><th>بیمار منتظر مراجعه</th><th></th></tr></thead>
+    <tbody id="suggest-list"></tbody>
+  </table></div>
+</section>
 {% endblock %}
 {% block scripts %}<script src="{{ url_for('static', filename='js/identity.js') }}"></script>
 <script src="{{ url_for('static', filename='js/walkin.js') }}"></script>

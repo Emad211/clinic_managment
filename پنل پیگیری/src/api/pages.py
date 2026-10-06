@@ -6,7 +6,7 @@ from dataclasses import asdict
 from flask import Blueprint, jsonify, redirect, render_template, request, url_for
 
 from ..app_context import get_db, now, runtime
-from ..common.jalali import gregorian_from_jalali, jalali_date
+from ..common.jalali import gregorian_from_jalali, jalali_date, jalali_long
 from ..services import queue as queue_service
 from ..services import shift as shift_service
 from ..services.sync_status import status as sync_status
@@ -23,6 +23,7 @@ def header_state() -> dict:
     sync = sync_status(conn, runtime().bridge, now())
     return {
         "shift": {"work_date": shift.work_date, "work_date_fa": jalali_date(shift.work_date),
+                  "work_date_long": jalali_long(shift.work_date),
                   "shift": shift.shift, "label": shift.label, "source": shift.source},
         "sync": {"color": sync.color, "age_seconds": sync.age_seconds, "message": sync.message},
     }
@@ -71,7 +72,7 @@ def queue_api():
     shift = shift_service.current(conn, now())
     rows = queue_service.doctor_queue(conn, principal().staff_id, shift)
     return jsonify(
-        shift={"label": shift.label, "work_date_fa": jalali_date(shift.work_date)},
+        shift={"label": shift.label, "work_date_long": jalali_long(shift.work_date)},
         total=len(rows),
         pending=sum(r.status == queue_service.STATUS_PENDING for r in rows),
         rows=[{**asdict(r), "status_label": r.status_label} for r in rows],

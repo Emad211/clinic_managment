@@ -1,19 +1,31 @@
 {% extends "base.html" %}
+{% block title %}گزارش ثبت هویت — {{ app_name }}{% endblock %}
 {% block content %}
-<section class="card">
-  <h1>گزارش رعایت هویت — کاربر پذیرش و شیفت</h1>
-  <form id="report-filter" class="report-filter">
-    <label>از تاریخ <input name="from" value="{{ today }}" inputmode="numeric" required></label>
-    <label>تا تاریخ <input name="to" value="{{ today }}" inputmode="numeric" required></label>
-    <button class="primary" type="submit">نمایش گزارش</button>
+<div class="page-head">
+  <div>
+    <h1>گزارش ثبت هویت</h1>
+    <p class="muted">برای هر کاربر پذیرش و هر شیفت: چند درصد از مراجعه‌های ویزیت، تست قند و کنترل فشار با هویت کامل ثبت شده است.</p>
+  </div>
+  <form id="report-filter" class="row">
+    <label class="inline">بازهٔ تاریخ
+      <input name="range" class="range" data-jdp data-jdp-mode="range" data-jdp-max-date="today" autocomplete="off"
+             value="{{ today }} - {{ today }}" required></label>
+    <button class="primary" type="submit">نمایش</button>
   </form>
-  <p class="muted">فقط فاکتورهای مشاهده‌شده در آینه با ویزیت، تست قند یا کنترل فشار. «اولین مشاهده» کیفیت ثبت اولیهٔ حسابداری نیست؛ برای داده‌های قدیمی مبنا زمان ارتقای پنل است.</p>
-  <p class="muted">تکمیل پنل جدا از حسابداری نشان داده می‌شود؛ اتباع تأییدشده از نرخ مؤثر خارج‌اند.</p>
-  <p id="report-error" class="error" role="alert"></p>
-  <div class="report-scroll"><table>
-    <thead><tr><th>کاربر</th><th>شیفت</th><th>کل</th><th>کامل در اولین مشاهده</th><th>کامل حسابداری اکنون</th><th>متصل در پنل</th><th>تبعه</th><th>کامل مؤثر (غیرتبعه)</th><th>نرخ مؤثر</th></tr></thead>
+</div>
+
+<section class="card">
+  <p id="report-error" class="notice err" role="alert" hidden></p>
+  <div class="table-wrap"><table>
+    <thead><tr>
+      <th>کاربر پذیرش</th><th>شیفت</th><th>مراجعه</th>
+      <th title="در لحظه‌ای که پنل اولین بار فاکتور را دید">کامل در حسابداری هنگام ثبت</th>
+      <th>کامل در حسابداری اکنون</th><th>تکمیل‌شده در پنل</th><th>تبعهٔ خارجی</th>
+      <th>هویت کامل (بدون اتباع)</th><th>درصد</th>
+    </tr></thead>
     <tbody id="report-rows"></tbody>
   </table></div>
+  <p class="faint" style="margin-top:12px">«هنگام ثبت» یعنی اولین باری که پنل فاکتور را دید؛ برای فاکتورهای پیش از نصب پنل، زمان نصب ملاک است. اتباع خارجیِ تأییدشده در درصد حساب نمی‌شوند.</p>
 </section>
 {% endblock %}
 {% block scripts %}<script src="{{ url_for('static', filename='js/identity-report.js') }}"></script>{% endblock %}

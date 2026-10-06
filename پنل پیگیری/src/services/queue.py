@@ -10,7 +10,7 @@ from ..domain.identity import mask_national_id
 from .shift import ShiftInfo
 
 STATUS_PENDING, STATUS_DONE, STATUS_NO_FOLLOWUP = "pending", "done", "no_followup"
-STATUS_LABELS = {STATUS_PENDING: "در انتظار", STATUS_DONE: "ثبت شد", STATUS_NO_FOLLOWUP: "بدون پیگیری"}
+STATUS_LABELS = {STATUS_PENDING: "ثبت نشده", STATUS_DONE: "پیگیری ثبت شد", STATUS_NO_FOLLOWUP: "بدون پیگیری"}
 
 
 @dataclass(frozen=True)

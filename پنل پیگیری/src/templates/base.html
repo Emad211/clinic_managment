@@ -5,58 +5,78 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="csrf-token" content="{{ csrf_token() }}">
   <title>{% block title %}{{ app_name }}{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='vendor/jalalidatepicker/jalalidatepicker.min.css') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
 </head>
 <body>
 {% if principal %}
-  <header class="topbar">
+  {% set ep = request.endpoint %}
+  {% macro nav_link(endpoint, text) %}<a href="{{ url_for(endpoint) }}"{% if ep == endpoint %} aria-current="page"{% endif %}>{{ text }}</a>{% endmacro %}
+  <header class="appbar">
     <a class="brand" href="{{ url_for('pages.index') }}">{{ app_name }}</a>
-    <div class="shift">
+    <nav aria-label="بخش‌ها">
+      {% if principal.role == 'doctor' %}
+        {{ nav_link('doctor.queue_page', 'بیماران امروز') }}
+        {% if principal.is_director %}
+          {{ nav_link('clinical.cutoffs_page', 'کات‌آف‌های بالینی') }}
+          {{ nav_link('identity.report_page', 'گزارش ثبت هویت') }}
+        {% endif %}
+      {% elif principal.role == 'reception' %}
+        {{ nav_link('reception.home', 'پیگیری بیماران') }}
+      {% elif principal.role == 'manager' %}
+        {{ nav_link('manager.doctors', 'پزشکان') }}
+        {{ nav_link('clinical.cutoffs_page', 'کات‌آف‌های بالینی') }}
+        {{ nav_link('identity.report_page', 'گزارش ثبت هویت') }}
+      {% endif %}
+    </nav>
+    <span class="spacer"></span>
+    <span class="status-chip" id="shift-chip">
       <span id="shift-label">…</span>
-      <button type="button" class="link" id="shift-change" aria-haspopup="dialog">تغییر</button>
-    </div>
-    <div class="sync" id="sync" role="status" aria-live="polite">
+      <button type="button" id="shift-change" aria-haspopup="dialog">تغییر</button>
+    </span>
+    <span class="status-chip sync" id="sync" role="status" aria-live="polite">
       <span class="dot" aria-hidden="true"></span><span id="sync-text">…</span>
-    </div>
+    </span>
     <div class="user">
-      <span>{{ principal.display_name }}</span>
+      <span>{{ principal.display_name }}
+        <span class="role">({% if principal.role == 'doctor' %}{{ 'پزشک مدیر' if principal.is_director else 'پزشک' }}{% elif principal.role == 'reception' %}پذیرش{% else %}مدیر{% endif %})</span></span>
       <form method="post" action="{{ url_for('auth.logout') }}">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <button type="submit" class="link">خروج</button>
+        <button type="submit">خروج</button>
       </form>
     </div>
   </header>
-  <div class="banner" id="sync-banner" hidden></div>
-  {% if principal.role == 'manager' %}
-  <nav class="subnav"><a href="{{ url_for('manager.doctors') }}">حساب پزشکان</a><a href="{{ url_for('clinical.cutoffs_page') }}">کات‌آف‌ها</a><a href="{{ url_for('identity.report_page') }}">گزارش رعایت هویت</a></nav>
-  {% endif %}
+  <div class="banner" id="sync-banner" role="alert" hidden></div>
 
-  {% if principal.is_director %}<nav class="subnav"><a href="{{ url_for('doctor.queue_page') }}">صف من</a><a href="{{ url_for('clinical.cutoffs_page') }}">کات‌آف‌ها</a><a href="{{ url_for('identity.report_page') }}">گزارش رعایت هویت</a></nav>{% endif %}
-  <dialog id="shift-dialog">
-    <form method="dialog" id="shift-form">
-      <h2>تغییر شیفت جاری</h2>
-      <label>تاریخ <input name="work_date_fa" id="shift-date" inputmode="numeric" placeholder="۱۴۰۵/۰۷/۱۴" required></label>
-      <fieldset class="segmented">
+  <dialog id="shift-dialog" aria-labelledby="shift-title">
+    <form id="shift-form" novalidate>
+      <h2 id="shift-title">تغییر شیفت جاری</h2>
+      <p class="muted">شیفت جاری از حسابداری خوانده می‌شود. تغییر دستی تا وقتی معتبر است که پذیرش شیفت را در حسابداری عوض کند.</p>
+      <label>تاریخ <input name="work_date_fa" data-jdp data-jdp-max-date="today" autocomplete="off" required></label>
+      <fieldset>
         <legend>شیفت</legend>
-        <label><input type="radio" name="shift" value="morning"> صبح</label>
-        <label><input type="radio" name="shift" value="evening"> عصر</label>
-        <label><input type="radio" name="shift" value="night"> شب</label>
+        <label class="chip"><input type="radio" name="shift" value="morning"> صبح</label>
+        <label class="chip"><input type="radio" name="shift" value="evening"> عصر</label>
+        <label class="chip"><input type="radio" name="shift" value="night"> شب</label>
       </fieldset>
       <p class="error" id="shift-error" role="alert"></p>
       <div class="actions">
-        <button type="submit" class="primary" value="save">ثبت شیفت</button>
+        <button type="submit" class="primary">ثبت شیفت</button>
         <button type="button" id="shift-auto">برگشت به شیفت حسابداری</button>
-        <button type="button" id="shift-cancel">انصراف</button>
+        <button type="button" class="quiet" id="shift-cancel">انصراف</button>
       </div>
     </form>
   </dialog>
 {% endif %}
-  <main class="container">
+  <div class="toasts" id="toasts" aria-live="polite">
     {% with messages = get_flashed_messages(with_categories=true) %}
-      {% for cat, msg in messages %}<p class="flash {{ cat }}" role="alert">{{ msg }}</p>{% endfor %}
+      {% for cat, msg in messages %}<div class="toast {{ 'err' if cat == 'error' else '' }}" role="status">{{ msg }}</div>{% endfor %}
     {% endwith %}
+  </div>
+  <main class="container">
     {% block content %}{% endblock %}
   </main>
+  <script src="{{ url_for('static', filename='vendor/jalalidatepicker/jalalidatepicker.min.js') }}"></script>
   <script src="{{ url_for('static', filename='js/app.js') }}"></script>
   {% block scripts %}{% endblock %}
 </body>

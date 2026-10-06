@@ -6,6 +6,7 @@ from functools import wraps
 from flask import Blueprint, jsonify, render_template, request
 
 from ..app_context import get_db, now
+from ..common.persian_text import fa_digits
 from ..services import calls, cutoffs, encounters, journeys, walkins
 from .security import login_required, principal
 
@@ -63,7 +64,7 @@ def panel_save(visit_id: int):
 def journey_cancel(journey_id: int):
     p = principal()
     journeys.cancel_by_user(get_db(), journey_id, role=p.role, staff_id=p.staff_id, actor=p.actor, now=now())
-    return jsonify(message="مسیر لغو شد")
+    return jsonify(message="پیگیری لغو شد")
 
 
 # ------------------------------------------------------------------ nurse paper
@@ -153,4 +154,4 @@ def cutoffs_approve():
     if not (p.role == "doctor" and p.is_director):
         raise cutoffs.CutoffError("فقط پزشک مدیر می‌تواند کات‌آف را تأیید کند")
     version = cutoffs.approve(get_db(), director_staff_id=p.staff_id, actor=p.actor, now=now())
-    return jsonify(message=f"نسخهٔ {version} تأیید شد و از این پس اعمال می‌شود")
+    return jsonify(message=f"نسخهٔ {fa_digits(version)} تأیید شد و از همین لحظه اجرا می‌شود")

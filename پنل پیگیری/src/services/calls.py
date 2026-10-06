@@ -20,7 +20,7 @@ from typing import Any
 from ..adapters.sqlite import account_repo, followup_repo as repo, journey_repo, mirror_repo, state_repo
 from ..adapters.sqlite.core import transaction
 from ..common.iran_time import TS_FORMAT
-from ..common.jalali import gregorian_from_jalali, jalali_date
+from ..common.jalali import gregorian_from_jalali, jalali_date, jalali_long
 from ..common.persian_text import fa_digits
 from ..domain import journey_rules as rules
 from ..domain import schedule
@@ -31,10 +31,10 @@ from . import identity, journeys
 OUTCOMES = ("booked", "no_answer", "refused", "lab_not_done")
 FOLLOWUP_DOCTORS_KEY = "followup_doctor_staff_ids"
 PURPOSE_LABELS = {
-    "renewal_reminder": "یادآوری تمدید نسخه", "quarterly_lab_reminder": "یادآوری آزمایش سه‌ماهه",
-    "lab_check": "پیگیری آزمایش", "ear_wash_reminder": "یادآوری شستشوی گوش",
+    "renewal_reminder": "یادآوری تمدید نسخه", "quarterly_lab_reminder": "یادآوری آزمایش دوره‌ای دیابت",
+    "lab_check": "پیگیری جواب آزمایش", "ear_wash_reminder": "یادآوری شستشوی گوش",
     "ear_invite_visit": "دعوت به ویزیت (جرم گوش)", "invite_visit": "دعوت به ویزیت",
-    "respiratory_check": "پیگیری تنفسی", "missed": "نوبت از دست رفته", "no_show": "نیامدن در روز نوبت",
+    "respiratory_check": "پیگیری وضعیت تنفس", "missed": "نوبتِ انجام‌نشده", "no_show": "مراجعه نکرد در روز نوبت",
 }
 SHIFT_FA = {"morning": "صبح", "evening": "عصر", "night": "شب"}
 
@@ -104,10 +104,10 @@ def appointment_slots(conn: sqlite3.Connection, step_id: int, now: datetime) -> 
     rows = repo.shift_staff_rows(conn, (today - timedelta(weeks=schedule.WEEKS)).isoformat())
     doctors = [r["origin_doctor_staff_id"], *(state_repo.setting_get(conn, FOLLOWUP_DOCTORS_KEY) or [])]
     names = mirror_repo.staff_names(conn)
-    return [{"date": s.day.isoformat(), "date_fa": jalali_date(s.day), "shift": s.shift,
+    return [{"date": s.day.isoformat(), "date_fa": jalali_date(s.day), "date_long": jalali_long(s.day, year=False), "shift": s.shift,
              "shift_fa": SHIFT_FA[s.shift], "doctor": names.get(s.doctor_id, ""),
              "origin": s.doctor_id == r["origin_doctor_staff_id"]}
-            for s in schedule.suggest(rows, doctors, today)][:12]
+            for s in schedule.suggest(rows, doctors, today)][:8]
 
 
 # ------------------------------------------------------------------ outcomes
@@ -143,7 +143,7 @@ def record(conn: sqlite3.Connection, step_id: int, form: dict[str, Any], *, acto
             if booked > (today + timedelta(days=60)).isoformat():
                 raise CallError("تاریخ نوبت حداکثر ۶۰ روز بعد است")
         if outcome == "lab_not_done" and "lab_not_done" not in t.call_rules:
-            raise CallError("«هنوز آزمایش نداده» فقط برای مسیر آزمایش است")
+            raise CallError("«هنوز آزمایش نداده» فقط برای پیگیری جواب آزمایش است")
 
         repo.insert_attempt(conn, step_id, outcome, booked, note, actor, at)
         attempts = r["attempts"] + 1
@@ -153,33 +153,33 @@ def record(conn: sqlite3.Connection, step_id: int, form: dict[str, Any], *, acto
         if outcome == "booked":
             journey_repo.set_step_status(conn, step_id, "done", at)
             _book(conn, j["id"], r["about_category"], booked, at)
-            message = f"نوبت {jalali_date(booked)} ثبت شد"
+            message = f"نوبت {jalali_long(booked)} ثبت شد"
         elif outcome == "no_answer":
             max_attempts = int(t.call_rules.get("max_attempts", 3))
             if attempts >= max_attempts:
                 _fail(conn, j, "unreachable", actor, at)
-                message = f"پس از {fa_digits(attempts)} تلاش بی‌پاسخ، مسیر بسته شد"
+                message = f"{fa_digits(attempts)} تماس بی‌پاسخ ماند؛ پیگیری بسته شد"
             else:
                 repo.update_step(conn, step_id, due_date=(today + timedelta(
                     days=int(t.call_rules.get("no_answer_retry_days", 1)))).isoformat())
-                message = "تماس دوباره فردا"
+                message = "تماس بعدی: فردا"
         elif outcome == "refused":
             rule = t.refused_rule()
             refusals = repo.count_outcomes(conn, j["id"], "refused")
             if rule is None or refusals >= int(rule["max"]):
                 _fail(conn, j, "refused", actor, at)
-                message = "مسیر بسته شد (بیمار نمی‌آید)"
+                message = "پیگیری بسته شد؛ بیمار مراجعه نمی‌کند"
             else:
                 repo.update_step(conn, step_id, due_date=(today + timedelta(days=int(rule["retry_days"]))).isoformat())
-                message = f"تماس دوباره {fa_digits(rule['retry_days'])} روز بعد"
+                message = f"تماس بعدی: {fa_digits(rule['retry_days'])} روز دیگر"
         else:  # lab_not_done
             rule = t.call_rules["lab_not_done"]
             if repo.count_outcomes(conn, j["id"], "lab_not_done") >= int(rule["max"]):
                 _fail(conn, j, "lab_not_done", actor, at)
-                message = "مسیر بسته شد (آزمایش انجام نشد)"
+                message = "پیگیری بسته شد؛ آزمایش انجام نشد"
             else:
                 repo.update_step(conn, step_id, due_date=(today + timedelta(days=int(rule["retry_days"]))).isoformat())
-                message = f"تماس دوباره {fa_digits(rule['retry_days'])} روز بعد"
+                message = f"تماس بعدی: {fa_digits(rule['retry_days'])} روز دیگر"
         account_repo.audit(conn, at, actor, "call.outcome", "journey_step", step_id,
                            after={"outcome": outcome, "booked_date": booked, "attempt": attempts})
     return {"message": message}
