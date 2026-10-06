@@ -1,0 +1,2 @@
+68af4ce718f466135c21145e6a4a63b7a0b5b0a9ca15d9ae922d528ac90e3ce5  PeygiriPanel.exe
+00ed6b4d3713048399aac6287df3b2ea215d1d1a885c9bab294d734e98c109c4  PeygiriPanel-win-x64.zip
