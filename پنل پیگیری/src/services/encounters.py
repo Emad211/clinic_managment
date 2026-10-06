@@ -8,13 +8,13 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from typing import Any
 
 from ..adapters.sqlite import account_repo, journey_repo as repo
 from ..adapters.sqlite.core import transaction
 from ..common.iran_time import TS_FORMAT
-from ..common.jalali import jalali_date, jalali_long
+from ..common.jalali import gregorian_from_jalali, jalali_date, jalali_long
 from ..common.persian_text import fa_digits
 from ..domain.categories import LABELS_FA
 from ..domain.identity import mask_national_id
@@ -69,13 +69,29 @@ def panel(conn: sqlite3.Connection, visit_id: int, staff_id: int, today: str) ->
         "tags": {t: (tags.get(t) == "active") or bool(pending_tags.get(t)) for t in TAGS},
         "invoice_services": [LABELS_FA[c] for c in categories if c in LABELS_FA],
         "has_bs_test": "bs_test" in categories, "has_bp_check": "bp_check" in categories,
+        "ear_drop_return": bool(person_id) and repo.ear_drop_return(conn, person_id, ctx["invoice_id"]),
         "open_journeys": open_journeys,
-        "encounter": None if enc is None else {
-            "decision": enc["decision"], "note": enc["note"],
-            "editable": enc["created_at"][:10] == today,
-            "journeys": [j["template_code"] for j in repo.journeys_from_origin(conn, "encounter", enc["id"])
-                         if j["status"] in repo.OPEN_STATUSES]},
+        "encounter": None if enc is None else _saved_view(conn, enc, today),
     }
+
+
+def _choice(j: sqlite3.Row) -> dict[str, Any]:
+    params = json.loads(j["params"])
+    out = {"code": j["template_code"], "params": params}
+    if j["template_code"] == "wound_care" and params.get("suture_day"):
+        out["suture_date_fa"] = jalali_date(date.fromisoformat(j["start_date"]) + timedelta(days=params["suture_day"]))
+    return out
+
+
+def _saved_view(conn: sqlite3.Connection, enc: sqlite3.Row, today: str) -> dict[str, Any]:
+    """What the first save chose, so an edit starts from it (a re-save replaces everything, P-6)."""
+    own = [j for j in repo.journeys_from_origin(conn, "encounter", enc["id"]) if j["status"] in repo.OPEN_STATUSES]
+    measurements = [{k: m[k] for k in ("kind", "systolic", "diastolic", "glucose", "glucose_type")}
+                    for m in repo.measurements_of_encounter(conn, enc["id"])]
+    return {"decision": enc["decision"], "note": enc["note"] or "", "editable": enc["created_at"][:10] == today,
+            "journeys": [j["template_code"] for j in own],
+            "choices": [_choice(j) for j in own],
+            "measurements": measurements}
 
 
 # ------------------------------------------------------------------ validation
@@ -85,8 +101,12 @@ def _int_in(value: Any, lo: int, hi: int, message: str) -> int:
     return value
 
 
-def plan_from_form(form: dict[str, Any]) -> tuple[list[tuple[str, dict]], dict[str, bool], list[dict]]:
-    """→ (journeys as (template, params), chronic tags, measurements). Raises EncounterError."""
+def plan_from_form(form: dict[str, Any], start: str | None = None
+                   ) -> tuple[list[tuple[str, dict]], dict[str, bool], list[dict]]:
+    """→ (journeys as (template, params), chronic tags, measurements). Raises EncounterError.
+
+    ``start`` is the visit day; it turns a suture-removal date chosen on the calendar into a day number.
+    """
     if not isinstance(form, dict):
         raise EncounterError("فرم نامعتبر است")
     tags_in = form.get("tags") or {}
@@ -112,9 +132,15 @@ def plan_from_form(form: dict[str, Any]) -> tuple[list[tuple[str, dict]], dict[s
     wound = form.get("wound")
     if wound:
         suture = wound.get("suture_day")
+        if suture is None and wound.get("suture_date_fa") and start:
+            try:
+                suture = (date.fromisoformat(gregorian_from_jalali(str(wound["suture_date_fa"])))
+                          - date.fromisoformat(start)).days
+            except ValueError as exc:
+                raise EncounterError(f"تاریخ کشیدن بخیه: {exc}") from None
         if suture is None:
             raise EncounterError("روز کشیدن بخیه را انتخاب کنید")
-        suture = _int_in(suture, 2, 30, "روز کشیدن بخیه باید بین ۲ و ۳۰ باشد")
+        suture = _int_in(suture, 2, 30, "کشیدن بخیه باید بین ۲ تا ۳۰ روز پس از روز ویزیت باشد")
         every = wound.get("dressing_every")
         if every not in DRESSING_EVERY:
             raise EncounterError("فاصلهٔ تعویض پانسمان را انتخاب کنید (یا «ندارد»)")
@@ -152,7 +178,9 @@ def save(conn: sqlite3.Connection, visit_id: int, form: dict[str, Any], *, staff
     note = (form.get("note") or "").strip() or None
     if note and len(note) > 200:
         raise EncounterError("یادداشت حداکثر ۲۰۰ نویسه است")
-    planned, tags, measurements = plan_from_form(form) if decision == "followup" else ([], {}, [])
+    visit = repo.visit_context(conn, visit_id)
+    planned, tags, measurements = (plan_from_form(form, visit["work_date"] if visit else None)
+                                   if decision == "followup" else ([], {}, []))
     if decision == "followup" and not planned:
         raise EncounterError("دست‌کم یک پیگیری انتخاب کنید، یا «بدون پیگیری» را بزنید")
 

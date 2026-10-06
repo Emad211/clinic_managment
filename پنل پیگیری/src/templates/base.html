@@ -19,6 +19,7 @@
       {% if principal.role == 'doctor' %}
         {{ nav_link('doctor.queue_page', 'بیماران امروز') }}
         {% if principal.is_director %}
+          {{ nav_link('clinical.review_page', 'بررسی پیگیری‌ها') }}
           {{ nav_link('clinical.cutoffs_page', 'کات‌آف‌های بالینی') }}
           <a href="{{ url_for('admin.report_page') }}"{% if in_reports %} aria-current="page"{% endif %}>گزارش‌ها</a>
         {% endif %}
@@ -26,6 +27,7 @@
         {{ nav_link('reception.home', 'پیگیری بیماران') }}
       {% elif principal.role == 'manager' %}
         {{ nav_link('manager.doctors', 'پزشکان') }}
+        {{ nav_link('clinical.review_page', 'بررسی پیگیری‌ها') }}
         {{ nav_link('clinical.cutoffs_page', 'کات‌آف‌های بالینی') }}
         <a href="{{ url_for('admin.report_page') }}"{% if in_reports %} aria-current="page"{% endif %}>گزارش‌ها</a>
         {{ nav_link('admin.settings_page', 'تنظیمات') }}

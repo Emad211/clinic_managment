@@ -28,8 +28,9 @@
     if (checked("series_bp")) data.series_bp = { count: num("bp_count"), every_days: num("bp_every") };
     if (checked("lab_order")) data.lab_order = true;
     if (checked("wound")) {
-      const s = radio("suture_day"), d = radio("dressing_every");
-      data.wound = { suture_day: s && Number(s), dressing_every: d === null ? null : Number(d) };
+      const s = radio("suture_day"), d = radio("dressing_every"), custom = toLatin(form.elements.suture_date.value);
+      data.wound = { suture_day: s ? Number(s) : null, dressing_every: d === null ? null : Number(d) };
+      if (!s && custom) data.wound.suture_date_fa = custom;
     }
     const ear = radio("ear_wax");
     if (ear) data.ear_wax = ear;
@@ -68,6 +69,7 @@
     meta.append(node("span", `ویزیت: ${d.work_date_long}`));
     if (d.invoice_services.length) meta.append(node("span", `خدمات همین فاکتور: ${d.invoice_services.join("، ")}`));
     el("p-identity").hidden = d.identity_ok;
+    el("p-ear").hidden = !d.ear_drop_return;
     form.elements.diabetes.checked = d.tags.diabetes;
     form.elements.hypertension.checked = d.tags.hypertension;
     syncQuarterly();
@@ -85,13 +87,41 @@
         saved.textContent += " ویرایش فقط تا پایان روز ویزیت ممکن بود.";
         form.querySelectorAll("input, button").forEach((x) => { x.disabled = true; });
       } else {
-        saved.textContent += " با ثبت دوباره، انتخاب‌های قبلی جایگزین می‌شوند.";
-        for (const code of d.encounter.journeys) {
-          const f = CHECKBOX_FOR[code];
-          if (f && form.elements[f]) form.elements[f].checked = true;
-        }
+        saved.textContent += " انتخاب‌های قبلی در فرم آمده است؛ با ثبت دوباره جایگزین می‌شوند.";
+        restore(d.encounter);
       }
     }
+  }
+
+  /** Put a saved encounter back into the form: every journey with its parameters, numbers and note. */
+  function restore(enc) {
+    const setRadio = (name, value) => {
+      const r = form.querySelector(`input[name=${name}][value="${value}"]`);
+      if (r) r.checked = true;
+    };
+    form.elements.note.value = enc.note || "";
+    for (const { code, params, suture_date_fa } of enc.choices) {
+      const f = CHECKBOX_FOR[code];
+      if (f && form.elements[f]) form.elements[f].checked = true;
+      if (code === "renewal" && params.interval_months) setRadio("renewal", params.interval_months);
+      if (code === "control_series_bs" || code === "control_series_bp") {
+        const p = code.endsWith("bs") ? "bs" : "bp";
+        form.elements[`${p}_count`].value = toFa(params.count);
+        form.elements[`${p}_every`].value = toFa(params.every_days);
+      }
+      if (code === "wound_care") {
+        if ([5, 7, 10, 14].includes(params.suture_day)) setRadio("suture_day", params.suture_day);
+        else form.elements.suture_date.value = suture_date_fa || "";
+        setRadio("dressing_every", params.dressing_every);
+      }
+      if (code === "ear_wax_rx") setRadio("ear_wax", "rx");
+      if (code === "ear_wax_norx") setRadio("ear_wax", "norx");
+    }
+    for (const m of enc.measurements) {
+      if (m.kind === "bp") { form.elements.systolic.value = toFa(m.systolic); form.elements.diastolic.value = toFa(m.diastolic); }
+      if (m.kind === "bs") { form.elements.glucose.value = toFa(m.glucose); setRadio("glucose_type", m.glucose_type); }
+    }
+    syncQuarterly();
   }
 
   async function load() {
@@ -110,8 +140,14 @@
 
   form.elements.diabetes.addEventListener("change", syncQuarterly);
   // Picking a sub-option also ticks its row, so the common case is one click per row.
-  form.querySelectorAll("input[name=suture_day], input[name=dressing_every]").forEach((x) =>
+  form.querySelectorAll("input[name=suture_day], input[name=dressing_every], input[name=suture_date]").forEach((x) =>
     x.addEventListener("change", () => { form.elements.wound.checked = true; }));
+  // A suture day is either one of the chips or a calendar date, never both.
+  form.elements.suture_date.addEventListener("change", () => {
+    if (form.elements.suture_date.value) form.querySelectorAll("input[name=suture_day]").forEach((x) => { x.checked = false; });
+  });
+  form.querySelectorAll("input[name=suture_day]").forEach((x) =>
+    x.addEventListener("change", () => { form.elements.suture_date.value = ""; }));
   ["bs_count", "bs_every"].forEach((n) => form.elements[n].addEventListener("input", () => { form.elements.series_bs.checked = true; }));
   ["bp_count", "bp_every"].forEach((n) => form.elements[n].addEventListener("input", () => { form.elements.series_bp.checked = true; }));
   form.querySelectorAll("[data-clear]").forEach((b) => b.addEventListener("click", () =>

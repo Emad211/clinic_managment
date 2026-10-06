@@ -33,6 +33,12 @@ def jalali_date(value: str | date | None) -> str:
     return fa_digits(jdatetime.date.fromgregorian(date=d).strftime("%Y/%m/%d"))
 
 
+def jalali_month_start(value: date) -> date:
+    """The Gregorian date of the 1st of value's Jalali month: 2026-10-06 (۱۴ مهر) → 2026-09-23 (۱ مهر)."""
+    j = jdatetime.date.fromgregorian(date=value)
+    return jdatetime.date(j.year, j.month, 1).togregorian()
+
+
 def jalali_long(value: str | date | None, *, weekday: bool = True, year: bool = True) -> str:
     """'2026-10-06' → 'سه‌شنبه ۱۴ مهر ۱۴۰۵'."""
     d = _to_date(value)

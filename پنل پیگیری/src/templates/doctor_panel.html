@@ -11,6 +11,7 @@
 
 <p class="notice warn" id="p-identity" hidden>هویت این بیمار در حسابداری کامل ثبت نشده است. پیگیری‌ها ثبت می‌شوند و پس از تکمیل هویت توسط پذیرش فعال خواهند شد.</p>
 <p class="notice info" id="p-saved" hidden></p>
+<p class="notice warn" id="p-ear" hidden>این بیمار برای گرفتن نسخهٔ قطرهٔ گوش دعوت شده بود (جرم گوش — قطره تجویز نشد). اگر قطره تجویز می‌کنید، در بخش «جرم گوش» گزینهٔ «قطره تجویز شد» را بزنید تا پیگیری شستشو ساخته شود.</p>
 <div class="open-journeys" id="p-open"></div>
 
 <section class="card" id="panel" data-visit="{{ visit_id }}">
@@ -66,7 +67,9 @@
       <div class="opts">
         <label class="chip"><input type="checkbox" name="wound"> پیگیری شود</label>
         <span class="sub"><span class="sub-label">کشیدن بخیه:</span>
-          {% for d in (5, 7, 10, 14) %}<label class="chip"><input type="radio" name="suture_day" value="{{ d }}"> روز {{ d|fa }}</label>{% endfor %}</span>
+          {% for d in (5, 7, 10, 14) %}<label class="chip"><input type="radio" name="suture_day" value="{{ d }}"> روز {{ d|fa }}</label>{% endfor %}
+          <input name="suture_date" data-jdp data-jdp-min-date="today+2" data-jdp-max-date="today+30" autocomplete="off"
+                 placeholder="یا تاریخ دلخواه" aria-label="تاریخ دلخواه کشیدن بخیه"></span>
         <span class="sub"><span class="sub-label">تعویض پانسمان:</span>
           {% for d in (1, 2, 3) %}<label class="chip"><input type="radio" name="dressing_every" value="{{ d }}"> هر {{ d|fa }} روز</label>{% endfor %}
           <label class="chip"><input type="radio" name="dressing_every" value="0"> ندارد</label></span>

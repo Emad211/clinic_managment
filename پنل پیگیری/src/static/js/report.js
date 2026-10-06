@@ -24,8 +24,8 @@
     try {
       const d = await api(`/api/reports/followup?${new URLSearchParams({ range: toLatin(form.elements.range.value) })}`);
       errorBox.hidden = true;
-      fill("r-templates", d.templates.map((t) => [t.title, t.total, t.active, t.awaiting_identity, t.succeeded, t.partial,
-        t.failed, t.cancelled, pct(t.success_rate)]), 9, "در این بازه پیگیری‌ای ساخته نشده است.");
+      fill("r-templates", d.templates.map((t) => [t.title, t.total, t.active, t.awaiting_identity, t.needs_review, t.succeeded, t.partial,
+        t.failed, t.cancelled, pct(t.success_rate)]), 10, "در این بازه پیگیری‌ای ساخته نشده است.");
       document.getElementById("r-baseline").textContent =
         `برای مقایسه: پیش از پنل، پس از حدود ${toFa(d.baseline_rate)}٪ ویزیت‌ها بیمار برای ویزیت دوباره برگشته بود. «نزد همان پزشک» یعنی ویزیت بازگشت را همان پزشکی انجام داده که پیگیری را ثبت کرده بود.`;
       fill("r-doctors", d.doctors.map((x) => [x.doctor, x.succeeded, x.partial, x.failed, pct(x.success_rate),
@@ -35,6 +35,7 @@
     } catch (e) { errorBox.hidden = false; errorBox.textContent = e.message; }
   }
   form.addEventListener("submit", (e) => { e.preventDefault(); load(); });
-  form.elements.range.addEventListener("jdp:change", load);
+  // The first click of a range fires too; reload once both ends are picked.
+  form.elements.range.addEventListener("jdp:change", () => { if (form.elements.range.value.includes(" - ")) load(); });
   load();
 })();

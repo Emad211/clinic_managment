@@ -35,6 +35,7 @@
     } catch (e) { showError(e.message); }
   }
   form.addEventListener("submit", (e) => { e.preventDefault(); load(); });
-  form.elements.range.addEventListener("jdp:change", load);
+  // The first click of a range fires too; reload once both ends are picked.
+  form.elements.range.addEventListener("jdp:change", () => { if (form.elements.range.value.includes(" - ")) load(); });
   load();
 })();

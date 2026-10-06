@@ -64,7 +64,7 @@ def _call_view(conn: sqlite3.Connection, r: sqlite3.Row, today: date) -> dict[st
         "reason": PURPOSE_LABELS.get(r["purpose"], r["purpose"]), "text": _text(conn, r),
         "name": f"{r['first_name']} {r['last_name']}", "mobile": r["mobile"],
         "national_id_masked": mask_national_id(r["national_id"]), "doctor": r["doctor_name"] or "",
-        "attempts": r["attempts"], "due_date_fa": jalali_date(r["due_date"]), "days_late": (today - due).days,
+        "attempts": r["attempts"], "no_answers": r["no_answers"], "due_date_fa": jalali_date(r["due_date"]), "days_late": (today - due).days,
         "last_note": r["last_note"] or "",
         "outcomes": ["booked", "no_answer", "refused"] + (["lab_not_done"] if r["template_code"] == "lab_order" else []),
     }
@@ -155,10 +155,12 @@ def record(conn: sqlite3.Connection, step_id: int, form: dict[str, Any], *, acto
             _book(conn, j["id"], r["about_category"], booked, at)
             message = f"نوبت {jalali_long(booked)} ثبت شد"
         elif outcome == "no_answer":
+            # G4 counts unanswered calls only: a «هنوز آزمایش نداده» or «نمی‌آید» before it is an answer.
             max_attempts = int(t.call_rules.get("max_attempts", 3))
-            if attempts >= max_attempts:
+            no_answers = r["no_answers"] + 1
+            if no_answers >= max_attempts:
                 _fail(conn, j, "unreachable", actor, at)
-                message = f"{fa_digits(attempts)} تماس بی‌پاسخ ماند؛ پیگیری بسته شد"
+                message = f"{fa_digits(no_answers)} تماس بی‌پاسخ ماند؛ پیگیری بسته شد"
             else:
                 repo.update_step(conn, step_id, due_date=(today + timedelta(
                     days=int(t.call_rules.get("no_answer_retry_days", 1)))).isoformat())

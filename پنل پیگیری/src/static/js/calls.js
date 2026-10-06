@@ -31,7 +31,7 @@
     const head = node("div", null, "item-head");
     head.append(node("strong", c.name), node("span", c.reason, "tag info"));
     if (c.days_late > 0) head.append(node("span", `${toFa(c.days_late)} روز عقب‌افتاده`, "tag err"));
-    if (c.attempts) head.append(node("span", `${toFa(c.attempts)} تماس بی‌نتیجهٔ قبلی`, "tag warn"));
+    if (c.no_answers) head.append(node("span", `${toFa(c.no_answers)} بار پاسخ نداده`, "tag warn"));
     card.append(head);
 
     const phone = node("div", null, "row");
@@ -51,7 +51,7 @@
     actions.append(
       btn(c.template === "lab_order" ? "نوبت داده شد (جواب آماده است)" : "نوبت داده شد", () => openBooking(c, note.value), "primary"),
       btn("پاسخ نداد", () => {
-        if (c.attempts >= 2 && !confirm("این سومین تماس بی‌پاسخ است و پیگیری بسته می‌شود. ادامه؟")) return;
+        if (c.no_answers >= 2 && !confirm("این سومین تماس بی‌پاسخ است و پیگیری بسته می‌شود. ادامه؟")) return;
         post("no_answer");
       }),
       btn("مراجعه نمی‌کند", () => {
@@ -84,16 +84,27 @@
       const res = await api(`/api/reception/calls/${c.step_id}/slots`);
       bookForm.elements.date.dataset.suggested = res.slots.map((s) => toLatin(s.date_fa)).join(",");
       slots.replaceChildren(...(res.slots.length
-        ? res.slots.map((s) => btn(`${s.date_long} · ${s.shift_fa} · ${s.doctor}`,
-            () => { bookForm.elements.date.value = s.date_fa; }, "chip" + (s.origin ? " origin" : "")))
+        ? res.slots.map((s) => {
+            const b = btn(`${s.date_long} · ${s.shift_fa} · ${s.doctor}`, () => {
+              bookForm.elements.date.value = s.date_fa;
+              slots.querySelectorAll("button").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
+            }, "chip" + (s.origin ? " origin" : ""));
+            b.setAttribute("aria-pressed", "false");
+            return b;
+          })
         : [node("span", "برنامهٔ ثابتی برای این پزشکان پیدا نشد؛ تاریخ را از تقویم انتخاب کنید.", "muted")]));
     } catch (e) { slots.replaceChildren(node("span", e.message, "error")); }
   }
+  // A date picked on the calendar (or typed) is no longer one of the suggested slots.
+  bookForm.elements.date.addEventListener("change", () =>
+    el("book-slots").querySelectorAll("button[aria-pressed]").forEach((x) => x.setAttribute("aria-pressed", "false")));
   el("book-cancel").addEventListener("click", () => el("book-dialog").close());
   bookForm.addEventListener("submit", async (ev) => {
     ev.preventDefault();
+    if (busy) return;
     const date = toLatin(bookForm.elements.date.value);
     if (!date) { el("book-error").textContent = "تاریخ نوبت را انتخاب کنید"; return; }
+    busy = true;
     try {
       const res = await api(`/api/reception/calls/${booking.step_id}`, {
         method: "POST", body: JSON.stringify({ outcome: "booked", booked_date_fa: date, note: bookForm.elements.note.value }) });
@@ -101,6 +112,7 @@
       toast(res.message);
       refresh();
     } catch (e) { el("book-error").textContent = e.message; }
+    finally { busy = false; }
   });
 
   // ---------------------------------------------------------------- expected today

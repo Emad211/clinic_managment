@@ -102,6 +102,7 @@ button:disabled { opacity: .5; cursor: not-allowed; }
 .chip:has(input:checked) { background: var(--brand-soft); border-color: var(--brand); color: var(--brand-strong); font-weight: 700; }
 button.chip { font-weight: 500; }
 button.chip.origin { border-color: var(--brand); }
+button.chip[aria-pressed="true"] { background: var(--brand-soft); border-color: var(--brand); color: var(--brand-strong); font-weight: 700; }
 
 /* ---------------------------------------------------------------- tags & notices */
 .tag { display: inline-flex; align-items: center; gap: 4px; padding: 0 10px; border-radius: 999px; background: #edf1f5;

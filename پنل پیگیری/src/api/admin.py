@@ -6,7 +6,7 @@ import threading
 from flask import Blueprint, abort, flash, jsonify, redirect, render_template, request, url_for
 
 from ..app_context import get_db, now, runtime
-from ..common.jalali import jalali_date
+from ..common.jalali import jalali_date, jalali_month_start
 from ..domain import categories as cat
 from ..services import admin
 from .security import is_local_request, login_required, principal
@@ -15,8 +15,9 @@ bp = Blueprint("admin", __name__)
 
 
 def _today_range() -> str:
+    """From the 1st of the current JALALI month to today ('this month' for the clinic)."""
     t = now().date()
-    return f"{jalali_date(t.replace(day=1) if t.day > 1 else t)} - {jalali_date(t)}"
+    return f"{jalali_date(jalali_month_start(t))} - {jalali_date(t)}"
 
 
 # ------------------------------------------------------------------ reports

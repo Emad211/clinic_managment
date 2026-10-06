@@ -16,6 +16,7 @@ from typing import Any
 from ..adapters.sqlite import account_repo, journey_repo as repo, state_repo
 from ..adapters.sqlite.core import transaction
 from ..common.iran_time import TS_FORMAT
+from ..common.jalali import jalali_date
 from ..config.settings import resource_dir
 from ..domain import journey_rules as rules
 from ..domain.templates import Template, TemplateError, parse_template, plan
@@ -230,3 +231,61 @@ def cancel_by_user(conn: sqlite3.Connection, journey_id: int, *, role: str, staf
         if role != "manager" and not (role == "doctor" and j["origin_doctor_staff_id"] == staff_id):
             raise JourneyError("فقط پزشکی که این پیگیری را ثبت کرده یا مدیر می‌تواند آن را لغو کند")
         cancel(conn, journey_id, "manual", actor, at)
+
+
+# ------------------------------------------------------------------ G12: origin visit deleted
+REVIEWABLE = ("active", "awaiting_identity")
+
+
+def flag_deleted_origin(conn: sqlite3.Connection, invoice_id: int, actor: str, at: str) -> int:
+    """Accounting deleted the visit a panel was saved for: its open journeys wait for a doctor's decision.
+
+    Runs once per panel (encounter.status ok → source_deleted), so a later «ادامه» is never undone.
+    """
+    flagged = 0
+    for enc in repo.encounters_with_deleted_visit(conn, invoice_id):
+        repo.set_encounter_status(conn, enc["id"], "source_deleted")
+        account_repo.audit(conn, at, actor, "encounter.source_deleted", "encounter", enc["id"],
+                           after={"visit_id": enc["acc_visit_id"], "invoice_id": invoice_id})
+        for j in repo.journeys_from_origin(conn, "encounter", enc["id"]):
+            if j["status"] in REVIEWABLE:
+                repo.set_journey_status(conn, j["id"], "needs_review", None, at)
+                _audit(conn, at, actor, "journey.needs_review", j["id"], {"status": j["status"]},
+                       {"status": "needs_review", "reason": "origin_visit_deleted"})
+                flagged += 1
+    return flagged
+
+
+def can_review(j: sqlite3.Row, *, role: str, staff_id: int | None, is_director: bool) -> bool:
+    """docs/06 §1: the originating doctor, the director doctor, or the manager."""
+    return role == "manager" or (role == "doctor" and (is_director or j["origin_doctor_staff_id"] == staff_id))
+
+
+def review(conn: sqlite3.Connection, journey_id: int, keep: bool, *, role: str, staff_id: int | None,
+           is_director: bool, actor: str, now: datetime) -> str:
+    """«ادامه»: back to active (or awaiting_identity); «لغو»: cancelled 'manual' (docs/05 §2)."""
+    at = now.strftime(TS_FORMAT)
+    with transaction(conn):
+        j = repo.journey(conn, journey_id)
+        if j is None or j["status"] != "needs_review":
+            raise JourneyError("این پیگیری دیگر نیازمند بررسی نیست؛ صفحه را دوباره باز کنید")
+        if not can_review(j, role=role, staff_id=staff_id, is_director=is_director):
+            raise JourneyError("فقط پزشکی که این پیگیری را ثبت کرده، پزشک مدیر یا مدیر می‌تواند درباره‌اش تصمیم بگیرد")
+        if not keep:
+            cancel(conn, journey_id, "manual", actor, at)
+            return "پیگیری لغو شد"
+        status = "active" if j["person_id"] is not None else "awaiting_identity"
+        repo.set_journey_status(conn, journey_id, status, None, at)
+        _audit(conn, at, actor, "journey.review_keep", journey_id, {"status": "needs_review"}, {"status": status})
+        if status == "active":
+            tick_journey(conn, journey_id, now.date(), at)        # catch up on whatever came due meanwhile
+    return "پیگیری ادامه پیدا می‌کند"
+
+
+def review_rows(conn: sqlite3.Connection, origin_doctor_staff_id: int | None, *,
+                viewer_staff_id: int | None) -> list[dict[str, Any]]:
+    return [{"id": r["id"], "title": r["title"], "start_date_fa": jalali_date(r["start_date"]),
+             "name": " ".join(x for x in (r["first_name"], r["last_name"]) if x) or r["file_name"] or "بدون نام",
+             "doctor": r["doctor_name"] or "", "invoice_id": r["origin_acc_invoice_id"],
+             "own": r["origin_doctor_staff_id"] == viewer_staff_id}
+            for r in repo.journeys_needing_review(conn, origin_doctor_staff_id)]

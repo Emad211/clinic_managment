@@ -106,9 +106,9 @@ def reconcile_invoice(conn: sqlite3.Connection, invoice_id: int, now: datetime, 
     inv = repo.invoice_row(conn, invoice_id)
     if inv is None:
         return 0
+    changes = journeys.flag_deleted_origin(conn, invoice_id, actor, at)         # G12
     rows = repo.invoice_items(conn, invoice_id)
     by_key = {(r["item_type"], r["item_id"]): r for r in rows}
-    changes = 0
     evidenced = set()
     for ev in repo.active_evidence_of_invoice(conn, invoice_id):
         row = by_key.get((ev["acc_item_type"], ev["acc_item_id"]))

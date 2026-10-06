@@ -260,3 +260,40 @@ def approve_cutoff(conn: sqlite3.Connection, ruleset_id: int, staff_id: int, at:
 
 def ids(rows: Iterable[sqlite3.Row], key: str = "id") -> list[int]:
     return [r[key] for r in rows]
+
+
+def ear_drop_return(conn: sqlite3.Connection, person_id: int, invoice_id: int) -> bool:
+    """P-8: the person has an «ear wax — no drops» journey that is still open, or that this very
+    invoice just completed (the return visit itself closes it before the doctor opens the panel).
+    A journey started on this same invoice (the doctor editing today's panel) does not count."""
+    return conn.execute(
+        f"SELECT 1 FROM journey j WHERE j.person_id = ? AND j.template_code = 'ear_wax_norx' "
+        f"AND coalesce(j.origin_acc_invoice_id, -1) <> ? AND ("
+        f"  j.status IN {OPEN_STATUSES} OR EXISTS (SELECT 1 FROM return_evidence e WHERE e.journey_id = j.id "
+        f"  AND e.acc_invoice_id = ? AND e.revoked_at IS NULL)) LIMIT 1", (person_id, invoice_id, invoice_id)).fetchone() is not None
+
+
+# ------------------------------------------------------------------ G12: origin visit deleted
+def encounters_with_deleted_visit(conn: sqlite3.Connection, invoice_id: int) -> list[sqlite3.Row]:
+    """Panels of this invoice whose visit accounting has deleted and that were not flagged yet."""
+    return conn.execute(
+        "SELECT e.* FROM encounter e JOIN acc_item v ON v.item_type = 'visit' AND v.item_id = e.acc_visit_id "
+        "WHERE e.acc_invoice_id = ? AND e.status = 'ok' AND v.deleted_at IS NOT NULL", (invoice_id,)).fetchall()
+
+
+def set_encounter_status(conn: sqlite3.Connection, encounter_id: int, status: str) -> None:
+    conn.execute("UPDATE encounter SET status = ? WHERE id = ?", (status, encounter_id))
+
+
+def journeys_needing_review(conn: sqlite3.Connection, origin_doctor_staff_id: int | None) -> list[sqlite3.Row]:
+    """needs_review journeys, oldest first; one doctor's own, or everyone's when the id is None."""
+    return conn.execute(
+        "SELECT j.id, j.template_code, j.start_date, j.person_id, j.origin_doctor_staff_id, j.origin_acc_invoice_id, "
+        "t.title, p.first_name, p.last_name, st.full_name AS doctor_name, "
+        "(SELECT trim(coalesce(a.name, '') || ' ' || coalesce(a.family_name, '')) FROM encounter e "
+        "   JOIN acc_patient a ON a.acc_id = e.acc_patient_id WHERE e.id = j.origin_id) AS file_name "
+        "FROM journey j JOIN journey_template t ON t.code = j.template_code AND t.version = j.template_version "
+        "LEFT JOIN person p ON p.id = j.person_id "
+        "LEFT JOIN acc_staff st ON st.acc_id = j.origin_doctor_staff_id "
+        "WHERE j.status = 'needs_review' AND (? IS NULL OR j.origin_doctor_staff_id = ?) "
+        "ORDER BY j.start_date, j.id", (origin_doctor_staff_id, origin_doctor_staff_id)).fetchall()

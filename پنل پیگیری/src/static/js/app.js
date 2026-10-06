@@ -36,10 +36,11 @@
   }
   document.querySelectorAll("#toasts .toast").forEach((t) => setTimeout(() => t.remove(), 5000));
 
-  /** Today in Jalali as "1405/07/14" (Latin digits, what the picker expects in attributes). */
+  /** Today in Tehran (fixed UTC+3:30, like the server — never the PC's clock zone) as Jalali "1405/07/14". */
   function jalaliToday(offsetDays = 0) {
-    const d = new Date(Date.now() + offsetDays * 86400000);
-    const parts = new Intl.DateTimeFormat("en-US-u-ca-persian", { year: "numeric", month: "2-digit", day: "2-digit" })
+    const d = new Date(Date.now() + offsetDays * 86400000 + 12600000);
+    const parts = new Intl.DateTimeFormat("en-US-u-ca-persian", { year: "numeric", month: "2-digit", day: "2-digit",
+                                                                   timeZone: "UTC", numberingSystem: "latn" })
       .formatToParts(d).reduce((o, p) => ({ ...o, [p.type]: p.value }), {});
     return `${parts.year.replace(/\D/g, "")}/${parts.month}/${parts.day}`;
   }
@@ -47,6 +48,10 @@
   // ---------------------------------------------------------------- Jalali date picker
   // Per-input limits: data-jdp-min-date / data-jdp-max-date = "1405/07/14", "today", "today+N" or "today-N".
   // (The library's "attr" mode did not apply the limits in v1.0.0, so they are passed as options on focus.)
+  //
+  // Digits: the library parses the input's value with parseInt, so it only understands Latin digits
+  // ("۱۴۰۵" → NaN: no selected day, wrong month, broken range). The field therefore holds Latin digits
+  // while the calendar is open and is shown with Persian digits again once it closes.
   function parseLimit(value) {
     if (!value) return undefined;
     const m = /^today([+-]\d+)?$/.exec(value);
@@ -54,19 +59,38 @@
     const [year, month, day] = text.split("/").map(Number);
     return year && month && day ? { year, month, day } : undefined;
   }
+  const isDateInput = (t) => t instanceof HTMLInputElement && t.matches("input[data-jdp]");
+  // Digit swaps keep the length, so the caret/selection is restored: a field entered with Tab
+  // has all its text selected, and typing must still replace it.
+  const swapDigits = (input, convert) => {
+    const value = convert(input.value);
+    if (value === input.value || value.length !== input.value.length) { if (value !== input.value) input.value = value; return; }
+    const focused = document.activeElement === input;
+    const [start, end, dir] = [input.selectionStart, input.selectionEnd, input.selectionDirection];
+    input.value = value;
+    if (focused) input.setSelectionRange(start, end, dir);
+  };
+  const toLatinInPlace = (input) => swapDigits(input, (v) => v.replace(/[۰-۹]/g, (d) => FA.indexOf(d)));
+  const toFaInPlace = (input) => swapDigits(input, (v) => v.replace(/\d/g, (d) => FA[d]));
+  let current = null;                                              // the date input the calendar belongs to
   function startPicker() {
-    if (!window.jalaliDatepicker) return;
-    // Registered BEFORE startWatch so it runs before the library opens the picker: the input's own
-    // limits, and render inside its modal <dialog> (a modal dialog is in the top layer; a picker
-    // appended to <body> would sit behind it).
+    const jdp = window.jalaliDatepicker;
+    if (!jdp) return;
+    // Registered BEFORE startWatch so it runs before the library opens the picker: Latin digits,
+    // the input's own limits, Tehran's today, and render inside its modal <dialog> (a modal dialog
+    // is in the top layer; a picker appended to <body> would sit behind it).
     const prepare = (ev) => {
       const input = ev.target;
-      if (!(input instanceof HTMLInputElement) || !input.matches("input[data-jdp]")) return;
+      if (!isDateInput(input)) return;
+      toLatinInPlace(input);
       const dlg = input.closest("dialog");
-      window.jalaliDatepicker.updateOptions({
+      jdp.updateOptions({
         container: dlg ? `#${dlg.id}` : "body",
+        // updateOptions freezes mode:"attr" to whatever the previous input had — pass it per input.
+        mode: input.dataset.jdpMode === "range" ? "range" : "single",
         minDate: parseLimit(input.dataset.jdpMinDate),
         maxDate: parseLimit(input.dataset.jdpMaxDate),
+        today: parseLimit("today"),
       });
       // The library builds its elements once; move them next to this input's layer.
       const target = dlg || document.body;
@@ -77,23 +101,65 @@
     };
     document.addEventListener("pointerdown", prepare, true);
     document.addEventListener("focusin", prepare, true);
-    window.jalaliDatepicker.startWatch({
+    jdp.startWatch({
       persianDigits: true, mode: "attr", autoReadOnlyInput: false, zIndex: 4000,
       showTodayBtn: true, showEmptyBtn: false, showCloseBtn: true, hideAfterChange: true,
       dayRendering(day, input) {
         const key = `${day.year}/${String(day.month).padStart(2, "0")}/${String(day.day).padStart(2, "0")}`;
         const suggested = (input?.dataset.suggested || "").split(",").includes(key);
-        return { isValid: day.isValid, isHoliday: day.weekDay === 6, className: suggested ? " suggested" : "" };   // the library appends this without a space
+        // The returned className REPLACES the library's (".selected", ".today", ".last-week"), so keep it.
+        // Classes are joined with "." — the library builds elements from "div.a.b" strings.
+        return { isValid: day.isValid, className: (day.className || "") + (suggested ? ".suggested" : "") };
       },
+    });
+    // Back to Persian digits whenever the calendar closes (pick, «بستن», Escape or click outside).
+    // The library exposes no "closed" hook, so its container's visibility is watched.
+    const isOpen = () => { const c = document.querySelector("jdp-container"); return !!c && c.style.visibility !== "hidden"; };
+    let watched = null;
+    const watch = () => {
+      const c = document.querySelector("jdp-container");
+      if (!c || c === watched) return;
+      watched = c;
+      new MutationObserver(() => { if (!isOpen() && current) toFaInPlace(current); })
+        .observe(c, { attributes: true, attributeFilter: ["style"] });
+    };
+    document.addEventListener("focusin", (ev) => { if (isDateInput(ev.target)) { current = ev.target; setTimeout(watch, 0); } });
+    // Escape with the calendar open closes only the calendar, not the dialog around it.
+    let escapeForCalendar = false;
+    window.addEventListener("keydown", (ev) => { if (ev.key === "Escape") escapeForCalendar = isOpen(); }, true);
+    document.addEventListener("cancel", (ev) => {
+      if (escapeForCalendar && ev.target instanceof HTMLDialogElement) ev.preventDefault();
+      escapeForCalendar = false;
+    }, true);
+    // The library opens only on focus: a second click on the still-focused field must reopen it.
+    document.addEventListener("click", (ev) => {
+      const input = ev.target;
+      if (isDateInput(input) && !isOpen()) { current = input; jdp.show(input); setTimeout(watch, 0); }
+    });
+    // Tabbing to another field while the calendar is open.
+    document.addEventListener("focusout", (ev) => {
+      const input = ev.target;
+      if (isDateInput(input)) setTimeout(() => { if (document.activeElement !== input && !isOpen()) toFaInPlace(input); }, 0);
+    });
+    // A date typed by hand (Persian or Latin digits) moves the open calendar to it once complete.
+    document.addEventListener("input", (ev) => {
+      const input = ev.target;
+      // isTrusted: the library fires a synthetic "input" right before it closes itself after a pick.
+      if (!ev.isTrusted || !isDateInput(input) || input.dataset.jdpMode === "range") return;
+      toLatinInPlace(input);
+      if (/^\d{4}\/\d{2}\/\d{2}$/.test(input.value) && isOpen() && current === input) jdp.show(input);
+    });
+    // "1405/6/5" typed by hand → "1405/06/05" when the field is left.
+    document.addEventListener("change", (ev) => {
+      const input = ev.target;
+      if (!ev.isTrusted || !isDateInput(input) || input.dataset.jdpMode === "range") return;
+      const m = /^(\d{4})\/(\d{1,2})\/(\d{1,2})$/.exec(toLatin(input.value));
+      if (!m) return;
+      const padded = `${m[1]}/${m[2].padStart(2, "0")}/${m[3].padStart(2, "0")}`;
+      input.value = isOpen() ? padded : toFa(padded);          // the open calendar still reads Latin digits
     });
   }
   startPicker();
-
-  // A date picked from the calendar is shown with Persian digits too.
-  document.addEventListener("jdp:change", (ev) => {
-    const t = ev.target;
-    if (t instanceof HTMLInputElement) t.value = toFa(t.value);
-  });
 
   // Numeric fields show Persian digits as the user types (values are converted back with toLatin).
   document.addEventListener("input", (ev) => {

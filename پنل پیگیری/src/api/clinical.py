@@ -67,6 +67,34 @@ def journey_cancel(journey_id: int):
     return jsonify(message="پیگیری لغو شد")
 
 
+# ------------------------------------------------------------------ G12: journeys whose origin visit was deleted
+@bp.get("/review")
+@login_required("manager", "director")
+def review_page():
+    return render_template("review.html")
+
+
+@bp.get("/api/journeys/review")
+@login_required("doctor", "manager")
+def review_list():
+    p = principal()
+    every = p.role == "manager" or p.is_director
+    return jsonify(rows=journeys.review_rows(get_db(), None if every else p.staff_id, viewer_staff_id=p.staff_id))
+
+
+@bp.post("/api/journeys/<int:journey_id>/review")
+@login_required("doctor", "manager")
+@json_errors
+def review_decide(journey_id: int):
+    keep = payload().get("keep")
+    if keep not in (True, False):
+        raise journeys.JourneyError("«ادامه» یا «لغو» را انتخاب کنید")
+    p = principal()
+    message = journeys.review(get_db(), journey_id, keep, role=p.role, staff_id=p.staff_id,
+                              is_director=bool(p.is_director), actor=p.actor, now=now())
+    return jsonify(message=message)
+
+
 # ------------------------------------------------------------------ nurse paper
 @bp.get("/api/reception/walkins")
 @login_required("reception")

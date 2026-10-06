@@ -8,6 +8,11 @@
   </div>
   <span class="muted" id="q-counts"></span>
 </div>
+<section class="card" id="review-box" hidden>
+  <div class="card-head"><div><h2>نیازمند بررسی</h2>
+    <p class="muted">ویزیتی که برایش پیگیری ثبت کرده بودید در حسابداری حذف شده است. ادامه یا لغو پیگیری را انتخاب کنید؛ تا آن زمان تماسی گرفته نمی‌شود.</p></div></div>
+  <div id="review-list" class="list"></div>
+</section>
 <section class="card">
   <div class="table-wrap">
     <table class="clickable">
@@ -17,4 +22,5 @@
   </div>
 </section>
 {% endblock %}
-{% block scripts %}<script src="{{ url_for('static', filename='js/queue.js') }}"></script>{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='js/queue.js') }}"></script>
+<script src="{{ url_for('static', filename='js/review.js') }}"></script>{% endblock %}

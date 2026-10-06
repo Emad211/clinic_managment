@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}بررسی پیگیری‌ها — {{ app_name }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>پیگیری‌های نیازمند بررسی</h1>
+    <p class="muted">ویزیتی که پیگیری برایش ثبت شده بود در حسابداری حذف شده است. تا تصمیم بگیرید، هیچ تماسی برای این پیگیری‌ها ساخته نمی‌شود.</p>
+  </div>
+</div>
+<section class="card" id="review-box" data-always-show="1">
+  <div id="review-list" class="list"></div>
+</section>
+{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='js/review.js') }}"></script>{% endblock %}

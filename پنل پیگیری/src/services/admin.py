@@ -91,6 +91,8 @@ AUDIT_FA = {
     "setting.followup_doctors": "پزشکان پیگیری", "setting.call_text": "متن تماس",
     "procedure.map": "نگاشت نام کار عملی", "app.stop": "توقف برنامه", "maintenance.backup": "پشتیبان‌گیری",
     "maintenance.purge": "پاک‌سازی دادهٔ قدیمی آینه",
+    "encounter.source_deleted": "حذف ویزیتِ پیگیری در حسابداری", "journey.needs_review": "نیازمند بررسی شد",
+    "journey.review_keep": "ادامهٔ پیگیری پس از بررسی",
 }
 
 
