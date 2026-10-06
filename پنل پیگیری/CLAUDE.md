@@ -10,7 +10,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - detects the patient's return from payments recorded in accounting;
 - reads accounting **strictly read-only**.
 
-**Status:** M0–M3 done (panel schema v4): read-only bridge, poller/mirror, login, doctor queue, identity (M2), journey engine with 10 templates in `journeys/`, doctor panel, nurse paper, cut-offs. ~250 tests. Next: M4 (reception calls, return matching M1–M9, evidence revocation). See `docs/08` §1. Read `README.md`, then `docs/01`–`09` in order. Every decision and its source is in `docs/09-decisions-log.md` (IDs `Dxx` decisions, `Axx` assumptions, `Oxx` open items). Rationale is in `docs/adr/`.
+**Status:** M0–M4 done (panel schema v4). That covers the read-only bridge, poller/mirror, login and doctor queue, identity, the journey engine and doctor panel, nurse paper and cut-offs, plus reception calls and return detection with revocation. M4 was also verified end to end against the real accounting app running on a copy of the clinic DB, with zero lock errors. About 270 tests. Next: M5 (reports, audit/health pages, weekly backup, mirror retention, stop button, procedure-name mapping, pilot). See `docs/08` §1. Read `README.md`, then `docs/01`–`09` in order. Every decision and its source is in `docs/09-decisions-log.md` (IDs `Dxx` decisions, `Axx` assumptions, `Oxx` open items). Rationale is in `docs/adr/`.
 
 ## Hard rules
 
@@ -68,4 +68,5 @@ $env:PEYGIRI_PERF_DB = "<path to a COPY of clinic_new.db>"; .\.venv\Scripts\pyth
 
 - Tests never open a real accounting file: `tests/conftest.py` installs a path guard (temp dirs and `PEYGIRI_PERF_DB` only) and checks `tests/fixtures` hashes. Synthetic accounting DBs come from `tests/accounting_factory.py`, built on the production DDL in `tests/fixtures/accounting_schema.sql` (schema only).
 - `tests/test_bridge_safety.py` is the merge gate for `adapters/accounting/` and `sync/`; `tests/test_architecture.py` enforces the layering rules on the AST.
+- End-to-end with accounting: copy `../webapp` (without its DB) to a scratch folder, put a *copy* of the clinic DB next to it, create test users with `flask --app src.app create-user`, run its `start.py` (port 8080), and point the panel's `config.ini` at the same copy. Accounting's repo HEAD migrates the copy on first connect; never do this with the real file.
 - Gotchas found in M0: SQLite's busy handler on Windows rounds sleeps up to the timer tick, so the bridge uses `timeout=0` and retries in Python (D30); werkzeug calls `sys.exit(1)` (not `OSError`) when the port is taken; a PyInstaller onefile exe shows two processes (bootloader + app).

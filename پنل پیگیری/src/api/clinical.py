@@ -6,12 +6,13 @@ from functools import wraps
 from flask import Blueprint, jsonify, render_template, request
 
 from ..app_context import get_db, now
-from ..services import cutoffs, encounters, journeys, walkins
+from ..services import calls, cutoffs, encounters, journeys, walkins
 from .security import login_required, principal
 
 bp = Blueprint("clinical", __name__)
 
-_ERRORS = (encounters.EncounterError, walkins.WalkinError, journeys.JourneyError, cutoffs.CutoffError)
+_ERRORS = (encounters.EncounterError, walkins.WalkinError, journeys.JourneyError, cutoffs.CutoffError,
+           calls.CallError)
 
 
 def json_errors(view):
@@ -77,6 +78,49 @@ def walkin_list():
 @json_errors
 def walkin_save(invoice_id: int):
     return jsonify(walkins.save(get_db(), invoice_id, payload(), actor=principal().actor, now=now()))
+
+
+# ------------------------------------------------------------------ calls & returns (M4)
+@bp.get("/api/reception/followups")
+@login_required("reception")
+def followups():
+    return jsonify(calls.worklists(get_db(), now()))
+
+
+@bp.get("/api/reception/calls/<int:step_id>/slots")
+@login_required("reception")
+@json_errors
+def call_slots(step_id: int):
+    return jsonify(slots=calls.appointment_slots(get_db(), step_id, now()))
+
+
+@bp.post("/api/reception/calls/<int:step_id>")
+@login_required("reception")
+@json_errors
+def call_outcome(step_id: int):
+    return jsonify(calls.record(get_db(), step_id, payload(), actor=principal().actor, now=now()))
+
+
+@bp.post("/api/reception/link")
+@login_required("reception")
+@json_errors
+def link_invoice():
+    data = payload()
+    try:
+        invoice_id, person_id = int(data.get("invoice_id")), int(data.get("person_id"))
+    except (TypeError, ValueError):
+        raise calls.CallError("فاکتور و شخص را انتخاب کنید") from None
+    return jsonify(calls.link_invoice(get_db(), invoice_id, person_id, actor=principal().actor, now=now()))
+
+
+@bp.post("/api/reception/suggestions/<int:suggestion_id>")
+@login_required("reception")
+@json_errors
+def suggestion(suggestion_id: int):
+    accept = payload().get("accept")
+    if accept not in (True, False):
+        raise calls.CallError("«همین بیمار است» یا «نه» را انتخاب کنید")
+    return jsonify(calls.decide_suggestion(get_db(), suggestion_id, accept, actor=principal().actor, now=now()))
 
 
 # ------------------------------------------------------------------ cut-offs

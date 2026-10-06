@@ -5,8 +5,10 @@ import hashlib
 import json
 
 from ..adapters.sqlite import account_repo, core, identity_repo as repo
-from . import encounters, journeys
-from ..common.persian_text import normalize
+from datetime import datetime
+
+from . import encounters, journeys, returns
+from ..common.persian_text import clean_name, normalize
 from ..domain.identity import (clean_mobile, clean_national_id, identity_ok, identity_problems,
                                is_valid_mobile, is_valid_national_id, mask_national_id)
 
@@ -38,7 +40,8 @@ def validated(data):
         raise IdentityError('اطلاعات فرم باید متن باشد')
     if any(len(data.get(k, '')) > 100 for k in FIELDS):
         raise IdentityError('فیلدها باید حداکثر ۱۰۰ نویسه باشند')
-    fields = {k: normalize(data.get(k, '')) for k in FIELDS}
+    fields = {k: (clean_name if k in ('first_name', 'last_name') else normalize)(data.get(k, ''))
+              for k in FIELDS}
     fields['national_id'] = clean_national_id(fields['national_id'])
     fields['mobile'] = clean_mobile(fields['mobile'])
     problems = identity_problems(*(fields[k] for k in FIELDS))
@@ -102,6 +105,12 @@ def _bind(conn, patient_id, person_id, method, actor, at):
         if journey['person_id'] not in (None, person_id):
             continue  # Never reassign a clinical record to another person.
         journeys.activate_with_identity(conn, journey['id'], person_id, actor, at)
+    # Visits paid before the identity was known can now count as returns (M9 path 1).
+    returns.reconcile_patient(conn, patient_id, datetime.strptime(at, '%Y-%m-%d %H:%M:%S'), actor,
+                              'auto' if method == 'auto_nid' else 'reception')
+
+
+link_patient = _bind     # public name for other services (calls: manual link, suggestions)
 
 
 def sync_patients(conn, patient_ids, at):

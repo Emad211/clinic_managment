@@ -5,7 +5,8 @@
   const el = (id) => document.getElementById(id);
 
   // ---------------------------------------------------------------- tabs
-  const tabs = [["tab-identity", "pane-identity"], ["tab-walkin", "pane-walkin"]];
+  const tabs = [["tab-identity", "pane-identity"], ["tab-walkin", "pane-walkin"], ["tab-today", "pane-today"],
+                ["tab-overdue", "pane-overdue"], ["tab-expected", "pane-expected"], ["tab-suggest", "pane-suggest"]];
   function show(tabId) {
     for (const [t, p] of tabs) {
       el(t).setAttribute("aria-selected", String(t === tabId));

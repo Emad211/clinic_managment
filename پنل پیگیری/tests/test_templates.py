@@ -203,3 +203,19 @@ def test_tick_is_idempotent():
         s.status = first.step_status.get(s.id, s.status)
     second = R.tick(j, steps, D0 + timedelta(days=2))
     assert second.empty or (not second.step_status and not second.new_calls)
+
+
+def test_appointment_suggestions_follow_usual_schedule():
+    from src.domain import schedule
+    today = date(2026, 10, 6)                                         # a Tuesday
+    rows = []
+    for w in range(12):
+        tue = today - timedelta(days=7 * (w + 1))
+        rows.append((tue.isoformat(), "evening", 1))                  # doctor 1: every Tuesday evening
+        if w % 3 == 0:
+            rows.append(((tue + timedelta(days=1)).isoformat(), "morning", 1))   # 4/12 Wednesdays: not usual
+        rows.append(((tue + timedelta(days=2)).isoformat(), "morning", 2))       # doctor 2: Thursdays
+    assert schedule.usual_combos(rows, 1, today) == {(today.weekday(), "evening")}
+    slots = schedule.suggest(rows, [1, 2, 1], today, days=7)
+    assert [(s.day.isoformat(), s.shift, s.doctor_id) for s in slots] == [
+        ("2026-10-06", "evening", 1), ("2026-10-08", "morning", 2)]

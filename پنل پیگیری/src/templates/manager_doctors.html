@@ -57,4 +57,17 @@
   <p class="muted">همهٔ پزشکانِ فعال حسابداری حساب دارند، یا فهرست کادر درمان هنوز از حسابداری خوانده نشده است.</p>
   {% endif %}
 </section>
+<section class="card">
+  <h2>پزشکان پیگیری</h2>
+  <p class="muted">هنگام ثبت «نوبت گرفت»، بعد از برنامهٔ پزشک مبدأ، روزهای معمول این پزشکان پیشنهاد می‌شود (D20).</p>
+  <form method="post" action="{{ url_for('manager.followup_doctors') }}" class="stack">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="row">
+    {% for d in all_doctors %}
+      <label class="chip"><input type="checkbox" name="staff_id" value="{{ d.acc_id }}" {% if d.acc_id in followup %}checked{% endif %}> {{ d.full_name }}</label>
+    {% endfor %}
+    </div>
+    <button type="submit" class="primary">ذخیره</button>
+  </form>
+</section>
 {% endblock %}

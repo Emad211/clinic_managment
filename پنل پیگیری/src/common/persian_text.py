@@ -24,6 +24,20 @@ def normalize(text: str | None) -> str:
     return _SPACES.sub(" ", text.translate(_CHAR_MAP)).strip()
 
 
+_NAME_MAP = str.maketrans({k: v for k, v in _CHAR_MAP.items() if k != 0x200C})
+
+
+def clean_name(text: str | None) -> str:
+    """For storing/displaying names: like normalize() but the half-space (ZWNJ) is kept.
+
+    «پیگیری‌یک» and «عبدالله‌زاده» are spelled with a ZWNJ; turning it into a
+    space would change the name. Comparisons still use normalize().
+    """
+    if not text:
+        return ""
+    return _SPACES.sub(" ", text.translate(_NAME_MAP)).strip()
+
+
 def compact(text: str | None) -> str:
     """normalize() without any spaces — tolerant of typos like «کشیدنبخیه»."""
     return normalize(text).replace(" ", "")

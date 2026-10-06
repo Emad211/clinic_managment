@@ -117,3 +117,12 @@ fieldset.rule legend { font-weight: 600; padding: 0 6px; }
 .queue tbody tr { cursor: pointer; }
 .queue tbody tr:hover { background: #f1f6f8; }
 @media (max-width: 640px) { fieldset.row legend { float: none; width: 100%; } }
+
+/* ---- M4: call cards ---- */
+.call-card { border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; display: flex; flex-direction: column; gap: 6px; }
+.call-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.call-phone { display: flex; align-items: center; gap: 8px; }
+.call-phone .mobile { font-size: 1.15rem; font-weight: 700; letter-spacing: .03em; }
+.call-text { background: #f1f6f8; border-radius: 8px; padding: 8px 10px; margin: 0; }
+.chip.origin { border-color: var(--brand); }
+#book-slots { gap: 6px; }

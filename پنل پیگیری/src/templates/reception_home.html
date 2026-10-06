@@ -3,7 +3,42 @@
 <nav class="tabs" role="tablist">
   <button role="tab" id="tab-identity" aria-controls="pane-identity" aria-selected="true">هویت ناقص <span id="identity-count-tab" class="tag err">…</span></button>
   <button role="tab" id="tab-walkin" aria-controls="pane-walkin" aria-selected="false">کاغذ پرستار <span id="walkin-count" class="tag">…</span></button>
+  <button role="tab" id="tab-today" aria-controls="pane-today" aria-selected="false">تماس‌های امروز <span id="today-count" class="tag">…</span></button>
+  <button role="tab" id="tab-overdue" aria-controls="pane-overdue" aria-selected="false">عقب‌افتاده‌ها <span id="overdue-count" class="tag">…</span></button>
+  <button role="tab" id="tab-expected" aria-controls="pane-expected" aria-selected="false">انتظار امروز <span id="expected-count" class="tag">…</span></button>
+  <button role="tab" id="tab-suggest" aria-controls="pane-suggest" aria-selected="false">تأیید تطبیق <span id="suggest-count" class="tag">…</span></button>
 </nav>
+<p id="calls-message" class="flash ok" role="status" hidden></p>
+
+<section class="card" id="pane-today" role="tabpanel" aria-labelledby="tab-today" hidden>
+  <h1>تماس‌های امروز</h1><div id="today-list" class="stack"></div>
+</section>
+<section class="card" id="pane-overdue" role="tabpanel" aria-labelledby="tab-overdue" hidden>
+  <h1>تماس‌های عقب‌افتاده</h1><div id="overdue-list" class="stack"></div>
+</section>
+<section class="card" id="pane-expected" role="tabpanel" aria-labelledby="tab-expected" hidden>
+  <h1>انتظار امروز</h1>
+  <p class="muted">بیمارانی که امروز انتظار مراجعه‌شان هست. اگر فاکتور امروزِ بیمار بدون هویت ثبت شده، آن را به همین شخص وصل کنید.</p>
+  <table><thead><tr><th>بیمار</th><th>موبایل</th><th>مسیر و خدمت</th><th>پایان پنجره</th><th>اتصال به فاکتور امروز</th></tr></thead>
+  <tbody id="expected-list"></tbody></table>
+</section>
+<section class="card" id="pane-suggest" role="tabpanel" aria-labelledby="tab-suggest" hidden>
+  <h1>تأیید تطبیق</h1>
+  <p class="muted">فاکتورهای بی‌هویتی که موبایلشان با بیمارِ مورد انتظار یکی است.</p>
+  <table><thead><tr><th>فاکتور</th><th>موبایل فاکتور</th><th>بیمار مورد انتظار</th><th></th></tr></thead>
+  <tbody id="suggest-list"></tbody></table>
+</section>
+<dialog id="book-dialog" aria-labelledby="book-title">
+  <form id="book-form" class="stack" novalidate>
+    <h2 id="book-title">ثبت نوبت</h2>
+    <p id="book-who" class="muted"></p>
+    <div id="book-slots" class="row"></div>
+    <label>تاریخ نوبت <input name="date" inputmode="numeric" placeholder="۱۴۰۵/۰۷/۲۰" required></label>
+    <label>یادداشت (اختیاری) <input name="note" maxlength="200"></label>
+    <p id="book-error" class="error" role="alert"></p>
+    <div class="actions"><button class="primary" type="submit">ثبت نوبت</button><button type="button" id="book-cancel">انصراف</button></div>
+  </form>
+</dialog>
 
 <section class="card" id="pane-walkin" role="tabpanel" aria-labelledby="tab-walkin" hidden>
   <div class="card-head"><h1>کاغذ پرستار — تست قند و کنترل فشارِ بدون ویزیت (امروز و دیروز)</h1></div>
@@ -72,4 +107,5 @@
 </dialog>
 {% endblock %}
 {% block scripts %}<script src="{{ url_for('static', filename='js/identity.js') }}"></script>
-<script src="{{ url_for('static', filename='js/walkin.js') }}"></script>{% endblock %}
+<script src="{{ url_for('static', filename='js/walkin.js') }}"></script>
+<script src="{{ url_for('static', filename='js/calls.js') }}"></script>{% endblock %}

@@ -23,6 +23,7 @@ from ..domain.events import (DomainEvent, InvoiceClosed, ItemAdded, ItemDeleted,
 from ..domain.identity import identity_ok
 from ..services.identity import sync_patients
 from ..adapters.sqlite import identity_repo
+from ..adapters.sqlite import state_repo
 from ..adapters.sqlite.core import savepoint
 
 
@@ -117,8 +118,9 @@ def apply_snapshot(conn: sqlite3.Connection, snap: PollSnapshot, ids: cat.Servic
         with savepoint(conn, "identity_sync"):
             identity_repo.observe_invoices(conn, read_ids, now)
             sync_patients(conn, [p.id for p in snap.patients], now)
-    except Exception:
+    except Exception as exc:
         log.exception("identity sync failed; mirror update kept")
+        state_repo.sync_set(conn, {"last_engine_error": f"{now} identity: {exc}"[:300]})
 
     if snap.shift_staff:
         repo.upsert_shift_staff(conn, snap.shift_staff)

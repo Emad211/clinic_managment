@@ -22,6 +22,7 @@ class SyncStatus:
     last_error: str | None
     cycles_ok: int
     cycles_skipped: int
+    last_engine_error: str | None = None
 
 
 def _bridge_message(reason: str) -> str:
@@ -51,4 +52,4 @@ def status(conn: sqlite3.Connection, bridge: AccountingBridge, now: datetime) ->
         message = ""
     return SyncStatus(color, age, message, last_ok, st.get("cycle_ms_p50"), st.get("cycle_ms_p99"),
                       int(st.get("consecutive_failures", "0")), st.get("last_error"),
-                      int(st.get("cycles_ok", "0")), int(st.get("cycles_skipped", "0")))
+                      int(st.get("cycles_ok", "0")), int(st.get("cycles_skipped", "0")), st.get("last_engine_error"))

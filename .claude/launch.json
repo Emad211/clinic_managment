@@ -4,13 +4,17 @@
     {
       "name": "specialist",
       "runtimeExecutable": "specialist_clinic\\.venv\\Scripts\\python.exe",
-      "runtimeArgs": ["specialist_clinic\\start.py"],
+      "runtimeArgs": [
+        "specialist_clinic\\start.py"
+      ],
       "port": 8090
     },
     {
       "name": "peygiri",
       "runtimeExecutable": "پنل پیگیری\\.venv\\Scripts\\python.exe",
-      "runtimeArgs": ["پنل پیگیری\\start.py"],
+      "runtimeArgs": [
+        "پنل پیگیری\\start.py"
+      ],
       "port": 18091
     }
   ]

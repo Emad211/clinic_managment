@@ -21,7 +21,7 @@ from .common import iran_time
 from .common.jalali import jalali_date
 from .common.persian_text import fa_digits
 from .config.settings import Settings, resource_dir
-from .services import journeys
+from .services import journeys, returns
 from .services.bridge_monitor import BridgeMonitor
 from .sync.poller import Poller
 from .version import APP_NAME, APP_VERSION
@@ -44,7 +44,8 @@ class Runtime:
         )
         self.monitor = BridgeMonitor(self.bridge)
         self.poller = Poller(self.bridge, settings.panel_db_path,
-                             interval_seconds=settings.poll_seconds, clock=clock)
+                             interval_seconds=settings.poll_seconds, clock=clock,
+                             on_events=lambda conn, events: returns.on_poll_events(conn, events, clock()))
         self.stop = threading.Event()
         self.threads: list[threading.Thread] = []
 

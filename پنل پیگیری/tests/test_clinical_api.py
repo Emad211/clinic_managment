@@ -125,3 +125,27 @@ def test_walkin_endpoints(env):
     assert post_json(r, f"/api/reception/walkins/{iid}", {"status": "no_paper"}).status_code == 409
     d = doctor_client(app, rt)
     assert d.get("/api/reception/walkins").status_code == 403
+
+
+def test_call_endpoints_roles_and_flow(env):
+    from datetime import timedelta
+    app, rt, rec, clock = env
+    d = doctor_client(app, rt)
+    vid = visit(rec, rt)
+    post_json(d, f"/api/doctor/visit/{vid}", {"decision": "followup", "lab_order": True})
+    clock.at = NOW + timedelta(days=2)
+    r = user_client(app, "reza", "recep-pass")
+    lists = r.get("/api/reception/followups").get_json()
+    [call] = lists["today"]
+    assert call["purpose"] == "lab_check" and "lab_not_done" in call["outcomes"]
+    assert r.get(f"/api/reception/calls/{call['step_id']}/slots").status_code == 200
+    bad = post_json(r, f"/api/reception/calls/{call['step_id']}", {"outcome": "booked", "booked_date_fa": "x"})
+    assert bad.status_code == 400 and "تاریخ" in bad.get_json()["error"]
+    ok = post_json(r, f"/api/reception/calls/{call['step_id']}", {"outcome": "no_answer", "note": "خاموش بود"})
+    assert ok.get_json()["message"] == "تماس دوباره فردا"
+    assert r.get("/api/reception/followups").get_json()["today"] == []
+    assert d.get("/api/reception/followups").status_code == 403                    # doctors don't call
+    assert post_json(d, f"/api/reception/calls/{call['step_id']}", {"outcome": "refused"}).status_code == 403
+    m = user_client(app, "boss", "boss-pass")
+    page = m.get("/manager/doctors").get_data(as_text=True)
+    assert "پزشکان پیگیری" in page

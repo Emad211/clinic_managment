@@ -5,6 +5,7 @@ from flask import Blueprint, flash, redirect, render_template, request, url_for
 
 from ..app_context import get_db, now, runtime
 from ..services import auth as auth_service
+from ..services import calls as calls_service
 from .security import login_required, principal
 
 bp = Blueprint("manager", __name__)
@@ -13,8 +14,24 @@ bp = Blueprint("manager", __name__)
 @bp.get("/manager/doctors")
 @login_required("manager")
 def doctors():
-    accounts, available = auth_service.doctor_accounts(get_db())
-    return render_template("manager_doctors.html", accounts=accounts, available=available)
+    conn = get_db()
+    accounts, available = auth_service.doctor_accounts(conn)
+    all_doctors, followup = calls_service.followup_doctors(conn)
+    return render_template("manager_doctors.html", accounts=accounts, available=available,
+                           all_doctors=all_doctors, followup=followup)
+
+
+@bp.post("/manager/followup-doctors")
+@login_required("manager")
+def followup_doctors():
+    try:
+        ids = [int(v) for v in request.form.getlist("staff_id")]
+        calls_service.set_followup_doctors(get_db(), ids, actor=principal().actor, now=now())
+    except (ValueError, calls_service.CallError) as exc:
+        flash(str(exc) if isinstance(exc, calls_service.CallError) else "انتخاب نامعتبر است", "error")
+    else:
+        flash("پزشکان پیگیری ذخیره شدند", "ok")
+    return redirect(url_for("manager.doctors"))
 
 
 @bp.post("/manager/doctors")

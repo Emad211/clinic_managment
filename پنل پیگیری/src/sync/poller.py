@@ -25,7 +25,7 @@ from typing import Callable
 from ..adapters.accounting.bridge import AccountingBridge, CycleSkipped
 from ..adapters.accounting.reader import (PollRequest, read_initial_watermarks, read_poll, read_shift_staff,
                                           read_staff)
-from ..adapters.sqlite import core, mirror_repo, state_repo
+from ..adapters.sqlite import core, followup_repo, mirror_repo, state_repo
 from ..common import iran_time
 from ..domain import categories as cat
 from ..domain.events import DomainEvent
@@ -92,7 +92,11 @@ class Poller:
             self._refresh_staff_if_due(conn, state)
 
             hints = set(json.loads(state.get("hint_invoice_ids", "[]")))
-            watched = frozenset(mirror_repo.open_invoice_ids(conn) | hints)
+            # Open invoices, log hints, and invoices whose evidence is from today or yesterday:
+            # the prod exe predates the repo's closed-invoice lock, so these are re-read (docs/03 §8).
+            since = (self.clock().date() - timedelta(days=1)).isoformat()
+            watched = frozenset(mirror_repo.open_invoice_ids(conn) | hints
+                                | followup_repo.recent_evidence_invoices(conn, since))
             yesterday = (self.clock().date() - timedelta(days=1)).isoformat()
             req = PollRequest(int(state["wm_invoice_id"]), int(state["wm_activity_log_id"]), watched, yesterday)
             cycle = self.bridge.read(lambda s: read_poll(s, req))

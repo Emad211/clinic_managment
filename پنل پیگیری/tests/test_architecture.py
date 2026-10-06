@@ -149,7 +149,7 @@ def test_domain_helpers_are_pure_too():
     paths = list((SRC / "domain").rglob("*.py")) + [SRC / "common" / "persian_text.py"]
     for path in paths:
         for mod in imported_modules(tree(path)):
-            assert mod.lstrip(".").split(".")[0] in {"__future__", "dataclasses", "datetime", "re", "common", "ast", "typing", "math"}, (rel(path), mod)
+            assert mod.lstrip(".").split(".")[0] in {"__future__", "dataclasses", "datetime", "re", "common", "ast", "typing", "math", "collections"}, (rel(path), mod)
         for node in ast.walk(tree(path)):
             if isinstance(node, ast.Call):
                 assert not (isinstance(node.func, ast.Name) and node.func.id in {"open", "eval", "exec", "__import__"}), rel(path)

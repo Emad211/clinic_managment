@@ -24,6 +24,13 @@ def test_normalize():
     assert normalize(None) == ""
 
 
+def test_clean_name_keeps_half_space():
+    from src.common.persian_text import clean_name
+    assert clean_name(" عبدالله‌زاده  ") == "عبدالله‌زاده"
+    assert clean_name("علي  كريمي") == "علی کریمی"
+    assert normalize(clean_name("پیگیری‌یک")) == normalize("پیگیری یک")      # still equal when compared
+
+
 def test_jalali_round_trip():
     assert jalali_date("2026-10-06") == "۱۴۰۵/۰۷/۱۴"
     assert gregorian_from_jalali("۱۴۰۵/۰۷/۱۴") == "2026-10-06"
