@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="card">
+  <h1>وضعیت اتصال به حسابداری</h1>
+  {% if status.state == 'ok' %}
+    <p class="badge ok">متصل — فقط‌خواندنی</p>
+  {% elif status.state == 'unchecked' %}
+    <p class="badge warn">در حال بررسی…</p>
+  {% else %}
+    <p class="badge err">غیرفعال</p>
+    <p class="muted">{{ bridge.disabled_reason }}</p>
+  {% endif %}
+  {% if status.checked_at %}<p class="muted">آخرین بررسی: {{ status.checked_at }}</p>{% endif %}
+  <p class="muted">این برنامه هیچ تغییری در دیتابیس حسابداری نمی‌دهد.</p>
+</section>
+{% endblock %}

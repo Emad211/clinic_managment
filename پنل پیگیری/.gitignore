@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+
+# PyInstaller output (the .spec file IS tracked)
+build/
+dist/
+
+# Runtime data — never commit (contains patient data)
+*.db
+*.db-wal
+*.db-shm
+*.db-journal
+config.ini
+backups/
+logs/
